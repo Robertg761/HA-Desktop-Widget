@@ -3024,6 +3024,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-resize-handle {
   --desktop-pin-resize-handle-size: clamp(14px, min(18vw, 18vh), 24px);
+  /* How far inside the window's edges the mark sits. A full 24px handle's mark is 2px in, which
+     puts its arc on the centre of the window's 24px rounded corner: the ring runs 2-5px inside the
+     corner, clear of the 8px around the pin's buttons. A smaller handle's arc cannot share that
+     centre, so its mark steps in further to stay inside the corner. */
+  --desktop-pin-resize-mark-inset: calc(2px + (24px - var(--desktop-pin-resize-handle-size)) / 2);
   display: none;
   position: absolute;
   width: var(--desktop-pin-resize-handle-size);
@@ -3040,14 +3045,17 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-resize-handle::before {
   content: '';
   position: absolute;
-  width: calc(var(--desktop-pin-resize-handle-size) - 5px);
-  height: calc(var(--desktop-pin-resize-handle-size) - 5px);
+  /* The border is part of the size, so the ring spans exactly from the inset to the hit box's
+     inner corner, whatever its width. */
+  box-sizing: border-box;
+  width: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
+  height: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
   border: 0 solid rgba(var(--accent-rgb), 0.95);
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
   pointer-events: none;
 }
 
-/* Each mark is a quarter ring that follows the window's rounded corner 5px inside it, across the
+/* Each mark is a quarter ring that follows the window's rounded corner just inside it, across the
    handle's whole hit box. A triangle filling the box was clipped by the 24px corner to a thin
    crescent along its edge. */
 .desktop-pin-resize-handle-top-left {
@@ -3057,8 +3065,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-left::before {
-  top: 5px;
-  left: 5px;
+  top: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
   border-top-width: 3px;
   border-left-width: 3px;
   border-top-left-radius: 100%;
@@ -3071,8 +3079,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-right::before {
-  top: 5px;
-  right: 5px;
+  top: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
   border-top-width: 3px;
   border-right-width: 3px;
   border-top-right-radius: 100%;
@@ -3085,8 +3093,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-left::before {
-  bottom: 5px;
-  left: 5px;
+  bottom: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
   border-bottom-width: 3px;
   border-left-width: 3px;
   border-bottom-left-radius: 100%;
@@ -3099,8 +3107,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-right::before {
-  bottom: 5px;
-  right: 5px;
+  bottom: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
   border-bottom-width: 3px;
   border-right-width: 3px;
   border-bottom-right-radius: 100%;

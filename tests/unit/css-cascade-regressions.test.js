@@ -1527,8 +1527,8 @@ describe('stylesheet cascade regressions', () => {
       expect(rule.style.getPropertyValue(`border-${vertical}-${side}-radius`)).toBe('100%');
       expect(rule.style.getPropertyValue(`border-${vertical}-width`)).toBe('3px');
       expect(rule.style.getPropertyValue(`border-${side}-width`)).toBe('3px');
-      expect(rule.style.getPropertyValue(vertical)).toBe('5px');
-      expect(rule.style.getPropertyValue(side)).toBe('5px');
+      expect(rule.style.getPropertyValue(vertical)).toBe('var(--desktop-pin-resize-mark-inset)');
+      expect(rule.style.getPropertyValue(side)).toBe('var(--desktop-pin-resize-mark-inset)');
     });
 
     it('keeps the whole resize mark inside the window corner at every handle size', () => {
@@ -1538,27 +1538,50 @@ describe('stylesheet cascade regressions', () => {
           /round\s+([\d.]+)px/
         )[1]
       );
-      const handleSize = pseudoRule('.desktop-pin-resize-handle')
-        .style.getPropertyValue('--desktop-pin-resize-handle-size')
+      const handle = pseudoRule('.desktop-pin-resize-handle').style;
+      const [smallest, largest] = handle
+        .getPropertyValue('--desktop-pin-resize-handle-size')
         .match(/clamp\(([\d.]+)px,.*,\s*([\d.]+)px\)/)
         .slice(1)
         .map(Number);
+      // calc(a + (b - size) / k): how far in the mark sits for a handle of a given size.
+      const [a, b, k] = handle
+        .getPropertyValue('--desktop-pin-resize-mark-inset')
+        .match(
+          /^calc\(([\d.]+)px \+ \(([\d.]+)px - var\(--desktop-pin-resize-handle-size\)\) \/ ([\d.]+)\)$/
+        )
+        .slice(1)
+        .map(Number);
+      const insetFor = (size) => a + (b - size) / k;
       const before = pseudoRule('.desktop-pin-resize-handle::before').style;
-      const inset = parseFloat(pseudoRule('.desktop-pin-resize-handle-top-left::before').style.top);
+      // The border counts in the size, so the ring's outer edge spans exactly inset to size.
+      expect(before.getPropertyValue('box-sizing')).toBe('border-box');
       expect(before.getPropertyValue('width')).toBe(
-        `calc(var(--desktop-pin-resize-handle-size) - ${inset}px)`
+        'calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset))'
       );
-      for (const size of handleSize) {
+      const ring = parseFloat(
+        pseudoRule('.desktop-pin-resize-handle-top-left::before').style.getPropertyValue(
+          'border-top-width'
+        )
+      );
+      // The 8px around the pin's buttons, which the ring should not cross where the corner allows.
+      const contentPad = 8;
+      for (let size = smallest; size <= largest; size += 1) {
         // The ring's outer edge is a quarter circle about (size, size), from the window's corner.
+        const inset = insetFor(size);
         const radius = size - inset;
         for (let degrees = 0; degrees <= 90; degrees += 5) {
           const angle = (degrees * Math.PI) / 180;
           const x = size - radius * Math.cos(angle);
           const y = size - radius * Math.sin(angle);
           // Inside the window's rounded corner: within `corner` of the arc's centre.
-          expect(Math.hypot(corner - x, corner - y)).toBeLessThanOrEqual(corner);
+          expect(Math.hypot(corner - x, corner - y)).toBeLessThanOrEqual(corner + 1e-9);
         }
       }
+      // A full-size handle's ring shares the corner's centre, so it runs a steady band just inside
+      // the window's edge, outside the content's padding along both sides.
+      expect(largest).toBe(corner);
+      expect(insetFor(largest) + ring).toBeLessThan(contentPad);
     });
 
     it('keeps the dark weather palette on a pin in the light theme, where pins stay dark glass', () => {
