@@ -1410,6 +1410,20 @@ const scenes = [
       await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
     },
   },
+  // A search in German by a German name: the names Unicode CLDR gives every emoji come with the app
+  // in each language it speaks, so "Glühbirne" finds the light bulb and the grid names it so.
+  {
+    name: 'de-settings-icons-search',
+    ui: { language: 'de' },
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'dashboard');
+      await ctx.click('#custom-entity-icons-toggle');
+      await ctx.waitForSelector('#custom-entity-icons-list .custom-entity-icon-item');
+      await typeInto(ctx, '#custom-entity-icons-list [data-custom-icon-input]', 'Glühbirne');
+      await ctx.waitForSelector('.custom-entity-icon-choice[aria-label="Glühbirne (💡)"]');
+      await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
+    },
+  },
   // The alert picker keeps its search field where it is while the list narrows to a few rows and to
   // none: the dialog used to shrink and re-centre under the person's typing.
   ...[
