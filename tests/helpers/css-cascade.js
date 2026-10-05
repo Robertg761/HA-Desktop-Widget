@@ -10,7 +10,9 @@
  * `prefersContrast: 'more'`, `pointer: 'coarse'` or `reducedMotion: true` (or `false`, for the
  * no-preference blocks) in the options to apply those media blocks. A size container query applies
  * when the options give the size of the container it asks about (`container: { width: 200 }`);
- * without one, and for any other kind of container query, it does not.
+ * without one, and for any other kind of container query, it does not. So the rules in a
+ * scroll-state() query, such as the to-do add field's while it is stuck to the top, are never
+ * applied: a test of them would read the unstuck values.
  */
 const fs = require('fs');
 const path = require('path');
