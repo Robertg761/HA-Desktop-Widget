@@ -726,9 +726,11 @@ Ref: SM3-37, SM1-30
 1. Turn on Start at login in Settings > General (real profile). Open your desktop's startup list (GNOME Tweaks > Startup Applications, or KDE System Settings > Autostart).
 2. Set up an alert in Settings > Alerts (turn on Entity alerts), trigger it, and read the application name your notification daemon shows.
 
-Expected: The startup list says "HA Desktop Widget", not `home-assistant-widget`. The notification's title and text name the widget as "HA Desktop Widget". A daemon that also prints the sending application's name (dunst or swaync with `%a` in their format, KDE for an app it cannot match to a launcher) shows `home-assistant-widget` there: the app keeps that internal name, because the keyring entry with the key to saved sign-ins and the tray icon's id (which the Omarchy bar, KDE and Waybar keep pinned and hidden icons under) are named after it.
+Expected: The startup list says "HA Desktop Widget", not `home-assistant-widget`. The notification's title and text name the widget as "HA Desktop Widget".
 
-Capture: A screenshot of the list and the notification.
+Known exception, raised with the owner: a daemon that also prints the sending application's name (dunst or swaync with `%a` in their format, KDE for an app it cannot match to a launcher) shows `home-assistant-widget` there. 4.0 still sends the package name, because the keyring entry that holds the key to saved sign-ins and the tray icon's id are named after it. Write down what your daemon shows.
+
+Capture: A screenshot of the list and the notification, including the application name if your daemon prints one.
 
 Ref: MP-52
 
