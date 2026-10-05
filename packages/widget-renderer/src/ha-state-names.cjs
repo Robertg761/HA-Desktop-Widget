@@ -5,6 +5,20 @@
  * pack keys. This is CommonJS because the main process requires it too.
  */
 
+// A thermostat's HVAC mode, in Home Assistant's own words. The state of a climate entity is its
+// mode, not what it is doing (an idle thermostat in heat mode is not heating), and heat_cool and
+// auto are different modes, so each has a name of its own. The climate dialog and the pins name the
+// mode buttons from this table too, so a thermostat is called the same thing everywhere.
+const HVAC_MODE_NAMES = Object.freeze({
+  off: 'Off',
+  heat: 'Heat',
+  cool: 'Cool',
+  heat_cool: 'Heat/Cool',
+  auto: 'Auto',
+  dry: 'Dry',
+  fan_only: 'Fan only',
+});
+
 // The state of an entity, by the raw state Home Assistant sends.
 const STATE_NAMES = Object.freeze({
   on: 'On',
@@ -93,4 +107,4 @@ const BINARY_STATE_NAMES = Object.freeze({
   update: ['Update', 'OK'],
 });
 
-module.exports = { STATE_NAMES, BINARY_STATE_NAMES };
+module.exports = { HVAC_MODE_NAMES, STATE_NAMES, BINARY_STATE_NAMES };

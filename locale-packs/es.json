@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "Vista previa de {{name}}",
     "Last updated: {{time}}": "Última actualización: {{time}}",
     "Connection is not ready": "La conexión aún no está lista",
-    "Fan only": "Solo ventilador",
     "Heat/Cool": "Calor/Frío",
     "Disarming": "Desarmando",
     "Triggered": "Disparada",
@@ -2006,6 +2005,7 @@
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización beta portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil.",
     "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Asigna una tecla en tu gestor de ventanas para ejecutar <code>{{command}}</code>, que muestra u oculta el widget.",
     "HA Desktop Widget is still running": "HA Desktop Widget se sigue ejecutando",
-    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Ábrelo desde el lanzador de aplicaciones para recuperarlo. GNOME solo muestra su icono en la bandeja del sistema con una extensión AppIndicator."
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Ábrelo desde el lanzador de aplicaciones para recuperarlo. GNOME solo muestra su icono en la bandeja del sistema con una extensión AppIndicator.",
+    "Fan only": "Solo ventilador"
   }
 }

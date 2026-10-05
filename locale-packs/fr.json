@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "Aperçu de {{name}}",
     "Last updated: {{time}}": "Dernière mise à jour : {{time}}",
     "Connection is not ready": "La connexion n'est pas encore prête",
-    "Fan only": "Ventilation seule",
     "Heat/Cool": "Chaud/Froid",
     "Disarming": "Désarmement",
     "Triggered": "Déclenchée",
@@ -2006,6 +2005,7 @@
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Mise à jour bêta portable disponible : v{{version}}. Utilisez « Télécharger la mise à jour portable » pour obtenir la version portable.",
     "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Associez une touche dans votre gestionnaire de fenêtres à <code>{{command}}</code>, qui affiche ou masque le widget.",
     "HA Desktop Widget is still running": "HA Desktop Widget est toujours en cours d'exécution",
-    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Ouvrez-le depuis votre lanceur d'applications pour le faire réapparaître. GNOME n'affiche son icône dans la zone de notification qu'avec une extension AppIndicator."
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Ouvrez-le depuis votre lanceur d'applications pour le faire réapparaître. GNOME n'affiche son icône dans la zone de notification qu'avec une extension AppIndicator.",
+    "Fan only": "Ventilation seule"
   }
 }

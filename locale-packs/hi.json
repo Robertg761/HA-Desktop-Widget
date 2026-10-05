@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "{{name}} पूर्वावलोकन",
     "Last updated: {{time}}": "अंतिम अपडेट: {{time}}",
     "Connection is not ready": "कनेक्शन अभी तैयार नहीं है",
-    "Fan only": "केवल पंखा",
     "Heat/Cool": "हीट/कूल",
     "Disarming": "अलार्म बंद हो रहा है",
     "Triggered": "ट्रिगर हुआ",
@@ -2006,6 +2005,7 @@
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "पोर्टेबल बीटा अपडेट उपलब्ध है: v{{version}}। पोर्टेबल बिल्ड पाने के लिए “पोर्टेबल अपडेट डाउनलोड करें” का उपयोग करें।",
     "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "अपने विंडो मैनेजर में <code>{{command}}</code> चलाने के लिए एक कुंजी बाइंड करें, जो विजेट को दिखाता या छिपाता है।",
     "HA Desktop Widget is still running": "HA Desktop Widget अभी भी चल रहा है",
-    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "इसे वापस लाने के लिए इसे अपने ऐप लॉन्चर से खोलें। GNOME इसका सिस्टम ट्रे आइकन केवल AppIndicator एक्सटेंशन के साथ दिखाता है।"
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "इसे वापस लाने के लिए इसे अपने ऐप लॉन्चर से खोलें। GNOME इसका सिस्टम ट्रे आइकन केवल AppIndicator एक्सटेंशन के साथ दिखाता है।",
+    "Fan only": "केवल पंखा"
   }
 }

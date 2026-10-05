@@ -374,12 +374,16 @@ Panel {
     return (rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)) + "°"
   }
 
+  // A thermostat's mode, in the names the widget gives the modes (HVAC_MODE_NAMES).
   function modeLabel(mode) {
     var labels = {
+      off: word("modeOff", "Off"),
+      heat: word("modeHeat", "Heat"),
+      cool: word("modeCool", "Cool"),
       heat_cool: word("modeHeatCool", "Heat/Cool"),
-      fan_only: word("modeFan", "Fan"),
+      auto: word("modeAuto", "Auto"),
       dry: word("modeDry", "Dry"),
-      off: word("off", "Off")
+      fan_only: word("modeFan", "Fan only")
     }
     if (labels[mode]) return labels[mode]
     return mode.charAt(0).toUpperCase() + mode.slice(1).replace(/_/g, " ")

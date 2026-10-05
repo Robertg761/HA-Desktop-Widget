@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "معاينة {{name}}",
     "Last updated: {{time}}": "آخر تحديث: {{time}}",
     "Connection is not ready": "الاتصال غير جاهز بعد",
-    "Fan only": "مروحة فقط",
     "Heat/Cool": "تدفئة/تبريد",
     "Disarming": "جارٍ إلغاء التسليح",
     "Triggered": "تم التفعيل",
@@ -2006,6 +2005,7 @@
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "يتوفر تحديث تجريبي محمول: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على النسخة المحمولة.",
     "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "اربط مفتاحًا في مدير النوافذ لتشغيل <code>{{command}}</code>، الذي يُظهر الأداة أو يُخفيها.",
     "HA Desktop Widget is still running": "لا يزال HA Desktop Widget يعمل",
-    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "افتحه من مشغّل التطبيقات لإعادته. لا يعرض GNOME أيقونته في شريط النظام إلا مع إضافة AppIndicator."
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "افتحه من مشغّل التطبيقات لإعادته. لا يعرض GNOME أيقونته في شريط النظام إلا مع إضافة AppIndicator.",
+    "Fan only": "مروحة فقط"
   }
 }

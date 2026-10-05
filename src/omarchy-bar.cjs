@@ -16,6 +16,7 @@ const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
 const { defaultPageName } = require('./page-names.cjs');
+const { HVAC_MODE_NAMES } = require('../packages/widget-renderer/src/ha-state-names.cjs');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
@@ -420,9 +421,15 @@ const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
   setRange: 'Set the range in the widget.',
   omittedOne: '1 more tile is not shown here. Open the widget to see it.',
   omittedMany: '{{count}} more tiles are not shown here. Open the widget to see them.',
-  modeHeatCool: 'Heat/Cool',
-  modeFan: 'Fan',
-  modeDry: 'Dry',
+  // A thermostat's modes, in the names the widget gives them. fan_only's id is modeFan, which
+  // plugins up to 1.3.0 already read.
+  modeOff: HVAC_MODE_NAMES.off,
+  modeHeat: HVAC_MODE_NAMES.heat,
+  modeCool: HVAC_MODE_NAMES.cool,
+  modeHeatCool: HVAC_MODE_NAMES.heat_cool,
+  modeAuto: HVAC_MODE_NAMES.auto,
+  modeDry: HVAC_MODE_NAMES.dry,
+  modeFan: HVAC_MODE_NAMES.fan_only,
   // Above a controls panel that cannot act, to say why.
   notConnectedControls: "Not connected to Home Assistant. Changes can't be sent right now.",
   widgetUnreachableControls: "Can't reach the widget. Changes can't be sent right now.",

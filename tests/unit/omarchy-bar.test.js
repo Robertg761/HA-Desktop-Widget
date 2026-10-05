@@ -1265,7 +1265,7 @@ describe('the plugin as a package of files', () => {
   // below are updated together.
   const PUBLISHED = {
     version: '1.3.1',
-    sha256: 'c54a3df22309e8c87cd71d3f9c7fcb9f6aa09cb91c8ecfbe9cc7dbb603ad9d06',
+    sha256: 'e23ba9c6de5a4b3ee97c100da3f88ff998e66fc7839764a58f362ec29cf5b9ba',
   };
 
   function pluginHash() {

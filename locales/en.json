@@ -1643,5 +1643,6 @@
   "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.",
   "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.",
   "HA Desktop Widget is still running": "HA Desktop Widget is still running",
-  "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension."
+  "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.",
+  "Fan only": "Fan only"
 }
