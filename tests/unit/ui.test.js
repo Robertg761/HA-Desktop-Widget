@@ -240,12 +240,21 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     const flush = async () => {
       for (let i = 0; i < 20; i += 1) await Promise.resolve();
     };
-    // The search narrows the list a moment after typing pauses (150 ms).
-    const searchFor = async (text) => {
+    // The search narrows the list a moment after typing pauses (150 ms), on the test's clock.
+    const SEARCH_DELAY_MS = 150;
+    const typeSearch = (text) => {
       const search = document.querySelector('.room-device-search');
       search.value = text;
       search.dispatchEvent(new Event('input'));
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
+    const searchFor = (text) => {
+      jest.useFakeTimers();
+      try {
+        typeSearch(text);
+        jest.advanceTimersByTime(SEARCH_DELAY_MS);
+      } finally {
+        jest.useRealTimers();
+      }
     };
     const entities = [
       { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk lamp' } },
@@ -492,7 +501,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(preview.querySelector('[role="status"]')).toBe(count);
       expect(removed).not.toContain(count);
       expect(count.textContent).toBe('Page preview: 2 entities');
-      await searchFor('desk');
+      searchFor('desk');
       // The search draws the rows that match; a tick on one it leaves out still counts.
       expect(document.querySelector('input[value="sensor.temperature"]')).toBeNull();
       expect(document.querySelector('input[value="light.desk"]').checked).toBe(true);
@@ -582,10 +591,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const status = document.querySelector('.room-dashboard [role="status"]');
       const hint = status.textContent;
 
-      await searchFor('nothing like this');
+      searchFor('nothing like this');
       expect(status.textContent).toBe('No matching entities found.');
 
-      await searchFor('sto');
+      searchFor('sto');
       expect(status.textContent).toBe(hint);
     });
 
@@ -650,7 +659,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         )
       ).toEqual(['light.desk']);
       expect(document.querySelector('.room-device-search').hidden).toBe(false);
-      await searchFor('temp');
+      searchFor('temp');
       expect(document.querySelector('input[value="light.desk"]')).toBeNull();
       expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
     });
@@ -857,11 +866,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           if (!input.checked) input.click();
         });
         // A row past the hundred is ticked from a search, and its tick stays once it is cleared.
-        await searchFor('device_0999');
+        searchFor('device_0999');
         expect(rows()).toHaveLength(1);
         expect(document.querySelector('.room-list-note').textContent).toBe('');
         rows()[0].click();
-        await searchFor('');
+        searchFor('');
 
         expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
         expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
@@ -877,16 +886,21 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       it('narrows the list once typing pauses, not on every key', async () => {
         ui.showAddPageModal({ starter: true });
         await flush();
-        const search = document.querySelector('.room-device-search');
 
-        for (const text of ['d', 'de', 'dev', 'device_000']) {
-          search.value = text;
-          search.dispatchEvent(new Event('input'));
+        jest.useFakeTimers();
+        try {
+          // Each key starts the wait again, so keys closer together than it narrow nothing.
+          for (const text of ['d', 'de', 'dev', 'device_000']) {
+            typeSearch(text);
+            jest.advanceTimersByTime(SEARCH_DELAY_MS - 1);
+          }
+          expect(rows()).toHaveLength(100);
+
+          jest.advanceTimersByTime(1);
+          expect(rows()).toHaveLength(10);
+        } finally {
+          jest.useRealTimers();
         }
-        expect(rows()).toHaveLength(100);
-
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        expect(rows()).toHaveLength(10);
       });
     });
     it('offers retry when device states are not ready', async () => {
