@@ -9376,6 +9376,18 @@ body.theme-light:not(.high-contrast)
   line-height: 1.5;
 }
 
+/* In a short window (the smallest is 360px) the card's own padding and the space around it left
+   the welcome step scrolling inside the card, its buttons cut off at the bottom. */
+@media (max-height: 480px) {
+  .first-run-onboarding {
+    padding: var(--space-3);
+  }
+
+  .first-run-panel {
+    padding: var(--space-4);
+  }
+}
+
 /* The welcome step's offer of the system's language: one line and its Download button. */
 #first-run-language-offer {
   display: flex;

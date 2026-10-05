@@ -11,6 +11,11 @@
  * capture still lands and the run continues. The scenes live in scenes.cjs; a scene that fails
  * is reported and skipped, and the run exits non-zero once the others are done.
  *
+ * Most scenes share one running app. A scene with a `startup` is about how the app starts (a first
+ * install, a saved token this computer cannot read), which no change to a running app can show, so
+ * it gets an app of its own on a profile written for it, once the shared scenes are done. A scene
+ * with `platforms` runs only on those (process.platform values).
+ *
  * Usage: npm run build:renderer && node scripts/visual-snapshots/run.cjs [outDir]
  * Needs Node 22+ (global WebSocket). On Linux run it under xvfb-run.
  *
@@ -187,11 +192,167 @@ async function listTargets() {
   return response.json();
 }
 
+const PLATFORM_TAG = { darwin: 'macos', win32: 'windows' }[process.platform] || 'linux';
+
+/**
+ * Start the app on a profile and connect to its main window. On Linux the app reads the active
+ * Omarchy theme from its state directory, so that moves into the profile instead of reaching for
+ * the real home (see prepare for the scenes that stage a palette there).
+ */
+async function launchApp(profileDir, extraEnv = {}) {
+  const electron = require('electron');
+  const env = { ...process.env, ...extraEnv };
+  delete env.ELECTRON_RUN_AS_NODE;
+  env.XDG_STATE_HOME = path.join(profileDir, 'state');
+  const app = spawn(
+    electron,
+    [
+      '.',
+      `--user-data-dir=${profileDir}`,
+      `--remote-debugging-port=${DEBUG_PORT}`,
+      ...(process.env.SNAPSHOT_REDUCED_MOTION === '1' ? ['--force-prefers-reduced-motion'] : []),
+    ],
+    { cwd: ROOT, env, stdio: 'inherit' }
+  );
+  try {
+    const target = await waitFor(
+      async () =>
+        (await listTargets()).find(
+          (entry) => entry.type === 'page' && /index\.html(?!.*mode=desktop-pin)/.test(entry.url)
+        ),
+      { label: 'the main window' }
+    );
+    const cdp = await connectCdp(target.webSocketDebuggerUrl);
+    // Without a window manager nothing is focused; popups and the palette act on focus.
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+    return { app, cdp };
+  } catch (error) {
+    await stopApp(app);
+    throw error;
+  }
+}
+
+async function stopApp(app) {
+  // The app hides to the tray instead of quitting on SIGTERM (macOS especially), and its open
+  // socket to the mock server would keep this process alive, so escalate to SIGKILL. The next
+  // app needs the debugging port this one holds, so wait until it has gone.
+  app.kill();
+  await sleep(1500);
+  if (app.exitCode === null && app.signalCode === null) app.kill('SIGKILL');
+  await waitFor(() => app.exitCode !== null || app.signalCode !== null, {
+    label: 'the app to exit',
+    timeoutMs: 10000,
+  }).catch((error) => console.warn(error.message));
+}
+
+/** What every scene's setup can do with the page, on the shared app or one of its own. */
+function pageContext(cdp) {
+  return {
+    CTRL,
+    sleep,
+    ev: (expression) => cdp.evaluate(expression),
+    async click(selector) {
+      const found = await cdp.evaluate(
+        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
+      );
+      if (!found) throw new Error(`Nothing matches ${selector}`);
+    },
+    waitForSelector: (selector) =>
+      waitFor(() => cdp.evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), {
+        label: selector,
+        timeoutMs: 10000,
+      }),
+    /** Fail the scene unless a page expression is truthy right now (a layout check). */
+    async expect(expression, label) {
+      if (!(await cdp.evaluate(`!!(${expression})`)))
+        throw new Error(`Layout check failed: ${label}`);
+    },
+    /** Wait until a page expression is truthy. */
+    waitForExpression: (expression, label = expression) =>
+      waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
+    async pressKey(key, { code = key, keyCode = 0, modifiers = 0, text } = {}) {
+      const event = {
+        key,
+        code,
+        windowsVirtualKeyCode: keyCode,
+        nativeVirtualKeyCode: keyCode,
+        modifiers,
+      };
+      await cdp.send('Input.dispatchKeyEvent', {
+        type: text ? 'keyDown' : 'rawKeyDown',
+        ...event,
+        ...(text ? { text } : {}),
+      });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...event });
+    },
+    insertText: (text) => cdp.send('Input.insertText', { text }),
+  };
+}
+
+async function capture(name, source, { keepToasts = false } = {}) {
+  if (!keepToasts) await source.evaluate(REMOVE_TOASTS);
+  const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
+  const base = path.join(OUT_DIR, `${PLATFORM_TAG}-${name}`);
+  fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
+  // The page target has no Browser domain; the window's own screen geometry is enough.
+  const bounds = await source.evaluate(
+    '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
+  );
+  captureScreen(`${base}-screen.png`, bounds);
+}
+
+/**
+ * Start the app on the profile a start-up scene describes, capture it and stop it. `startup.config`
+ * turns the fixture's settings into the config.json the app starts from, and `startup.env` adds to
+ * the app's environment (the system language, on Linux).
+ */
+async function captureStartupScene(scene, baseConfig) {
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-snapshot-'));
+  let launched = null;
+  try {
+    fs.writeFileSync(
+      path.join(profileDir, 'config.json'),
+      JSON.stringify(scene.startup.config(baseConfig), null, 2)
+    );
+    launched = await launchApp(profileDir, scene.startup.env);
+    const { cdp } = launched;
+    await waitFor(() => cdp.evaluate(`document.readyState === 'complete'`), {
+      label: 'the page to load',
+    });
+    if (scene.size) {
+      await cdp.evaluate(`window.resizeTo(${scene.size.width}, ${scene.size.height})`);
+      await sleep(500);
+    }
+    if (scene.media?.length) {
+      await cdp.send('Emulation.setEmulatedMedia', { features: scene.media });
+      await sleep(600);
+    }
+    const result = scene.setup ? await scene.setup(pageContext(cdp)) : null;
+    await sleep(scene.settle ?? 900);
+    await capture(scene.name, result?.capture || cdp, { keepToasts: scene.keepToasts });
+    console.log(`Captured ${scene.name}`);
+  } catch (error) {
+    console.error(`Scene ${scene.name} failed: ${error.message}`);
+    if (launched) await capture(`${scene.name}-failed`, launched.cdp).catch(() => {});
+    throw error;
+  } finally {
+    launched?.cdp.close();
+    if (launched) await stopApp(launched.app);
+    fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+  }
+}
+
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const platformTag = { darwin: 'macos', win32: 'windows' }[process.platform] || 'linux';
   const selected = scenes.filter((scene) => !SCENE_FILTER || SCENE_FILTER.test(scene.name));
   if (!selected.length) throw new Error(`No scene matches ${SCENE_FILTER}`);
+  // A scene some operating systems cannot stage (a system language set for one app) is left out
+  // where it would only show the default.
+  const runnable = selected.filter(
+    (scene) => !scene.platforms || scene.platforms.includes(process.platform)
+  );
+  const shared = runnable.filter((scene) => !scene.startup);
+  const startups = runnable.filter((scene) => scene.startup);
 
   const server = await startMockHomeAssistant({
     token: TOKEN,
@@ -203,43 +364,34 @@ async function main() {
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
+  const failures = [];
+  try {
+    if (shared.length) await captureSharedScenes(shared, { server, baseConfig, failures });
+    for (const scene of startups) {
+      await captureStartupScene(scene, baseConfig).catch(() => failures.push(scene.name));
+    }
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await sleep(500);
+  }
+  console.log(`Snapshots written to ${OUT_DIR}`);
+  if (failures.length)
+    throw new Error(`${failures.length} scene(s) failed: ${failures.join(', ')}`);
+}
+
+/** The scenes that share one app, each starting from the fixture's dashboard. */
+async function captureSharedScenes(selected, { server, baseConfig, failures }) {
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-snapshot-'));
   fs.writeFileSync(path.join(profileDir, 'config.json'), JSON.stringify(baseConfig, null, 2));
   installLocalePacks(profileDir);
 
-  const electron = require('electron');
-  const env = { ...process.env };
-  delete env.ELECTRON_RUN_AS_NODE;
-  // Where a scene with an Omarchy palette stages one (see prepare). On Linux the app reads the
-  // active theme from its state directory, so this one moves into the throwaway profile instead of
-  // reaching for the real home.
-  const stateHome = path.join(profileDir, 'state');
-  const paletteFile = path.join(stateHome, 'omarchy', 'current', 'theme', 'colors.toml');
-  env.XDG_STATE_HOME = stateHome;
-  const app = spawn(
-    electron,
-    [
-      '.',
-      `--user-data-dir=${profileDir}`,
-      `--remote-debugging-port=${DEBUG_PORT}`,
-      ...(process.env.SNAPSHOT_REDUCED_MOTION === '1' ? ['--force-prefers-reduced-motion'] : []),
-    ],
-    { cwd: ROOT, env, stdio: 'inherit' }
-  );
-
+  // Where a scene with an Omarchy palette stages one (see prepare).
+  const paletteFile = path.join(profileDir, 'state', 'omarchy', 'current', 'theme', 'colors.toml');
+  let app = null;
   let cdp = null;
-  const failures = [];
   try {
-    const target = await waitFor(
-      async () =>
-        (await listTargets()).find(
-          (entry) => entry.type === 'page' && /index\.html(?!.*mode=desktop-pin)/.test(entry.url)
-        ),
-      { label: 'the main window' }
-    );
-    cdp = await connectCdp(target.webSocketDebuggerUrl);
-    // Without a window manager nothing is focused; popups and the palette act on focus.
-    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+    ({ app, cdp } = await launchApp(profileDir));
     await waitFor(
       () => cdp.evaluate(`document.querySelectorAll('#quick-controls .control-item').length > 3`),
       { label: 'Quick Access tiles', timeoutMs: 45000 }
@@ -267,9 +419,7 @@ async function main() {
     let notificationsPushed = false;
     const NOTIFICATIONS = 'persistent_notification/subscribe';
     const ctx = {
-      CTRL,
-      sleep,
-      ev: (expression) => cdp.evaluate(expression),
+      ...pageContext(cdp),
       /**
        * Give the app the persistent notifications the fixture lists, as Home Assistant would send
        * them to its open subscription. They are not there from the start, because their bell
@@ -278,22 +428,6 @@ async function main() {
       showNotifications() {
         notificationsPushed = true;
         server.pushEvents(NOTIFICATIONS, buildSubscriptionEvents()({ type: NOTIFICATIONS }));
-      },
-      async click(selector) {
-        const found = await cdp.evaluate(
-          `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el) el.click(); return !!el; })()`
-        );
-        if (!found) throw new Error(`Nothing matches ${selector}`);
-      },
-      waitForSelector: (selector) =>
-        waitFor(() => cdp.evaluate(`!!document.querySelector(${JSON.stringify(selector)})`), {
-          label: selector,
-          timeoutMs: 10000,
-        }),
-      /** Fail the scene unless a page expression is truthy right now (a layout check). */
-      async expect(expression, label) {
-        if (!(await cdp.evaluate(`!!(${expression})`)))
-          throw new Error(`Layout check failed: ${label}`);
       },
       /** Take Home Assistant away, as an outage does; the runner brings it back after the scene. */
       async goOffline() {
@@ -305,25 +439,6 @@ async function main() {
         });
         await sleep(500);
       },
-      /** Wait until a page expression is truthy. */
-      waitForExpression: (expression, label = expression) =>
-        waitFor(() => cdp.evaluate(`!!(${expression})`), { label, timeoutMs: 10000 }),
-      async pressKey(key, { code = key, keyCode = 0, modifiers = 0, text } = {}) {
-        const event = {
-          key,
-          code,
-          windowsVirtualKeyCode: keyCode,
-          nativeVirtualKeyCode: keyCode,
-          modifiers,
-        };
-        await cdp.send('Input.dispatchKeyEvent', {
-          type: text ? 'keyDown' : 'rawKeyDown',
-          ...event,
-          ...(text ? { text } : {}),
-        });
-        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...event });
-      },
-      insertText: (text) => cdp.send('Input.insertText', { text }),
       /** Pin an entity to the desktop and return the CDP client of its window. */
       async openPin(entityId) {
         const result = await cdp.evaluate(
@@ -497,18 +612,6 @@ async function main() {
       }
     }
 
-    async function capture(name, source, { keepToasts = false } = {}) {
-      if (!keepToasts) await source.evaluate(REMOVE_TOASTS);
-      const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
-      const base = path.join(OUT_DIR, `${platformTag}-${name}`);
-      fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
-      // The page target has no Browser domain; the window's own screen geometry is enough.
-      const bounds = await source.evaluate(
-        '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
-      );
-      captureScreen(`${base}-screen.png`, bounds);
-    }
-
     for (const scene of selected) {
       // Entities only this scene needs arrive the way Home Assistant's own changes do and go again
       // once it is captured, so no other scene's lists carry them.
@@ -543,19 +646,9 @@ async function main() {
     }
   } finally {
     cdp?.close();
-    // The app hides to the tray instead of quitting on SIGTERM (macOS especially), and its open
-    // socket to the mock server would keep this process alive, so escalate to SIGKILL.
-    app.kill();
-    await sleep(1500);
-    if (app.exitCode === null && app.signalCode === null) app.kill('SIGKILL');
-    server.closeAllConnections?.();
-    server.close();
-    await sleep(500);
+    if (app) await stopApp(app);
     fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
   }
-  console.log(`Snapshots written to ${OUT_DIR}`);
-  if (failures.length)
-    throw new Error(`${failures.length} scene(s) failed: ${failures.join(', ')}`);
 }
 
 main()

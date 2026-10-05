@@ -20,6 +20,9 @@
  *            desktop pin family has a scene)
  *   keepToasts  leave the toasts the setup raised on screen for the capture (they are cleared
  *               otherwise)
+ *   startup  { config, env } for a scene about how the app starts: it runs on an app of its own
+ *            whose config.json is config(fixture settings), with env added to its environment
+ *   platforms  the process.platform values a scene runs on, when not every one can stage it
  *
  * A setup can also fail its scene with ctx.expect(expression, label), a layout check that compares
  * boxes with each other (a button lies inside its dialog) and so holds on any machine's fonts.
@@ -218,6 +221,109 @@ async function showFirstRunWelcome(ctx) {
   })()`);
   await ctx.waitForExpression(`${back}.hidden`, 'the first-run welcome step');
 }
+
+// Start-ups no change to a running app can show. Each starts an app of its own on the config.json
+// that startup.config makes from the fixture's settings (see run.cjs), after the shared scenes.
+const WIZARD_SHOWN = `document.querySelector('.first-run-onboarding:not(.hidden)')`;
+const HEADER_DISCONNECTED = `!document.getElementById('connection-status').classList.contains('connected')`;
+// A first install: only the window's place and seasonal themes off are saved, so the picture is
+// the same whatever the date.
+const firstInstall = (base) => ({
+  windowPosition: base.windowPosition,
+  ui: { seasonal: { enabled: false } },
+});
+// A saved token this computer cannot read: a profile moved to another computer or user account
+// (Windows, macOS), or no unlocked keyring (Linux, where the check runs once the window is up).
+const unreadableToken = (base) => ({
+  ...base,
+  homeAssistant: {
+    ...base.homeAssistant,
+    token: Buffer.from('not a ciphertext').toString('base64'),
+    tokenEncrypted: true,
+  },
+});
+// An existing setup asked for its token again opens on a panel that says why, not on Welcome.
+async function showTokenPanel(ctx, title) {
+  await ctx.waitForExpression(
+    `document.querySelector('#widget-state-panel .widget-state-title')?.textContent`,
+    'the token panel'
+  );
+  await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
+  if (title) {
+    await ctx.expect(
+      `document.querySelector('#widget-state-panel .widget-state-title').textContent === ${JSON.stringify(title)}`,
+      `the panel is titled ${title}`
+    );
+  }
+}
+const startupScenes = [
+  // The header's dot is the hollow ring of no connection.
+  {
+    name: 'startup-first-run',
+    startup: { config: firstInstall },
+    setup: async (ctx) => {
+      await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
+      await ctx.expect(HEADER_DISCONNECTED, 'the header does not say connected');
+    },
+  },
+  // A system language the app has as a pack that is not downloaded: the welcome step offers it.
+  // Only Linux takes the system language from the environment of one app.
+  {
+    name: 'startup-first-run-ar-system',
+    platforms: ['linux'],
+    startup: {
+      config: firstInstall,
+      env: { LANGUAGE: 'ar', LANG: 'ar_EG.UTF-8', LC_ALL: '', LC_MESSAGES: '' },
+    },
+    setup: (ctx) => ctx.waitForSelector('#first-run-language-offer:not([hidden]) button'),
+  },
+  {
+    name: 'startup-token-unreadable',
+    keepToasts: true,
+    startup: { config: unreadableToken },
+    setup: (ctx) => showTokenPanel(ctx),
+  },
+  // Its "Enter token" opens Settings on General with the token field open, the reason above it.
+  {
+    name: 'startup-token-unreadable-settings',
+    startup: { config: unreadableToken },
+    setup: async (ctx) => {
+      await showTokenPanel(ctx);
+      await ctx.click('#widget-state-panel .widget-state-actions .btn:last-child');
+      await ctx.waitForExpression(
+        `document.activeElement?.id === 'ha-token'`,
+        'the cursor in the token field'
+      );
+    },
+  },
+  // The start after a token was entered on a computer with no keyring, which could not save it.
+  {
+    name: 'startup-token-not-saved',
+    keepToasts: true,
+    startup: {
+      config: (base) => ({
+        ...base,
+        homeAssistant: { url: base.homeAssistant.url, authMethod: 'token' },
+        tokenResetReason: 'not_persisted',
+      }),
+    },
+    setup: (ctx) => showTokenPanel(ctx, 'Access token was not saved'),
+  },
+  // Browser authorization with no saved authorization to restore it from.
+  {
+    name: 'startup-oauth-reauth',
+    startup: {
+      config: (base) => ({
+        ...base,
+        homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
+      }),
+    },
+    setup: async (ctx) => {
+      await ctx.waitForSelector('#widget-state-panel .widget-state-actions');
+      await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
+    },
+  },
+];
 
 // Settings opens one page at a time; this scrolls the wanted element to the top (or wherever `block`
 // puts it) and opens any disclosure it sits in.
@@ -2598,6 +2704,59 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   })),
+  // The welcome step where text runs right to left, in the smallest window, with the largest text
+  // and in a contrast theme; and the authorization step when the server cannot be reached.
+  {
+    name: 'wizard-welcome-ar',
+    ui: { language: 'ar' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-s150',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.5 },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-welcome-forced-colors',
+    media: FORCED_COLORS,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-authorize-error',
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      // The field keeps a draft from a scene before; this one starts from an empty field.
+      await ctx.ev(`(() => {
+        const field = document.querySelector('.first-run-content input');
+        field.value = '';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.focus();
+      })()`);
+      // Nothing listens on port 9, so the attempt fails at once and opens no browser.
+      await ctx.insertText('127.0.0.1:9');
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-url');
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-status[data-status="error"]');
+    },
+    // Back on the welcome step for the scenes after it, wherever the failure left the wizard.
+    teardown: showFirstRunWelcome,
+  },
+
+  ...startupScenes,
 ];
 
 module.exports = { scenes };

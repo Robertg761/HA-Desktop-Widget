@@ -89,12 +89,14 @@ describe('visual snapshot scenes', () => {
   it('leaves the scenes that change unrestored settings to the end', () => {
     const changesMore = (scene) =>
       Object.keys(scene.config || {}).some((key) => !RESETTABLE_SETTINGS.includes(key));
-    const firstIndex = scenes.findIndex(changesMore);
+    // A start-up scene runs on an app of its own, so where it sits in the list changes nothing.
+    const shared = scenes.filter((scene) => !scene.startup);
+    const firstIndex = shared.findIndex(changesMore);
 
     expect(firstIndex).toBeGreaterThan(0);
     // Everything after the first such scene changes them too, so no scene starts from a state an
     // earlier one left behind.
-    expect(scenes.slice(firstIndex).every(changesMore)).toBe(true);
+    expect(shared.slice(firstIndex).every(changesMore)).toBe(true);
   });
 
   it('gives the scenes that bring entities of their own a function that builds them', () => {
@@ -263,6 +265,17 @@ describe('visual snapshot scenes', () => {
       'format-main-de',
       'format-main-ar',
       'format-palette-fr',
+      'startup-first-run',
+      'startup-first-run-ar-system',
+      'startup-token-unreadable',
+      'startup-token-unreadable-settings',
+      'startup-token-not-saved',
+      'startup-oauth-reauth',
+      'wizard-welcome-ar',
+      'wizard-welcome-minimum',
+      'wizard-welcome-s150',
+      'wizard-welcome-forced-colors',
+      'wizard-authorize-error',
     ]) {
       expect(names).toContain(required);
     }
@@ -271,6 +284,42 @@ describe('visual snapshot scenes', () => {
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
     ]);
+  });
+
+  describe('the start-ups each scene starts its own app on', () => {
+    const base = buildConfig('http://127.0.0.1:8123');
+    const startup = (name) => scenes.find((scene) => scene.name === name).startup.config(base);
+
+    it('is a first install with nothing saved but the window and the seasons off', () => {
+      const config = startup('startup-first-run');
+      expect(config.homeAssistant).toBeUndefined();
+      expect(config.ui).toEqual({ seasonal: { enabled: false } });
+      expect(startup('startup-first-run-ar-system')).toEqual(config);
+    });
+
+    it('keeps the server and dashboard of an existing setup whose token cannot be used', () => {
+      const unreadable = startup('startup-token-unreadable');
+      expect(unreadable.customTabs).toEqual(base.customTabs);
+      expect(unreadable.homeAssistant.tokenEncrypted).toBe(true);
+      expect(unreadable.homeAssistant.token).not.toBe(base.homeAssistant.token);
+
+      const notSaved = startup('startup-token-not-saved');
+      expect(notSaved.homeAssistant.url).toBe(base.homeAssistant.url);
+      expect(notSaved.homeAssistant.token).toBeUndefined();
+      expect(notSaved.tokenResetReason).toBe('not_persisted');
+
+      const oauth = startup('startup-oauth-reauth');
+      expect(oauth.homeAssistant).toEqual({ url: base.homeAssistant.url, authMethod: 'oauth' });
+    });
+
+    it('names only platforms Node knows', () => {
+      for (const scene of scenes.filter((entry) => entry.platforms)) {
+        expect(scene.startup).toBeDefined();
+        for (const platform of scene.platforms) {
+          expect(['darwin', 'linux', 'win32']).toContain(platform);
+        }
+      }
+    });
   });
 
   it('has a page of readings for the format scenes, with a pack installed for each language', () => {
