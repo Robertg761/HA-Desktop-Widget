@@ -3,6 +3,7 @@ import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-uti
 import { getEntityDisplayName, getSearchScore } from './utils.js';
 import { getLocaleState, t } from './i18n.js';
 import accelerators from './accelerators.cjs';
+import entityHotkeys from './entity-hotkeys.cjs';
 import { paginate, renderListPager } from './list-pager.js';
 
 let globalHotkeys = {};
@@ -13,17 +14,6 @@ const pendingActions = new Map();
 // Set while a recorder is open for the Settings list, so a second click on the field does not
 // open another one.
 let recordingEntityId = null;
-const HOTKEY_SUPPORTED_DOMAINS = new Set([
-  'light',
-  'switch',
-  'scene',
-  'script',
-  'automation',
-  'button',
-  'input_button',
-  'input_boolean',
-  'fan',
-]);
 
 // Helper function to escape HTML
 function escapeHtml(text) {
@@ -170,7 +160,7 @@ function renderHotkeysTab() {
     if (filter !== hotkeyListFilter) hotkeyListPage = 0;
     hotkeyListFilter = filter;
     const hotkeyEntities = Object.values(state.STATES)
-      .filter((e) => HOTKEY_SUPPORTED_DOMAINS.has(e.entity_id.split('.')[0]))
+      .filter((e) => entityHotkeys.supportsEntityHotkey(e.entity_id))
       .map((entity) => {
         const score = filter
           ? getSearchScore(getEntityDisplayName(entity), filter) +
@@ -271,6 +261,12 @@ async function assignHotkeyToEntity(entityId, options = {}) {
       showToast(t('Entity not found'), 'error', 2500);
       return { success: false, error: t('Entity not found') };
     }
+    // Main refuses it too; saying so here spares recording a hotkey that cannot be kept.
+    if (!entityHotkeys.supportsEntityHotkey(entityId)) {
+      const error = t('Hotkeys cannot control this kind of entity');
+      showToast(error, 'error', 3000);
+      return { success: false, error };
+    }
 
     if (!state.CONFIG.globalHotkeys) {
       state.CONFIG.globalHotkeys = { enabled: false, hotkeys: {} };
@@ -342,6 +338,40 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     showToast(t('Failed to set hotkey'), 'error', 3000);
     return { success: false, error };
   }
+}
+
+/**
+ * Removes an entity's hotkey, for the Clear button of its Settings row and the tile menu's Remove
+ * Hotkey. Says in a toast why it failed, or what main could not re-register after it. Returns true
+ * when the hotkey is gone.
+ */
+async function clearEntityHotkey(entityId) {
+  try {
+    const result = await window.electronAPI.unregisterHotkey(entityId);
+    if (result?.success !== true) {
+      throw new Error(result?.error || t('Failed to clear hotkey'));
+    }
+    if (state.CONFIG.globalHotkeys?.hotkeys) delete state.CONFIG.globalHotkeys.hotkeys[entityId];
+    renderHotkeysTab();
+    if (result.warning) showToast(result.warning, 'warning', 4000);
+    return true;
+  } catch (error) {
+    console.error('Failed to clear entity hotkey:', error);
+    showToast(error?.message || t('Failed to clear hotkey'), 'error', 3000);
+    return false;
+  }
+}
+
+// The tile menu's Remove Hotkey. Nothing on the tile shows a hotkey, so a toast says it is gone.
+async function removeEntityHotkey(entityId) {
+  if (!(await clearEntityHotkey(entityId))) return false;
+  const entity = state.STATES?.[entityId] || { entity_id: entityId, attributes: {} };
+  showToast(
+    t('Hotkey removed for {{name}}', { name: getEntityDisplayName(entity) }),
+    'success',
+    2200
+  );
+  return true;
 }
 
 // Runs the recorder for an entity. When it was opened from a Settings row, that row's field says
@@ -601,6 +631,8 @@ export {
   toggleHotkeys,
   captureHotkey,
   assignHotkeyToEntity,
+  clearEntityHotkey,
+  removeEntityHotkey,
   describeHotkeyFailure,
   describeRecording,
   flashHotkeyRow,

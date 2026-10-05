@@ -441,6 +441,7 @@ const {
   acceleratorsConflict,
   validateAccelerator,
 } = require('./src/accelerators.cjs');
+const { supportsEntityHotkey } = require('./src/entity-hotkeys.cjs');
 const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
@@ -9502,6 +9503,23 @@ ipcMain.handle('update-tray-entity-icon', (event, payload) => {
   return { success: true };
 });
 
+// The hotkey items of a tile's menu: Add or Edit only where a hotkey has an action to run, and
+// Remove wherever one is set, which is also the way to free a chord an earlier version let a sensor
+// or a camera take. `requestHotkey(remove)` hands the request to the renderer.
+function entityTileHotkeyMenuItems(entityId, hasHotkey, requestHotkey) {
+  const items = [];
+  if (supportsEntityHotkey(entityId)) {
+    items.push({
+      label: hasHotkey ? mainT('Edit Hotkey') : mainT('Add Hotkey'),
+      click: () => requestHotkey(false),
+    });
+  }
+  if (hasHotkey) {
+    items.push({ label: mainT('Remove Hotkey'), click: () => requestHotkey(true) });
+  }
+  return items;
+}
+
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
   if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
@@ -9525,17 +9543,16 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
       ? existingHotkeyConfig.hotkey
       : existingHotkeyConfig;
   const hasHotkey = typeof existingHotkey === 'string' && existingHotkey.trim().length > 0;
+  const hotkeyItems = entityTileHotkeyMenuItems(normalizedEntityId, hasHotkey, (remove) => {
+    senderWindow.focus();
+    senderWindow.webContents.send('entity-tile-hotkey-requested', {
+      entityId: normalizedEntityId,
+      remove,
+    });
+  });
   const menu = Menu.buildFromTemplate([
-    {
-      label: hasHotkey ? mainT('Edit Hotkey') : mainT('Add Hotkey'),
-      click: () => {
-        senderWindow.focus();
-        senderWindow.webContents.send('entity-tile-hotkey-requested', {
-          entityId: normalizedEntityId,
-        });
-      },
-    },
-    { type: 'separator' },
+    ...hotkeyItems,
+    ...(hotkeyItems.length ? [{ type: 'separator' }] : []),
     {
       label: isPinned
         ? mainT('Unpin from Desktop')
@@ -11277,6 +11294,10 @@ ipcMain.handle(
     const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
     if (!normalizedEntityId) {
       return { success: false, error: 'Invalid entity ID' };
+    }
+    // A hotkey on any other domain would hold its chord for a shortcut that does nothing.
+    if (!supportsEntityHotkey(normalizedEntityId)) {
+      return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
     }
 
     if (!validateHotkey(hotkey)) {

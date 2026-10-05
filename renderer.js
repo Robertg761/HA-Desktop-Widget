@@ -3030,9 +3030,10 @@ window.electronAPI.onDesktopPinEditModeEnded?.(() => {
   ui.exitReorganizeMode();
 });
 
-window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
+window.electronAPI.onEntityTileHotkeyRequested(({ entityId, remove } = {}) => {
   if (IS_DESKTOP_PIN_MODE || !entityId) return;
-  hotkeys.assignHotkeyToEntity(entityId);
+  if (remove) void hotkeys.removeEntityHotkey(entityId);
+  else hotkeys.assignHotkeyToEntity(entityId);
 });
 
 window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
@@ -3792,30 +3793,17 @@ function wireUI() {
           await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
             action: actionSelect?.value,
           });
-        } else if (target.classList.contains('btn-clear-hotkey')) {
-          const container = target.parentElement;
-          const input = container.querySelector('.hotkey-input');
-          const entityId = input.dataset.entityId;
-          try {
-            const result = await window.electronAPI.unregisterHotkey(entityId);
-            if (result?.success !== true) {
-              throw new Error(result?.error || t('Error toggling hotkeys'));
-            }
-            input.value = '';
-            delete state.CONFIG.globalHotkeys.hotkeys[entityId];
-            hotkeys.renderHotkeysTab();
+        } else if (target.closest('.btn-clear-hotkey')) {
+          // The click lands on the icon inside the button as often as on the button.
+          const controls = target.closest('.hotkey-input-container');
+          const entityId = controls?.querySelector('.hotkey-input')?.dataset.entityId;
+          if (!entityId) return;
+          if (await hotkeys.clearEntityHotkey(entityId)) {
             // The list was rebuilt under the Clear button, which is hidden now there is nothing to
             // clear; the row's own field is where the keyboard goes on.
             hotkeysList
               .querySelector(`.hotkey-input[data-focus-key="hotkey-input:${entityId}"]`)
               ?.focus();
-            if (result.warning) {
-              uiUtils.showToast(result.warning, 'warning', 4000);
-            }
-          } catch (error) {
-            log.error('Failed to clear entity hotkey:', error);
-            const errorMessage = error?.message || t('Error toggling hotkeys');
-            uiUtils.showToast(errorMessage, 'error', 3000);
           }
         }
       });

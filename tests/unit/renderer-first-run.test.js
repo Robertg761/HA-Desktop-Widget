@@ -142,6 +142,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
       assignHotkeyToEntity: jest.fn(),
+      clearEntityHotkey: jest.fn(async () => true),
+      removeEntityHotkey: jest.fn(async () => true),
       toggleHotkeys: jest.fn(),
       captureHotkey: jest.fn(),
       cleanupHotkeyEventListeners: jest.fn(),
@@ -1501,64 +1503,41 @@ describe('Renderer first-run Home Assistant authorization', () => {
     }
   });
 
-  it('keeps a hotkey visible and authoritative when clearing it fails', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = {
-      hotkey: 'Ctrl+Shift+L',
-      action: 'toggle',
-    };
-    await loadRenderer({
-      config,
-      bodyHtml: `
-        <main class="widget-content"></main>
-        <div id="hotkeys-list">
-          <div>
-            <input class="hotkey-input" data-entity-id="light.office" value="Ctrl+Shift+L">
-            <button class="btn-clear-hotkey">Clear</button>
-          </div>
+  // Clearing itself (the IPC, the state, the failure toast) is the shared helper's, tested in
+  // hotkeys.test.js; the list only has to hand it the row's entity and place the keyboard after.
+  const clearableRow = `
+    <main class="widget-content"></main>
+    <div id="hotkeys-list">
+      <div class="hotkey-item">
+        <div class="hotkey-input-container">
+          <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
+          <button class="btn-clear-hotkey"><svg class="entity-line-icon"><path d="M18 6 6 18"></path></svg></button>
         </div>
-      `,
-      configureApi(api) {
-        api.unregisterHotkey.mockResolvedValueOnce({
-          success: false,
-          error: 'Portal removal failed',
-        });
-      },
-    });
+      </div>
+    </div>
+  `;
 
-    document.querySelector('.btn-clear-hotkey').click();
+  it('leaves the keyboard where it was when clearing a hotkey fails', async () => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+    mockHotkeys.clearEntityHotkey.mockResolvedValueOnce(false);
+    const clear = document.querySelector('.btn-clear-hotkey');
+    clear.focus();
+
+    clear.click();
     await flushAsync();
 
-    expect(document.querySelector('.hotkey-input').value).toBe('Ctrl+Shift+L');
-    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
-      hotkey: 'Ctrl+Shift+L',
-      action: 'toggle',
-    });
-    expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
+    expect(document.activeElement).toBe(clear);
   });
+
   it('moves focus to the cleared row field, since the list is rebuilt and the Clear button is gone', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+Shift+L', action: 'toggle' };
-    await loadRenderer({
-      config,
-      bodyHtml: `
-        <main class="widget-content"></main>
-        <div id="hotkeys-list">
-          <div>
-            <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
-            <button class="btn-clear-hotkey">Clear</button>
-          </div>
-        </div>
-      `,
-      configureApi(api) {
-        api.unregisterHotkey.mockResolvedValueOnce({ success: true });
-      },
-    });
-    // What renderHotkeysTab does: rebuild the rows, which destroys the Clear button that had focus.
-    mockHotkeys.renderHotkeysTab.mockImplementation(() => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+    // What clearEntityHotkey does through renderHotkeysTab: rebuild the rows, which destroys the
+    // Clear button that had focus.
+    mockHotkeys.clearEntityHotkey.mockImplementationOnce(async () => {
       document.getElementById('hotkeys-list').innerHTML =
         '<div><input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value=""></div>';
+      return true;
     });
     const clear = document.querySelector('.btn-clear-hotkey');
     clear.focus();
@@ -1566,9 +1545,34 @@ describe('Renderer first-run Home Assistant authorization', () => {
     clear.click();
     await flushAsync();
 
-    expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
     expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
+
+  it('clears the row when the click lands on the icon inside the Clear button', async () => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+
+    document
+      .querySelector('.btn-clear-hotkey path')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushAsync();
+
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
+  });
+
+  it("sends the tile menu's Remove Hotkey to the shared clear, and Add or Edit to the recorder", async () => {
+    await loadRenderer({ config: unconfiguredConfig() });
+
+    triggerMockEvent('entityTileHotkeyRequested', { entityId: 'sensor.office_temp', remove: true });
+    triggerMockEvent('entityTileHotkeyRequested', { entityId: 'light.office', remove: false });
+    await flushAsync();
+
+    expect(mockHotkeys.removeEntityHotkey).toHaveBeenCalledWith('sensor.office_temp');
+    expect(mockHotkeys.removeEntityHotkey).toHaveBeenCalledTimes(1);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office');
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledTimes(1);
+  });
+
   // Recording itself (the dialog, the clash message, focus afterwards, the saved-while-off warning)
   // is the shared recorder's, tested in hotkeys.test.js; the list only has to start it for its row.
   it.each(['Enter', ' '])('starts the shared recorder for a row with %s', async (key) => {

@@ -1579,6 +1579,142 @@ describe('hotkeys module', () => {
     });
   });
 
+  describe('an entity a hotkey has no action for', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temp': {
+          entity_id: 'sensor.office_temp',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temp' },
+        },
+        'camera.porch': { entity_id: 'camera.porch', state: 'idle', attributes: {} },
+        'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} },
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+
+    it('is refused before the recorder opens, since main would refuse the hotkey anyway', async () => {
+      const result = await hotkeys.assignHotkeyToEntity('sensor.office_temp');
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Hotkeys cannot control this kind of entity',
+      });
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+      expect(mockElectronAPI.registerHotkey).not.toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledWith(
+        'Hotkeys cannot control this kind of entity',
+        'error',
+        3000
+      );
+    });
+
+    it('has no row in the Settings list, which offers the same domains as the tile menu', () => {
+      hotkeys.renderHotkeysTab();
+
+      const rows = [...document.querySelectorAll('#hotkeys-list .hotkey-input')].map(
+        (input) => input.dataset.entityId
+      );
+      expect(rows).toEqual(['light.desk']);
+    });
+  });
+
+  describe('clearing a hotkey', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: {
+          'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' },
+          'sensor.office_temp': { hotkey: 'Ctrl+Alt+T', action: 'toggle' },
+        },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} },
+        'sensor.office_temp': {
+          entity_id: 'sensor.office_temp',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temp' },
+        },
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('drops it from the list once main has removed it, and passes on main’s warning', async () => {
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({
+        success: true,
+        warning: 'Another shortcut could not be activated',
+      });
+
+      await expect(hotkeys.clearEntityHotkey('light.desk')).resolves.toBe(true);
+
+      expect(mockElectronAPI.unregisterHotkey).toHaveBeenCalledWith('light.desk');
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk']).toBeUndefined();
+      expect(document.querySelector('.hotkey-input[data-entity-id="light.desk"]').value).toBe('');
+      expect(showToast).toHaveBeenCalledWith(
+        'Another shortcut could not be activated',
+        'warning',
+        4000
+      );
+    });
+
+    it('keeps the hotkey and says main’s reason when removing it fails', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Portal removal failed',
+      });
+
+      await expect(hotkeys.clearEntityHotkey('light.desk')).resolves.toBe(false);
+
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk']).toEqual({
+        hotkey: 'Ctrl+Alt+D',
+        action: 'toggle',
+      });
+      expect(showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+      consoleError.mockRestore();
+    });
+
+    it('says the hotkey was not cleared, not that hotkeys failed to toggle, without a reason', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: false });
+
+      await hotkeys.clearEntityHotkey('light.desk');
+      mockElectronAPI.unregisterHotkey.mockRejectedValueOnce(new Error(''));
+      await hotkeys.clearEntityHotkey('light.desk');
+
+      expect(showToast.mock.calls).toEqual([
+        ['Failed to clear hotkey', 'error', 3000],
+        ['Failed to clear hotkey', 'error', 3000],
+      ]);
+      consoleError.mockRestore();
+    });
+
+    it('confirms a removal from the tile menu by name, as nothing on the tile shows it', async () => {
+      await expect(hotkeys.removeEntityHotkey('sensor.office_temp')).resolves.toBe(true);
+
+      expect(state.CONFIG.globalHotkeys.hotkeys['sensor.office_temp']).toBeUndefined();
+      expect(showToast).toHaveBeenCalledWith('Hotkey removed for Office temp', 'success', 2200);
+    });
+
+    it('says nothing more from the tile menu when the removal failed', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: false, error: 'No' });
+
+      await expect(hotkeys.removeEntityHotkey('sensor.office_temp')).resolves.toBe(false);
+
+      expect(showToast.mock.calls).toEqual([['No', 'error', 3000]]);
+      consoleError.mockRestore();
+    });
+  });
+
   describe('module exports', () => {
     it('should export all required functions', () => {
       expect(typeof hotkeys.initializeHotkeys).toBe('function');

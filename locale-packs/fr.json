@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,10 @@
     "Set the range in the widget.": "Réglez la plage dans le widget.",
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
-    "What's new": "Nouveautés"
+    "What's new": "Nouveautés",
+    "Remove Hotkey": "Supprimer le raccourci",
+    "Hotkey removed for {{name}}": "Raccourci supprimé pour {{name}}",
+    "Hotkeys cannot control this kind of entity": "Les raccourcis ne peuvent pas contrôler ce type d'entité",
+    "Failed to clear hotkey": "Impossible d'effacer le raccourci"
   }
 }

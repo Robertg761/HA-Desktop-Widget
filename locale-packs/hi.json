@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,10 @@
     "Set the range in the widget.": "विजेट में रेंज सेट करें।",
     "1 more tile is not shown here. Open the widget to see it.": "1 और टाइल यहाँ नहीं दिख रही है। उसे देखने के लिए विजेट खोलें।",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} और टाइल यहाँ नहीं दिख रही हैं। उन्हें देखने के लिए विजेट खोलें।",
-    "What's new": "नया क्या है"
+    "What's new": "नया क्या है",
+    "Remove Hotkey": "हॉटकी हटाएं",
+    "Hotkey removed for {{name}}": "{{name}} की हॉटकी हटाई गई",
+    "Hotkeys cannot control this kind of entity": "हॉटकी इस प्रकार की एंटिटी को नियंत्रित नहीं कर सकतीं",
+    "Failed to clear hotkey": "हॉटकी हटाई नहीं जा सकी"
   }
 }
