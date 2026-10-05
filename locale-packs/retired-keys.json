@@ -1402,5 +1402,9 @@
   "Use slider or a preset": {
     "retiredIn": "4.0.0",
     "reason": "The light pin's caption says only On or Off; the brightness block below it shows the level (re-audit R-105)."
+  },
+  "{{percent}}% airflow": {
+    "retiredIn": "4.0.0",
+    "reason": "The fan pin's status says only On; the meter below it shows the speed (re-audit R-105)."
   }
 }

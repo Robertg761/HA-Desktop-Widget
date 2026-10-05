@@ -836,7 +836,6 @@
   "Target temperature": "Zieltemperatur",
   "Warm": "Warm",
   "Set mode to {{mode}}": "Modus auf {{mode}} setzen",
-  "{{percent}}% airflow": "{{percent}} % Luftstrom",
   "Ready to start": "Startbereit",
   "Fan speed": "Ventilatorgeschwindigkeit",
   "Fast": "Schnell",

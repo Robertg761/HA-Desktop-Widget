@@ -6453,6 +6453,33 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ]);
     });
 
+    it('marks no speed on a fan that runs at a speed Home Assistant does not report', () => {
+      // A fan running in a preset mode reports no percentage. It is on, so its level is not Off.
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Office fan',
+          percentage: null,
+          preset_mode: 'auto',
+          supported_features: 1,
+        },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      ui.renderDesktopPinnedTile(fan.entity_id, fan);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const chips = [...control.querySelectorAll('.desktop-pin-fan-preset')];
+      expect(chips.map((chip) => chip.textContent.trim())).toEqual(['Off', 'Mid', 'High']);
+      expect(chips.map((chip) => chip.dataset.active)).toEqual(['false', 'false', 'false']);
+      expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual([
+        'false',
+        'false',
+        'false',
+      ]);
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('On');
+    });
+
     it('does not switch a light off when the click lands beside the brightness track', () => {
       state.setStates({
         'light.desk': {
@@ -6853,6 +6880,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           sliders: 2,
         });
       }
+    });
+
+    it('says whether a fan runs under its name, not the speed its meter shows', () => {
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      for (const [width, height] of [
+        [168, 148],
+        [200, 170],
+      ]) {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(fan.entity_id, fan);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+        expect([
+          control.querySelector('.desktop-pin-panel-status').textContent,
+          control.querySelector('.desktop-pin-fan-value').textContent,
+        ]).toEqual(['On', '66%']);
+      }
+
+      // Dragging the slider keeps the line to whether it runs.
+      jest.useFakeTimers();
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const slider = control.querySelector('.desktop-pin-fan-slider');
+      slider.value = '33';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(control.querySelector('.desktop-pin-panel-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('33%');
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+      jest.advanceTimersByTime(1000);
+      jest.useRealTimers();
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {

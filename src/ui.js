@@ -6983,34 +6983,41 @@ function getDesktopPinFanValue(entity) {
   return { percentage, isOn, canSetPercentage: !!capabilities.canSetPercentage };
 }
 
+// The meter prints the speed, so the line under the name says only whether the fan runs, as the
+// lamp pin's does. A fan running at a speed Home Assistant does not report (a preset mode leaves
+// the percentage empty) is on at no known level: its meter says On, and no speed chip is marked,
+// where it read "0%" and marked Off.
+function getDesktopPinFanCopy({ percentage, isOn }, { canSetPercentage, compact }) {
+  const level = !isOn ? 0 : canSetPercentage && percentage > 0 ? percentage : null;
+  return {
+    level,
+    meterText: level > 0 ? formatPercent(level) : isOn ? t('On') : t('Off'),
+    statusText: isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
+  };
+}
+
 function applyDesktopPinFanVisualState(root, fanValue) {
   if (!root || !fanValue) return;
   const { percentage, isOn } = fanValue;
-  const canSetPercentage = root.dataset.canSetPercentage === 'true';
   const denseVariant = root.dataset.denseVariant || 'standard';
-  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
+  const copy = getDesktopPinFanCopy(fanValue, {
+    canSetPercentage: root.dataset.canSetPercentage === 'true',
+    compact: denseVariant === 'tight' || denseVariant === 'micro',
+  });
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty(
     '--desktop-pin-progress',
     String(Math.max(0, Math.min(1, percentage / 100)))
   );
 
-  const kpiText = isOn ? (canSetPercentage ? formatPercent(percentage) : t('On')) : t('Off');
   const meterKpi = root.querySelector('.desktop-pin-fan-value');
-  if (meterKpi) meterKpi.textContent = kpiText;
+  if (meterKpi) meterKpi.textContent = copy.meterText;
 
   const spinner = root.querySelector('.desktop-pin-fan-glyph');
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status)
-    status.textContent = isOn
-      ? canSetPercentage
-        ? t('{{percent}}% airflow', { percent: percentage })
-        : t('On')
-      : compactStatus
-        ? t('Ready')
-        : t('Ready to start');
+  if (status) status.textContent = copy.statusText;
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -7022,7 +7029,7 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (power) setDesktopPinPowerButtonState(power, isOn);
 
   const presets = root.querySelectorAll('.desktop-pin-fan-preset');
-  markPresetButtons(presets, isOn ? percentage : 0, 'speed', { pin: true });
+  markPresetButtons(presets, copy.level ?? NaN, 'speed', { pin: true });
 }
 
 function queueDesktopPinFanPercentage(entity, percentage) {
@@ -7060,11 +7067,10 @@ function createDesktopPinFanControlElement(entity) {
     domain: 'fan',
     state: fanValue.isOn ? 'on' : 'off',
   });
-  const fanKpiText = fanValue.isOn
-    ? capabilities.canSetPercentage
-      ? formatPercent(fanValue.percentage)
-      : t('On')
-    : t('Off');
+  const copy = getDesktopPinFanCopy(fanValue, {
+    canSetPercentage: !!capabilities.canSetPercentage,
+    compact: renderProfile.isDenseTight || renderProfile.isDenseMicro,
+  });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   root.dataset.canSetPercentage = capabilities.canSetPercentage ? 'true' : 'false';
@@ -7073,13 +7079,7 @@ function createDesktopPinFanControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: fanValue.isOn
-          ? capabilities.canSetPercentage
-            ? t('{{percent}}% airflow', { percent: fanValue.percentage })
-            : t('On')
-          : renderProfile.isDenseTight || renderProfile.isDenseMicro
-            ? t('Ready')
-            : t('Ready to start'),
+        statusText: copy.statusText,
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             <button class="desktop-pin-power desktop-pin-fan-power" type="button">${lineIconMarkup('power')}</button>
@@ -7089,7 +7089,7 @@ function createDesktopPinFanControlElement(entity) {
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${entityIconMarkup(entity)}</div>
-          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(fanKpiText)}</div>
+          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(copy.meterText)}</div>
         </div>
         ${
           capabilities.canSetPercentage
