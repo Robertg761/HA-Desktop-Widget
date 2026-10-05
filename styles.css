@@ -6748,12 +6748,20 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 
 /* Without a picture the camera icon is the tile's icon, a plain glyph like its neighbours', in the
    band between the label in the corner and the caption at the foot. Centred over the whole tile in
-   the circle it has on the dark stage, it sat on the end of the name. */
+   the circle it has on the dark stage, it sat on the end of the name. The caption under it is
+   centred too, as their name and state are: a centred glyph over a caption at the start edge made
+   the tile look unfinished beside them. Over a picture the caption keeps to the start edge. */
 #quick-controls
   .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   .camera-tile-fallback {
   place-items: start center;
   padding-top: var(--camera-tile-icon-top, 32px);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  :is(.camera-tile-copy, .camera-tile-preview-status) {
+  text-align: center;
 }
 
 #quick-controls

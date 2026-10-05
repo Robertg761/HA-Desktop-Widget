@@ -409,11 +409,22 @@ describe('Quick Access tile anatomy', () => {
       }
     });
 
+    it('centres the caption under the icon of a tile with no picture, as its neighbours are', () => {
+      render('', grid(cameraTile("data-camera-preview-state='error'")));
+      for (const selector of ['.camera-tile-copy', '.camera-tile-preview-status']) {
+        expect(resolvedValue(document.querySelector(selector), 'text-align')).toBe('center');
+      }
+    });
+
     it('leaves the picture of a camera that sent one centred under its scrim', () => {
       render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
       expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'place-items')).toBe(
         'center'
       );
+      // Over a picture the caption keeps to the start edge, on the scrim at the foot.
+      for (const selector of ['.camera-tile-copy', '.camera-tile-preview-status']) {
+        expect(resolvedValue(document.querySelector(selector), 'text-align')).toBe('start');
+      }
     });
   });
 
