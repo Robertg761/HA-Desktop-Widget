@@ -264,10 +264,15 @@ html {
   --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
   --dash-tile-wash: 24%;
   --dash-tile-wash-hover: 30%;
-  /* A tile that needs attention is washed in its status colour, lighter than a lit tile's accent:
-     its state line is written in that colour on the wash, and the alarm red reached only 3.8:1 at
-     the lit tile's 24%. */
-  --dash-attention-wash: 15%;
+  /* With an accent near the amber or the red of a tile that needs attention, a lit tile takes about
+     half the wash (see the attention rules). */
+  --dash-tile-wash-warm: 12%;
+  --dash-tile-wash-warm-hover: 15%;
+  /* A tile that needs attention is washed in its status colour as strongly as a lit tile is in the
+     accent. Its state line is that colour lifted toward the text colour: the alarm's pale red is
+     3.8:1 on its own wash, and the lifted one keeps 4.5:1. */
+  --dash-attention-wash: 24%;
+  --dash-attention-ink: 70%;
 
   /* How much black the panel behind the tiles gets at full window opacity, so the
      tiles stand out from it (see the panel veil beside the solid panel rule). */
@@ -557,7 +562,10 @@ body {
   --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
   --dash-tile-wash: 18%;
   --dash-tile-wash-hover: 24%;
+  --dash-tile-wash-warm: 9%;
+  --dash-tile-wash-warm-hover: 12%;
   --dash-attention-wash: 18%;
+  --dash-attention-ink: 100%;
   --panel-veil: 0.09;
 
   /* Glass Effects */
@@ -6335,6 +6343,16 @@ body.theme-light.active-tile-glow
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
+/* An accent near the amber or the red of the tiles below (a holiday's orange, red or gold, or the
+   Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked door
+   and an armed alarm more strongly than one that went off, since the accent is more saturated than
+   the status colours, which are pale enough to be read as text. With such an accent a lit tile takes
+   about half the wash, so the tiles that need attention stay the most colourful on the page. */
+body[data-accent-warm] {
+  --dash-tile-wash: var(--dash-tile-wash-warm);
+  --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
+}
+
 /* Security states that have to catch the eye: an alarm that went off (red), a lock that is jammed
    or a door that is unlocked (amber). They used to be lit like an "on" tile in their own colour,
    and a holiday's orange or red, or the Amber accent, lit an armed alarm or a lamp the same way, so
@@ -6372,7 +6390,7 @@ body.theme-light.active-tile-glow
 }
 
 #quick-controls .control-item[data-attention] .control-state {
-  color: var(--attention-color);
+  color: color-mix(in srgb, var(--attention-color) var(--dash-attention-ink), var(--text-primary));
 }
 
 /* The badge: a disc in the status colour with the exclamation mark cut out of it, so the mark is

@@ -201,6 +201,31 @@ const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
 // Below this spread between the strongest and weakest channel an accent reads as grey (slate is
 // 0.14, the most muted of the other presets 0.56).
 const NEUTRAL_ACCENT_CHROMA = 0.25;
+// The hues of the alarm red and the warning amber of a tile that needs attention, and how close an
+// accent's hue can come to one before a tile lit in it reads as that state.
+const ATTENTION_HUES = [4, 36];
+const WARM_ACCENT_HUE_DISTANCE = 30;
+
+/** The hue of an {r, g, b} colour in degrees, 0 to 360 (0 for a grey). */
+function hueOf({ r, g, b }) {
+  const max = Math.max(r, g, b);
+  const spread = max - Math.min(r, g, b);
+  if (spread === 0) return 0;
+  let sector;
+  if (max === r) sector = (g - b) / spread;
+  else if (max === g) sector = (b - r) / spread + 2;
+  else sector = (r - g) / spread + 4;
+  return (sector * 60 + 360) % 360;
+}
+
+/** Whether an accent's hue is close to the red or the amber of a tile that needs attention. */
+function isWarmAccent(rgb) {
+  const hue = hueOf(rgb);
+  return ATTENTION_HUES.some((attentionHue) => {
+    const distance = Math.abs(hue - attentionHue) % 360;
+    return Math.min(distance, 360 - distance) <= WARM_ACCENT_HUE_DISTANCE;
+  });
+}
 
 /**
  * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
@@ -497,6 +522,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
     const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
     if (chroma < NEUTRAL_ACCENT_CHROMA) document.body.dataset.accentNeutral = 'true';
     else delete document.body.dataset.accentNeutral;
+    // A tile lit in an orange, a red or a gold looks like one that needs attention, so the
+    // stylesheet gives it a lighter wash with such an accent.
+    const warm = chroma >= NEUTRAL_ACCENT_CHROMA && isWarmAccent(rgb);
+    if (warm) document.body.dataset.accentWarm = 'true';
+    else delete document.body.dataset.accentWarm;
   }
 
   return true;

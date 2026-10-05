@@ -1646,10 +1646,17 @@ const scenes = [
   { name: 'tiles-security', config: pages('security', 'default') },
   { name: 'tiles-security-light', ui: { theme: 'light' }, config: pages('security', 'default') },
   // Halloween's orange, Christmas's red and the Amber accent paint an armed alarm in the same family
-  // as an unlocked lock or an alarm that went off. Those keep a badge and an edge of their own.
+  // as an unlocked lock or an alarm that went off. Those keep a badge and an edge of their own, and
+  // the lit tiles a lighter wash. Christmas in the dark theme was the worst: the armed alarm was a
+  // stronger red than the one that went off.
   {
     name: 'tiles-security-halloween',
     ui: { seasonal: holiday('halloween') },
+    config: pages('security', 'default'),
+  },
+  {
+    name: 'tiles-security-christmas',
+    ui: { seasonal: holiday('christmas') },
     config: pages('security', 'default'),
   },
   {

@@ -260,7 +260,10 @@ describe('Quick Access tile anatomy', () => {
         render(bodyClass, grid(tile('', `data-attention='${attention}' data-active='true'`)));
         const item = document.querySelector('.control-item');
         expect(resolvedValue(item.querySelector('.control-icon'), 'color')).toBe(colour);
-        expect(resolvedValue(item.querySelector('.control-state'), 'color')).toBe(colour);
+        // The state line is the colour lifted toward the text, to stay readable on the wash.
+        expect(flat(resolvedValue(item.querySelector('.control-state'), 'color'))).toBe(
+          `color-mix(in srgb, ${colour} 70%, #f5f5f5)`
+        );
       }
     });
 
@@ -272,7 +275,12 @@ describe('Quick Access tile anatomy', () => {
         render(bodyClass, grid(tile('', "data-attention='warning' data-active='true'")));
         const item = document.querySelector('.control-item');
         const colour = resolvedValue(item, '--attention-color');
-        const wash = bodyClass.includes('theme-light') ? '18%' : '15%';
+        // As strong as a lit tile's wash of the accent in either theme, so a tile that needs
+        // attention is never the quieter of the two.
+        const wash = bodyClass.includes('theme-light') ? '18%' : '24%';
+        expect(resolvedValue(item, '--dash-attention-wash')).toBe(
+          resolvedValue(document.body, '--dash-tile-wash')
+        );
 
         expect(flat(resolvedValue(item, 'background-image'))).toContain(`${colour} ${wash}`);
         expect(String(resolvedValue(item, 'background-color'))).not.toContain(ACCENT_RGB);
@@ -292,7 +300,7 @@ describe('Quick Access tile anatomy', () => {
       const image = cascadedDeclaration(item, 'background-image');
       // The solid fill is an !important shorthand; the wash is laid back over it the same way.
       expect(image.important).toBe(true);
-      expect(flat(resolvedValue(item, 'background-image'))).toContain('#ff8a80 15%');
+      expect(flat(resolvedValue(item, 'background-image'))).toContain('#ff8a80 24%');
 
       render(
         'active-tile-glow high-contrast opaque-panels',

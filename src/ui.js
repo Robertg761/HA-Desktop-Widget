@@ -3186,8 +3186,9 @@ function isQuickAccessTileActive(entity) {
 
 /**
  * A tile that must catch the eye whether or not the accent glow is on: an alarm that went off, a
- * lock that is jammed, a door that is unlocked. The look (an orange or red icon and state line)
- * comes from data-attention in the stylesheet.
+ * lock that is jammed, a door that is unlocked. The look (a wash and an edge in the amber or red
+ * status colour, the icon and state line in it, and a badge on the icon) comes from data-attention
+ * in the stylesheet.
  * @param {Object} entity - Home Assistant entity state object.
  * @returns {'danger'|'warning'|null}
  */

@@ -10,6 +10,7 @@ const {
   resolvedValue,
 } = require('../helpers/css-cascade.js');
 const { applyWindowEffects } = require('../../src/ui-utils.js');
+const { SEASONAL_HOLIDAYS } = require('../../src/seasonal-calendar.js');
 const {
   NON_TEXT_MINIMUM,
   SCOPES,
@@ -30,6 +31,22 @@ function render(html) {
 
 function colorOf(element) {
   return resolvedValue(element, 'color');
+}
+
+/** How colourful an opaque rgb() looks: its chroma in OKLCH, where 0 is grey. */
+function oklchChroma(color) {
+  const [r, g, b] = parseColor(color)
+    .slice(0, 3)
+    .map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const bOpponent = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return Math.hypot(a, bOpponent);
 }
 
 describe('text contrast of the rules', () => {
@@ -254,21 +271,57 @@ describe('text contrast of the rules', () => {
         <div class="control-info"><div class="control-name"></div>
         <div class="control-state"></div></div></div></div>`;
 
-    // The state line is written in the status colour on the tile's wash of it, and the badge is a
-    // disc of that colour with the mark cut out to the wash, so one ratio covers both.
+    const washOf = (tile, surfaces) => {
+      const wash = parseFloat(resolvedValue(tile, '--dash-attention-wash')) / 100;
+      const [r, g, b] = parseColor(resolvedValue(tile, '--attention-color'));
+      return over(`rgba(${r}, ${g}, ${b}, ${wash})`, surfaces['dash tile']);
+    };
+
+    // The state line is the status colour, lifted toward the text in the dark theme, on the tile's
+    // wash of it. The icon and the badge, a disc of that colour with the mark cut out to the wash,
+    // are graphics.
     describe.each(THEME_SCOPES)('in %s', (_, config) => {
       it.each(['warning', 'danger'])('keeps a %s state line at 4.5:1 on its wash', (attention) => {
         applyScope(config, 'amber');
         document.body.classList.add('active-tile-glow');
         render(markup(attention));
-        const surfaces = currentSurfaces(config.highContrast);
         const tile = document.querySelector('.control-item');
-        const colour = resolvedValue(tile, '--attention-color');
-        const wash = parseFloat(resolvedValue(tile, '--dash-attention-wash')) / 100;
-        const [r, g, b] = parseColor(colour);
-        const washed = over(`rgba(${r}, ${g}, ${b}, ${wash})`, surfaces['dash tile']);
-        expect(colorOf(document.querySelector('.control-state'))).toBe(colour);
-        expect(contrastRatio(colour, washed)).toBeGreaterThanOrEqual(TEXT_MINIMUM);
+        const washed = washOf(tile, currentSurfaces(config.highContrast));
+        expect(
+          contrastRatio(colorOf(document.querySelector('.control-state')), washed)
+        ).toBeGreaterThanOrEqual(TEXT_MINIMUM);
+        expect(
+          contrastRatio(resolvedValue(tile, '--attention-color'), washed)
+        ).toBeGreaterThanOrEqual(NON_TEXT_MINIMUM);
+      });
+    });
+
+    // An accent near the alarm's red or the warning's amber (a holiday's orange, red or gold, the
+    // Rose, Coral or Amber preset) lit an armed alarm more colourfully than one that went off, since
+    // the accent is more saturated than the pale status colours. In the dark theme with Christmas the
+    // alarm that went off was all but grey beside the armed one.
+    const WARM_HOLIDAYS = ['new-year', 'lunar-new-year', 'halloween', 'thanksgiving', 'christmas'];
+    const WARM_ACCENTS = [
+      ...SEASONAL_HOLIDAYS.filter(({ id }) => WARM_HOLIDAYS.includes(id)).map(({ id, colors }) => [
+        id,
+        colors.accent,
+      ]),
+      ...['rose', 'coral', 'amber'].map((id) => [id, id]),
+    ];
+    describe.each(['dark', 'light'])('in the %s theme', (scope) => {
+      it.each(WARM_ACCENTS)('is more colourful than a tile lit in %s', (_label, accent) => {
+        applyScope(SCOPES[scope], accent);
+        document.body.classList.add('active-tile-glow');
+        const surfaces = currentSurfaces(false);
+        const lit = oklchChroma(surfaces['lit tile']);
+        for (const attention of ['warning', 'danger']) {
+          render(markup(attention));
+          const washed = washOf(document.querySelector('.control-item'), surfaces);
+          expect({ attention, quieter: oklchChroma(washed) < lit }).toEqual({
+            attention,
+            quieter: false,
+          });
+        }
       });
     });
   });
