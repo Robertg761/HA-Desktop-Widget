@@ -735,13 +735,25 @@ function closeCommandPalette({ restoreFocus = true } = {}) {
   announce('');
 }
 
+// A key that types a letter of a script other than Latin: "л", "ن", "κ", or the vowel sign a
+// Burmese keyboard has there, which is a mark. Punctuation, a digit, a dead key ("Dead"), an
+// accented Latin letter or a bare combining accent is not one.
+function isNonLatinLetter(key) {
+  return (
+    /^[\p{L}\p{M}]+$/u.test(key) &&
+    !/\p{Script=Latin}/u.test(key) &&
+    /[^\p{Script=Common}\p{Script=Inherited}]/u.test(key)
+  );
+}
+
 // The letter K, as printed on the key. A layout that moves K (Dvorak) matches by the letter it
-// types; one without Latin letters (Cyrillic, Arabic, Greek, Hebrew) reports its own character for
-// Ctrl+K ("л", "ن"), so there the physical key, where K sits on a US keyboard, is the K.
+// types; one without Latin letters (Cyrillic, Arabic, Greek, Hebrew) reports its own letter for
+// Ctrl+K ("л", "ن"), so there the physical key, where K sits on a US keyboard, is the K. A Latin
+// layout whose US K key types something else has its K elsewhere, and that key is the one.
 function isLetterK(event) {
   const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
   if (key === 'k') return true;
-  return event.code === 'KeyK' && !/^[a-z]$/.test(key);
+  return event.code === 'KeyK' && isNonLatinLetter(key);
 }
 
 function handleGlobalKeydown(event) {

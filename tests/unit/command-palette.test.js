@@ -1465,11 +1465,29 @@ describe('command palette recents', () => {
     it.each([
       ['Arabic', 'ن'],
       ['Greek', 'κ'],
+      ['Hebrew', 'ל'],
+      // The Burmese K key types a vowel sign, a mark rather than a letter.
+      ['Burmese', 'ု'],
     ])('opens on an %s layout too', (_layout, key) => {
       const control = setup('<button id="c">Go</button>');
       control.focus();
 
       expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(true);
+    });
+
+    it.each([
+      ['punctuation', ';'],
+      ['a dead key', 'Dead'],
+      ['an accented Latin letter', 'é'],
+      ['a combining accent', '́'],
+      ['a digit', '5'],
+    ])('stays shut on a Latin layout whose US K key types %s', (_what, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // The layout has its K somewhere else, which is the key that opens the palette there.
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
     });
 
     it('follows the printed K on a layout that moves it, and not the US position', () => {
