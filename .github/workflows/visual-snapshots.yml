@@ -130,6 +130,26 @@ jobs:
             }
           Start-Sleep -Seconds 2
 
+      # The runner's agent keeps a console window (hosted-compute-agent) on the desktop. It covered
+      # the lower third of every Windows 11 pin capture and sat behind the widget in the others. The
+      # pointer rests in the middle of the screen, where the widget opens, so the first capture also
+      # showed the native tooltip of the tile under it. Minimize what is open and park the pointer in
+      # the top-left corner, clear of the widget and its pins. The run never moves the real pointer:
+      # scenes click through the page, not the mouse.
+      - name: Clear the desktop (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type -Namespace Win32 -Name Desktop -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);'
+          # explorer's own window is the desktop and the taskbar, which stay.
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.ProcessName -ne 'explorer' } |
+            ForEach-Object {
+              Write-Output "Minimizing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
+              # SW_MINIMIZE
+              [Win32.Desktop]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
+            }
+          [Win32.Desktop]::SetCursorPos(0, 0) | Out-Null
+
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 30
         if: runner.os != 'Linux'
