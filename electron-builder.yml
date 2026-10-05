@@ -114,8 +114,10 @@ compression: normal
 # de-AT, de-CH, fr-CA, fr-BE, ar-EG and hi-IN need nothing extra: they resolve to de, fr, ar and
 # hi. A system language with no pak here (pt-BR, ja) gets Chromium's built-in text in English, the
 # language the app falls back to for its own text. Chromium then also reports en-US as
-# app.getLocale() and the renderer's navigator.language. Which language the app itself shows does
-# not depend on these files: detectSystemLocale in src/i18n-main.cjs reads the operating system.
+# app.getLocale() and the renderer's navigator.language, and on Windows and Linux it would start
+# the spell checker in English, so main.js sets the dictionary from the system's languages
+# (pickSpellCheckerLanguage in src/i18n-main.cjs). Which language the app itself shows does not
+# depend on these files either: detectSystemLocale in src/i18n-main.cjs reads the operating system.
 # On macOS the same choice also removes the app's other .lproj folders, which set the language of
 # the system's own dialogs (see `mac`). electron-builder keeps a pak whose name is an entry or the
 # part of one before its dash, so "es-419" would keep es.pak by itself; both are listed so the

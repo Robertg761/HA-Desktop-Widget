@@ -460,6 +460,7 @@ describe('the Chromium locales that ship', () => {
     const comment = text.slice(0, text.indexOf('\nelectronLanguages:'));
     for (const pak of ['es-419', 'zh-TW', 'en-GB', 'en-US']) expect(comment).toContain(pak);
     expect(comment).toContain('detectSystemLocale');
+    expect(comment).toContain('pickSpellCheckerLanguage');
   });
 });
 

@@ -103,6 +103,46 @@ function detectSystemLocale(app, options = {}) {
   return 'en';
 }
 
+/**
+ * The spell checker's dictionary for the operating system's languages, or '' to leave it as it is.
+ *
+ * On Windows and Linux, Chromium starts the spell checker in the language of the locale .pak it
+ * loaded. The package ships only the paks for the app's languages (electronLanguages in
+ * electron-builder.yml), so a Brazilian Portuguese or Italian system loads en-US.pak, and every
+ * word typed in Portuguese would be underlined as misspelled English. main.js sets the dictionary
+ * from the system instead: the first language in the preferred list that has one, matched on the
+ * full code and then on the language alone (nl-NL takes "nl"). A spell checker that is already in
+ * that language keeps Chromium's pick, so es-MX stays on es-419 and the app's own languages, whose
+ * paks ship, see no change. When no language in the list has a dictionary (Japanese, Chinese), the
+ * spell checker stays in English, where Chromium starts it for those, and a pick saved in the
+ * profile for an earlier system language goes back to English.
+ *
+ * @param {string[]} preferred app.getPreferredSystemLanguages().
+ * @param {string[]} available session.availableSpellCheckerLanguages.
+ * @param {string[]} [current] session.getSpellCheckerLanguages().
+ * @returns {string} One of `available`, or ''.
+ */
+function pickSpellCheckerLanguage(preferred, available, current = []) {
+  const dictionaries = new Map();
+  for (const code of Array.isArray(available) ? available : []) {
+    const normalized = normalizeLocaleCode(code);
+    if (normalized && !dictionaries.has(normalized)) dictionaries.set(normalized, code);
+  }
+  for (const locale of toLocaleList(preferred)) {
+    const language = getBaseLocale(locale);
+    const dictionary = dictionaries.get(locale) || dictionaries.get(language);
+    if (!dictionary) continue;
+    const alreadyInLanguage = toLocaleList(current).some(
+      (code) => getBaseLocale(code) === language
+    );
+    return alreadyInLanguage ? '' : dictionary;
+  }
+  const currentLanguages = toLocaleList(current);
+  const english = dictionaries.get('en-US');
+  if (!english || !currentLanguages.length) return '';
+  return currentLanguages.some((code) => getBaseLocale(code) === 'en') ? '' : english;
+}
+
 function formatTemplate(template, vars = {}) {
   if (typeof template !== 'string') return '';
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key) => {
@@ -649,6 +689,7 @@ module.exports = {
   APP_LANGUAGES,
   createLocalizationService,
   detectSystemLocale,
+  pickSpellCheckerLanguage,
   normalizeLocaleCode,
   getBaseLocale,
   formatTemplate,

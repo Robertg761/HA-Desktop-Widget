@@ -349,7 +349,11 @@ if (
 // --------------------------- end early startup -----------------------------
 
 const profileSyncCore = require('./profile-sync-core.js');
-const { createLocalizationService, detectSystemLocale } = require('./src/i18n-main.cjs');
+const {
+  createLocalizationService,
+  detectSystemLocale,
+  pickSpellCheckerLanguage,
+} = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
@@ -1227,6 +1231,26 @@ const localizationService = createLocalizationService({
   // net.fetch is invoked here.
   fetchImpl: (url, init) => net.fetch(url, init),
 });
+// On Windows and Linux the spell checker starts in the language of the locale .pak Chromium loaded,
+// and the package ships only the paks of the app's languages, so a pt-BR or Italian system would
+// check its spelling in English. Set it from the system's own languages; see
+// pickSpellCheckerLanguage. macOS uses its own spell checker, which follows the system already.
+function applySystemSpellCheckerLanguage(targetSession) {
+  if (process.platform === 'darwin') return;
+  try {
+    const language = pickSpellCheckerLanguage(
+      app.getPreferredSystemLanguages(),
+      targetSession.availableSpellCheckerLanguages,
+      targetSession.getSpellCheckerLanguages()
+    );
+    if (!language) return;
+    targetSession.setSpellCheckerLanguages([language]);
+    log.info(`Spell checker set to the system language: ${language}`);
+  } catch (error) {
+    // Spelling suggestions are a convenience; startup must go on without them.
+    log.warn('Could not set the spell checker language:', error?.message || error);
+  }
+}
 // Installed language packs follow the manifest on main, so an upgrade's new strings arrive without
 // the user finding the Update button. Only started once the window is up; see
 // schedulePostWindowStartupTasks.
@@ -13329,6 +13353,7 @@ app
       rendererEntryPath: path.join(__dirname, 'index.html'),
       isTrustedWebContents: isTrustedAppWebContents,
     });
+    applySystemSpellCheckerLanguage(session.defaultSession);
 
     // Set app ID for Windows (helps with icon caching and taskbar behavior)
     if (process.platform === 'win32') {
