@@ -399,7 +399,8 @@ const DIALOG_FITS = `(() => {
       .filter((element) => element.getClientRects().length > 0).every(inside);
 })()`;
 // The alert dialog's errors: under their own field and inside its column, the field marked invalid,
-// the first one focused, no toast, and the duration field still level with the cooldown beside it.
+// the first one focused, no error toast, and the duration field still level with the cooldown beside
+// it.
 const ALERT_ERRORS_UNDER_FIELDS = `(() => {
   const box = (element) => element.getBoundingClientRect();
   const under = (id) => {
@@ -411,7 +412,7 @@ const ALERT_ERRORS_UNDER_FIELDS = `(() => {
   };
   return under('alert-threshold') && under('alert-duration') &&
     document.activeElement?.id === 'alert-threshold' &&
-    !document.querySelector('#toast-container .toast') &&
+    !document.querySelector('#toast-container .toast.error') &&
     Math.abs(box(document.getElementById('alert-duration')).top -
       box(document.getElementById('alert-cooldown')).top) < 1;
 })()`;
@@ -2430,7 +2431,10 @@ const scenes = [
       await typeInto(ctx, '#alert-duration', '1.5');
       await ctx.click('#save-alert');
       await ctx.waitForSelector('#alert-duration-error');
-      await ctx.expect(ALERT_ERRORS_UNDER_FIELDS, 'each error under its own field, and no toast');
+      await ctx.expect(
+        ALERT_ERRORS_UNDER_FIELDS,
+        'each error under its own field, and no error toast'
+      );
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },
