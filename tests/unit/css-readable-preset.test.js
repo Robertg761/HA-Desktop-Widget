@@ -58,6 +58,22 @@ describe('the Readable preset', () => {
     expect(resolvedValue(document.querySelector('.close-btn'), 'outline')).toBe('3px solid #fff');
   });
 
+  // The media card's track is a button drawn as text. The preset's grey button fill made it a
+  // square slab behind the title, flush against the words.
+  it('keeps the media card track drawn as text, at rest and under the pointer', () => {
+    render(
+      'high-contrast opaque-panels',
+      `<div class="media-tile"><button class="media-tile-info" id="media-tile-info"></button>
+        <button class="media-tile-btn"></button></div>`
+    );
+    const track = document.querySelector('.media-tile-info');
+    expect(resolvedValue(track, 'background')).toBe('transparent');
+    track.setAttribute('data-hover', '');
+    expect(resolvedValue(track, 'background')).toBe('transparent');
+    // The card's other buttons keep the preset's fill.
+    expect(resolvedValue(document.querySelector('.media-tile-btn'), 'background')).toBe('#202020');
+  });
+
   it('leaves them translucent for the glass themes', () => {
     render('', '<div class="toast"></div>');
     expect(resolvedValue(document.body, '--dialog-bg')).toContain('transparent');

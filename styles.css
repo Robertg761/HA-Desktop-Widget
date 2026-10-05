@@ -12533,12 +12533,13 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
    one that keeps edit mode from drawing a second box around it. So they stay out while forced
    colours are active, and the rules for forced colours at the end of this file decide. */
 @media (forced-colors: none) {
-  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
-     tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-     active and focus styles stay visible without it. A colour swatch is its fill. */
+  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers,
+     tabs and the media card's track are text-like buttons: a fill would draw a bar across the
+     panel (behind the track's title, an unpadded slab), and their own hover, active and focus
+     styles stay visible without it. A colour swatch is its fill. */
   body.high-contrast
     :is(button, input, select, textarea):not(
-      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch, .media-tile-info)
     ) {
     color: #fff !important;
     background: #202020 !important;
@@ -12595,7 +12596,8 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
         .tile-primary-button,
         .section-toggle,
         .tab-link,
-        .light-color-swatch
+        .light-color-swatch,
+        .media-tile-info
       )
     ) {
     background: #333 !important;
