@@ -245,39 +245,50 @@ describe('the connection panel on the dashboard', () => {
   // Every test boots its own renderer into the same window. One left running after its test would
   // keep drawing into the next test's page from its own config.
   describe('the renderer of an earlier test', () => {
-    it('does not reconnect, and redraw the panel, once its test is over', async () => {
-      // Its last attempt fails, which schedules the next one 50 ms later.
-      const random = jest.spyOn(Math, 'random').mockReturnValue(0);
-      await harness.load({
-        config: harness.tokenConfig(),
-        constants: { BASE_RECONNECT_DELAY_MS: 50, MAX_RECONNECT_DELAY_MS: 50 },
-      });
-      failAttempt();
-      random.mockRestore();
-      const earlierWebsocket = harness.websocket;
-      const earlierConnects = earlierWebsocket.connect.mock.calls.length;
-      harness.cleanup();
+    // Each of these boots two renderers, so it gets the time two one-renderer tests would have.
+    const TWO_RENDERERS_TIMEOUT_MS = 10000;
 
-      await harness.load({ config: revokedConfig() });
-      // Timers run in the order they are due, so the earlier renderer's timer has had its turn by now.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    it(
+      'does not reconnect, and redraw the panel, once its test is over',
+      async () => {
+        // Its last attempt fails, which schedules the next one 50 ms later.
+        const random = jest.spyOn(Math, 'random').mockReturnValue(0);
+        await harness.load({
+          config: harness.tokenConfig(),
+          constants: { BASE_RECONNECT_DELAY_MS: 50, MAX_RECONNECT_DELAY_MS: 50 },
+        });
+        failAttempt();
+        random.mockRestore();
+        const earlierWebsocket = harness.websocket;
+        const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+        harness.cleanup();
 
-      expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
-      expect(harness.panelText()).not.toContain('Connecting to Home Assistant...');
-      expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
-    });
+        await harness.load({ config: revokedConfig() });
+        // Timers run in the order they are due, so the earlier renderer's timer has had its turn by now.
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-    it('does not answer the network coming back once its test is over', async () => {
-      await harness.load({ config: harness.tokenConfig() });
-      const earlierWebsocket = harness.websocket;
-      const earlierConnects = earlierWebsocket.connect.mock.calls.length;
-      harness.cleanup();
+        expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+        expect(harness.panelText()).not.toContain('Connecting to Home Assistant...');
+        expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+      },
+      TWO_RENDERERS_TIMEOUT_MS
+    );
 
-      await harness.load({ config: revokedConfig() });
-      window.dispatchEvent(new Event('online'));
+    it(
+      'does not answer the network coming back once its test is over',
+      async () => {
+        await harness.load({ config: harness.tokenConfig() });
+        const earlierWebsocket = harness.websocket;
+        const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+        harness.cleanup();
 
-      expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
-      expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
-    });
+        await harness.load({ config: revokedConfig() });
+        window.dispatchEvent(new Event('online'));
+
+        expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+        expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+      },
+      TWO_RENDERERS_TIMEOUT_MS
+    );
   });
 });
