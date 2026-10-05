@@ -2661,14 +2661,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('opens the release page from a Download button that survives the window being reopened', () => {
       updateStatus.applyUpdateEvent({
         status: 'manual',
-        message: 'Version 4.0.1 is available.',
         version: '4.0.1',
         downloadUrl: 'https://example.test/releases/v4.0.1',
       });
       ui.initUpdateUI();
       ui.initUpdateUI(); // closed and opened again
 
-      expect($('install-update-text').textContent).toBe('Download Update');
+      expect($('install-update-text').textContent).toBe('Download update');
       $('install-update-btn').click();
 
       expect(mockElectronAPI.openExternal).toHaveBeenCalledWith(
@@ -2680,12 +2679,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it("labels the portable build's button for its download", () => {
       updateStatus.applyUpdateEvent({
         status: 'portable',
-        message: 'Portable update available: v4.0.1.',
+        version: '4.0.1',
         downloadUrl: 'https://example.test/Portable.exe',
       });
       ui.initUpdateUI();
 
-      expect($('install-update-text').textContent).toBe('Download Portable Update');
+      expect($('install-update-text').textContent).toBe('Download portable update');
     });
 
     it('installs a downloaded update through the main process', async () => {
@@ -2773,7 +2772,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     it('takes the outcome itself from a build that does not update itself', async () => {
       mockElectronAPI.checkForUpdates.mockResolvedValue({
         status: 'manual',
-        message: 'Update available: v4.0.1.',
+        version: '4.0.1',
         downloadUrl: 'https://example.test/releases',
       });
       ui.initUpdateUI();
@@ -2781,7 +2780,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       $('check-updates-btn').click();
       await flush();
 
-      expect(status()).toBe('Update available: v4.0.1.');
+      expect(status()).toBe(
+        'Update available: v4.0.1. This package cannot update itself; use “Download update” to get it from GitHub.'
+      );
       expect($('install-update-btn').classList.contains('hidden')).toBe(false);
       expect($('check-updates-btn').disabled).toBe(false);
     });

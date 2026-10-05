@@ -116,8 +116,6 @@
   "Add Hotkey": "Add Hotkey",
   "Edit Hotkey": "Edit Hotkey",
   "You are up to date!": "You are up to date!",
-  "Portable update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.": "Portable update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.",
-  "Portable beta update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.": "Portable beta update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.",
   "Unable to reach Home Assistant. Check your network or Home Assistant URL.": "Unable to reach Home Assistant. Check your network or Home Assistant URL.",
   "Connection error: {{message}}": "Connection error: {{message}}",
   "Real-time updates active.": "Real-time updates active.",
@@ -263,8 +261,6 @@
   "Ends {{time}}": "Ends {{time}}",
   "Glow tiles that are on": "Glow tiles that are on",
   "Auto-updates only work in packaged builds": "Auto-updates only work in packaged builds",
-  "Download Portable Update": "Download Portable Update",
-  "Download Update": "Download Update",
   "Downloading update...": "Downloading update...",
   "Ready to check for updates": "Ready to check for updates",
   "Update available: v{{version}}": "Update available: v{{version}}",
@@ -1568,7 +1564,6 @@
   "Yellow": "Yellow",
   "White": "White",
   "Sky blue": "Sky blue",
-  "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.",
   "Update available": "Update available",
   "Update ready to install": "Update ready to install",
   "Arm": "Arm",
@@ -1642,5 +1637,10 @@
   "What's new": "What's new",
   "Resize only": "Resize only",
   "Not connected to Home Assistant. Changes can't be sent right now.": "Not connected to Home Assistant. Changes can't be sent right now.",
-  "Can't reach the widget. Changes can't be sent right now.": "Can't reach the widget. Changes can't be sent right now."
+  "Can't reach the widget. Changes can't be sent right now.": "Can't reach the widget. Changes can't be sent right now.",
+  "Download update": "Download update",
+  "Download portable update": "Download portable update",
+  "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.",
+  "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.",
+  "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build."
 }

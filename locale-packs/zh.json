@@ -1998,6 +1998,11 @@
     "What's new": "新增功能",
     "Resize only": "仅调整大小",
     "Not connected to Home Assistant. Changes can't be sent right now.": "未连接到 Home Assistant。现在无法发送更改。",
-    "Can't reach the widget. Changes can't be sent right now.": "无法连接到小组件。现在无法发送更改。"
+    "Can't reach the widget. Changes can't be sent right now.": "无法连接到小组件。现在无法发送更改。",
+    "Download update": "下载更新",
+    "Download portable update": "下载便携版更新",
+    "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "有可用更新：v{{version}}。此安装包无法自行更新；请使用“下载更新”从 GitHub 获取。",
+    "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "便携版更新可用：v{{version}}。请使用“下载便携版更新”获取便携版。",
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "有可用的便携版测试更新：v{{version}}。请使用“下载便携版更新”获取便携版。"
   }
 }

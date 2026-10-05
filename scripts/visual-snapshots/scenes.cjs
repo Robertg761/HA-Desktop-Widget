@@ -1175,15 +1175,13 @@ const scenes = [
     'settings-advanced-update-manual',
     {
       status: 'manual',
-      message:
-        'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
       version: '4.0.1',
       downloadUrl: 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag/v4.0.1',
     },
     {
       state: 'manual',
-      text: 'Update available: v4.0.1. This package cannot update itself; use Download Update to get it from GitHub.',
-      install: 'Download Update',
+      text: 'Update available: v4.0.1. This package cannot update itself; use “Download update” to get it from GitHub.',
+      install: 'Download update',
     }
   ),
   // The profile sync controls, opened by the switch alone: nothing is saved, so no sync starts and

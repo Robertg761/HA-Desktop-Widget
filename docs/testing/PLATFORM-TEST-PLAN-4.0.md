@@ -1624,7 +1624,7 @@ Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01, MP-77
 4. Use Check for Updates in the tray menu with the widget hidden.
 5. Leave the older build running for a day while a newer release exists.
 
-Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download Update, or Download Portable Update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
+Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download update, or Download portable update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
 
 Capture: Screenshots of the status line and the button.
 

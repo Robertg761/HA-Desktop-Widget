@@ -1398,5 +1398,25 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Download Update": {
+    "retiredIn": "4.0.0",
+    "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
+  },
+  "Download Portable Update": {
+    "retiredIn": "4.0.0",
+    "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
+  },
+  "Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.": {
+    "retiredIn": "4.0.0",
+    "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
+  },
+  "Portable update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.": {
+    "retiredIn": "4.0.0",
+    "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
+  },
+  "Portable beta update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.": {
+    "retiredIn": "4.0.0",
+    "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
   }
 }

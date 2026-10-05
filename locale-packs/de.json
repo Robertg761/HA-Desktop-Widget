@@ -1998,6 +1998,11 @@
     "What's new": "Neuerungen",
     "Resize only": "Nur Größe ändern",
     "Not connected to Home Assistant. Changes can't be sent right now.": "Nicht mit Home Assistant verbunden. Änderungen können derzeit nicht gesendet werden.",
-    "Can't reach the widget. Changes can't be sent right now.": "Das Widget ist nicht erreichbar. Änderungen können derzeit nicht gesendet werden."
+    "Can't reach the widget. Changes can't be sent right now.": "Das Widget ist nicht erreichbar. Änderungen können derzeit nicht gesendet werden.",
+    "Download update": "Update herunterladen",
+    "Download portable update": "Portables Update herunterladen",
+    "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Update verfügbar: v{{version}}. Dieses Paket kann sich nicht selbst aktualisieren; lade es mit „Update herunterladen“ von GitHub herunter.",
+    "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portables Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten.",
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portables Beta-Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten."
   }
 }

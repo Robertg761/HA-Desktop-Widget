@@ -47,8 +47,12 @@ const updateStatus = require('../../src/update-status.js');
 
 const GERMAN = {
   'Install update': 'Update installieren',
-  'Download Update': 'Update herunterladen',
-  'Download Portable Update': 'Portables Update herunterladen',
+  'Download update': 'Update herunterladen',
+  'Download portable update': 'Portables Update herunterladen',
+  'Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.':
+    'Update verfügbar: v{{version}}. Dieses Paket kann sich nicht selbst aktualisieren; lade es mit „Update herunterladen“ von GitHub herunter.',
+  'Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.':
+    'Portables Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten.',
   'Update available': 'Update verfügbar',
   'Update available: v{{version}}': 'Update verfügbar: v{{version}}',
   'Update ready to install': 'Update bereit zur Installation',
@@ -94,9 +98,9 @@ describe('update panel labels', () => {
     updateStatus.applyUpdateEvent({
       status: 'portable',
       downloadUrl: 'https://example.test/p',
-      message: 'Portable',
+      version: '4.0.1',
     });
-    expect(installText().textContent).toBe('Download Portable Update');
+    expect(installText().textContent).toBe('Download portable update');
     german();
     expect(installText().textContent).toBe('Portables Update herunterladen');
 
@@ -104,11 +108,52 @@ describe('update panel labels', () => {
     updateStatus.applyUpdateEvent({
       status: 'manual',
       downloadUrl: 'https://example.test/m',
-      message: 'Manual',
+      version: '4.0.1',
     });
-    expect(installText().textContent).toBe('Download Update');
+    expect(installText().textContent).toBe('Download update');
     german();
     expect(installText().textContent).toBe('Update herunterladen');
+  });
+
+  // The sentence names the button beside it, so it has to change language with it.
+  it('words the line of a build that cannot update itself in the language shown now', () => {
+    updateStatus.applyUpdateEvent({
+      status: 'manual',
+      downloadUrl: 'https://example.test/m',
+      version: '4.0.1',
+    });
+    expect(statusText()).toBe(
+      'Update available: v4.0.1. This package cannot update itself; use “Download update” to get it from GitHub.'
+    );
+
+    german();
+    expect(statusText()).toBe(
+      'Update verfügbar: v4.0.1. Dieses Paket kann sich nicht selbst aktualisieren; lade es mit „Update herunterladen“ von GitHub herunter.'
+    );
+    expect(installText().textContent).toBe('Update herunterladen');
+
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    updateStatus.applyUpdateEvent({
+      status: 'portable',
+      downloadUrl: 'https://example.test/p',
+      version: '4.0.1',
+    });
+    german();
+    expect(statusText()).toBe(
+      'Portables Update verfügbar: v4.0.1. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten.'
+    );
+  });
+
+  it('names a portable beta as a beta', () => {
+    updateStatus.applyUpdateEvent({
+      status: 'portable',
+      downloadUrl: 'https://example.test/p',
+      version: '4.1.0-beta.1',
+      prerelease: true,
+    });
+    expect(statusText()).toBe(
+      'Portable beta update available: v4.1.0-beta.1. Use “Download portable update” to get the Portable build.'
+    );
   });
 
   it('says an update is available, without a made-up version, when the updater gave none', () => {

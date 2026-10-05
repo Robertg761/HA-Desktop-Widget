@@ -1998,6 +1998,11 @@
     "What's new": "الجديد",
     "Resize only": "غيّر الحجم فقط",
     "Not connected to Home Assistant. Changes can't be sent right now.": "غير متصل بـ Home Assistant. يتعذر إرسال التغييرات الآن.",
-    "Can't reach the widget. Changes can't be sent right now.": "يتعذر الوصول إلى الأداة. يتعذر إرسال التغييرات الآن."
+    "Can't reach the widget. Changes can't be sent right now.": "يتعذر الوصول إلى الأداة. يتعذر إرسال التغييرات الآن.",
+    "Download update": "تنزيل التحديث",
+    "Download portable update": "تنزيل التحديث المحمول",
+    "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "تحديث متاح: v{{version}}. لا تستطيع هذه الحزمة تحديث نفسها؛ استخدم «تنزيل التحديث» للحصول عليه من GitHub.",
+    "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "تحديث محمول متاح: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على الإصدار المحمول.",
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "يتوفر تحديث تجريبي محمول: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على النسخة المحمولة."
   }
 }

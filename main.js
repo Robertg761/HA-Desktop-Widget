@@ -11037,9 +11037,10 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
 }
 
 // The updater reports a check the app started on its own schedule exactly as it reports one a
-// person asked for. Nobody is waiting for the first, so its "checking" and "error" are marked
-// `background` and the window leaves them out of the Updates row; otherwise a laptop that woke
-// without a network would show "Could not reach GitHub" there until someone next looked.
+// person asked for. Nobody is waiting for the first, so its "checking", "error" and "none" are
+// marked `background` and the window leaves them out of the Updates row; otherwise a laptop that
+// woke without a network would show "Could not reach GitHub" there until someone next looked, and
+// every six-hourly check would put "You are up to date!" there and announce it to a screen reader.
 let backgroundUpdateCheckRunning = false;
 let manualUpdateCheckRunning = false;
 
@@ -11049,7 +11050,7 @@ function sendAutoUpdateToWindow(payload) {
   }
 }
 
-// The two updater events that only mean something to a person who asked for the check.
+// The updater events that only mean something to a person who asked for the check.
 function sendUpdaterCheckEvent(payload) {
   sendAutoUpdateToWindow(backgroundUpdateCheckRunning ? { ...payload, background: true } : payload);
 }
@@ -12812,16 +12813,8 @@ async function checkManualReleaseUpdate({ allowPrerelease } = {}) {
         downloadUrl,
       };
     }
-    return {
-      status: 'manual',
-      // One sentence with the version inside it, so a language can order it as it needs to.
-      message: mainT(
-        'Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.',
-        { version: latestVersion }
-      ),
-      version: latestVersion,
-      downloadUrl,
-    };
+    // The window words it (src/update-status.js), so the line follows a later language change.
+    return { status: 'manual', version: latestVersion, downloadUrl };
   } catch (error) {
     return { status: 'error', error: describeUpdateError(error) };
   }
@@ -12863,18 +12856,11 @@ async function checkPortableUpdate({ allowPrerelease } = {}) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
 
+    // The window words it (src/update-status.js), so the line follows a later language change.
     return {
       status: 'portable',
-      message: isPrereleaseVersion(latestVersion)
-        ? mainT(
-            'Portable beta update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
-            { version: latestVersion }
-          )
-        : mainT(
-            'Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
-            { version: latestVersion }
-          ),
       version: latestVersion,
+      prerelease: isPrereleaseVersion(latestVersion),
       downloadUrl,
     };
   } catch (error) {
@@ -12972,7 +12958,7 @@ function setupAutoUpdates() {
       });
       autoUpdater.on('update-not-available', () => {
         autoUpdateDownloaded = false;
-        sendAutoUpdateToWindow({ status: 'none' });
+        sendUpdaterCheckEvent({ status: 'none' });
       });
       autoUpdater.on('download-progress', (progress) => {
         sendAutoUpdateToWindow({ status: 'downloading', progress: { percent: progress?.percent } });
