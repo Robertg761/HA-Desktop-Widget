@@ -854,7 +854,14 @@ const PROFILE_SYNC_CONFLICT_PATTERNS = [
 ];
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
+// Why the saved token is not there to use. 'encryption_unavailable' and 'decryption_failed' are
+// about an encrypted token that is still on disk; 'not_persisted' says none was written, because
+// there was no way to encrypt it when it was entered.
+const TOKEN_RESET_RECOVERY_REASONS = new Set([
+  'encryption_unavailable',
+  'decryption_failed',
+  'not_persisted',
+]);
 const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS = 5 * 60 * 1000;
 const HOME_ASSISTANT_OAUTH_RETRY_MS = 60 * 1000;
 
@@ -5335,6 +5342,21 @@ function isPlaceholderOrEmptyToken(token) {
   return !token || token === HOME_ASSISTANT_TOKEN_PLACEHOLDER;
 }
 
+// A reason that speaks of an encrypted token on disk, with no token there at all, was written when
+// a token could not be saved (builds before 'not_persisted' wrote 'encryption_unavailable' then).
+// Unlocking a keyring and restarting would bring nothing back, so the reason says what happened.
+function reconcileTokenResetReason(target) {
+  if (
+    TOKEN_RESET_RECOVERY_REASONS.has(target?.tokenResetReason) &&
+    target.homeAssistant?.authMethod !== 'oauth' &&
+    !target.homeAssistant?.tokenEncrypted &&
+    isPlaceholderOrEmptyToken(target.homeAssistant?.token)
+  ) {
+    target.tokenResetReason = 'not_persisted';
+  }
+  return target;
+}
+
 function hasRecoveryTokenBackup() {
   return !!preservedEncryptedTokenForRecovery;
 }
@@ -5711,6 +5733,7 @@ function loadConfig(options = {}) {
           }
         }
       }
+      reconcileTokenResetReason(config);
     } else {
       // Migrate legacy config if present in app directory
       const legacyPath = path.join(__dirname, CONFIG_FILE_NAME);
@@ -5992,7 +6015,8 @@ function shouldBlockPotentialConfigClobber() {
  * Writes the current `config` object to the application's userData/config.json. If `homeAssistant.token` is present
  * and not the placeholder value, this function attempts to encrypt the token using Electron's `safeStorage`; on
  * successful encryption the token is stored as a base64 string and `homeAssistant.tokenEncrypted` is set to `true`.
- * If encryption is unavailable or fails, the token is omitted from the saved config and `tokenResetReason` is recorded.
+ * If encryption is unavailable or fails, the token is omitted from the saved config, which records `tokenResetReason`
+ * 'not_persisted' for the next start.
  * The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during the save
  * process are logged; the function does not throw.
  */
@@ -6030,12 +6054,15 @@ function buildConfigSnapshotForSave() {
     configToSave.homeAssistant.tokenEncrypted = true;
   }
 
-  const omitTokenFromSavedConfig = (reason, warning, error = null) => {
+  // The token in memory keeps working for this session, so only the file says it is missing: the
+  // next start reads that and asks for the token again. It is 'not_persisted', not
+  // 'encryption_unavailable', because no encrypted token is kept that unlocking a keyring and
+  // restarting could bring back.
+  const omitTokenFromSavedConfig = (warning, error = null) => {
     configToSave.homeAssistant = configToSave.homeAssistant || {};
     delete configToSave.homeAssistant.token;
     configToSave.homeAssistant.tokenEncrypted = false;
-    configToSave.tokenResetReason = reason;
-    config.tokenResetReason = reason;
+    configToSave.tokenResetReason = 'not_persisted';
     if (!persistenceWarnings.some((entry) => entry.code === 'home_assistant_token_not_persisted')) {
       persistenceWarnings.push({
         code: 'home_assistant_token_not_persisted',
@@ -6067,14 +6094,12 @@ function buildConfigSnapshotForSave() {
         log.debug('Token encrypted for storage');
       } catch (error) {
         omitTokenFromSavedConfig(
-          'encryption_unavailable',
           'Failed to encrypt token; omitting it from saved config so it is not written in plaintext:',
           error
         );
       }
     } else {
       omitTokenFromSavedConfig(
-        'encryption_unavailable',
         'Encryption not available; omitting token from saved config so it is not written in plaintext'
       );
     }
