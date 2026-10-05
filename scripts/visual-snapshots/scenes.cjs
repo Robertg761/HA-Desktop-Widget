@@ -340,6 +340,31 @@ const startupScenes = [
   },
 ];
 
+// The wizard's authorization step after an attempt on a server address nothing listens on, which
+// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
+// a scene whose failure drifts to another one fails instead of capturing it.
+async function failFirstRunAuthorization(ctx, says) {
+  await showFirstRunWelcome(ctx);
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-content input');
+  // The field keeps a draft from a scene before; this one starts from an empty field.
+  await ctx.ev(`(() => {
+    const field = document.querySelector('.first-run-content input');
+    field.value = '';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+  })()`);
+  await ctx.insertText('127.0.0.1:9');
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-url');
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-status[data-status="error"]');
+  await ctx.expect(
+    `document.querySelector('.first-run-status').textContent.includes(${JSON.stringify(says)})`,
+    `the step says ${says}`
+  );
+}
+
 // Settings opens one page at a time; this scrolls the wanted element to the top (or wherever `block`
 // puts it) and opens any disclosure it sits in.
 async function revealInSettings(ctx, selector, block = 'start') {
@@ -2746,28 +2771,22 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  // Windows and macOS have a keyring, so the attempt gets as far as the server and finds no one
+  // there. Linux under CI has none, so it stops at the keyring, which a first run is told keeps the
+  // new authorization from being saved (it has nothing saved to read). Both go back to the welcome
+  // step for the scenes after them, wherever the failure left the wizard.
   {
     name: 'wizard-authorize-error',
+    platforms: ['win32', 'darwin'],
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
-    setup: async (ctx) => {
-      await showFirstRunWelcome(ctx);
-      await ctx.click('.first-run-actions .btn-primary');
-      await ctx.waitForSelector('.first-run-content input');
-      // The field keeps a draft from a scene before; this one starts from an empty field.
-      await ctx.ev(`(() => {
-        const field = document.querySelector('.first-run-content input');
-        field.value = '';
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.focus();
-      })()`);
-      // Nothing listens on port 9, so the attempt fails at once and opens no browser.
-      await ctx.insertText('127.0.0.1:9');
-      await ctx.click('.first-run-actions .btn-primary');
-      await ctx.waitForSelector('.first-run-url');
-      await ctx.click('.first-run-actions .btn-primary');
-      await ctx.waitForSelector('.first-run-status[data-status="error"]');
-    },
-    // Back on the welcome step for the scenes after it, wherever the failure left the wizard.
+    setup: (ctx) => failFirstRunAuthorization(ctx, 'Could not reach Home Assistant at that URL.'),
+    teardown: showFirstRunWelcome,
+  },
+  {
+    name: 'wizard-authorize-keyring',
+    platforms: ['linux'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: (ctx) => failFirstRunAuthorization(ctx, 'so the authorization cannot be saved.'),
     teardown: showFirstRunWelcome,
   },
 

@@ -9001,6 +9001,13 @@ function describeLinuxKeyringOAuthError(code, platform = process.platform) {
   return value;
 }
 
+// A new authorization has nothing saved to read yet: the keyring is why it cannot be saved, which
+// a first run must not be told is a saved authorization it cannot read. The remedy is the same.
+function describeLinuxKeyringPairingError(code, platform = process.platform) {
+  const value = describeLinuxKeyringOAuthError(code, platform);
+  return value === 'OAUTH_KEYRING_UNAVAILABLE' ? 'OAUTH_KEYRING_CANNOT_SAVE' : value;
+}
+
 async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
@@ -9064,7 +9071,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   } catch (error) {
     return {
       success: false,
-      code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
+      code: describeLinuxKeyringPairingError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
   } finally {

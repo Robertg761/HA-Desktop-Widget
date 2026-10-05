@@ -114,6 +114,14 @@ describe('Home Assistant authorization failure messages', () => {
       ).toBe(keyringMessage);
     });
 
+    it('says a new authorization cannot be saved when pairing finds no unlocked keyring', () => {
+      expect(
+        describeHomeAssistantOAuthFailure({ result: { code: 'OAUTH_KEYRING_CANNOT_SAVE' } })
+      ).toBe(
+        '[fr] Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.'
+      );
+    });
+
     it('wraps an uncoded failure in a translated sentence', () => {
       expect(describeHomeAssistantOAuthRefreshError({ oauthLastError: 'EPERM' })).toBe(
         '[fr] Could not connect to Home Assistant. EPERM'

@@ -144,6 +144,10 @@ function describeHomeAssistantOAuthError(code) {
       return t(
         'Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.'
       );
+    case 'OAUTH_KEYRING_CANNOT_SAVE':
+      return t(
+        'Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.'
+      );
     case 'OAUTH_STORE_WRITE':
       return t('Could not save the Home Assistant authorization.');
     case 'OAUTH_STORE_CLEAR':

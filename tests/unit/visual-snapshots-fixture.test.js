@@ -276,6 +276,7 @@ describe('visual snapshot scenes', () => {
       'wizard-welcome-s150',
       'wizard-welcome-forced-colors',
       'wizard-authorize-error',
+      'wizard-authorize-keyring',
     ]) {
       expect(names).toContain(required);
     }
@@ -311,15 +312,25 @@ describe('visual snapshot scenes', () => {
       const oauth = startup('startup-oauth-reauth');
       expect(oauth.homeAssistant).toEqual({ url: base.homeAssistant.url, authMethod: 'oauth' });
     });
+  });
 
-    it('names only platforms Node knows', () => {
-      for (const scene of scenes.filter((entry) => entry.platforms)) {
-        expect(scene.startup).toBeDefined();
-        for (const platform of scene.platforms) {
-          expect(['darwin', 'linux', 'win32']).toContain(platform);
-        }
+  it('names only platforms Node knows', () => {
+    for (const scene of scenes.filter((entry) => entry.platforms)) {
+      for (const platform of scene.platforms) {
+        expect(['darwin', 'linux', 'win32']).toContain(platform);
       }
-    });
+    }
+  });
+
+  it('captures the failed authorization step once on every system, by the failure it can stage', () => {
+    const failures = scenes.filter((scene) =>
+      ['wizard-authorize-error', 'wizard-authorize-keyring'].includes(scene.name)
+    );
+    expect(failures.flatMap((scene) => scene.platforms).sort()).toStrictEqual([
+      'darwin',
+      'linux',
+      'win32',
+    ]);
   });
 
   it('has a page of readings for the format scenes, with a pack installed for each language', () => {
