@@ -1,6 +1,7 @@
 import state from './state.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
+import { lineIconMarkup } from './entity-icons.js';
 import { getLocaleState, t } from './i18n.js';
 import accelerators from './accelerators.cjs';
 import entityHotkeys from './entity-hotkeys.cjs';
@@ -225,7 +226,7 @@ function renderHotkeysTab() {
                 <div class="hotkey-input-container">
                     <input type="text" readonly aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name }))}" aria-describedby="hotkey-record-hint" aria-keyshortcuts="Enter Space" class="hotkey-input" value="${escapedHotkey}" placeholder="${escapeHtmlAttribute(t('None'))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
                     ${actionSelectHTML}
-                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey for {{name}}', { name }))}" data-focus-key="hotkey-clear:${escapedEntityId}">&times;</button>
+                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey for {{name}}', { name }))}" data-focus-key="hotkey-clear:${escapedEntityId}">${lineIconMarkup('x')}</button>
                 </div>
             `;
         container.appendChild(item);

@@ -1623,6 +1623,23 @@ describe('hotkeys module', () => {
     });
   });
 
+  it('draws the clear button with the line X icon, not a text ×', () => {
+    const config = getMockConfig();
+    config.globalHotkeys = {
+      enabled: true,
+      hotkeys: { 'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' } },
+    };
+    state.setConfig(config);
+    state.setStates({ 'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} } });
+    hotkeys.cleanupHotkeyEventListeners();
+    document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    hotkeys.renderHotkeysTab();
+
+    const clear = document.querySelector('.btn-clear-hotkey');
+    expect(clear.querySelector('svg.entity-line-icon[data-icon="x"]')).not.toBeNull();
+    expect(clear.textContent.trim()).toBe('');
+  });
+
   describe('clearing a hotkey', () => {
     beforeEach(() => {
       const config = getMockConfig();
@@ -1741,6 +1758,14 @@ describe('entity hotkey row layout', () => {
       .filter(([, selectors]) => selectors.split(',').some((part) => part.trim() === selector))
       .map(([, , body]) => body)
       .join(';');
+
+  it('sizes the clear button to the 32px field and select beside it, with no bold text glyph', () => {
+    const clear = declarationsFor('.btn-clear-hotkey');
+    expect(clear).toMatch(/width:\s*32px/);
+    expect(clear).toMatch(/height:\s*32px/);
+    expect(clear).toMatch(/border-radius:\s*var\(--radius-md\)/);
+    expect(clear).not.toMatch(/font-weight/);
+  });
 
   it('gives the hotkey field the row so translated placeholders are not clipped', () => {
     // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field: the field takes what

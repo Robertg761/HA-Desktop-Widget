@@ -11391,17 +11391,18 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   background-position: left 8px center;
 }
 
+/* The same line X as the other close and remove buttons, in a square as tall and as round as the
+   32px field and select beside it. The icon is drawn at 1em. */
 .btn-clear-hotkey {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border: 1px solid var(--tile-border-hover);
   background: transparent;
   color: var(--text-dim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-md);
-  font-weight: bold;
   transition: all var(--transition-base);
   display: flex;
   align-items: center;
