@@ -14150,6 +14150,24 @@ textarea::selection {
   margin-top: 0;
 }
 
+/* While results stand in for the page, the field and the count of matches stay at the top of it, so
+   a long list can be narrowed without scrolling back up. The box reaches over the page's 18px top
+   padding to the scroller's edge and pads the gap under it rather than leaving a margin, so nothing
+   scrolling beneath shows through; it is the opaque panel colour, as the list pagers are. Browsing
+   a page scrolls it away as before. A result reached with the arrow keys stops below it. */
+#settings-modal.settings-searching .settings-search-box {
+  position: sticky;
+  top: -18px;
+  z-index: 1;
+  margin-block: -18px 0;
+  padding-block: 18px 16px;
+  background: rgb(var(--settings-modal-panel-rgb));
+}
+
+#settings-modal.settings-searching .modal-body {
+  scroll-padding-block-start: 6.5rem;
+}
+
 .setting-row {
   display: flex;
   flex-wrap: wrap;

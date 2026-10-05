@@ -566,6 +566,16 @@ const selectShowsItsValue = (selector) => `(() => {
   return context.measureText(text).width <= room;
 })()`;
 
+// The search field and the count of matches under it are inside the visible part of the page.
+const SEARCH_BOX_IN_VIEW = `(() => {
+  const page = document.querySelector('#settings-modal .modal-body');
+  const field = document.getElementById('settings-search');
+  const count = document.getElementById('settings-search-status');
+  if (!page || !field || !count || page.scrollTop < 100) return false;
+  const top = page.getBoundingClientRect().top;
+  return field.getBoundingClientRect().top >= top - 1 && count.getBoundingClientRect().top >= top - 1;
+})()`;
+
 // A Settings list with a scroller of its own is shorter than the page that scrolls it, so the page
 // can bring the whole box into view instead of the two taking turns.
 const listFitsSettingsPage = (selector) => `(() => {
@@ -1291,6 +1301,24 @@ const scenes = [
       await typeInto(ctx, '#settings-search', query);
     },
   })),
+  // A long list of results scrolled to its end: the field and the count of matches stay on top.
+  {
+    name: 'settings-search-results-scrolled',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'general');
+      await typeInto(ctx, '#settings-search', 'a');
+      await ctx.ev(`(() => {
+        const page = document.querySelector('#settings-modal .modal-body');
+        page.scrollTop = page.scrollHeight;
+      })()`);
+      // Under reduced motion every property still changes over 0.01ms, so the box settles first.
+      await ctx.waitForExpression(
+        `getComputedStyle(document.querySelector('#settings-modal .settings-search-box')).paddingTop === '18px'`,
+        'the search box held at the top'
+      );
+      await ctx.expect(SEARCH_BOX_IN_VIEW, 'the search field and its count stay in view');
+    },
+  },
   // Save from another page with a bad address: General opens with the field marked and the
   // reason under it, instead of a toast about a field that is not on screen.
   {

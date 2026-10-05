@@ -101,4 +101,25 @@ describe('Settings layout', () => {
       expect(resolvedValue(select, 'max-width')).toBe('100%');
     });
   });
+  describe('the Settings search box', () => {
+    const BOX =
+      '<div id="settings-modal" class="modal"><div class="modal-body"><div class="form-group settings-search-box"><input id="settings-search" /></div></div></div>';
+
+    it('stays at the top of a long list of results, over an opaque panel', () => {
+      render(BOX);
+      document.getElementById('settings-modal').classList.add('settings-searching');
+      const box = document.querySelector('.settings-search-box');
+      expect(resolvedValue(box, 'position')).toBe('sticky');
+      expect(resolvedValue(box, 'top')).toBe('-18px');
+      expect(resolvedValue(box, 'background')).toBe('rgb(24, 28, 37)');
+      expect(
+        resolvedValue(document.querySelector('.modal-body'), 'scroll-padding-block-start')
+      ).toBe('6.5rem');
+    });
+
+    it('scrolls away with a page, as before', () => {
+      render(BOX);
+      expect(resolvedValue(document.querySelector('.settings-search-box'), 'position')).toBeNull();
+    });
+  });
 });
