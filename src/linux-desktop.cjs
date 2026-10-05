@@ -225,8 +225,15 @@ function getToggleCommand({
       return null;
     }
   };
+  // APPIMAGE is set for this process by its AppImage runtime, which runs it from APPDIR. A widget
+  // started from inside another AppImage (a terminal or an editor packaged as one) inherits that
+  // app's APPIMAGE and APPDIR, and its executable is not in that APPDIR.
+  const relative = env.APPDIR ? path.relative(env.APPDIR, execPath) : '';
+  const fromThisAppImage =
+    !!env.APPIMAGE &&
+    (!env.APPDIR || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative)));
   let launch;
-  if (env.APPIMAGE) {
+  if (fromThisAppImage) {
     launch = [shellWord(env.APPIMAGE)];
   } else if (!isPackaged) {
     launch = [shellWord(execPath), shellWord(appPath)];

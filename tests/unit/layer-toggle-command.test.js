@@ -30,12 +30,29 @@ describe('the command that toggles the widget', () => {
     expect(
       getToggleCommand({
         argv: ['widget'],
-        env: { APPIMAGE: appImage, PATH },
+        env: { APPIMAGE: appImage, APPDIR: path.join(path.sep, 'tmp', '.mount_HA'), PATH },
         execPath: path.join(path.sep, 'tmp', '.mount_HA', 'home-assistant-widget'),
         isPackaged: true,
         realpath: realpathFrom({}),
       })
     ).toBe(`'${appImage}' --toggle`);
+  });
+
+  it("is not another AppImage's path, inherited by a widget started from inside it", () => {
+    const execPath = path.join(path.sep, 'opt', 'HA Desktop Widget', 'home-assistant-widget');
+    expect(
+      getToggleCommand({
+        argv: ['widget'],
+        env: {
+          APPIMAGE: path.join(path.sep, 'home', 'u', 'Apps', 'Editor.AppImage'),
+          APPDIR: path.join(path.sep, 'tmp', '.mount_Editor'),
+          PATH,
+        },
+        execPath,
+        isPackaged: true,
+        realpath: realpathFrom({ [path.join(bin, 'home-assistant-widget')]: execPath }),
+      })
+    ).toBe('home-assistant-widget --toggle');
   });
 
   it('is the name the .deb puts on PATH', () => {
