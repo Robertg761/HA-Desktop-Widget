@@ -730,10 +730,18 @@ function closeCommandPalette({ restoreFocus = true } = {}) {
   announce('');
 }
 
-function handleGlobalKeydown(event) {
+// The letter K, as printed on the key. A layout that moves K (Dvorak) matches by the letter it
+// types; one without Latin letters (Cyrillic, Arabic, Greek, Hebrew) reports its own character for
+// Ctrl+K ("л", "ن"), so there the physical key, where K sits on a US keyboard, is the K.
+function isLetterK(event) {
   const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+  if (key === 'k') return true;
+  return event.code === 'KeyK' && !/^[a-z]$/.test(key);
+}
+
+function handleGlobalKeydown(event) {
   const isCommandPaletteShortcut =
-    key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    isLetterK(event) && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
   if (!isCommandPaletteShortcut) return;
   // Ctrl+K has no meaning in a text field, apart from a Mac's "delete to the end of the line"; the
   // palette opens from there too, and from checkboxes and sliders, which is where the Quick

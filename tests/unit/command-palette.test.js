@@ -1453,6 +1453,36 @@ describe('command palette recents', () => {
       }
     });
 
+    it('opens on a layout without Latin letters, from the key where K sits', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Russian and Arabic layouts report their own letter for Ctrl+K.
+      expect(shortcut(control, { key: 'л', code: 'KeyK' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
+    it.each([
+      ['Arabic', 'ن'],
+      ['Greek', 'κ'],
+    ])('opens on an %s layout too', (_layout, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(true);
+    });
+
+    it('follows the printed K on a layout that moves it, and not the US position', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Dvorak: the US K key types T, and K is where the US V is.
+      expect(shortcut(control, { key: 't', code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
+      expect(shortcut(control, { key: 'k', code: 'KeyV' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
     it('leaves Ctrl+K in a Mac text field alone, since it deletes to the end of the line there', () => {
       window.electronAPI = { platform: 'darwin' };
       try {
