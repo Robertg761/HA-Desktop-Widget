@@ -148,15 +148,19 @@ Panel {
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
   }
 
+  // `over` laid on `base` at `amount` (0 to 1), as an opaque colour.
+  function blend(base, over, amount) {
+    return Qt.rgba(base.r + (over.r - base.r) * amount,
+                   base.g + (over.g - base.g) * amount,
+                   base.b + (over.b - base.b) * amount, 1)
+  }
+
   // A tone between background and foreground, starting at 70% of the way to the foreground and going
   // on only until it reads. A foreground that does not reach 4.5:1 itself is returned as it is.
   function quietTone(fg, bg) {
     var tone = fg
     for (var share = 0.7; share <= 1.0001; share += 0.05) {
-      var amount = Math.min(1, share)
-      tone = Qt.rgba(bg.r + (fg.r - bg.r) * amount,
-                     bg.g + (fg.g - bg.g) * amount,
-                     bg.b + (fg.b - bg.b) * amount, 1)
+      tone = blend(bg, fg, Math.min(1, share))
       if (contrastRatio(tone, bg) >= 4.5) break
     }
     return tone
@@ -761,6 +765,9 @@ Panel {
     readonly property bool available: tile.available === true
     readonly property bool actionable: root.canActivate(tile)
     readonly property color iconColor: active ? Color.accent : root.foreground
+    // What a lit tile's accent tint makes of the panel under it (the tile's colour below), which its
+    // countdown is solved against as dimColor is against the panel.
+    readonly property color activeFill: root.blend(Color.popups.background, Color.accent, hasCursor ? 0.24 : 0.16)
 
     // The tile registers itself under its position, and moves when a page gains or loses a tile above it.
     property int registeredIndex: -1
@@ -826,7 +833,9 @@ Panel {
         width: parent.width
         visible: text !== ""
         text: Countdown.value(tileRoot.tile, root.now)
-        color: tileRoot.active ? Qt.darker(root.foreground, 1.2) : root.dimColor
+        // Quieter than the name and 4.5:1 on the tile. Qt.darker left it under 4:1 on several dark
+        // themes' accent tint, and darker than the name on light ones.
+        color: tileRoot.active ? root.quietTone(root.foreground, tileRoot.activeFill) : root.dimColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         horizontalAlignment: Text.AlignHCenter
