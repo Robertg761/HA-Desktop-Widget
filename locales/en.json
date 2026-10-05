@@ -1209,7 +1209,6 @@
   "Your Home Assistant token needs to be re-entered. The stored token could not be decrypted.": "Your Home Assistant token needs to be re-entered. The stored token could not be decrypted.",
   "{{name}} camera preview": "{{name}} camera preview",
   "{{name}} preview": "{{name}} preview",
-  "Last updated: {{time}}": "Last updated: {{time}}",
   "Connection is not ready": "Connection is not ready",
   "Heat/Cool": "Heat/Cool",
   "Disarming": "Disarming",

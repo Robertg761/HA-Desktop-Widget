@@ -1398,5 +1398,9 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Last updated: {{time}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The camera viewer no longer shows the camera's own last update before a picture loads"
   }
 }

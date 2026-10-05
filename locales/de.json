@@ -1208,7 +1208,6 @@
   "Your Home Assistant token needs to be re-entered. The stored token could not be decrypted.": "Du musst dein Home-Assistant-Token erneut eingeben. Das gespeicherte Token konnte nicht entschlüsselt werden.",
   "{{name}} camera preview": "Kameravorschau: {{name}}",
   "{{name}} preview": "Vorschau: {{name}}",
-  "Last updated: {{time}}": "Zuletzt aktualisiert: {{time}}",
   "Connection is not ready": "Verbindung ist noch nicht bereit",
   "Heat/Cool": "Heizen/Kühlen",
   "Disarming": "Wird unscharf geschaltet",
