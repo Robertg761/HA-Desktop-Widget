@@ -2411,8 +2411,9 @@ function showRenameModal(entityId) {
     const entity = state.STATES[entityId];
     if (!entity) return;
 
-    let currentName =
-      state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
+    // The name the tile shows: its custom name, Home Assistant's, or the entity id in words. The
+    // bare id ('switch.no_name') is never shown for a tile titled 'no name'.
+    let currentName = utils.getEntityDisplayName(entity);
     const hasValueSizeControl = isQuickAccessTileValueSizeApplicable(entity);
     const hasCameraPreviewControl = getEntityDomain(entity.entity_id) === 'camera';
     const hasChartControl = isQuickAccessSensorChartApplicable(entity);
@@ -2629,8 +2630,7 @@ function showRenameModal(entityId) {
       if (!error?.result?.config?.homeAssistant) return;
 
       refreshQuickAccessAfterTileSettingsChange();
-      const authoritativeName =
-        state.CONFIG.customEntityNames?.[entityId] || entity.attributes?.friendly_name || entityId;
+      const authoritativeName = utils.getEntityDisplayName(state.STATES[entityId] || entity);
       const authoritativeValueSize = getQuickAccessTileValueSize(entityId);
       const authoritativeCameraRefresh = getQuickAccessCameraPreviewRefresh(entityId);
       const authoritativeChartType = getQuickAccessTileChartType(entityId);
@@ -2689,7 +2689,8 @@ function showRenameModal(entityId) {
         let changed = false;
         let renamed = false;
 
-        const friendlyName = state.STATES[entityId]?.attributes?.friendly_name || entityId;
+        const friendlyName =
+          state.STATES[entityId]?.attributes?.friendly_name || utils.humanizeEntityId(entityId);
         if (nextConfig.customEntityNames?.[entityId] && (!newName || newName === friendlyName)) {
           // Clearing the field, or typing the Home Assistant name back, hands the tile its own name
           // again instead of quietly keeping the custom one.

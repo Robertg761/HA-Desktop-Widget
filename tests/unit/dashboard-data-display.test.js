@@ -1330,6 +1330,12 @@ describe('dashboard data display', () => {
       expect(modal.querySelector('#tile-chart-type-select')).not.toBeNull();
     });
 
+    it('opens on the name the tile shows for an entity Home Assistant gave no name', () => {
+      const modal = openSettings(entity('switch.no_name', 'on', {}));
+      expect(tile('switch.no_name').querySelector('.control-name').textContent).toBe('no name');
+      expect(modal.querySelector('#rename-input').value).toBe('no name');
+    });
+
     it('does not offer them for a text sensor', () => {
       const modal = openSettings(entity('sensor.phase', 'unknown', { friendly_name: 'Moon' }));
       expect(modal.querySelector('#tile-chart-type-select')).toBeNull();
