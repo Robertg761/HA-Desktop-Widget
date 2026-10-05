@@ -328,8 +328,9 @@ const PIN_BUTTONS_FIT = `(() => {
 
 // A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
 // their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
-const resizedPinScene = (family, entityId, size) =>
+const resizedPinScene = (family, entityId, size, extra = {}) =>
   pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
+    ...extra,
     setup: async (ctx) => {
       const pin = await ctx.openPin(entityId);
       await resizePin(ctx, entityId, size);
@@ -359,13 +360,17 @@ const onOffLight = (now) => {
     },
   ];
 };
-const onOffLightPage = {
+// A page of the one entity a scene pins, for one the pins page does not hold: only Quick Access
+// entities can be pinned, and a second page keeps the tab strip the runner waits for.
+const pinPage = (entityId) => ({
   customTabs: [
-    { id: 'pins', name: 'Pins', entityIds: ['light.porch'] },
+    { id: 'pins', name: 'Pins', entityIds: [entityId] },
     { id: 'default', name: 'Home', entityIds: ['light.desk_lamp'] },
   ],
   activeTabId: 'pins',
-};
+});
+// A thermostat that holds a heat/cool range, which has two sliders where a single target has one.
+const heatPumpPage = pinPage('climate.heat_pump');
 
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
@@ -2031,8 +2036,12 @@ const scenes = [
   // theme, where pins stay dark glass.
   pinScene('pin-light-off', 'light.shelf_leds'),
   pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
-  pinScene('pin-light-onoff', 'light.porch', { config: onOffLightPage, extraStates: onOffLight }),
+  pinScene('pin-light-onoff', 'light.porch', {
+    config: pinPage('light.porch'),
+    extraStates: onOffLight,
+  }),
   pinScene('pin-climate', 'climate.bedroom'),
+  pinScene('pin-climate-range', 'climate.heat_pump', { config: heatPumpPage }),
   pinScene('pin-fan', 'fan.office'),
   pinScene('pin-cover', 'cover.garage_door'),
   pinScene('pin-media', 'media_player.kitchen_speaker'),
@@ -2057,6 +2066,20 @@ const scenes = [
   resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
   resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
   resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
+  // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
+  // balanced layout brought back a fourth mode that German cut to "Kü...".
+  resizedPinScene(
+    'climate-range',
+    'climate.heat_pump',
+    { width: 200, height: 170 },
+    { config: heatPumpPage }
+  ),
+  resizedPinScene(
+    'de-climate',
+    'climate.bedroom',
+    { width: 185, height: 158 },
+    { ui: { language: 'de' } }
+  ),
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),

@@ -6802,7 +6802,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     );
 
-    it('keeps a heat/cool range in the header of a small pin, where the body has no target box', () => {
+    it('shows a heat/cool range in the header of a pin bigger than the default, not in boxes', () => {
       const range = {
         entity_id: 'climate.hall',
         state: 'heat_cool',
@@ -6818,12 +6818,41 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
       };
       state.setStates({ [range.entity_id]: range });
-      ui.renderDesktopPinnedTile(range.entity_id, range);
+      const render = (width, height) => {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(range.entity_id, range);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+        return {
+          layout: control.dataset.layout,
+          header: control.querySelector('.desktop-pin-climate-kpi')?.textContent ?? null,
+          boxes: control.querySelectorAll('.desktop-pin-panel-stat').length,
+          current: control.querySelector('.desktop-pin-climate-inline-copy')?.textContent ?? null,
+          sliders: control.querySelectorAll('[data-climate-range]').length,
+        };
+      };
 
-      const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
-      expect(control.dataset.denseVariant).toBe('tight');
-      expect(control.querySelector('.desktop-pin-climate-target-value')).toBeNull();
-      expect(control.querySelector('.desktop-pin-climate-kpi')?.textContent).toMatch(/19.*24/);
+      // The default pin leaves the range to its sliders: beside it the name had a few letters.
+      expect(render(168, 148)).toEqual({
+        layout: 'compact',
+        header: null,
+        boxes: 0,
+        current: 'Now 21°C',
+        sliders: 2,
+      });
+      // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
+      for (const [width, height, layout] of [
+        [200, 170, 'balanced'],
+        [280, 200, 'roomy'],
+      ]) {
+        expect(render(width, height)).toEqual({
+          layout,
+          header: expect.stringMatching(/^19.*24/),
+          boxes: 0,
+          current: 'Now 21°C',
+          sliders: 2,
+        });
+      }
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {
@@ -7146,6 +7175,47 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         control?.querySelector('.desktop-pin-media-action[data-action="next_track"]')
       ).toBeNull();
     });
+
+    it.each([
+      ['climate', 'climate.thermostat', '.desktop-pin-climate-mode'],
+      ['fan', 'fan.office', '.desktop-pin-fan-preset'],
+    ])(
+      'keeps a compact %s pin to three buttons until the balanced layout has room for four',
+      (_family, entityId, buttonSelector) => {
+        state.setStates({
+          'climate.thermostat': {
+            ...sampleStates['climate.thermostat'],
+            attributes: {
+              ...sampleStates['climate.thermostat'].attributes,
+              hvac_modes: ['off', 'heat', 'cool', 'auto'],
+            },
+          },
+          'fan.office': {
+            entity_id: 'fan.office',
+            state: 'on',
+            attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+          },
+        });
+        const render = (width, height) => {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(entityId, state.STATES[entityId]);
+          const control = document.querySelector('#desktop-pin-content .desktop-pin-control');
+          return [
+            control.dataset.layout,
+            control.dataset.denseVariant,
+            control.querySelectorAll(buttonSelector).length,
+          ];
+        };
+
+        // A little past the default size the fourth button came back, and German cut its row to
+        // "Kü...", "Hei...". Wide but short, the default pin's three fit as well.
+        expect(render(180, 156)).toEqual(['compact', 'tight', 3]);
+        expect(render(190, 160)).toEqual(['compact', 'tight', 3]);
+        expect(render(300, 155)).toEqual(['compact', 'tight', 3]);
+        expect(render(195, 160)).toEqual(['balanced', 'standard', 4]);
+      }
+    );
 
     it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
       setDesktopPinViewport(195, 160);

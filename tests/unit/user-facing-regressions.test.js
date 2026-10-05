@@ -753,7 +753,8 @@ describe('User-facing audit regressions', () => {
       ...climate,
       attributes: { ...climate.attributes, current_temperature: 22 },
     });
-    expect(root.querySelector('.desktop-pin-climate-target-value').textContent).toBe('20–24°C');
+    // A range pin prints its range in the header, beside the name.
+    expect(root.querySelector('.desktop-pin-climate-kpi').textContent).toBe('20–24°C');
     await jest.advanceTimersByTimeAsync(300);
     expect(mockCallService).toHaveBeenCalledWith('climate', 'set_temperature', {
       entity_id: climate.entity_id,

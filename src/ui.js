@@ -5943,7 +5943,10 @@ function getDesktopPinDenseRenderProfile(domain = '') {
   if (layoutProfile.isMicro) {
     denseVariant = 'micro';
   } else if (domain === 'climate' || domain === 'fan' || domain === 'cover') {
-    if (!layoutProfile.isBalanced && (layoutProfile.height <= 150 || layoutProfile.width <= 176)) {
+    // A fourth mode, speed or verb only fits its row from the balanced layout's 195x160 up. A
+    // compact pin a little past the default (180x156, 190x160) brought it back and cut German and
+    // French labels to "Kü...", so every compact pin keeps the default pin's three.
+    if (layoutProfile.isCompact) {
       denseVariant = 'tight';
     }
   } else if (domain === 'media_player') {
@@ -6027,15 +6030,20 @@ function getDesktopPinClimateRenderProfile(entity) {
   const climateValue = getDesktopPinClimateValue(entity);
   const maxModes = layoutProfile.isDenseMicro ? 2 : layoutProfile.isDenseTight ? 3 : 4;
   const isSmall = layoutProfile.isDenseTight || layoutProfile.isDenseMicro;
+  // A heat/cool range has two sliders where a single target has one, and beside them the body has
+  // no room for a Target box: at 200x170 and 280x200 the Current and Target boxes pushed the mode
+  // row off the tile. So a range pin shows the room temperature as a line of its own and prints the
+  // range in the header beside the name. The default-size pin leaves the range to its sliders:
+  // printed beside the name there, it cut most names to a few letters.
+  const isRange = climateValue.canSetRange;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
-    // The target is in the body's Target box, so the header repeats it only where a heat/cool
-    // range leaves that box out to make room for its two sliders.
-    showHeaderKpi: climateValue.canSetRange && isSmall,
-    showCurrentStat: !isSmall,
-    showCompactCurrent: isSmall,
+    showTargetBox: !isRange,
+    showHeaderKpi: isRange && !layoutProfile.isDenseTight,
+    showCurrentStat: !isSmall && !isRange,
+    showCompactCurrent: isSmall || isRange,
     showSliderLabels: !isSmall,
     modesToShow: getDesktopPinClimateModesToShow(climateValue.modes, climateValue.mode, maxModes),
   };
@@ -6776,9 +6784,10 @@ function createDesktopPinClimateControlElement(entity) {
     domain: 'climate',
     state: climateValue.mode,
   });
-  const climateStatus = renderProfile.showCompactCurrent
-    ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
-    : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
+  const climateStatus =
+    renderProfile.isDenseTight || renderProfile.isDenseMicro
+      ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
+      : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
   const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
       ? t('No live room temperature')
@@ -6811,7 +6820,7 @@ function createDesktopPinClimateControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         ${
-          renderProfile.showHeaderKpi
+          !renderProfile.showTargetBox
             ? ''
             : renderProfile.showCurrentStat
               ? `

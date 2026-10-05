@@ -242,6 +242,9 @@ describe('visual snapshot scenes', () => {
       'pin-weather-200x170',
       'pin-climate-240x180',
       'pin-weather-240x180',
+      'pin-climate-range',
+      'pin-climate-range-200x170',
+      'pin-de-climate-185x158',
       'pin-de-cover',
       'pin-fr-climate',
       'pin-ar-light',
@@ -332,6 +335,19 @@ describe('visual snapshot scenes', () => {
 
     expect(light.entity_id).toBe(scene.pin);
     expect(light.attributes.supported_color_modes).toEqual(['onoff']);
+  });
+
+  it('pins a heat/cool thermostat, whose two sliders crowd a pin more than one target does', () => {
+    const heatPump = buildStates().find((entity) => entity.entity_id === 'climate.heat_pump');
+    expect(heatPump.attributes).toMatchObject({
+      target_temp_low: expect.any(Number),
+      target_temp_high: expect.any(Number),
+    });
+    for (const name of ['pin-climate-range', 'pin-climate-range-200x170']) {
+      expect(scenes.find((entry) => entry.name === name).pin).toBe('climate.heat_pump');
+    }
+    // German's mode names are the longest a pin a little past the default size has to fit.
+    expect(scenes.find((entry) => entry.name === 'pin-de-climate-185x158').ui.language).toBe('de');
   });
 
   it('puts every pinned entity on a page the scene shows, since only those can be pinned', () => {
