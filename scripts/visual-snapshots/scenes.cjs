@@ -319,7 +319,9 @@ const startupScenes = [
       }),
     },
     setup: async (ctx) => {
-      await ctx.waitForSelector('#widget-state-panel .widget-state-actions');
+      // Past the moment it says it is restoring: the outcome is the red panel that asks to
+      // reconnect (or, on Linux without a keyring, to unlock it).
+      await ctx.waitForSelector('#widget-state-panel.widget-state-error .widget-state-actions');
       await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
     },
   },
