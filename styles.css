@@ -843,10 +843,6 @@ body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-cont
   background-image: var(--panel-veil-layer) !important;
 }
 
-html.desktop-pin-mode,
-html.desktop-pin-mode body {
-  background: transparent !important;
-}
 /* Minimal header */
 .widget-header {
   display: flex;
@@ -12456,7 +12452,9 @@ body.high-contrast {
   color-scheme: dark !important;
 }
 
-body.opaque-panels,
+/* A pin's body is the transparent window around its rounded shell, which this paints instead, so
+   the preset gives the pin no square plate behind its corners. */
+body.opaque-panels:not(.desktop-pin-mode),
 body.opaque-panels
   :is(
     .widget-header,

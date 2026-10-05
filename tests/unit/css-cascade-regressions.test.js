@@ -1433,6 +1433,25 @@ describe('stylesheet cascade regressions', () => {
       ).toBe(tint);
     });
 
+    it.each([
+      ['dark', 'high-contrast opaque-panels'],
+      ['light', 'theme-light high-contrast opaque-panels'],
+      ['opaque panels alone', 'opaque-panels'],
+    ])(
+      'leaves the window around a pin clear under the Readable preset (%s), not a square plate',
+      (_, preset) => {
+        render(`desktop-pin-mode ${preset}`, '<div class="desktop-pin-shell"></div>');
+        expect(resolvedValue(document.body, 'background')).toBe('transparent');
+        // The rounded shell is what the preset makes solid.
+        expect(resolvedValue(document.querySelector('.desktop-pin-shell'), 'background')).not.toBe(
+          'transparent'
+        );
+
+        render(preset, '');
+        expect(resolvedValue(document.body, 'background')).not.toBe('transparent');
+      }
+    );
+
     it('gives a light preset chip its whole width, so "100%" clears an outline', () => {
       render(
         'desktop-pin-mode high-contrast opaque-panels',
