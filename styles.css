@@ -7999,9 +7999,15 @@ body.theme-light:not(.high-contrast)
 
 .modal-body {
   /* Named so what sticks to the body's edges (the to-do add field) can take the padding back by the
-     same amount at every window height. */
+     same amount at every window height. A dialog that wants other padding sets the inset. */
   --modal-body-inset: var(--space-5);
+  --modal-scrollbar-size: 9px;
   padding: var(--modal-body-inset);
+  /* The scrollbar's room is kept whether the body scrolls or not, and the end padding gives it
+     back, so both sides stay the inset. Without it a body that scrolled was a scrollbar wider on
+     the right, and its content moved sideways when a filter made it start or stop scrolling. */
+  padding-inline-end: calc(var(--modal-body-inset) - var(--modal-scrollbar-size));
+  scrollbar-gutter: stable;
   overflow-y: auto;
   position: relative;
 }
@@ -8020,8 +8026,8 @@ body.theme-light:not(.high-contrast)
 }
 
 .modal-body::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: var(--modal-scrollbar-size);
+  height: var(--modal-scrollbar-size);
 }
 
 .modal-body::-webkit-scrollbar-track {
@@ -8288,8 +8294,12 @@ body.theme-light:not(.high-contrast)
   position: sticky;
   top: calc(-1 * var(--modal-body-inset));
   z-index: 1;
-  margin: calc(-1 * var(--modal-body-inset)) calc(-1 * var(--modal-body-inset)) 0;
+  margin: calc(-1 * var(--modal-body-inset)) 0 0;
+  /* At the end it reaches the scrollbar's room, which the body's end padding leaves out. */
+  margin-inline: calc(-1 * var(--modal-body-inset))
+    calc(var(--modal-scrollbar-size) - var(--modal-body-inset));
   padding: var(--modal-body-inset) var(--modal-body-inset) 14px;
+  padding-inline-end: calc(var(--modal-body-inset) - var(--modal-scrollbar-size));
   container-type: scroll-state;
 }
 
@@ -10067,7 +10077,7 @@ body {
 
 .confirm-modal-content .modal-body {
   /* The header and footer pad by --space-5, so the message starts where the title does. */
-  padding: var(--space-5);
+  --modal-body-inset: var(--space-5);
 }
 
 #confirm-message {

@@ -8,8 +8,8 @@
 /* The header and footer pad by --space-5, so the fields start where the title does. */
 .dashboard-tools-modal .modal-body,
 .add-page-modal .modal-body {
+  --modal-body-inset: var(--space-5);
   min-height: 0;
-  padding: var(--space-5);
 }
 
 .workflow-description {

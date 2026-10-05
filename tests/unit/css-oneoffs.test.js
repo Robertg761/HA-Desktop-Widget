@@ -514,6 +514,56 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(document.querySelector('.modal-body'), 'padding')).toBe('1rem');
     });
 
+    // A body that scrolls kept its scrollbar inside the right padding, so its right margin was 9px
+    // wider than its left, and its content moved sideways when a filter made it start or stop
+    // scrolling. The scrollbar's room is kept either way, and the end padding gives it back.
+    it.each([
+      ['a pop-up', '<div class="modal"><div class="modal-content"><div class="modal-body">'],
+      [
+        'a confirmation',
+        '<div class="modal"><div class="modal-content confirm-modal-content"><div class="modal-body">',
+      ],
+      [
+        'Add page',
+        '<div class="modal add-page-modal"><div class="modal-content"><div class="modal-body">',
+      ],
+      [
+        'diagnostics',
+        '<div class="modal dashboard-tools-modal"><div class="modal-content"><div class="modal-body">',
+      ],
+    ])('keeps the scrollbar’s room in %s body, and gives it back at the end', (_, html) => {
+      render(`${html}</div></div></div>`);
+      const body = document.querySelector('.modal-body');
+      const inset = resolvedValue(body, '--modal-body-inset');
+      const scrollbar = resolvedValue(body, '--modal-scrollbar-size');
+
+      expect(resolvedValue(body, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(body, 'padding')).toBe(inset);
+      expect(resolvedValue(body, 'padding-inline-end')).toBe(`calc(${inset} - ${scrollbar})`);
+      // The room kept is the scrollbar the body draws.
+      const bar = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((rule) => rule.selectorText === '.modal-body::-webkit-scrollbar');
+      expect(bar.style.width).toBe('var(--modal-scrollbar-size)');
+    });
+
+    it('lets the sticky to-do field reach the scrollbar’s room, and no further', () => {
+      render(
+        '<div class="modal"><div class="modal-content"><div class="modal-body"><form class="todo-add-form"></form></div></div></div>'
+      );
+      const form = document.querySelector('.todo-add-form');
+      const inset = resolvedValue(form, '--modal-body-inset');
+      const scrollbar = resolvedValue(form, '--modal-scrollbar-size');
+
+      expect(resolvedValue(form, 'margin-inline').replace(/\s+/g, ' ')).toBe(
+        `calc(-1 * ${inset}) calc(${scrollbar} - ${inset})`
+      );
+      // Its field ends where the rest of the body's content does.
+      expect(resolvedValue(form, 'padding-inline-end')).toBe(
+        resolvedValue(form.parentElement, 'padding-inline-end')
+      );
+    });
+
     it('closes a dialog with its body padding, not with the last field and the padding', () => {
       render(
         '<div class="modal"><div class="modal-content"><div class="modal-body"><div class="form-group" id="first"></div><div class="form-group" id="last"></div></div></div></div>'
