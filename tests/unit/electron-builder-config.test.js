@@ -104,6 +104,40 @@ function effectivePatterns(platform) {
   )[0].patterns;
 }
 
+/**
+ * The files of an installed package that electron-builder packs on a platform, relative to the
+ * package: its folder walked the way app-builder-lib's NodeModuleCopyHelper walks it, through the
+ * matcher getNodeModuleFileMatcher builds from the top-level and the platform `files`. A folder the
+ * matcher refuses is not entered. electron-builder also leaves out a few names on its own
+ * (binding.gyp, a README, test folders), which this does not repeat.
+ */
+function packedFiles(packageName, platform) {
+  const { getNodeModuleFileMatcher } = require('app-builder-lib/out/fileMatcher');
+  const filter = getNodeModuleFileMatcher(
+    root,
+    path.join(root, 'dist', 'app'),
+    (value) => value,
+    config[platform],
+    { config, debugLogger: { isEnabled: false, add() {} } }
+  ).createFilter();
+  const packageDir = path.join(root, 'node_modules', ...packageName.split('/'));
+  const packed = [];
+  const walk = (relative) => {
+    for (const name of fs.readdirSync(path.join(packageDir, relative)).sort()) {
+      const entry = relative ? `${relative}/${name}` : name;
+      const file = path.join(packageDir, ...entry.split('/'));
+      const stat = fs.lstatSync(file);
+      // The path the package has inside the app, which is what the patterns are written against.
+      stat.moduleFullFilePath = `node_modules/${packageName}/${entry}`;
+      if (!filter(file, stat)) continue;
+      if (stat.isDirectory()) walk(entry);
+      else packed.push(entry);
+    }
+  };
+  walk('');
+  return packed;
+}
+
 describe('what the Windows and macOS packages contain', () => {
   // The top-level and the platform `files` are added to one list, so the platform lists hold only
   // exclusions and the top-level allowlist decides what the app's own files are. A list made of
@@ -450,8 +484,15 @@ describe('the usocket dependency subtree that no longer ships', () => {
       const parent = entry.slice(0, entry.lastIndexOf('/node_modules/'));
       expect(orphaned).toContain(parent);
     }
-    // Every top-level negation is one of these: the dbus-next ones live in the platform lists.
-    expect(negatives(config.files)).toHaveLength(excludedFolders.length);
+    // Every top-level negation of a whole package is one of these: the dbus-next ones live in the
+    // platform lists. The others drop some files of a package that ships, and never all of it.
+    const partial = negatives(config.files).filter(
+      (entry) => !excludedFolders.some((name) => entry === `!node_modules/${name}/**/*`)
+    );
+    for (const entry of partial) {
+      const name = /^!node_modules\/((?:@[^/]+\/)?[^/]+)\/[^*]/.exec(entry)?.[1];
+      expect(shippedNames.has(name)).toBe(true);
+    }
   });
 
   it('leaves nothing that ships depending on an excluded package', () => {
@@ -541,5 +582,126 @@ describe('the usocket dependency subtree that no longer ships', () => {
       if (fs.existsSync(path.join(root, owner))) walk(owner, owner);
     }
     expect(found).toEqual([]);
+  });
+});
+
+describe('the icon font that ships', () => {
+  const mdiRoot = path.join(root, 'node_modules', '@mdi', 'font');
+  const fontFile = 'fonts/materialdesignicons-webfont.woff2';
+  // Font formats Chromium can load. The .eot (embedded-opentype) is not one, so it is skipped.
+  const chromiumFormats = new Set(['woff2', 'woff', 'truetype', 'opentype']);
+  // Anything that names a file the top-level `files` drops from @mdi/font.
+  const droppedReference =
+    /materialdesignicons-webfont\.(?:eot|ttf|woff)(?![\w])|@mdi\/font\/scss|materialdesignicons(?:\.min)?\.css\.map/;
+
+  /** The node_modules stylesheets index.html links, as paths inside @mdi/font. */
+  function linkedStylesheets() {
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    return [...html.matchAll(/<link\b[^>]*\bhref="node_modules\/@mdi\/font\/([^"]+)"/g)].map(
+      (match) => match[1]
+    );
+  }
+
+  /**
+   * The sources of each @font-face in a stylesheet, as Chromium reads them: the last `src` of the
+   * rule wins, and its entries are tried in order.
+   */
+  function fontFaceSources(css) {
+    const postcss = require('postcss');
+    const faces = [];
+    postcss.parse(css).walkAtRules('font-face', (rule) => {
+      const sources = [];
+      rule.walkDecls('src', (declaration) => sources.push(declaration.value));
+      const entries = [
+        ...String(sources.at(-1)).matchAll(
+          /url\(\s*(['"]?)([^'")]+)\1\s*\)(?:\s*format\(\s*(['"]?)([^'")]+)\3\s*\))?/g
+        ),
+      ].map((match) => ({ url: match[2], format: match[4] || '' }));
+      faces.push(entries);
+    });
+    return faces;
+  }
+
+  it.each(['linux', 'mac', 'win'])(
+    'keeps only the woff2, with no scss and no source maps, on %s',
+    (platform) => {
+      const packed = packedFiles('@mdi/font', platform);
+      expect(packed.filter((file) => file.startsWith('fonts/'))).toEqual([fontFile]);
+      expect(packed.filter((file) => file.startsWith('scss/'))).toEqual([]);
+      expect(packed.filter((file) => file.endsWith('.map'))).toEqual([]);
+      for (const stylesheet of linkedStylesheets()) expect(packed).toContain(stylesheet);
+      // The formats dropped are installed, so the first check is not passing on a near-empty folder.
+      const installed = fs.readdirSync(path.join(mdiRoot, 'fonts'));
+      for (const extension of ['eot', 'ttf', 'woff', 'woff2']) {
+        expect(installed).toContain(`materialdesignicons-webfont.${extension}`);
+      }
+    }
+  );
+
+  it('loads the woff2 first from the stylesheet index.html links', () => {
+    const stylesheets = linkedStylesheets();
+    expect(stylesheets).toEqual(['css/materialdesignicons.min.css']);
+    const packed = new Set(packedFiles('@mdi/font', 'linux'));
+    for (const stylesheet of stylesheets) {
+      const faces = fontFaceSources(fs.readFileSync(path.join(mdiRoot, stylesheet), 'utf8'));
+      expect(faces).toHaveLength(1);
+      // Chromium skips the formats it cannot read and stops at the first it can, so nothing after
+      // the woff2 is ever asked for, and nothing before it can be loaded.
+      const loaded = faces[0].find((entry) => chromiumFormats.has(entry.format));
+      expect(loaded.format).toBe('woff2');
+      const target = path.posix
+        .normalize(path.posix.join(path.posix.dirname(stylesheet), loaded.url))
+        .replace(/[?#].*$/, '');
+      expect(target).toBe(fontFile);
+      expect(packed.has(target)).toBe(true);
+    }
+  });
+
+  it('leaves nothing in the app pointing at a dropped file', () => {
+    const files = [];
+    const walkInto = (entry) => {
+      const full = path.join(root, entry);
+      if (!fs.existsSync(full)) return;
+      if (fs.statSync(full).isDirectory()) {
+        for (const child of fs.readdirSync(full)) {
+          if (child !== 'node_modules') walkInto(path.join(entry, child));
+        }
+      } else if (/\.(?:c?js|mjs|html|css|json)$/.test(entry)) {
+        files.push(entry);
+      }
+    };
+    // The packed app files, and the sources the renderer and preload bundles are built from.
+    for (const entry of positives(config.files)) walkInto(entry.replace(/\/\*\*\/\*$/, ''));
+    for (const entry of ['renderer.js', 'preload.js']) walkInto(entry);
+    expect(files).toEqual(expect.arrayContaining(['index.html', 'styles.css', 'main.js']));
+    const offenders = files.filter((file) =>
+      droppedReference.test(fs.readFileSync(path.join(root, file), 'utf8'))
+    );
+    expect(offenders).toEqual([]);
+    // Inside @mdi/font, files name each other by relative path. The stylesheet still names the other
+    // formats in its @font-face (read by the test above) and its source map in a comment only
+    // DevTools follows, which a packaged build does not offer (src/application-menu.cjs).
+    // scripts/verify.js is the package's own check before it is published, and reads the scss;
+    // nothing runs it. No other packed file names a dropped one.
+    const relativeReference =
+      /materialdesignicons-webfont\.(?:eot|ttf|woff)(?![\w])|\bscss\/|\.css\.map\b/;
+    const checked = [];
+    for (const file of packedFiles('@mdi/font', 'linux')) {
+      if (!/\.(?:css|js|json|html)$/.test(file) || file === 'scripts/verify.js') continue;
+      let text = fs.readFileSync(path.join(mdiRoot, file), 'utf8');
+      if (file.endsWith('.css')) {
+        text = text
+          .replace(/@font-face\s*\{[^}]*\}/g, '')
+          .replace(/\/\*# sourceMappingURL=[^*]*\*\//g, '');
+      }
+      checked.push(file);
+      expect([file, relativeReference.test(text)]).toEqual([file, false]);
+    }
+    expect(checked).toEqual(
+      expect.arrayContaining(['css/materialdesignicons.min.css', 'preview.html'])
+    );
+    // verify.js is what @mdi/font runs before it publishes, not something a stylesheet loads.
+    const mdiPackage = JSON.parse(fs.readFileSync(path.join(mdiRoot, 'package.json'), 'utf8'));
+    expect(mdiPackage.scripts.prepublish).toBe('node scripts/verify.js');
   });
 });

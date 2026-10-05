@@ -65,6 +65,17 @@ files:
   - '!node_modules/isexe/**/*'
   - '!node_modules/env-paths/**/*'
   - '!node_modules/yallist/**/*'
+  # The Material Design Icons font. index.html links @mdi/font's own stylesheet, whose @font-face
+  # offers the font as .eot, .woff2, .woff and .ttf, in that order. Chromium skips the .eot, a
+  # format only Internet Explorer reads, and loads the first one it can, the .woff2, so the other
+  # three (3.2 MB) are never opened. The scss sources and the css source maps are for building a
+  # stylesheet of one's own. tests/unit/electron-builder-config.test.js checks that the stylesheet
+  # still offers the woff2 first and that nothing that ships points at a file dropped here.
+  - '!node_modules/@mdi/font/fonts/*.eot'
+  - '!node_modules/@mdi/font/fonts/*.ttf'
+  - '!node_modules/@mdi/font/fonts/*.woff'
+  - '!node_modules/@mdi/font/scss/**/*'
+  - '!node_modules/@mdi/font/css/*.map'
 asar: true
 compression: normal
 # Chromium draws its own interface (the right-click menu in a text field, the spelling menu, the
