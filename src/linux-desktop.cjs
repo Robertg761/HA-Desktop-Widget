@@ -1,5 +1,6 @@
 /* global process */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
 
@@ -169,9 +170,21 @@ function legacyPortalBindingNotice({ legacyAppId, id, accelerator = '' } = {}) {
   );
 }
 
-// The names the installed packages put on PATH: the Arch package links ha-desktop-widget, and the
-// .deb links the executable's own name (home-assistant-widget, from package.json).
-const COMMAND_NAMES = ['ha-desktop-widget'];
+// The name the Arch package puts on PATH. The .deb links the executable's own name
+// (home-assistant-widget, from package.json), and an AppImage gets a link of this name (below).
+const COMMAND_NAME = 'ha-desktop-widget';
+
+/**
+ * Where an AppImage's command lives: a link in the user's own folder of commands, which
+ * ensureAppImageCommandLink (linux-desktop-entry.cjs) keeps pointed at the AppImage that last ran.
+ * The AppImage's own file name carries its version ("HA Desktop Widget-4.0.0-linux-x64.AppImage"),
+ * and an update installs the next build under its own name and deletes this one, so a key bound to
+ * that path would stop working at the first update. A Linux path, whatever system builds it.
+ * @param {string} [home]
+ */
+function getAppImageCommandLink(home = os.homedir()) {
+  return path.posix.join(home, '.local', 'bin', COMMAND_NAME);
+}
 
 // A word for a shell (and for a compositor's exec line, which goes through one): quoted only when
 // it needs to be, as a path with spaces does ("HA Desktop Widget-4.0.0-linux-x64.AppImage").
@@ -192,15 +205,17 @@ function getProfileArgs(argv, isPackaged) {
 /**
  * The command a person binds to a key in their window manager to show or hide this widget, as they
  * would type it: `ha-desktop-widget --toggle` for the Arch package, `home-assistant-widget --toggle`
- * for the .deb, the AppImage's own path for an AppImage (nothing is on PATH for one), and the
- * executable's path for anything else. A name on PATH is used only when it leads to this
- * executable.
+ * for the .deb, the link in ~/.local/bin by its full path for an AppImage (a compositor's PATH may
+ * not have that folder), and the executable's path for anything else. A name on PATH, or the link,
+ * is used only when it leads to this executable or AppImage; an AppImage without one gets its own
+ * path, which lasts until an update renames the file.
  * @param {Object} [options]
  * @param {string[]} [options.argv] - This process's argv, for the profile it runs on.
  * @param {Object} [options.env]
  * @param {string} options.execPath - process.execPath.
  * @param {boolean} options.isPackaged - app.isPackaged.
  * @param {string} [options.appPath] - app.getAppPath(), which a run from source needs.
+ * @param {string} [options.home]
  * @param {(file: string) => string} [options.realpath]
  * @returns {string}
  */
@@ -210,6 +225,7 @@ function getToggleCommand({
   execPath,
   isPackaged,
   appPath = '',
+  home = os.homedir(),
   realpath = fs.realpathSync,
 } = {}) {
   const resolve = (file) => {
@@ -228,7 +244,9 @@ function getToggleCommand({
     (!env.APPDIR || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative)));
   let launch;
   if (fromThisAppImage) {
-    launch = [shellWord(env.APPIMAGE)];
+    const link = getAppImageCommandLink(home);
+    const linked = resolve(link);
+    launch = [shellWord(linked && linked === resolve(env.APPIMAGE) ? link : env.APPIMAGE)];
   } else if (!isPackaged) {
     launch = [shellWord(execPath), shellWord(appPath)];
   } else {
@@ -236,7 +254,7 @@ function getToggleCommand({
     const dirs = String(env.PATH || '')
       .split(path.delimiter)
       .filter((dir) => path.isAbsolute(dir));
-    const name = [...COMMAND_NAMES, path.basename(execPath)].find((candidate) =>
+    const name = [COMMAND_NAME, path.basename(execPath)].find((candidate) =>
       dirs.some((dir) => target && resolve(path.join(dir, candidate)) === target)
     );
     launch = [name || shellWord(execPath)];
@@ -249,6 +267,7 @@ module.exports = {
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
   getLaunchAction,
+  getAppImageCommandLink,
   getHyprlandSocketCandidates,
   getToggleCommand,
   hasIsolatedProfile,

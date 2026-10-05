@@ -1083,7 +1083,7 @@ Ref: none
 
 ## Sway, niri and river (SWAY)
 
-Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup shortcut, bind the widget's `--toggle` command yourself; Settings > Hotkeys names it for your installation. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the full path of the AppImage file for the AppImage. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
+Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup shortcut, bind the widget's `--toggle` command yourself; Settings > Hotkeys names it for your installation. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` (by its full path) for the AppImage, a link the widget points at the AppImage each time it starts. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
 
 ### SWAY-1 Pins
 
@@ -1100,8 +1100,9 @@ Ref: MP-07, CSSA1-10
 
 1. Settings > Hotkeys: read the page, in particular the Global Popup Trigger section.
 2. Press your `--toggle` key several times.
+3. AppImage only, when a newer version is out: update from Settings > Advanced, let the new version start, and press the key again.
 
-Expected: Where there is no shortcut portal, the Global Popup Trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, the AppImage's own path for the AppImage). The key, bound to exactly that command, raises and lowers the widget.
+Expected: Where there is no shortcut portal, the Global Popup Trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, `/home/<you>/.local/bin/ha-desktop-widget --toggle` for the AppImage). The key, bound to exactly that command, raises and lowers the widget, and with the AppImage it still does after the update.
 
 Capture: A screenshot of the Hotkeys page.
 

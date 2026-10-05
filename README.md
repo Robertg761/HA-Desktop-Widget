@@ -31,11 +31,19 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ## Sway, niri and river
 
-On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the AppImage file's full path for the AppImage. With the `.deb`:
+On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` for the AppImage. With the `.deb`:
 
 - Sway: `bindsym $mod+Shift+h exec home-assistant-widget --toggle`
 - niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
 - river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
+
+The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows. With the AppImage:
+
+- Sway: `bindsym $mod+Shift+h exec ~/.local/bin/ha-desktop-widget --toggle`
+- niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn '~/.local/bin/ha-desktop-widget --toggle'`
+
+The widget leaves that name alone if something else already has it, such as a file of yours there or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
 
 ## Weather Effects
 

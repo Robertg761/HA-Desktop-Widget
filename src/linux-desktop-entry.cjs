@@ -2,7 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { APP_ID } = require('./linux-desktop.cjs');
+const { APP_ID, getAppImageCommandLink } = require('./linux-desktop.cjs');
 const { buildDesktopExecPrefix, parseDesktopExecCommand } = require('./linux-startup.cjs');
 
 const APPARMOR_USERNS_RESTRICTION = '/proc/sys/kernel/apparmor_restrict_unprivileged_userns';
@@ -113,6 +113,40 @@ function ensureAppImageDesktopEntry({
   return true;
 }
 
+/**
+ * Keep ~/.local/bin/ha-desktop-widget pointed at the running AppImage: the command a window-manager
+ * key is bound to (getToggleCommand), which an update's new file name would otherwise break. Only
+ * a link this app could have made is moved, one to an AppImage or one whose file is gone (an update
+ * deleted it); a file of that name, or a link the user pointed at something else, is theirs. Nor is
+ * one made where the name already leads somewhere else on PATH (the Arch package installed as
+ * well), which the link would hide.
+ * @returns {boolean} Whether the link was made or moved.
+ */
+function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsModule = fs } = {}) {
+  const target = env.APPIMAGE;
+  if (!target || !path.posix.isAbsolute(target)) return false;
+  const link = getAppImageCommandLink(home);
+  const dir = path.posix.dirname(link);
+  let current = null;
+  try {
+    if (!fsModule.lstatSync(link).isSymbolicLink()) return false;
+    current = fsModule.readlinkSync(link);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (current === target) return false;
+  if (current !== null && fsModule.existsSync(link) && !/\.appimage$/i.test(current)) return false;
+  const shadowed = String(env.PATH || '')
+    .split(path.posix.delimiter)
+    .filter((entry) => path.posix.isAbsolute(entry) && path.posix.resolve(entry) !== dir)
+    .some((entry) => fsModule.existsSync(path.posix.join(entry, path.posix.basename(link))));
+  if (shadowed) return false;
+  fsModule.mkdirSync(dir, { recursive: true });
+  if (current !== null) fsModule.unlinkSync(link);
+  fsModule.symlinkSync(target, link);
+  return true;
+}
+
 const PRODUCT_NAME = 'HA Desktop Widget';
 const LEGACY_LAUNCHER_NAME = /ha[-_]?desktop[-_]?widget|hadesktopwidget|home-assistant-widget/i;
 
@@ -183,6 +217,7 @@ function repairStaleAppImageLaunchers({
 
 module.exports = {
   appArmorRestrictsUserNamespaces,
+  ensureAppImageCommandLink,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 };

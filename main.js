@@ -79,6 +79,7 @@ const {
   updateInstalledOmarchyBarPlugin,
 } = require('./src/omarchy-bar.cjs');
 const {
+  ensureAppImageCommandLink,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
@@ -13344,6 +13345,12 @@ app
         ensureAppImageDesktopEntry({ iconPath: getAppIconPath(__dirname) });
       } catch (error) {
         log.warn('Could not create the AppImage launcher:', error?.message || error);
+      }
+      try {
+        // The command Settings tells Sway, niri and river users to bind, which outlasts updates.
+        ensureAppImageCommandLink();
+      } catch (error) {
+        log.warn('Could not link the AppImage command:', error?.message || error);
       }
       try {
         repairStaleAppImageLaunchers({

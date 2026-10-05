@@ -6,7 +6,8 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { getToggleCommand } = require('../../src/linux-desktop.cjs');
+const { getAppImageCommandLink, getToggleCommand } = require('../../src/linux-desktop.cjs');
+const { ensureAppImageCommandLink } = require('../../src/linux-desktop-entry.cjs');
 
 describe('the command that toggles the widget', () => {
   const bin = path.join(path.sep, 'usr', 'bin');
@@ -19,7 +20,7 @@ describe('the command that toggles the widget', () => {
     throw new Error('ENOENT');
   };
 
-  it('is the AppImage file itself, quoted, since nothing of it is on PATH', () => {
+  it('is the AppImage file itself, quoted, when it has no link in ~/.local/bin', () => {
     const appImage = path.join(
       path.sep,
       'home',
@@ -114,6 +115,124 @@ describe('the command that toggles the widget', () => {
     expect(run(['widget', '--isolated-profile'])).toBe(`${execPath} --toggle`);
     // A run from source names the app folder, and --dev picks its own profile.
     expect(run(['electron', '.', '--dev'], false)).toBe(`${execPath} /repo --dev --toggle`);
+  });
+});
+
+// The AppImage's file name carries its version, and an update installs the next build under its
+// own name and deletes the old file (electron-updater keeps the name only when it has no version).
+// Written the Linux way: these are Linux paths whatever system runs the test.
+describe("an AppImage's command, which outlasts its updates", () => {
+  const home = '/home/u';
+  const link = '/home/u/.local/bin/ha-desktop-widget';
+  const v400 = '/home/u/Applications/HA Desktop Widget-4.0.0-linux-x64.AppImage';
+  const v401 = '/home/u/Applications/HA Desktop Widget-4.0.1-linux-x64.AppImage';
+
+  // A file system of files and symlinks, as far as the link and the command look at it.
+  function fakeFs(entries = {}) {
+    const nodes = new Map(Object.entries(entries));
+    const missing = (file) => Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' });
+    const follow = (file) => {
+      let at = file;
+      while (nodes.get(at)?.link) at = nodes.get(at).link;
+      return nodes.has(at) ? at : null;
+    };
+    return {
+      nodes,
+      lstatSync(file) {
+        if (!nodes.has(file)) throw missing(file);
+        return { isSymbolicLink: () => !!nodes.get(file).link };
+      },
+      readlinkSync(file) {
+        if (!nodes.get(file)?.link) throw missing(file);
+        return nodes.get(file).link;
+      },
+      existsSync: (file) => follow(file) !== null,
+      realpathSync(file) {
+        const at = follow(file);
+        if (at === null) throw missing(file);
+        return at;
+      },
+      mkdirSync: jest.fn(),
+      unlinkSync(file) {
+        if (!nodes.delete(file)) throw missing(file);
+      },
+      symlinkSync: jest.fn((target, file) => {
+        if (nodes.has(file)) throw Object.assign(new Error('EEXIST'), { code: 'EEXIST' });
+        nodes.set(file, { link: target });
+      }),
+    };
+  }
+
+  const PATH = ['/home/u/.local/bin', '/usr/local/bin', '/usr/bin'].join(':');
+  const command = (fsModule, appImage) =>
+    getToggleCommand({
+      argv: ['widget'],
+      env: { APPIMAGE: appImage, PATH },
+      execPath: '/tmp/.mount_HA/home-assistant-widget',
+      isPackaged: true,
+      home,
+      realpath: fsModule.realpathSync,
+    });
+
+  it('lives in ~/.local/bin under the Arch package’s name', () => {
+    expect(getAppImageCommandLink(home)).toBe(link);
+  });
+
+  it('is the same link before and after an update renames the AppImage', () => {
+    const fsModule = fakeFs({ [v400]: { file: true } });
+    // Without the link the command would be the versioned path, which the update deletes.
+    expect(command(fsModule, v400)).toBe(`'${v400}' --toggle`);
+
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule })).toBe(true);
+    expect(fsModule.mkdirSync).toHaveBeenCalledWith('/home/u/.local/bin', { recursive: true });
+    const bound = command(fsModule, v400);
+    expect(bound).toBe(`${link} --toggle`);
+
+    // The update: 4.0.1 under its own name, 4.0.0 deleted, and 4.0.1 starts.
+    fsModule.nodes.delete(v400);
+    fsModule.nodes.set(v401, { file: true });
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v401, PATH }, home, fsModule })).toBe(true);
+    expect(fsModule.readlinkSync(link)).toBe(v401);
+    expect(command(fsModule, v401)).toBe(bound);
+
+    // Nothing to do once it already leads there.
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v401, PATH }, home, fsModule })).toBe(
+      false
+    );
+    expect(fsModule.symlinkSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('follows the AppImage that ran last, when there are two', () => {
+    const fsModule = fakeFs({ [v400]: { file: true }, [v401]: { file: true } });
+    ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule });
+    ensureAppImageCommandLink({ env: { APPIMAGE: v401, PATH }, home, fsModule });
+    expect(fsModule.readlinkSync(link)).toBe(v401);
+  });
+
+  it.each([
+    ['a file of that name', { [link]: { file: true } }],
+    [
+      'a link the user pointed at something else',
+      {
+        [link]: { link: '/home/u/scripts/widget.sh' },
+        '/home/u/scripts/widget.sh': { file: true },
+      },
+    ],
+    ['the Arch package’s command, which the link would hide', { '/usr/bin/ha-desktop-widget': {} }],
+  ])('leaves %s alone, and names the AppImage itself', (_, entries) => {
+    const fsModule = fakeFs({ [v400]: { file: true }, ...entries });
+    const before = new Map(fsModule.nodes);
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule })).toBe(
+      false
+    );
+    expect(fsModule.nodes).toEqual(before);
+    expect(command(fsModule, v400)).toBe(`'${v400}' --toggle`);
+  });
+
+  it('does nothing outside an AppImage', () => {
+    const fsModule = fakeFs();
+    expect(ensureAppImageCommandLink({ env: { PATH }, home, fsModule })).toBe(false);
+    expect(fsModule.symlinkSync).not.toHaveBeenCalled();
   });
 });
 
