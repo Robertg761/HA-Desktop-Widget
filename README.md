@@ -148,7 +148,7 @@ Planned for a future release:
 > `gnome-keyring`, or another Secret Service, and restart the widget. The `.deb` recommends
 > `gnome-keyring`, and the Arch package lists it as optional.
 
-> **AppImage on Ubuntu 24.04:** Ubuntu 23.10 and later block the sandbox the AppImage needs, so
+> **AppImage on Ubuntu 23.10 and later:** These releases block the sandbox the AppImage needs, so
 > a double-clicked AppImage closes without opening a window. Install the `.deb` instead, or start
 > the AppImage once from a terminal with `--no-sandbox`. See
 > [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).

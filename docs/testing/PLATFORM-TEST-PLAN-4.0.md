@@ -870,7 +870,7 @@ Ref: MP-16
 
 ## Ubuntu 24.04, AppImage and .deb
 
-Ubuntu 24.04 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
+Ubuntu 23.10 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
 
 ### UBU-1 AppImage start
 
