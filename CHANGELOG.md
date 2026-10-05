@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add an opt-in anonymous install count so the project can see how many people use the app. It is off by default. Turn on Settings → Updates → Count this install and the app sends a random install ID, its version, and the OS family once a day, and nothing else. `DO_NOT_TRACK=1` stops it even when the setting is on.
 - Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
 - Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
 - Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.

@@ -55,7 +55,7 @@
     <p>This page covers the HA Desktop Widget desktop app, this website, and a hosted Cloud Sync service that is only planned. The app and the website are live today. The Cloud Sync section at the end is a draft.</p>
 
     <h2>The desktop app</h2>
-    <p>The app has no accounts and does not send telemetry, analytics or crash reports. It talks to your own Home Assistant server and to GitHub, as described below. Your settings, layout and logs stay on your computer.</p>
+    <p>The app has no accounts and does not send telemetry, analytics or crash reports. The one exception is an anonymous install count that stays off unless you turn it on (see below). Otherwise the app talks only to your own Home Assistant server and to GitHub, as described below. Your settings, layout and logs stay on your computer.</p>
     <h3>Home Assistant</h3>
     <p>The app connects to the Home Assistant address you enter and shows what that server reports: entities, cameras and media. You sign in on Home Assistant's own page in your browser, so the app never sees your password. It keeps the sign-in it receives, or a long-lived access token you paste, encrypted with your operating system's secure storage (Windows, the macOS Keychain, or a Linux keyring such as GNOME Keyring or KWallet). Where secure storage is not available, the app does not save the sign-in.</p>
     <h3>Update checks (GitHub)</h3>
@@ -66,6 +66,9 @@
     <p>A media player can point to album art on another website. The app downloads that picture itself and refuses addresses on your own network or other private or reserved ranges. The site that hosts the picture sees your IP address. Your Home Assistant sign-in is sent only to your own Home Assistant server.</p>
     <h3>Links and Profile Sync</h3>
     <p>Report an issue, Releases, Sponsor and Profile Sync help open GitHub pages in your default browser, and that site's own policy applies from there. Profile Sync, if you turn it on, writes one file to a folder you choose. The app does not contact Dropbox, OneDrive, iCloud Drive, Google Drive or Syncthing; whichever service syncs that folder handles the file. You can encrypt the file with a passphrase.</p>
+    <h3>Anonymous install count (off unless you turn it on)</h3>
+    <p>Release download counts include every update, so they cannot say how many people use the app. If you turn on <strong>Settings → Updates → Count this install</strong>, the app sends one small request a day to a counter hosted on Cloudflare. It contains a random install ID created on your computer, the app version, and your operating system family (Windows, macOS, or Linux). It contains nothing about you, your Home Assistant, your entities, or your settings.</p>
+    <p>The counter stores only the install ID, the days it was first and last seen, and its latest version and operating system. It does not store IP addresses or browser or app identifiers, and we use it only to count installs. Turning the setting off stops the requests, and the <code>DO_NOT_TRACK=1</code> environment variable stops them even when the setting is on. The install ID is kept in <code>usage-ping.json</code> in the app's settings folder; deleting that file gives the app a new, unrelated ID.</p>
 
     <h2>This website</h2>
     <p>This website has no accounts, cookies, analytics or advertising, and loads no third-party scripts or fonts. It is hosted by Vercel, which receives your IP address and the usual details of each request, as any web host does.</p>

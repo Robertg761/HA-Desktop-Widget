@@ -1,0 +1,19 @@
+name = "ha-desktop-widget-usage"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Requests are counted, not logged: leave Workers Logs off.
+[observability]
+enabled = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ha-desktop-widget-usage"
+database_id = "6ab4347d-c8bf-46d3-b584-8cab24aa0456"
+
+# Serve the Worker on the hostname the app pings (src/usage-ping.cjs). Needs the
+# hadesktopwidget.com zone on Cloudflare; otherwise delete this block and point
+# USAGE_PING_URL at the workers.dev address `wrangler deploy` prints.
+[[routes]]
+pattern = "usage.hadesktopwidget.com"
+custom_domain = true
