@@ -7929,6 +7929,13 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   return true;
 }
 
+// The verb a scene, script or lock pin's button shows. A switch's button is the power icon instead.
+function getDesktopPinToggleVerb(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (domain === 'lock') return entity.state === 'locked' ? t('Unlock') : t('Lock');
+  return t('Run');
+}
+
 // A lock's button names the action it takes ("Unlock"), so its label says which lock. Other toggles
 // show their state as the label, which is the whole of their name.
 function getDesktopPinToggleActionAriaLabel(entity) {
@@ -7983,7 +7990,6 @@ function createDesktopPinToggleEntityControlElement(entity) {
   });
   const icon = entityIconMarkup(entity);
   const isSwitch = !isSceneLike && !isLock;
-  const actionLabel = isSceneLike ? t('Run') : isOn ? t('Unlock') : t('Lock');
   const toggleActionAriaLabel = getDesktopPinToggleActionAriaLabel(entity);
 
   // The meter says the state in large type, so the header carries only the name.
@@ -8005,7 +8011,7 @@ function createDesktopPinToggleEntityControlElement(entity) {
           <button class="desktop-pin-panel-button desktop-pin-toggle-action" type="button" data-active="false"${toggleActionAriaLabel ? ` aria-label="${escapeHtmlAttribute(toggleActionAriaLabel)}"` : ''}>${
             isSwitch
               ? `<span class="desktop-pin-panel-button-icon">${lineIconMarkup('power')}</span>`
-              : desktopPinButtonLabelMarkup(actionLabel)
+              : desktopPinButtonLabelMarkup(getDesktopPinToggleVerb(entity))
           }</button>
         </div>
       </div>
@@ -8036,7 +8042,6 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const isLock = domain === 'lock';
   const isOn = isLock ? entity.state === 'locked' : entity.state === 'on';
   const isSwitch = !isSceneLike && !isLock;
-  const actionLabel = isSceneLike ? t('Run') : isOn ? t('Unlock') : t('Lock');
   const displayState = utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
@@ -8061,7 +8066,7 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
     if (!(isLock && isOn)) cancelPinUnlockConfirmation(action);
     // A button that is asking keeps asking until it is answered or times out.
     if (!pinUnlockConfirmations.has(action)) {
-      setDesktopPinButtonLabel(action, actionLabel);
+      setDesktopPinButtonLabel(action, getDesktopPinToggleVerb(entity));
       const ariaLabel = getDesktopPinToggleActionAriaLabel(entity);
       if (ariaLabel) action.setAttribute('aria-label', ariaLabel);
     }
