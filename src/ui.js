@@ -4929,6 +4929,10 @@ function renderComparisonGraphBody(tile, graph) {
     pointer = { clientX: null };
     comparisonGraphPointers.set(tile, pointer);
   }
+  // Only a chart the pointer is still over gets its readout back. The pointer can go without a
+  // pointerleave reaching the chart (the window hidden to the tray, the tile hidden by a page
+  // switch, a chart replaced under it), and the readout then stayed at a point it had left.
+  if (!body.querySelector('.comparison-graph-frame')?.matches(':hover')) pointer.clientX = null;
   const hoveredX = pointer.clientX;
 
   body.textContent = '';
