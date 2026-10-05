@@ -595,7 +595,7 @@ function orderForEmptyQuery(entityRows, commands) {
   // are found by searching.
   commands
     .filter((item) => !item.tabId && !QUERY_ONLY_SERVICES.has(item.service))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .sort((a, b) => compareNames(a.displayName, b.displayName))
     .forEach(add);
   return ordered;
 }

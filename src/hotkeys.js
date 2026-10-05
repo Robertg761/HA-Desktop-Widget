@@ -1,7 +1,8 @@
 import state from './state.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { getEntityDisplayName, getSearchScore } from './utils.js';
-import { getLocaleState, t } from './i18n.js';
+import { t } from './i18n.js';
+import { compareNames } from './format.js';
 import accelerators from './accelerators.cjs';
 import { paginate, renderListPager } from './list-pager.js';
 
@@ -165,7 +166,6 @@ function renderHotkeysTab() {
     if (!container) return;
 
     const filter = document.getElementById('hotkey-entity-search').value.toLowerCase();
-    const locale = getLocaleState().activeLocale || undefined;
     // A new query starts at its first page.
     if (filter !== hotkeyListFilter) hotkeyListPage = 0;
     hotkeyListFilter = filter;
@@ -179,8 +179,9 @@ function renderHotkeysTab() {
         return { entity, score, name: getEntityDisplayName(entity) };
       })
       .filter((item) => item.score > 0)
-      // Home Assistant's own order is arbitrary; name order is how the other pickers list entities.
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, locale));
+      // Home Assistant's own order is arbitrary; name order is how the other pickers list entities,
+      // with numbers in natural order ("Room 2" before "Room 10").
+      .sort((a, b) => b.score - a.score || compareNames(a.name, b.name));
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.

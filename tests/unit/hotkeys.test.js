@@ -424,6 +424,33 @@ describe('hotkeys module', () => {
       consoleError.mockRestore();
     });
 
+    it('lists the entities by name with numbers in natural order, like the other pickers', () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      document.body.append(container, searchInput);
+      const light = (entityId, name) => ({
+        entity_id: entityId,
+        state: 'off',
+        attributes: { friendly_name: name },
+      });
+      state.setStates({
+        'light.room_10': light('light.room_10', 'Room 10'),
+        'light.room_2': light('light.room_2', 'Room 2'),
+        'light.room_1': light('light.room_1', 'Room 1'),
+      });
+
+      hotkeys.renderHotkeysTab();
+
+      // A plain comparison put "Room 10" before "Room 2".
+      expect(
+        [...container.querySelectorAll('.hotkey-input')].map((input) => input.dataset.entityId)
+      ).toEqual(['light.room_1', 'light.room_2', 'light.room_10']);
+      container.remove();
+      searchInput.remove();
+    });
+
     describe('in a large home', () => {
       let container;
       let searchInput;

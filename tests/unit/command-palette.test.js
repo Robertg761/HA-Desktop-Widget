@@ -438,6 +438,25 @@ describe('command palette recents', () => {
     expect(stored.join()).not.toContain('secret');
   });
 
+  it('lists the commands of an empty search by name, with numbers in natural order', () => {
+    const { palette, paletteState } = load();
+    const light = (entityId, name) => ({
+      entity_id: entityId,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    paletteState.setStates({
+      'light.room_10': light('light.room_10', 'Room 10'),
+      'light.room_2': light('light.room_2', 'Room 2'),
+    });
+    palette.openCommandPalette();
+    // A plain comparison put "Room 10" before "Room 2", unlike every other list of names.
+    expect(resultNames().filter((name) => name.startsWith('Turn on'))).toEqual([
+      'Turn on Room 2',
+      'Turn on Room 10',
+    ]);
+  });
+
   describe('keeping the highlight where the keyboard put it', () => {
     const highlightedName = () =>
       document.querySelector('.command-palette-result.highlighted .command-palette-result-name')
