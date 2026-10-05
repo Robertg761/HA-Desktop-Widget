@@ -444,11 +444,12 @@ function getTokenRecoveryPanel() {
   };
   if (tokenRecoveryReason === 'encryption_unavailable' && linux) {
     // The encrypted token is still on disk: unlocking the keyring and restarting brings it back.
+    // The title names the locked keyring, so the message starts with what that means for the token.
     return {
       tone: 'error',
       title: t('System keyring is locked'),
       message: t(
-        'Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.'
+        'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.'
       ),
       actions: [
         { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },

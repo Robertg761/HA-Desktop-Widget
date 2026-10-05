@@ -1454,5 +1454,9 @@
   "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": {
     "retiredIn": "4.0.0",
     "reason": "The starter dialog calls what it lists entities"
+  },
+  "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the token panel's title already says the keyring is locked, so its body no longer repeats it"
   }
 }

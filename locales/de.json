@@ -1266,7 +1266,6 @@
   "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die gespeicherte Home Assistant-Autorisierung nicht gelesen werden. Entsperre den Schlüsselbund und starte das Widget dann neu.",
   "System keyring is locked": "Systemschlüsselbund ist gesperrt",
   "Restart Widget": "Widget neu starten",
-  "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann das gespeicherte Home Assistant-Token nicht gelesen werden. Entsperre den Schlüsselbund und starte das Widget dann neu.",
   "Add to Omarchy Bar": "Zur Omarchy-Leiste hinzufügen",
   "Could not add Home Assistant to the Omarchy bar": "Home Assistant konnte nicht zur Omarchy-Leiste hinzugefügt werden",
   "Seasonal Themes": "Saisonale Designs",

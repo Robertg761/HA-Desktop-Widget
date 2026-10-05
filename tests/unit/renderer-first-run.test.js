@@ -1518,6 +1518,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(panel().querySelector('.widget-state-title').textContent).toBe(
         'System keyring is locked'
       );
+      // The body goes on from the title instead of saying it again.
+      const copy = panel().querySelector('.widget-state-copy').textContent;
+      expect(copy).toContain('token cannot be read until the system keyring is unlocked');
+      expect(copy).not.toMatch(/keyring is locked/i);
       expect(findButtonByText('Restart Widget')).toBeTruthy();
       expect(findButtonByText('Enter token')).toBeTruthy();
     });

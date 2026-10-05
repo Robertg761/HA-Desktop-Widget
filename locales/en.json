@@ -1267,7 +1267,6 @@
   "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.",
   "System keyring is locked": "System keyring is locked",
   "Restart Widget": "Restart Widget",
-  "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.",
   "Add to Omarchy Bar": "Add to Omarchy Bar",
   "Could not add Home Assistant to the Omarchy bar": "Could not add Home Assistant to the Omarchy bar",
   "Seasonal Themes": "Seasonal Themes",
