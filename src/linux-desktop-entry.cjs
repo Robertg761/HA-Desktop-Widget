@@ -37,6 +37,21 @@ function launcherHasSandboxFlag(command) {
   return /(?:^|\s)--no-sandbox(?:\s|$)/.test(command.suffix);
 }
 
+// The launcher's icon is a copy in the user's icon folder, made when the launcher was written. A
+// launcher from an older release keeps the artwork that release shipped (3.x had the full-bleed
+// square), so the copy is brought up to the running build's icon whenever the two differ.
+function refreshLauncherIcon(fsModule, icon, iconPath) {
+  if (!iconPath || !fsModule.existsSync(icon)) return false;
+  try {
+    const current = fsModule.readFileSync(iconPath);
+    if (fsModule.readFileSync(icon).equals(current)) return false;
+    fsModule.copyFileSync(iconPath, icon);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // AppImages need a desktop identity for the host portal registry. Package-owned
 // entries and user launchers take precedence over this fallback.
 function ensureAppImageDesktopEntry({
@@ -57,9 +72,14 @@ function ensureAppImageDesktopEntry({
     .map((dir) => path.join(dir, 'applications', name));
   if (systemEntries.some((file) => fsModule.existsSync(file))) return false;
   const sandboxFlag = sandboxFlagWhenBlocked(fsModule, sandboxDisabled);
+  const icon = path.join(data, 'icons', `${APP_ID}.png`);
   if (fsModule.existsSync(destination)) {
     const previous = fsModule.readFileSync(destination, 'utf8');
     if (!/^X-HA-Widget-Launcher=true$/m.test(previous)) return false;
+    // Only the copy this launcher points at, which this app wrote.
+    if (previous.split(/\r?\n/).includes(`Icon=${icon}`)) {
+      refreshLauncherIcon(fsModule, icon, iconPath);
+    }
     const command = parseDesktopExecCommand(previous);
     if (!command) return false;
     const stale = !fsModule.existsSync(command.executable);
@@ -82,7 +102,6 @@ function ensureAppImageDesktopEntry({
     fsModule.writeFileSync(destination, updated, { mode: 0o644 });
     return true;
   }
-  const icon = path.join(data, 'icons', `${APP_ID}.png`);
   fsModule.mkdirSync(path.dirname(icon), { recursive: true });
   fsModule.copyFileSync(iconPath, icon);
   fsModule.mkdirSync(path.dirname(destination), { recursive: true });

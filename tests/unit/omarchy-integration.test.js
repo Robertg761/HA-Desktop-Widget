@@ -359,6 +359,50 @@ test('AppImage launcher supplies canonical portal identity and repairs only its 
   fs.writeFileSync(file, '[Desktop Entry]\nExec=/custom/widget\n');
   expect(ensureAppImageDesktopEntry({ env, iconPath: icon })).toBe(false);
 });
+describe("the AppImage launcher's icon", () => {
+  function setUp() {
+    const env = {
+      APPIMAGE: path.join(root, 'widget.AppImage'),
+      XDG_DATA_HOME: path.join(root, 'data'),
+      XDG_DATA_DIRS: path.join(root, 'system'),
+    };
+    fs.writeFileSync(env.APPIMAGE, 'app');
+    const oldIcon = path.join(root, 'old-square.png');
+    const newIcon = path.join(root, 'rounded.png');
+    fs.writeFileSync(oldIcon, 'square artwork');
+    fs.writeFileSync(newIcon, 'rounded artwork');
+    const copy = path.join(env.XDG_DATA_HOME, 'icons', `${APP_ID}.png`);
+    return { env, oldIcon, newIcon, copy };
+  }
+
+  // 3.x wrote the launcher with the full-bleed square; an existing launcher used to keep it.
+  test('follows the running build when an older release wrote the launcher', () => {
+    const { env, oldIcon, newIcon, copy } = setUp();
+    expect(ensureAppImageDesktopEntry({ env, iconPath: oldIcon })).toBe(true);
+    expect(fs.readFileSync(copy, 'utf8')).toBe('square artwork');
+
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+
+    expect(fs.readFileSync(copy, 'utf8')).toBe('rounded artwork');
+  });
+
+  test('is left alone when it is already current, or when the launcher is not ours', () => {
+    const { env, newIcon, copy } = setUp();
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+    const copied = fs.statSync(copy).mtimeMs;
+    const copyFileSync = jest.fn();
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon, fsModule: { ...fs, copyFileSync } });
+    expect(copyFileSync).not.toHaveBeenCalled();
+    expect(fs.statSync(copy).mtimeMs).toBe(copied);
+
+    const launcher = path.join(env.XDG_DATA_HOME, 'applications', `${APP_ID}.desktop`);
+    fs.writeFileSync(launcher, `[Desktop Entry]\nExec=/custom/widget\nIcon=${copy}\n`);
+    fs.writeFileSync(copy, 'the user’s own picture');
+    ensureAppImageDesktopEntry({ env, iconPath: newIcon });
+    expect(fs.readFileSync(copy, 'utf8')).toBe('the user’s own picture');
+  });
+});
+
 describe('an AppImage on a system that blocks the Chromium sandbox', () => {
   function writeLauncher({ sandboxDisabled, restriction }) {
     const env = {
