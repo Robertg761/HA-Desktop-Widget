@@ -9,6 +9,14 @@ describe('the connection panel on the dashboard', () => {
   const title = () => document.querySelector('.widget-state-title')?.textContent;
   const copy = () => document.querySelector('.widget-state-copy')?.textContent;
 
+  // The first load of renderer.js is the slow one: it is when Jest transforms the file, which
+  // under coverage on a busy runner with a cold cache can take longer than the 5 s a test gets.
+  // Load it once here, with room, so no test pays for it.
+  beforeAll(async () => {
+    await harness.load({ config: harness.tokenConfig() });
+    harness.cleanup();
+  }, 60000);
+
   afterEach(() => harness.cleanup());
 
   const failAttempt = (error = new Error('Could not establish WebSocket connection')) => {
