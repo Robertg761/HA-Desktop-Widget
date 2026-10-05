@@ -157,17 +157,41 @@ describe('spell-check stays off in every window', () => {
     expect(failures).toEqual([]);
   });
 
-  it('never sets webPreferences or spellcheck after a window is described', () => {
-    // windowOptions.webPreferences = {...} or options.webPreferences.spellcheck = true would undo
-    // the literal the previous test reads.
+  it('never assigns webPreferences, spellcheck or spellCheckerEnabled', () => {
+    // windowOptions.webPreferences = {...}, options.webPreferences.spellcheck = true and
+    // Object.assign(options.webPreferences, { spellcheck: true }) would undo the literal the
+    // previous test reads. session.defaultSession.spellCheckerEnabled = true would undo
+    // turnOffSpellChecker.
+    const NAMES = new Set(['webPreferences', 'spellcheck', 'spellCheckerEnabled']);
+    const isObjectAssign = (node) =>
+      node.type === 'CallExpression' &&
+      node.callee.type === 'MemberExpression' &&
+      node.callee.object.type === 'Identifier' &&
+      node.callee.object.name === 'Object' &&
+      memberName(node.callee) === 'assign';
     const assignments = [];
     for (const file of MAIN_PROCESS_FILES) {
       walk(parseFile(file), (node) => {
-        if (node.type !== 'AssignmentExpression' || node.left.type !== 'MemberExpression') return;
-        const property = node.left.property;
-        const name = node.left.computed ? property.value : property.name;
-        if (name === 'webPreferences' || name === 'spellcheck') {
+        if (
+          node.type === 'AssignmentExpression' &&
+          node.left.type === 'MemberExpression' &&
+          NAMES.has(memberName(node.left))
+        ) {
           assignments.push(`${file}:${node.loc.start.line}`);
+        }
+        if (isObjectAssign(node)) {
+          const [target, ...sources] = node.arguments;
+          const intoNamed = target?.type === 'MemberExpression' && NAMES.has(memberName(target));
+          const withNamedKey = sources.some(
+            (source) =>
+              source.type === 'ObjectExpression' &&
+              source.properties.some(
+                (property) => property.type === 'ObjectProperty' && NAMES.has(keyName(property))
+              )
+          );
+          if (intoNamed || withNamedKey) {
+            assignments.push(`${file}:${node.loc.start.line} Object.assign`);
+          }
         }
       });
     }
