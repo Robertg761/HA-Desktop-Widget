@@ -301,11 +301,13 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
-    it('sizes the seek column to its times, and gives the bar more in a wide window', () => {
+    // Never narrower than its times, so h:mm:ss fits; above that it shares the row with the title,
+    // since a column sized to its times alone left a 36px stub of a bar in the default window.
+    it('keeps the seek column at least as wide as its times, and gives the bar a share of the row', () => {
       render('', '<div class="media-tile-content"></div>');
       const content = document.querySelector('.media-tile-content');
       expect(resolvedValue(content, 'grid-template-columns', DEFAULT)).toBe(
-        'minmax(0, 1fr) fit-content(140px) auto'
+        'minmax(0, 1fr) minmax(min-content, 0.9fr) auto'
       );
       expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
       expect(

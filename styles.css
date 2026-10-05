@@ -3453,10 +3453,12 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  /* The seek column is as wide as its two times and a bar between them, so a film or a podcast
-     (h:mm:ss) gets the room it needs and an ordinary track (m:ss) leaves that room to the title.
-     At 72-110px the long times ran into the bar and the previous button. */
-  grid-template-columns: minmax(0, 1fr) fit-content(140px) auto;
+  /* The seek column never narrows past its two times and the shortest bar between them, so a film
+     or a podcast (h:mm:ss) gets the room it needs: at 72-110px the long times ran into the bar and
+     the previous button. Above that it shares the row with the title, a little under half each, so
+     the bar has room to show where the track is (sized to its times alone, it was a 36px stub in the
+     window the app opens at) and a long title still keeps about 140px there. */
+  grid-template-columns: minmax(0, 1fr) minmax(min-content, 0.9fr) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
