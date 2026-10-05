@@ -16549,37 +16549,43 @@ body[data-season='thanksgiving'] .control-item {
   --season-sit-size: 20px;
 }
 
+/* The holiday art moves only where motion is welcome and a GPU draws it. Without one, each of these
+   repaints its piece of the window on the CPU for as long as the holiday lasts, so a software-rendered
+   window keeps it still, as it does the scene behind (see src/seasonal-effects.js). */
 @media (prefers-reduced-motion: no-preference) {
-  body[data-season='halloween'] .status-card:not(.weather-card, .primary-light-card)::after {
+  body:not(.software-rendering)[data-season='halloween']
+    .status-card:not(.weather-card, .primary-light-card)::after {
     animation: season-spider-dangle 6s var(--ease-in-out) infinite;
   }
 
-  body[data-season='halloween'] .control-item:nth-child(3n + 2):not(.activating)::after,
-  body[data-season='halloween'] .weather-card:not(.primary-light-card)::after,
-  body[data-season='halloween'] .drag-area::after {
+  body:not(.software-rendering)[data-season='halloween']
+    .control-item:nth-child(3n + 2):not(.activating)::after,
+  body:not(.software-rendering)[data-season='halloween']
+    .weather-card:not(.primary-light-card)::after,
+  body:not(.software-rendering)[data-season='halloween'] .drag-area::after {
     animation: season-candle-flicker 2.8s linear infinite;
   }
 
-  body[data-season='halloween'] .modal-content::after {
+  body:not(.software-rendering)[data-season='halloween'] .modal-content::after {
     animation: season-float 4s var(--ease-in-out) infinite alternate;
   }
 
-  body[data-season='valentines'] .drag-area::after {
+  body:not(.software-rendering)[data-season='valentines'] .drag-area::after {
     animation: season-heartbeat 1.6s var(--ease-in-out) infinite;
   }
 
-  body[data-season='lunar-new-year'] .control-item::before,
-  body[data-season='lunar-new-year'] .status-card::before,
-  body[data-season='lunar-new-year'] .modal-content::before {
+  body:not(.software-rendering)[data-season='lunar-new-year'] .control-item::before,
+  body:not(.software-rendering)[data-season='lunar-new-year'] .status-card::before,
+  body:not(.software-rendering)[data-season='lunar-new-year'] .modal-content::before {
     animation: season-lantern-sway 3.5s var(--ease-in-out) infinite alternate;
   }
 
-  body[data-season] .widget-header::after {
+  body:not(.software-rendering)[data-season] .widget-header::after {
     animation: season-garland-sway 4s var(--ease-in-out) infinite alternate;
   }
 
   /* After the rule above, which it would otherwise lose to: the lights twinkle as they sway. */
-  body[data-season='christmas'] .widget-header::after {
+  body:not(.software-rendering)[data-season='christmas'] .widget-header::after {
     animation:
       season-lights-twinkle 2.4s var(--ease-in-out) infinite alternate,
       season-garland-sway 4s var(--ease-in-out) infinite alternate;

@@ -70,6 +70,15 @@ test('only enables custom dragging when the main process grants that capability'
   expect(document.body.classList.contains('layer-drag-enabled')).toBe(true);
 });
 
+test('marks a window the main process says is drawn on the CPU, for the seasonal art', () => {
+  applyDesktopAppearance({ desktopCapabilities: { softwareRendering: true } });
+  expect(document.body.classList.contains('software-rendering')).toBe(true);
+  applyDesktopAppearance({ desktopCapabilities: { softwareRendering: false } });
+  expect(document.body.classList.contains('software-rendering')).toBe(false);
+  applyDesktopAppearance({});
+  expect(document.body.classList.contains('software-rendering')).toBe(false);
+});
+
 test('removes its palette overrides when theme following is disabled', () => {
   applyDesktopAppearance({ ui: { followOmarchy: true }, desktopAppearance: palette });
   expect(document.body.style.getPropertyValue('--text-primary')).toBe('#eeeeee');

@@ -424,6 +424,7 @@ const {
   shouldUsePortalGlobalShortcuts,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
+  isSoftwareRendering,
 } = require('./src/platform.cjs');
 const { supportsNativeGlass } = require('./src/window-glass.cjs');
 const {
@@ -1317,6 +1318,17 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
 // On native Wayland (and as a layer surface) an opaque window is given a larger surface and no
 // shape, which leaves a square plate behind the rounded pins and shifts the widget; the windows
 // are transparent there whatever the opacity, and CSS draws it.
+// Whether Chromium draws the windows on the CPU (no GPU, or one its blocklist turns off). The
+// renderer then holds the seasonal art still, which would otherwise keep a core busy all month.
+// Asked each time: a GPU process that gives up moves a running app onto software rendering.
+function rendersInSoftware() {
+  try {
+    return isSoftwareRendering(app.getGPUFeatureStatus());
+  } catch {
+    return false;
+  }
+}
+
 function windowsAreAlwaysTransparent() {
   return (
     shouldUseTransparentWindow(process.platform, process.env) ||
@@ -2139,6 +2151,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     isolatedProfile: IS_ISOLATED_PROFILE,
     nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
     systemColorScheme: getSystemColorScheme(),
+    softwareRendering: rendersInSoftware(),
   };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
@@ -13430,6 +13443,16 @@ app
     }
     app.exit(1);
   });
+
+// The window learns whether it is drawn on the CPU from its config, so a change (the GPU process
+// giving up and Chromium falling back to software) is sent when Chromium reports it.
+let lastSoftwareRendering = null;
+app.on('gpu-info-update', () => {
+  const softwareRendering = rendersInSoftware();
+  if (softwareRendering === lastSoftwareRendering) return;
+  lastSoftwareRendering = softwareRendering;
+  pushConfigToRenderer();
+});
 
 // XWayland cannot render at all on some machines (a driver stack where Chromium's GPU process
 // dies on startup), and the widget would then simply never appear. Rather than leave the user

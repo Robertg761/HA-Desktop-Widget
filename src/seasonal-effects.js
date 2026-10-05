@@ -109,7 +109,7 @@ export class SeasonalEffectsManager {
         if (this.isForcedColors()) {
           this.stopAnimation();
           this.clearCanvas();
-        } else if (this.prefersReducedMotion()) {
+        } else if (this.drawsStill()) {
           this.renderFrame(performance.now());
         } else {
           this.startAnimation();
@@ -147,17 +147,27 @@ export class SeasonalEffectsManager {
   /**
    * An animating scene picks up light or dark mode on its next frame, but a still one (reduced
    * motion) would keep the other mode's colours. Theme changes come from Settings, a config echo
-   * and the system theme, so the body's class is the one place they all meet.
+   * and the system theme, so the body's class is the one place they all meet. The class also says
+   * when the window is drawn on the CPU, which stills the scene, and when that ends.
    */
   watchThemeChanges() {
     const body = document.body;
     if (!body || typeof MutationObserver !== 'function') return;
     this.lightTheme = body.classList.contains('theme-light');
+    this.softwareRendering = this.rendersInSoftware();
     this.themeObserver = new MutationObserver(() => {
       const light = body.classList.contains('theme-light');
-      if (light === this.lightTheme) return;
+      const softwareRendering = this.rendersInSoftware();
+      if (light === this.lightTheme && softwareRendering === this.softwareRendering) return;
       this.lightTheme = light;
-      if (!this.animationFrameId && this.layers.length) this.renderFrame(performance.now());
+      this.softwareRendering = softwareRendering;
+      if (!this.layers.length) return;
+      if (this.drawsStill()) {
+        this.stopAnimation();
+        this.renderFrame(performance.now());
+      } else {
+        this.startAnimation();
+      }
     });
     this.themeObserver.observe(body, { attributes: true, attributeFilter: ['class'] });
   }
@@ -168,6 +178,20 @@ export class SeasonalEffectsManager {
 
   prefersReducedMotion() {
     return !!this.reducedMotionQuery?.matches;
+  }
+
+  // Set by the main process's report (see desktop-appearance.js): no GPU draws this window.
+  rendersInSoftware() {
+    return !!document.body?.classList.contains('software-rendering');
+  }
+
+  /**
+   * Whether the scene is drawn once and left: for reduced motion, and on a window drawn on the CPU,
+   * where 30 frames a second of the scene and its frost kept a core busy for as long as the
+   * holiday lasted. Only reduced motion decides whether the holiday shows at all (see refresh).
+   */
+  drawsStill() {
+    return this.prefersReducedMotion() || this.rendersInSoftware();
   }
 
   /**
@@ -219,7 +243,7 @@ export class SeasonalEffectsManager {
       return;
     }
     this.states = this.layers.map((layer) => layer.init(this.width, this.height));
-    if (this.prefersReducedMotion()) {
+    if (this.drawsStill()) {
       this.renderFrame(performance.now());
     } else {
       this.startAnimation();
@@ -248,7 +272,7 @@ export class SeasonalEffectsManager {
       }
     }
     this.frostRectsReadAt = -Infinity;
-    if (this.layers.length && this.prefersReducedMotion()) this.renderFrame(performance.now());
+    if (this.layers.length && this.drawsStill()) this.renderFrame(performance.now());
   }
 
   /**
@@ -408,7 +432,7 @@ export class SeasonalEffectsManager {
   // Nothing to draw for a hidden window (tray, another workspace).
   handleVisibilityChange() {
     if (document.hidden) this.stopAnimation();
-    else if (!this.prefersReducedMotion()) this.startAnimation();
+    else if (!this.drawsStill()) this.startAnimation();
   }
 
   startAnimation() {
@@ -462,7 +486,7 @@ export class SeasonalEffectsManager {
   }
 
   loop(timestamp) {
-    if (!this.layers.length || this.prefersReducedMotion()) {
+    if (!this.layers.length || this.drawsStill()) {
       this.animationFrameId = null;
       return;
     }

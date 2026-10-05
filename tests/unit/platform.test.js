@@ -6,6 +6,7 @@ const {
   resolveNativeThemeSource,
   hasGlobalShortcutFallback,
   isLinuxAppImage,
+  isSoftwareRendering,
   mergeChromiumFeatureList,
   resolveLinuxPasswordStoreBackend,
   shouldForceX11OzonePlatform,
@@ -560,5 +561,26 @@ describe('mergeChromiumFeatureList', () => {
     expect(mergeChromiumFeatureList('GlobalShortcutsPortal', 'GlobalShortcutsPortal')).toBe(
       'GlobalShortcutsPortal'
     );
+  });
+});
+
+describe('isSoftwareRendering', () => {
+  // As app.getGPUFeatureStatus() reports them (Electron 43 on Linux with and without a GPU).
+  const gpu = { '2d_canvas': 'enabled', gpu_compositing: 'enabled', rasterization: 'enabled' };
+
+  it('is false while the GPU composites and draws the canvas', () => {
+    expect(isSoftwareRendering(gpu)).toBe(false);
+    expect(isSoftwareRendering({ ...gpu, gpu_compositing: 'enabled_on' })).toBe(false);
+  });
+
+  it('is true when either is left to the CPU', () => {
+    expect(isSoftwareRendering({ ...gpu, gpu_compositing: 'disabled_software' })).toBe(true);
+    expect(isSoftwareRendering({ ...gpu, '2d_canvas': 'unavailable_software' })).toBe(true);
+    expect(isSoftwareRendering({ ...gpu, '2d_canvas': 'disabled_off' })).toBe(true);
+  });
+
+  it('is false when there is nothing to read', () => {
+    expect(isSoftwareRendering(null)).toBe(false);
+    expect(isSoftwareRendering({})).toBe(false);
   });
 });
