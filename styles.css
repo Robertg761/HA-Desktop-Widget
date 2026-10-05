@@ -12702,6 +12702,13 @@ body.high-contrast :focus-visible {
   outline-offset: 2px;
 }
 
+/* Except a pop-up's heading, which takes focus when the pop-up opens so a screen reader starts there.
+   It is not a control and draws no ring (see the dialog header), and the preset's ring above is
+   !important, so it boxed the title of every pop-up like a field. */
+body.high-contrast .modal-header :is(h1, h2, h3)[tabindex='-1']:focus-visible {
+  outline: none !important;
+}
+
 /* The always-visible Controls action: a small sliders button tucked into the tile's
    corner, so it stays discoverable without adding a row to every tile. */
 .tile-details-button {
