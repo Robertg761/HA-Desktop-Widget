@@ -150,6 +150,16 @@ mac:
     # The widget lives in the menu bar and has no Dock icon. app.dock.hide() does the same at
     # runtime, after the Dock has already drawn (and bounced) the icon at every launch.
     LSUIElement: true
+    # Electron's own Info.plist says why an app would use the camera, the microphone, audio capture
+    # and Bluetooth ("This app needs access to the camera"). The widget uses none of them (its
+    # session denies every such permission, see src/session-permissions.cjs), and a bundle that
+    # declares them looks as if it might. electron-builder deletes a key whose value is null.
+    # A feature that needs one (talking to Assist, say) adds its own description here.
+    NSAudioCaptureUsageDescription: null
+    NSBluetoothAlwaysUsageDescription: null
+    NSBluetoothPeripheralUsageDescription: null
+    NSCameraUsageDescription: null
+    NSMicrophoneUsageDescription: null
   x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
   # The same languages as the top-level electronLanguages, as macOS names them: the Electron
   # framework keeps a locale.pak in a folder per language ("es_419.lproj", "en_GB.lproj"), and
