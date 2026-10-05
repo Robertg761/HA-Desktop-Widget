@@ -655,13 +655,32 @@ function buildCustomColorId(seed = '') {
   return `${CUSTOM_THEME_ID_PREFIX}${cleanedSeed || 'color'}-${suffix}`;
 }
 
+// The default name versions 3.11 to 4.0 stored with a saved colour, in each language they shipped
+// (English before 3.11). Colours saved since are stored without a name, so the list never grows;
+// it is written out because the packs of the other languages are not loaded, or not installed.
+const STORED_DEFAULT_CUSTOM_COLOR_NAMES = [
+  'Custom {{color}}',
+  'Eigene Farbe {{color}}',
+  '{{color}} personalizado',
+  '{{color}} personnalisée',
+  '{{color}} مخصص',
+  'कस्टम {{color}}',
+  '自定义 {{color}}',
+];
+
 // A saved colour nobody named is stored without a name and shown as "Custom #AB34CD" in the language
 // of the day (see localizeTheme in ui-utils). Before, that default was stored in whatever language
-// the app was in when the colour was saved, and stayed in it; such a name, in English or in the
-// current language, is read as no name and leaves the next save without one.
+// the app was in when the colour was saved, and stayed in it; such a name, in any language, is read
+// as no name and leaves the next save without one.
 function isDefaultCustomColorName(name, color) {
   const text = typeof name === 'string' ? name.trim() : '';
-  return !text || text === `Custom ${color}` || text === t('Custom {{color}}', { color });
+  return (
+    !text ||
+    text === t('Custom {{color}}', { color }) ||
+    STORED_DEFAULT_CUSTOM_COLOR_NAMES.some(
+      (template) => text === template.replace('{{color}}', color)
+    )
+  );
 }
 
 // The rename field shows a name the way the summary line does, with its hex code isolated (see

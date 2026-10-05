@@ -4238,6 +4238,42 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.ui.customColors.map((entry) => entry.name)).toEqual(['', '', 'Ocean']);
     });
 
+    test('names a colour an older version saved in another language in the language of the day', async () => {
+      const i18n = require('../../src/i18n.js');
+      // The default name each language gave a colour when versions 3.11 to 4.0 saved it, read after
+      // a change to French.
+      state.CONFIG.ui.customColors = [
+        { id: 'custom-de', name: 'Eigene Farbe #110000', color: '#110000' },
+        { id: 'custom-es', name: '#220000 personalizado', color: '#220000' },
+        { id: 'custom-ar', name: '#330000 مخصص', color: '#330000' },
+        { id: 'custom-hi', name: 'कस्टम #440000', color: '#440000' },
+        { id: 'custom-zh', name: '自定义 #550000', color: '#550000' },
+        // A name the person gave stays, even one that starts like a default or names another code.
+        { id: 'custom-dark', name: 'Eigene Farbe #660000 dunkel', color: '#660000' },
+        { id: 'custom-other', name: 'Eigene Farbe #000000', color: '#770000' },
+      ];
+      i18n.setLocaleBootstrap({
+        activeLocale: 'fr',
+        messages: { 'Custom {{color}}': '{{color}} personnalisée' },
+      });
+      try {
+        await settings.openSettings();
+        await settings.saveSettings();
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+
+      expect(state.CONFIG.ui.customColors.map((entry) => entry.name)).toEqual([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Eigene Farbe #660000 dunkel',
+        'Eigene Farbe #000000',
+      ]);
+    });
+
     test('keeps the default name when it is typed back', async () => {
       state.CONFIG.ui.customColors = [{ id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD' }];
       state.CONFIG.ui.accent = 'custom-ab34cd';
