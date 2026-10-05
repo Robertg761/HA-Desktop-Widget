@@ -9441,22 +9441,49 @@ describe('Settings + Config Integration', () => {
     });
   });
   describe('Settings rows', () => {
-    test('a row select carries its whole value as its title, after a change too', async () => {
-      // Its value can end in an ellipsis in a narrow window or a long translation.
+    test('a row select carries its value as its title only while the value is cut', async () => {
+      // Its value can end in an ellipsis in a narrow window or a long translation, and the title is
+      // then the way to read it. On a select that shows its whole value the title was a tooltip
+      // repeating it, and screen readers read it out again after the value.
       const select = document.getElementById('time-format');
       const row = document.createElement('div');
       row.className = 'form-group setting-row';
       select.replaceWith(row);
       row.appendChild(select);
       state.CONFIG.ui.timeFormat = '24-hour';
+      // jsdom lays nothing out: every letter is 8px wide, in a select with room for ten of them.
+      const originalOffscreenCanvas = global.OffscreenCanvas;
+      global.OffscreenCanvas = class {
+        getContext() {
+          return { font: '', measureText: (text) => ({ width: text.length * 8 }) };
+        }
+      };
+      let room = 80;
+      Object.defineProperty(select, 'clientWidth', { configurable: true, get: () => room });
+      const pointAt = () => select.dispatchEvent(new Event('pointerover', { bubbles: true }));
 
-      await settings.openSettings();
-      expect(select.title).toBe(select.selectedOptions[0].textContent.trim());
+      try {
+        await settings.openSettings();
+        expect(select.hasAttribute('title')).toBe(false);
+        pointAt();
+        expect(select.hasAttribute('title')).toBe(false);
 
-      select.value = '12-hour';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-      expect(select.title).toBe('12-hour');
-      settings.closeSettings();
+        // A narrower window cuts "24-hour": pointing at it shows the whole value, and a change
+        // keeps the title on the new one.
+        room = 40;
+        pointAt();
+        expect(select.title).toBe('24-hour');
+        select.value = '12-hour';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(select.title).toBe('12-hour');
+
+        room = 80;
+        pointAt();
+        expect(select.hasAttribute('title')).toBe(false);
+      } finally {
+        global.OffscreenCanvas = originalOffscreenCanvas;
+        settings.closeSettings();
+      }
     });
   });
   describe('Hide to tray on macOS', () => {

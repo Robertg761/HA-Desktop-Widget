@@ -4089,10 +4089,31 @@ function readProfileSyncScopeFromForm() {
 }
 
 // A row select's value can still end in an ellipsis (a narrow window, large text, a long
-// translation), so its title says the whole value, as the sync folder field's does.
+// translation). Then its title says the whole value, as the sync folder field's does, and only
+// then: on a select that shows its whole value the title was a tooltip repeating it, and screen
+// readers read it out again after the value. The value is measured in the select's own font
+// against the room between its padding, so a select on a page not shown (no room) gets none, and
+// pointing at a select measures it again as it is laid out now.
+let rowSelectTextContext = null;
+function isRowSelectValueCut(select, text) {
+  const style = getComputedStyle(select);
+  const room =
+    select.clientWidth -
+    (parseFloat(style.paddingLeft) || 0) -
+    (parseFloat(style.paddingRight) || 0);
+  if (!(room > 0)) return false;
+  rowSelectTextContext ||=
+    typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1).getContext('2d') : null;
+  if (typeof rowSelectTextContext?.measureText !== 'function') return false;
+  rowSelectTextContext.font = style.font;
+  return rowSelectTextContext.measureText(text).width > room;
+}
+
 function syncRowSelectTitle(select) {
   if (!select?.matches?.('.setting-row > select')) return;
-  select.title = select.selectedOptions?.[0]?.textContent.trim() || '';
+  const text = select.selectedOptions?.[0]?.textContent.trim() || '';
+  if (text && isRowSelectValueCut(select, text)) select.title = text;
+  else select.removeAttribute('title');
 }
 
 function syncRowSelectTitles(root) {
@@ -5704,6 +5725,7 @@ async function openSettings(uiHooks) {
         modal.addEventListener(type, trackSettingsControlInteraction, true)
       );
       modal.addEventListener('change', (event) => syncRowSelectTitle(event.target));
+      modal.addEventListener('pointerover', (event) => syncRowSelectTitle(event.target));
     }
 
     // An error from an earlier Save would otherwise greet the next visit.
