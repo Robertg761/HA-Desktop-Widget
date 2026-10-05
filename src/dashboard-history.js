@@ -233,5 +233,6 @@ export {
   readDashboardHistory,
   readRestorePoints,
   rememberDashboard,
+  sameLayout,
   writeDashboardHistory,
 };

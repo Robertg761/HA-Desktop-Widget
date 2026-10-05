@@ -3,8 +3,10 @@ import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
 import {
+  dashboardSnapshot,
   readDashboardHistory,
   readRestorePoints,
+  sameLayout,
   writeDashboardHistory,
 } from './dashboard-history.js';
 import {
@@ -142,7 +144,13 @@ function showDashboardHistory() {
   );
   body.append(description);
   // Its own coarse list, newest first: one restore point per burst of edits, not every Undo step.
-  const entries = readRestorePoints(state.CONFIG);
+  // Once the dashboard has been idle, the newest point is the layout already on screen, and
+  // restoring it would change nothing. A point that holds the current layout is left out, compared
+  // as stored, as the list itself compares layouts.
+  const current = dashboardSnapshot(state.CONFIG);
+  const entries = readRestorePoints(state.CONFIG).filter(
+    (entry) => !sameLayout(entry.layout, current)
+  );
   if (!entries.length) {
     description.classList.add('workflow-empty');
     description.textContent = t(

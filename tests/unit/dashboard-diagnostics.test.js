@@ -436,16 +436,15 @@ test('Undo keeps the layout it replaced restorable and steps further back next t
   expect(history.every((entry) => entry.undone)).toBe(true);
   expect(undo.disabled).toBe(true);
 
-  // Both undone layouts can still be brought back from Restore dashboard, under the one restore
-  // point the two edits made together.
+  // Both undone layouts can still be brought back from Restore dashboard. The restore point the
+  // two edits made together is the layout on screen now, so it is not listed.
   showDashboardHistory();
   const rows = [...document.querySelectorAll('.dashboard-restore-entry')];
   expect(rows.map((row) => row.querySelector('.dashboard-restore-pages').textContent)).toEqual([
     'All, Kitchen',
     'All, Kitchen, Bedroom',
-    'All',
   ]);
-  expect(rows.map((row) => row.textContent.includes('Before undo'))).toEqual([true, true, false]);
+  expect(rows.map((row) => row.textContent.includes('Before undo'))).toEqual([true, true]);
   rows[1].click();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual([
@@ -515,6 +514,66 @@ test('Restore dashboard lists a burst of edits as one restore point, and Undo st
   currentSocket.removeAllListeners();
   localStorage.clear();
   jest.useRealTimers();
+});
+
+test('Restore dashboard does not list the layout on screen, which becomes a restore point once the dashboard is idle', () => {
+  // All timers are faked here, so the 30 s wait for the dashboard to go idle can be run through.
+  jest.useFakeTimers({ now: new Date('2026-10-05T10:00:00Z') });
+  jest.resetModules();
+  const currentState = require('../../src/state.js').default;
+  const { rememberDashboard, readRestorePoints } = require('../../src/dashboard-history.js');
+  const { showDashboardHistory } = require('../../src/dashboard-tools.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  localStorage.clear();
+  // The server keeps a page nobody named with an empty name; the layout on screen shows it with the
+  // name in the language of the day. Both are the same layout.
+  const saved = (...names) => ({
+    homeAssistant: { url: 'http://server' },
+    customTabs: [
+      { id: 'default', name: '', entityIds: ['light.a'] },
+      ...names.map((name) => ({ id: name, name, entityIds: [] })),
+    ],
+  });
+  const onScreen = (...names) => {
+    const config = saved(...names);
+    config.customTabs[0] = { ...config.customTabs[0], name: 'Alle', nameIsDefault: true };
+    return config;
+  };
+  const listed = () => {
+    showDashboardHistory();
+    const rows = [...document.querySelectorAll('.dashboard-restore-entry')].map(
+      (row) => row.querySelector('.dashboard-restore-pages').textContent
+    );
+    document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
+    return rows;
+  };
+  const edit = (names) => {
+    rememberDashboard(currentState.CONFIG, saved(...names));
+    currentState.setConfig(onScreen(...names));
+  };
+  try {
+    const pagesOf = (entry) => entry.layout.customTabs.length;
+    currentState.setConfig(onScreen('Kitchen'));
+    edit(['Kitchen', 'Bedroom']);
+    expect(listed()).toEqual(['All, Kitchen']);
+
+    // Thirty seconds later the layout the edit left is kept as the newest restore point. It is the
+    // layout on screen, so its row would restore nothing; only the one before it is listed.
+    jest.advanceTimersByTime(30 * 1000);
+    expect(readRestorePoints(currentState.CONFIG).map(pagesOf)).toEqual([3, 2]);
+    expect(listed()).toEqual(['All, Kitchen']);
+
+    // Edited back, the layout on screen is the newest restore point and an older one as well.
+    // Neither is listed; the layout in between still is.
+    edit(['Kitchen']);
+    jest.advanceTimersByTime(30 * 1000);
+    expect(readRestorePoints(currentState.CONFIG).map(pagesOf)).toEqual([2, 3, 2]);
+    expect(listed()).toEqual(['All, Kitchen, Bedroom']);
+  } finally {
+    currentSocket.removeAllListeners();
+    localStorage.clear();
+    jest.useRealTimers();
+  }
 });
 
 test('Copy report copies through the main process and falls back to manual selection', async () => {
