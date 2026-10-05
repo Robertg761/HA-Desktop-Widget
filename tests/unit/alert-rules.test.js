@@ -242,6 +242,99 @@ describe('alert evaluator and the states no reading comes with', () => {
       evaluator.check('sensor.door', 'unavailable');
       expect(newStates()).toEqual(['unavailable', 'unavailable']);
     });
+
+    it('keeps waiting through unavailable to unknown for a rule about going unavailable', () => {
+      build({ onSpecificState: true, targetState: 'unavailable', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', 'on'));
+      evaluator.check('sensor.door', 'unavailable');
+      jest.advanceTimersByTime(30 * 1000);
+      // Home Assistant restarting flips an entity from unavailable to unknown.
+      evaluator.check('sensor.door', 'unknown');
+      jest.advanceTimersByTime(30 * 1000);
+      expect(notify).toHaveBeenCalledTimes(1);
+
+      // A settings save in the middle of the wait does not start it over either.
+      evaluator.check('sensor.door', 'on');
+      evaluator.check('sensor.door', 'unavailable');
+      jest.advanceTimersByTime(30 * 1000);
+      evaluator.reconcile(states('sensor.door', 'unknown'));
+      jest.advanceTimersByTime(30 * 1000);
+      expect(notify).toHaveBeenCalledTimes(2);
+    });
+
+    describe('for a condition that already held when the widget started', () => {
+      it('does not tell about a Specific State the entity comes back from an outage in', () => {
+        build({ onSpecificState: true, targetState: 'on' });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'unavailable');
+        evaluator.check('sensor.door', 'on');
+        evaluator.check('sensor.door', 'unknown');
+        evaluator.check('sensor.door', 'on');
+        expect(notify).not.toHaveBeenCalled();
+
+        evaluator.check('sensor.door', 'off');
+        evaluator.check('sensor.door', 'on');
+        expect(newStates()).toEqual(['on']);
+      });
+
+      it('does not tell about it after Home Assistant restarts and the snapshot is restoring', () => {
+        build({ onSpecificState: true, targetState: 'on' });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.suspend();
+        evaluator.reconcile(states('sensor.door', 'unavailable'));
+        evaluator.check('sensor.door', 'on');
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('does not tell about a threshold still crossed, by live update or by snapshot', () => {
+        build({ onNumericThreshold: true, threshold: 25, comparison: 'above' });
+        evaluator.reset(states('sensor.door', '26'));
+        evaluator.check('sensor.door', 'unavailable');
+        evaluator.check('sensor.door', '26.1');
+        expect(notify).not.toHaveBeenCalled();
+
+        build({ onNumericThreshold: true, threshold: 25, comparison: 'above' });
+        evaluator.reset(states('sensor.door', '26'));
+        evaluator.suspend();
+        evaluator.reconcile(states('sensor.door', 'unavailable'));
+        // The next reconnect finds it back, and no state_changed event says so.
+        evaluator.suspend();
+        evaluator.reconcile(states('sensor.door', '26.3'));
+        evaluator.check('sensor.door', '26.4');
+        expect(notify).not.toHaveBeenCalled();
+
+        evaluator.check('sensor.door', '20');
+        evaluator.check('sensor.door', '27');
+        expect(newStates()).toEqual(['27']);
+      });
+    });
+
+    it('starts a wait an outage cut short over from the snapshot that has the entity back', () => {
+      build({ onSpecificState: true, targetState: 'on', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', 'off'));
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(30 * 1000);
+      evaluator.check('sensor.door', 'unavailable');
+      // A door left open sends no state_changed event, so only the snapshot says it is back.
+      evaluator.suspend();
+      evaluator.reconcile(states('sensor.door', 'on'));
+      jest.advanceTimersByTime(60 * 1000 - 1);
+      expect(notify).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      expect(newStates()).toEqual(['on']);
+    });
+
+    it('starts a wait a dropped connection cut short over when the entity is back', () => {
+      build({ onSpecificState: true, targetState: 'on', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', 'off'));
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(30 * 1000);
+      evaluator.suspend();
+      evaluator.reconcile(states('sensor.door', 'unavailable'));
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(60 * 1000);
+      expect(newStates()).toEqual(['on']);
+    });
   });
 
   it('matches a typed label against the raw state', () => {
