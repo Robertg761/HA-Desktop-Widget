@@ -2,8 +2,8 @@
 /**
  * Compares the deployed website with website/ in this checkout.
  *
- * The site is published by hand from website/ with the Vercel CLI, from the repository root:
- * (cd website && vercel deploy --prod). It is not deployed by GitHub, and for a week the live pages
+ * The site is published by hand with the Vercel CLI, from an export of main's website/ (see
+ * "Release Channels" in the README). It is not deployed by GitHub, and for a week the live pages
  * still described features the app did not have because no one had deployed the changes. Every
  * file is fetched from the site (pages without their .html, as the host's clean URLs serve them)
  * and compared byte for byte, and each file's response headers are compared with the vercel.json

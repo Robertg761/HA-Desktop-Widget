@@ -88,11 +88,10 @@ for the starting commit, not for the Electron update made during this audit.
   after completing the checks below. Preparation does not create a release tag.
 - Check that the website is deployed from the commit being released. The site is published by
   hand with the Vercel CLI, not by GitHub, so a change merged to main is not live until someone
-  deploys it: from a checkout of main, `(cd website && vercel deploy --prod)` (the folder must be
-  linked to the Vercel project with `vercel link` first). Then run
-  `node scripts/check-website-deploy.cjs --wait 300`, or dispatch the Website deploy check
-  workflow, and see it pass before the release is tagged. The pages read correctly on both sides
-  of the release, so they need no edit on release day.
+  deploys it. Deploy an export of main, not a working folder that may be stale or edited (the
+  commands are under "Release Channels" in the README), then dispatch the Website deploy check
+  workflow, which checks out main, and see it pass before the release is tagged. The pages read
+  correctly on both sides of the release, so they need no edit on release day.
 - Read the new app and website sections of [privacy.html](../website/privacy.html) before the
   release. They are legal wording written from what the app and the site request, and the
   maintainer should approve them.
