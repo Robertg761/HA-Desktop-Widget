@@ -315,6 +315,27 @@ describe('shared layout rules for narrow windows and long labels', () => {
       ).toBe('minmax(0, 1fr) minmax(min-content, 200px) auto');
     });
 
+    // A stream, a TV input or an idle player has no length: its seek row is hidden, and the share
+    // of the row beside it only cut the station's or the programme's name shorter.
+    it('gives a hidden seek row only the width of its times, at every one-row width', () => {
+      render(
+        '',
+        `<div class="media-tile-content"><button class="media-tile-info"></button>
+          <div class="media-tile-seek" data-empty="true"></div></div>`
+      );
+      const content = document.querySelector('.media-tile-content');
+      for (const viewport of [DEFAULT.viewport, { width: 900, height: 700 }]) {
+        expect(resolvedValue(content, 'grid-template-columns', { viewport })).toBe(
+          'minmax(0, 1fr) min-content auto'
+        );
+      }
+      // The narrow layouts put the row on a line of its own, as before.
+      expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
+      expect(
+        resolvedValue(content, 'grid-template-columns', { viewport: { width: 400, height: 600 } })
+      ).toBe('minmax(0, 1fr) auto');
+    });
+
     it('draws the seek times at their own width', () => {
       render('', '<div class="media-tile-seek"><span class="media-tile-time">1:12:30</span></div>');
       const time = document.querySelector('.media-tile-time');

@@ -874,6 +874,28 @@ const waitForCameraTiles = (ctx) =>
     'the camera tiles settled on their messages'
   );
 
+// A radio stream with a programme name longer than the media tile has room for: no length, so its
+// seek row is hidden.
+const radioStream = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'media_player.kitchen_radio',
+      state: 'playing',
+      attributes: {
+        friendly_name: 'Kitchen radio',
+        media_title: 'The Late Evening Jazz Session with Guests from the Village Vanguard',
+        media_artist: 'Jazz 24',
+        volume_level: 0.4,
+        supported_features: 152463,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'media_player.kitchen_radio', parent_id: null, user_id: null },
+    },
+  ];
+};
+
 // Restore points that differ by what they hold, one of them with a page nobody named. The list is
 // built when the dialog opens, so the history is put back as it was straight after.
 async function openRestoreDashboard(ctx) {
@@ -2235,6 +2257,25 @@ const scenes = [
     name: 'layout-media-long-narrow',
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
+  },
+  // A stream has no length and its seek row is hidden. The row keeps only the width of its hidden
+  // times, so the bar in it stays at its shortest, and the programme name has the rest of the row.
+  {
+    name: 'layout-media-stream',
+    size: DEFAULT_SIZE,
+    config: { primaryMediaPlayer: 'media_player.kitchen_radio' },
+    extraStates: radioStream,
+    setup: async (ctx) => {
+      await ctx.waitForExpression(
+        `document.querySelector('#media-tile .media-tile-seek')?.dataset.empty === 'true' &&
+          document.getElementById('media-tile-title')?.textContent`,
+        'the stream on the media tile'
+      );
+      await ctx.expect(
+        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width < 40`,
+        'the hidden seek row of a stream takes no share of the row'
+      );
+    },
   },
   // The track is a button that opens the player, and a title too long for the tile is still cut
   // off by an ellipsis inside it, with an artist under it or without, at the default width and at

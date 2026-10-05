@@ -3482,6 +3482,16 @@ body.first-run-active .widget-content > * {
   }
 }
 
+/* A radio stream, a TV input or an idle player has no length, and its seek row is hidden. The
+   column keeps the width of its hidden times so the controls stay put, but no share of the row:
+   beside an empty column that share only cut the station's or the programme's name shorter. The
+   narrow layouts below put the row on a line of its own. */
+@media (min-width: 421px) {
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) {
+    grid-template-columns: minmax(0, 1fr) min-content auto;
+  }
+}
+
 .media-tile-info {
   display: flex;
   flex-direction: column;
