@@ -2677,6 +2677,3 @@ const scenes = [
 ];
 
 module.exports = { scenes };
-
-// TMP-B6
-if (process.env.B6_TMP_SCENES) scenes.push(...require(process.env.B6_TMP_SCENES));
