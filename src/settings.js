@@ -3105,12 +3105,12 @@ function initCustomEntityIconsUI() {
       refocusCustomEntityIconInput(section, entityId);
       return;
     }
+    // An IME's Enter confirms its composition (and can arrive with isComposing already false, as
+    // keyCode 229); it is not a request to apply, so it is left alone before anything is cancelled.
     if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
     const input = event.target.closest('[data-custom-icon-input]');
     if (!input) return;
     event.preventDefault();
-    // An IME's Enter confirms its composition; it is not a request to apply.
-    if (event.isComposing) return;
     const entityId = input.dataset.customIconInput;
     const typed = input.value.trim();
     if (typed && !normalizeCustomEntityIcon(typed)) {

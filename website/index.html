@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
   <meta property="og:title" content="HA Desktop Widget">
   <meta property="og:description" content="A free, open-source Home Assistant panel for your desktop. Windows, macOS and Linux. Free folder profile sync; hosted Cloud Sync is planned separately.">
-  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png">
+  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="HA Desktop Widget: Home Assistant, without the browser tab.">
@@ -22,14 +22,14 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="HA Desktop Widget">
   <meta name="twitter:description" content="A free, open-source Home Assistant panel for your desktop. Windows, macOS and Linux.">
-  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png">
+  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <link rel="preconnect" href="https://api.github.com" crossorigin>
   <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
-  <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="/" aria-label="HA Desktop Widget home">
@@ -38,7 +38,6 @@
       </a>
       <nav class="nav-links" aria-label="Site">
         <a href="/#features">Features</a>
-        <a href="/#cloud-sync">Cloud Sync</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion">Companion</a>
       </nav>
@@ -54,11 +53,11 @@
     </div>
   </header>
 
-  <main id="top">
+  <main id="main">
     <section class="hero">
       <h1>Home Assistant,<br><span class="h1-soft">without the browser tab.</span></h1>
       <p class="lede">
-        Your lights, cameras and sensors in a translucent panel on your desktop.
+        Your lights, cameras and sensors in a frosted-glass panel on your desktop.
         For Windows, macOS and Linux.
       </p>
       <div class="cta-row">
@@ -91,7 +90,7 @@
             <div class="widget-head">
               <button class="conn" id="conn-dot" aria-label="Show connection details" title="Connection details"><span></span></button>
               <span class="widget-title">Home Assistant</span>
-              <span class="widget-meta" id="conn-meta"></span>
+              <span class="widget-meta" id="conn-meta" aria-live="polite"></span>
               <span class="win-ctrls" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-gear"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-minus"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-x"/></svg></span>
             </div>
 
@@ -129,9 +128,9 @@
             </div>
 
             <div class="pages-row">
-              <div class="page-tabs" role="tablist" aria-label="Quick Access pages">
-                <button role="tab" data-page="home" class="is-on" aria-selected="true">Home</button>
-                <button role="tab" data-page="bedroom" aria-selected="false">Bedroom</button>
+              <div class="page-tabs" role="group" aria-label="Quick Access pages">
+                <button data-page="home" class="is-on" aria-pressed="true">Home</button>
+                <button data-page="bedroom" aria-pressed="false">Bedroom</button>
               </div>
               <span class="row-ctrls" aria-hidden="true"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-undo"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-grip"/></svg><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-plus"/></svg></span>
             </div>
@@ -169,12 +168,12 @@
             <div class="dock-group">
               <span class="dock-label">Accent</span>
               <div class="swatches" role="group" aria-label="Accent color">
-                <button class="swatch is-on" data-c="#64b5f6" data-rgb="100,181,246" data-hover="#90caf9" style="--c:#64b5f6" aria-label="Blue" aria-pressed="true"></button>
-                <button class="swatch" data-c="#81c784" data-rgb="129,199,132" data-hover="#a5d6a7" style="--c:#81c784" aria-label="Green" aria-pressed="false"></button>
-                <button class="swatch" data-c="#ffb74d" data-rgb="255,183,77" data-hover="#ffcc80" style="--c:#ffb74d" aria-label="Orange" aria-pressed="false"></button>
-                <button class="swatch" data-c="#f06292" data-rgb="240,98,146" data-hover="#f48fb1" style="--c:#f06292" aria-label="Pink" aria-pressed="false"></button>
-                <button class="swatch" data-c="#ba68c8" data-rgb="186,104,200" data-hover="#ce93d8" style="--c:#ba68c8" aria-label="Purple" aria-pressed="false"></button>
-                <button class="swatch" data-c="#4dd0e1" data-rgb="77,208,225" data-hover="#80deea" style="--c:#4dd0e1" aria-label="Teal" aria-pressed="false"></button>
+                <button class="swatch is-on" data-c="#64b5f6" data-rgb="100,181,246" data-hover="#90caf9" aria-label="Blue" aria-pressed="true"></button>
+                <button class="swatch" data-c="#81c784" data-rgb="129,199,132" data-hover="#a5d6a7" aria-label="Green" aria-pressed="false"></button>
+                <button class="swatch" data-c="#ffb74d" data-rgb="255,183,77" data-hover="#ffcc80" aria-label="Orange" aria-pressed="false"></button>
+                <button class="swatch" data-c="#f06292" data-rgb="240,98,146" data-hover="#f48fb1" aria-label="Pink" aria-pressed="false"></button>
+                <button class="swatch" data-c="#ba68c8" data-rgb="186,104,200" data-hover="#ce93d8" aria-label="Purple" aria-pressed="false"></button>
+                <button class="swatch" data-c="#4dd0e1" data-rgb="77,208,225" data-hover="#80deea" aria-label="Teal" aria-pressed="false"></button>
               </div>
             </div>
             <span class="dock-sep" aria-hidden="true"></span>
@@ -191,6 +190,11 @@
           </div>
         </div>
       </div>
+      <noscript>
+        <figure class="noscript-shot">
+          <img src="/assets/Main_View.png" alt="Main view with weather, clock, media controls and Quick Access tiles" width="500" height="760">
+        </figure>
+      </noscript>
     </section>
 
     <section id="features" class="section">
@@ -260,7 +264,7 @@
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-lock"/></svg></span>
           <h3>It never sees your password</h3>
-          <p>You sign in on Home Assistant's own page, and your login is stored encrypted by your OS.</p>
+          <p>You sign in on Home Assistant's own page, and your login is stored in your OS keychain when one is available.</p>
         </article>
 
         <article class="tile t-half reveal">
@@ -299,7 +303,7 @@
         <li class="reveal">
           <span class="step-n">1</span>
           <h3>Install and open</h3>
-          <p>Run the build for your OS and click the settings button.</p>
+          <p>Run the build for your OS and open the widget. A short setup walks you through the rest.</p>
         </li>
         <li class="reveal">
           <span class="step-n">2</span>
@@ -309,7 +313,7 @@
         <li class="reveal">
           <span class="step-n">3</span>
           <h3>Add your entities</h3>
-          <p>Click <strong>+</strong> and pick the lights, sensors and cameras you want.</p>
+          <p>Choose a room to start from, or click <strong>+</strong> and pick the lights, sensors and cameras you want.</p>
         </li>
       </ol>
       <p class="fine reveal">Want automations to control it? Try the <a href="/companion">companion integration</a>.</p>
@@ -318,9 +322,9 @@
     <section class="section cloud-sync-info" id="cloud-sync">
       <div class="section-head reveal">
         <h2>Hosted Cloud Sync is planned separately</h2>
-        <p class="section-sub">Version 4.0 includes free folder Profile Sync. Hosted Cloud Sync accounts and billing are planned for a future service.</p>
+        <p class="section-sub">Free folder Profile Sync is built into the desktop app. Hosted Cloud Sync accounts and billing are planned for a future service.</p>
       </div>
-      <p class="reveal">The proposed hosted service would use Google or GitHub sign-in and store the settings you choose to sync. A 14 day trial and USD 24/year subscription are proposed; pricing and availability are not final. These account flows are not available in the 4.0 desktop app.</p>
+      <p class="reveal">The proposed hosted service would use Google or GitHub sign-in and store the settings you choose to sync. It would be a paid service; pricing and availability are not final. These account flows are not available in the desktop app.</p>
       <p class="reveal">Read the draft <a href="/privacy">privacy policy</a> and <a href="/terms">subscription terms</a> for the proposed service. You can use folder Profile Sync now without a hosted account or subscription.</p>
     </section>
 
@@ -345,7 +349,7 @@
       <div class="footer-brand">
         <img src="/assets/icon.png" alt="" width="20" height="20">
         <span>HA Desktop Widget</span>
-        <span class="footer-version" data-version>v3.11.0</span>
+        <span class="footer-version" data-version hidden></span>
       </div>
       <nav class="footer-links" aria-label="Project links">
         <a href="/download">Download</a>
@@ -358,7 +362,7 @@
         <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
       </nav>
     </div>
-    <p class="fine-print">MIT licensed. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+    <p class="fine-print">MIT licensed, with <a href="/licenses.txt">third-party font and icon licenses</a>. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
   </footer>
 
   <script type="module" src="/script.js"></script>

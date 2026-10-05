@@ -1,0 +1,36 @@
+name: Website deploy check
+
+# The website is not deployed by GitHub: it is published by hand with the Vercel CLI, from an export
+# of main's website/ (the commands are under "Release Channels" in the README). A change merged to
+# main is not live until someone does that. Run this after a deploy to compare every page, asset
+# and response header on the live site with the files on main. A failure means the deploy did not
+# happen, failed, or was made from something other than main's website/.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-deploy-check
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # The site must match main, whichever branch the run was started from.
+          ref: main
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Compare the deployed site with website/
+        run: node scripts/check-website-deploy.cjs --wait 300

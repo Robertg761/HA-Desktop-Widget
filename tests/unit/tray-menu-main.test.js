@@ -39,6 +39,7 @@ function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } =
     protectAutoHideDuringMenu: (menu) => menu,
     toggleMainWindowFromTrayEntity: jest.fn(),
     applyAlwaysOnTopPreference: jest.fn(),
+    refreshTrayMenu: jest.fn(),
     saveConfigDurably: jest.fn(async () => ({ success: true })),
     runSerializedConfigMutation: jest.fn((task) => task()),
     log: { warn: jest.fn() },
@@ -111,6 +112,22 @@ describe('the tray menu', () => {
       expect(context.applyAlwaysOnTopPreference).toHaveBeenCalled();
     });
 
+    it('leaves the clicked item and the next menu on the saved value after a click from a stale menu', async () => {
+      const context = loadTrayMenu({ alwaysOnTop: true });
+      const item = alwaysOnTopItem(context);
+
+      // Settings turned it off; the menu still shows it checked. Electron flips the item it
+      // displayed, to unchecked, while the click turns the setting on.
+      context.config.alwaysOnTop = false;
+      const menuItem = { checked: false };
+      item.click(menuItem);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(context.config.alwaysOnTop).toBe(true);
+      expect(menuItem.checked).toBe(true);
+      expect(context.refreshTrayMenu).toHaveBeenCalledTimes(1);
+    });
+
     it('turns it off again from the same menu', async () => {
       const context = loadTrayMenu({ alwaysOnTop: true });
       alwaysOnTopItem(context).click({ checked: false });
@@ -129,6 +146,7 @@ describe('the tray menu', () => {
 
       expect(context.config.alwaysOnTop).toBe(true);
       expect(menuItem.checked).toBe(true);
+      expect(context.refreshTrayMenu).toHaveBeenCalledTimes(1);
     });
   });
 });

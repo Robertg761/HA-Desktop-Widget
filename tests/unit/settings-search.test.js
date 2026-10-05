@@ -72,6 +72,12 @@ describe('settings search', () => {
       'No matching settings'
     );
   });
+  test('finds a Turkish label with either i, dotted or dotless', () => {
+    document.querySelector('label[for="ha-token"]').textContent = 'IŞIK anahtarı';
+    expect(search('ışık anahtari')).toHaveLength(1);
+    expect(search('isik')).toHaveLength(1);
+    expect(search('IŞIK')).toHaveLength(1);
+  });
   test('Escape clears the query first, and reopening clears old results', () => {
     search('theme');
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });

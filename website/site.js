@@ -2,7 +2,6 @@
 // latest GitHub release (version label and direct download links).
 
 export const REPO = 'Robertg761/HA-Desktop-Widget';
-const FALLBACK_TAG = 'v3.11.0';
 
 const ASSET_PATTERNS = {
   'win-setup': /win-x64-Setup\.exe$/,
@@ -24,6 +23,8 @@ const PLATFORMS = {
 const CONNECT = 'Enter your Home Assistant address and approve it in your browser.';
 const SMARTSCREEN = 'If Windows shows a SmartScreen warning, click <b>More info</b>, then <b>Run anyway</b>. The app isn’t code-signed yet.';
 const GATEKEEPER = 'The first time, <b>Control-click</b> the app and choose <b>Open</b>. If macOS still blocks it, open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b>. The build isn’t notarized yet.';
+/* Signing in is stored in the system keyring, and a minimal desktop (i3, Sway, Hyprland) may not run one. */
+const KEYRING = 'Remembering your sign-in needs a running keyring, such as <b>GNOME Keyring</b> or <b>KWallet</b>. Most desktops have one; on a minimal setup, install and start one first.';
 const INSTALL_STEPS = {
   'win-setup': ['Run the installer from your Downloads folder.', SMARTSCREEN, CONNECT],
   'win-portable': ['Put the .exe wherever you like and double-click it. Nothing gets installed.', SMARTSCREEN, CONNECT],
@@ -32,11 +33,13 @@ const INSTALL_STEPS = {
   'linux-appimage': [
     'Right-click the AppImage, open <b>Properties</b> and allow it to run as a program.',
     'Double-click it to start. It keeps itself up to date.',
+    KEYRING,
     CONNECT,
   ],
   'linux-deb': [
     'Open the .deb with your software installer, or run <code>sudo apt install ./</code> followed by the file name.',
     'Launch HA Desktop Widget from your app menu.',
+    KEYRING,
     CONNECT,
   ],
 };
@@ -46,9 +49,11 @@ export function detectPlatform() {
   // Android UAs contain "Linux" and desktop-mode iPads say "Macintosh".
   if (/Android|iPhone|iPad|iPod/i.test(ua)) return { os: null, mobile: true };
   if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return { os: null, mobile: true };
+  // A Chromebook says "X11; CrOS", but there is no build for it, so it must not match Linux below.
+  if (/CrOS/.test(ua)) return { os: null, mobile: false, chromeos: true };
   if (/Windows/i.test(ua)) return { os: 'windows', mobile: false };
   if (/Macintosh|Mac OS X/i.test(ua)) return { os: 'mac', mobile: false };
-  if (/Linux|X11|CrOS/i.test(ua)) return { os: 'linux', mobile: false };
+  if (/Linux|X11/i.test(ua)) return { os: 'linux', mobile: false };
   return { os: null, mobile: false };
 }
 
@@ -61,44 +66,89 @@ async function detectArm() {
   return /aarch64|arm64/i.test(navigator.userAgent);
 }
 
-const getJson = (path) => fetch(`https://api.github.com/repos/${REPO}/${path}`)
-  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-  .catch(() => null);
-
-export const release = getJson('releases/latest');
-
-/* A published beta that's newer than the latest stable release, if any. */
-const coreVersion = (tag) => (tag || '').replace(/^v/, '').split('-')[0].split('.').map(Number);
-const isNewer = (a, b) => {
-  const [x, y] = [coreVersion(a), coreVersion(b)];
-  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
-  return false;
+/* GitHub answers 60 unauthenticated requests an hour per IP, so a page only asks for what it
+   shows, and a reply is kept for the rest of the session: moving between pages costs nothing. */
+const CACHE_MS = 10 * 60 * 1000;
+const slim = (release) => release && {
+  tag_name: release.tag_name,
+  html_url: release.html_url,
+  prerelease: release.prerelease,
+  draft: release.draft,
+  assets: (release.assets || []).map(({ name, browser_download_url }) => ({ name, browser_download_url })),
 };
-export const beta = Promise.all([release, getJson('releases?per_page=10')]).then(([stable, list]) =>
-  (list || []).find((r) => r.prerelease && !r.draft && isNewer(r.tag_name, stable?.tag_name)) || null
-);
+
+function getJson(path) {
+  const key = `hdw-gh:${path}`;
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(key));
+    if (kept && Date.now() - kept.at < CACHE_MS) return Promise.resolve(kept.data);
+  } catch { /* no storage, or not ours */ }
+  return fetch(`https://api.github.com/repos/${REPO}/${path}`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then((data) => {
+      const trimmed = Array.isArray(data) ? data.map(slim) : slim(data);
+      try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data: trimmed })); } catch { /* full or blocked */ }
+      return trimmed;
+    })
+    .catch(() => null);
+}
+
+/* Null when the lookup fails (offline, blocked, rate-limited): the pages then show no version at
+   all rather than one that was true when the site was last edited. */
+let releaseRequest;
+export const getRelease = () => (releaseRequest ||= getJson('releases/latest'));
+
+/* A published beta worth pointing at: one that starts a newer minor or major than the latest
+   stable release. A patch beta (the nightly after 4.0.0 is 4.0.1-beta.1) is just the next fix. */
+export const coreVersion = (tag) => (tag || '').replace(/^v/, '').split('-')[0].split('.').map(Number);
+export function pickBeta(stable, releases) {
+  if (!stable?.tag_name) return null;
+  const [major = 0, minor = 0] = coreVersion(stable.tag_name);
+  return (releases || []).find((r) => {
+    if (!r.prerelease || r.draft) return false;
+    const [m = 0, n = 0] = coreVersion(r.tag_name);
+    return m > major || (m === major && n > minor);
+  }) || null;
+}
+let betaRequest;
+export const getBeta = () => (betaRequest ||= Promise.all([getRelease(), getJson('releases?per_page=10')])
+  .then(([stable, list]) => pickBeta(stable, list)));
 
 const platform = detectPlatform();
 const info = platform.os ? PLATFORMS[platform.os] : null;
 
 /* ---------------- Every page ---------------- */
 
+// If this script was late enough for the stylesheet's fallback to start showing the page, keep what
+// it showed: ending the fallback below would otherwise hide that content again until the observer
+// reached it.
+document.querySelectorAll('.reveal').forEach((el) => {
+  if (Number.parseFloat(getComputedStyle(el).opacity) > 0) el.classList.add('in');
+});
+
+// From here the page is script-driven: the reveal styles take over from their no-script fallback.
+document.documentElement.classList.add('js-ready');
+
 document.querySelectorAll('[data-download-label]').forEach((el) => {
   if (info) el.textContent = `Download for ${info.label}`;
 });
 
-release.then((rel) => {
-  const tag = rel?.tag_name || FALLBACK_TAG;
-  document.querySelectorAll('[data-version]').forEach((el) => { el.textContent = tag; });
-  if (!rel) return;
-  for (const [key, pattern] of Object.entries(ASSET_PATTERNS)) {
-    const asset = (rel.assets || []).find((a) => pattern.test(a.name));
-    if (!asset) continue;
-    document.querySelectorAll(`[data-asset="${key}"]`).forEach((el) => {
-      el.href = asset.browser_download_url;
+if (document.querySelector('[data-version], [data-asset]')) {
+  getRelease().then((rel) => {
+    if (!rel) return;
+    document.querySelectorAll('[data-version]').forEach((el) => {
+      el.textContent = (el.dataset.versionPrefix || '') + rel.tag_name;
+      el.hidden = false;
     });
-  }
-});
+    for (const [key, pattern] of Object.entries(ASSET_PATTERNS)) {
+      const asset = (rel.assets || []).find((a) => pattern.test(a.name));
+      if (!asset) continue;
+      document.querySelectorAll(`[data-asset="${key}"]`).forEach((el) => {
+        el.href = asset.browser_download_url;
+      });
+    }
+  });
+}
 
 const nav = document.querySelector('.nav');
 const onScroll = () => nav?.classList.toggle('scrolled', scrollY > 8);
@@ -106,14 +156,17 @@ addEventListener('scroll', onScroll, { passive: true });
 onScroll();
 
 /* Fade content in as it arrives. Siblings in the same row stagger slightly. */
-const revealer = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    if (!entry.isIntersecting) continue;
-    entry.target.classList.add('in');
-    revealer.unobserve(entry.target);
-  }
-}, { rootMargin: '0px 0px -8% 0px' });
+const revealer = typeof IntersectionObserver === 'function'
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add('in');
+      revealer.unobserve(entry.target);
+    }
+  }, { rootMargin: '0px 0px -8% 0px' })
+  : null;
 document.querySelectorAll('.reveal').forEach((el) => {
+  if (!revealer) { el.classList.add('in'); return; }
   const siblings = [...el.parentElement.children].filter((c) => c.classList.contains('reveal'));
   el.style.setProperty('--d', `${Math.min(siblings.indexOf(el), 5) * 70}ms`);
   revealer.observe(el);
@@ -136,6 +189,7 @@ document.querySelectorAll('[data-copy]').forEach((btn) => {
 
 const rec = document.getElementById('recommend');
 
+/* The page ships generic steps for every system; this swaps in the ones for the file picked. */
 function showSteps(assetKey) {
   const steps = INSTALL_STEPS[assetKey];
   if (steps) document.getElementById('install-steps').innerHTML = steps.map((t) => `<li>${t}</li>`).join('');
@@ -169,22 +223,23 @@ if (rec) {
       button.hidden = true;
       help.hidden = true;
     });
-    Promise.all([release, noBuild]).then(([rel, none]) => {
+    Promise.all([getRelease(), noBuild]).then(([rel, none]) => {
       const asset = rel?.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
       if (asset && !none) button.href = asset.browser_download_url;
     });
   } else {
     rec.hidden = true;
-    if (platform.mobile) document.getElementById('no-detect').hidden = false;
+    const noDetect = document.getElementById('no-detect');
+    if (platform.chromeos) noDetect.textContent = 'There’s no ChromeOS build. HA Desktop Widget runs on Windows, macOS and Linux computers.';
+    if (platform.mobile || platform.chromeos) noDetect.hidden = false;
   }
 
   /* Offer a newer beta, quietly, for the visitor's own platform. */
-  Promise.all([beta, noBuild]).then(([rel, none]) => {
-    if (!rel || none) return;
+  Promise.all([getBeta(), noBuild]).then(([rel, none]) => {
+    if (!rel || none || !info) return;
     const asset = rel.assets?.find((a) => ASSET_PATTERNS[info.primary].test(a.name));
     const link = document.getElementById('beta-link');
-    const [major, minor] = coreVersion(rel.tag_name);
-    link.textContent = `Try the ${major}.${minor} beta`;
+    link.textContent = `Try ${rel.tag_name.replace(/^v/, '')}`;
     link.href = asset?.browser_download_url || rel.html_url;
     link.dataset.betaAsset = info.primary;
     document.getElementById('beta-line').hidden = false;

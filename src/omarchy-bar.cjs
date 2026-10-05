@@ -397,14 +397,26 @@ const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
 });
 
 /**
+ * What to hand `translate` for a string with {{placeholders}}: each one as itself. The plugin fills
+ * them in (it has the temperature and the tile count, the widget does not), and a lookup given no
+ * values would empty them, leaving "Now " for the plugin to replace nothing in.
+ */
+function keepPlaceholders(source) {
+  const values = {};
+  for (const [, name] of source.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)) values[name] = `{{${name}}}`;
+  return values;
+}
+
+/**
  * The panel's words in the widget's language. `translate` is mainT; a key it has no translation
  * for comes back as the key, the English the plugin would show anyway ("Action: Open" is a context
- * key whose English is the word after the colon).
+ * key whose English is the word after the colon). A {{placeholder}} stays in the text, where the
+ * translation put it, for the plugin to fill in.
  */
 function buildOmarchyBarStrings(translate) {
   const strings = {};
   for (const [id, source] of Object.entries(OMARCHY_BAR_STRING_SOURCES)) {
-    const text = String(translate(source) ?? '');
+    const text = String(translate(source, keepPlaceholders(source)) ?? '');
     strings[id] = text === source ? source.replace(/^Action: /, '') : text;
   }
   return strings;

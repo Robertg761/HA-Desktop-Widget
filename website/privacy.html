@@ -4,30 +4,82 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy | HA Desktop Widget</title>
-  <meta name="description" content="How HA Desktop Widget Cloud Sync handles account, profile and subscription information.">
+  <meta name="description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0c10">
   <link rel="canonical" href="https://hadesktopwidget.com/privacy">
   <link rel="icon" type="image/png" href="/assets/icon.png">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <meta property="og:title" content="Privacy | HA Desktop Widget">
+  <meta property="og:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
+  <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
+  <meta property="og:url" content="https://hadesktopwidget.com/privacy">
+  <meta property="og:site_name" content="HA Desktop Widget">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Privacy | HA Desktop Widget">
+  <meta name="twitter:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
+  <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
+  <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="nav">
     <div class="nav-inner">
       <a class="brand" href="/" aria-label="HA Desktop Widget home">
         <img src="/assets/icon.png" alt="" width="26" height="26">
         <span>HA Desktop Widget</span>
       </a>
-      <nav class="nav-links" aria-label="Site"><a href="/">Home</a><a href="/download">Download</a><a href="/terms">Terms</a></nav>
+      <nav class="nav-links" aria-label="Site">
+        <a href="/#features">Features</a>
+        <a href="/#screenshots">Screenshots</a>
+        <a href="/companion">Companion</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
+        </a>
+        <a class="btn btn-primary btn-sm" href="/download">
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-download"/></svg>
+          Download
+        </a>
+      </div>
     </div>
   </header>
-  <main class="legal-page">
-    <h1>Privacy policy</h1>
-    <p class="legal-meta">Draft updated 30 September 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
-    <p><strong>Planned service.</strong> This draft describes the proposed hosted Cloud Sync service and its account data. It does not describe features available in the 4.0 desktop app. Account sign-in, subscriptions, and Delete Account controls are planned separately; final privacy information will be published when that service becomes available. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
-    <p>Cloud Sync is an optional service for HA Desktop Widget. It keeps the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync.</p>
 
-    <h2>Information we handle</h2>
+  <main class="legal-page" id="main">
+    <h1>Privacy policy</h1>
+    <p class="legal-meta">Updated 4 October 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
+    <p>This page covers the HA Desktop Widget desktop app, this website, and a hosted Cloud Sync service that is only planned. The app and the website are live today. The Cloud Sync section at the end is a draft.</p>
+
+    <h2>The desktop app</h2>
+    <p>The app has no accounts and does not send telemetry, analytics or crash reports. It talks to your own Home Assistant server and to GitHub, as described below. Your settings, layout and logs stay on your computer.</p>
+    <h3>Home Assistant</h3>
+    <p>The app connects to the Home Assistant address you enter and shows what that server reports: entities, cameras and media. You sign in on Home Assistant's own page in your browser, so the app never sees your password. It keeps the sign-in it receives, or a long-lived access token you paste, encrypted with your operating system's secure storage (Windows, the macOS Keychain, or a Linux keyring such as GNOME Keyring or KWallet). Where secure storage is not available, the app does not save the sign-in.</p>
+    <h3>Update checks (GitHub)</h3>
+    <p>The app asks GitHub Releases for new versions about 30 seconds after it starts, about every six hours, and when the computer wakes up if a check is due. The Windows installer and the Linux AppImage download and install updates themselves. The portable, macOS, .deb and Arch builds show one notice for each new version and link to the download on GitHub. Beta releases are included only if you turn on Receive beta updates in Settings. GitHub sees your IP address and the request, as with any download. The app adds no account or device identifier of its own.</p>
+    <h3>Language packs (GitHub)</h3>
+    <p>English and German are built in. Other languages are packs that the app downloads from raw.githubusercontent.com when you choose them, and it fetches the list of available packs when Settings shows them. Installed packs are checked for a newer version about 30 seconds after the app starts and then daily, with no request when none is installed. Each download is checked against a SHA-256 hash from the list before it is used.</p>
+    <h3>Artwork from other websites</h3>
+    <p>A media player can point to album art on another website. The app downloads that picture itself and refuses addresses on your own network or other private or reserved ranges. The site that hosts the picture sees your IP address. Your Home Assistant sign-in is sent only to your own Home Assistant server.</p>
+    <h3>Links and Profile Sync</h3>
+    <p>Report an issue, Releases, Sponsor and Profile Sync help open GitHub pages in your default browser, and that site's own policy applies from there. Profile Sync, if you turn it on, writes one file to a folder you choose. The app does not contact Dropbox, OneDrive, iCloud Drive, Google Drive or Syncthing; whichever service syncs that folder handles the file. You can encrypt the file with a passphrase.</p>
+
+    <h2>This website</h2>
+    <p>This website has no accounts, cookies, analytics or advertising, and loads no third-party scripts or fonts. It is hosted by Vercel, which receives your IP address and the usual details of each request, as any web host does.</p>
+    <ul>
+      <li>The home, Companion and Download pages ask GitHub (api.github.com) from your browser for the latest release, to show the current version and link the right file. The Download page also asks for the list of recent releases, to offer a beta. GitHub sees your IP address and the request. Your browser keeps the answers in session storage and reuses them for ten minutes, so moving between pages does not repeat the requests.</li>
+      <li>The demo on the home page keeps your choices (accent color, light and switch states, pinned tiles) in your browser's local storage, under names that start with <code>hdw-</code>. They never leave your browser. Clear them with your browser's site data settings.</li>
+      <li>Download buttons and other links go to GitHub, which has its own policy.</li>
+    </ul>
+
+    <h2>Planned Cloud Sync service (draft)</h2>
+    <p><strong>Planned service.</strong> This draft describes a proposed hosted Cloud Sync service and its account data. The service does not exist yet, and the desktop app has no hosted account, Google or GitHub sign-in, subscription or Delete Account controls. Final privacy information will be published when that service becomes available. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
+    <p>Cloud Sync would be an optional service for HA Desktop Widget. It would keep the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync.</p>
+
+    <h3>Information we handle</h3>
     <ul>
       <li>When you sign in with Google or GitHub, we receive your verified email address and that provider's user ID. We use these to identify your Cloud Sync account. We do not receive your provider password.</li>
       <li>We store your synced profile and a revision number. A profile may include your widget appearance, Quick Access layout, alerts, and connection or media preferences. If you enable the app's profile encryption, the service stores the encrypted profile and cannot read its contents. Without it, the service can read the profile.</li>
@@ -36,22 +88,42 @@
       <li>Service providers may process network and account information needed to deliver Cloud Sync.</li>
     </ul>
 
-    <h2>How we use it</h2>
+    <h3>How we use it</h3>
     <p>We use this information to sign you in, sync your settings, prevent conflicting saves, determine whether your account can save changes, manage subscriptions, and respond to support or security issues. Google and GitHub sign-in is used for identity and email only. We do not use Google or GitHub account data for advertising.</p>
 
-    <h2>Providers and sharing</h2>
+    <h3>Providers and sharing</h3>
     <p>Cloudflare hosts the Cloud Sync service and database. Google or GitHub provides sign-in, and Stripe processes subscriptions. We share information with these providers as needed for those functions. We may also disclose information when required by law or to protect the service and its users. Each provider may handle data under its own privacy policy.</p>
 
-    <h2>Retention and your choices</h2>
-    <p>The planned client would remove a device's service session on sign-out, and sessions would expire after 180 days without use. Its proposed Delete Account action would first try to cancel an active subscription. If cancellation failed, the account would stay in place so billing was not left running without an account. After successful cancellation, the service would delete your identities, sessions, profile, and subscription record from its active database. Copies could remain temporarily in Cloudflare backup and recovery systems, and Stripe could retain payment records under its own legal obligations. The 4.0 desktop app has no hosted Delete Account action.</p>
+    <h3>Retention and your choices</h3>
+    <p>The planned client would remove a device's service session on sign-out, and sessions would expire after 180 days without use. Its proposed Delete Account action would first try to cancel an active subscription. If cancellation failed, the account would stay in place so billing was not left running without an account. After successful cancellation, the service would delete your identities, sessions, profile, and subscription record from its active database. Copies could remain temporarily in Cloudflare backup and recovery systems, and Stripe could retain payment records under its own legal obligations. The desktop app has no hosted Delete Account action.</p>
     <p>If your trial or subscription ends, you can still download your stored profile. Saving new changes requires an active entitlement. You can also use the app's free folder sync instead of Cloud Sync.</p>
 
-    <h2>Security and requests</h2>
-    <p>The service uses HTTPS, stores only hashes of service session tokens, and checks profile revisions before accepting changes. Optional profile encryption is available in the app. To request access, correction, account deletion help, or to report a privacy or security issue, email <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a>.</p>
+    <h3>Security</h3>
+    <p>The service would use HTTPS, store only hashes of service session tokens, and check profile revisions before accepting changes. Optional profile encryption is available in the app.</p>
 
-    <h2>Changes</h2>
-    <p>We will post changes to this page and update its effective date. We will give additional notice when required by applicable law.</p>
+    <h2>Requests and changes</h2>
+    <p>To request access, correction, account deletion help, or to report a privacy or security issue, email <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a>.</p>
+    <p>We will post changes to this page and update its date. We will give additional notice when required by applicable law.</p>
   </main>
-  <footer class="footer"><div class="footer-inner"><div class="footer-brand"><img src="/assets/icon.png" alt="" width="20" height="20"><span>HA Desktop Widget</span></div><nav class="footer-links" aria-label="Project links"><a href="/">Home</a><a href="/download">Download</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="mailto:robertgordon761@gmail.com">Contact</a></nav></div></footer>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <img src="/assets/icon.png" alt="" width="20" height="20">
+        <span>HA Desktop Widget</span>
+      </div>
+      <nav class="footer-links" aria-label="Project links">
+        <a href="/download">Download</a>
+        <a href="/companion">Companion</a>
+        <a href="/privacy" aria-current="page">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        <a href="https://github.com/sponsors/robertg761" target="_blank" rel="noopener">Sponsor</a>
+      </nav>
+    </div>
+    <p class="fine-print">MIT licensed, with <a href="/licenses.txt">third-party font and icon licenses</a>. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
+  </footer>
 </body>
 </html>
