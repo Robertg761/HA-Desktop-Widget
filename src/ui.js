@@ -15833,6 +15833,8 @@ function coverVisualPercent(entity) {
 function showCoverControls(coverEntity, { replaces = null, focusSelector = null } = {}) {
   try {
     const capabilities = getDesktopPinCapabilities(coverEntity);
+    // Close here moves the cover, so the footer's way out of the dialog says Done: a second Close
+    // under it could not be told from the one that lowers the garage door.
     const availableActions = [
       capabilities.canClose
         ? { action: 'close_cover', icon: lineIconMarkup('chevron-down'), label: t('Close') }
@@ -15921,7 +15923,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary btn-neutral" id="cover-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="cover-cancel">${utils.escapeHtml(t('Done'))}</button>
         </div>
       </div>
     `;
