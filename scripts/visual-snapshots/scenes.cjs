@@ -521,6 +521,18 @@ const FORMAT_SIZE = { width: 520, height: 1040 };
 // The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
 // photographs it turns the switch on.
 const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
+// An earlier version let a sensor's tile menu save a hotkey that does nothing.
+const hotkeysWithSensor = {
+  globalHotkeys: { enabled: true, hotkeys: { 'sensor.office_temp': 'Ctrl+Alt+T' } },
+};
+const SENSOR_HOTKEY_ROW = `(() => {
+  const row = document.querySelector('#hotkeys-list .hotkey-item');
+  const field = row?.querySelector('.hotkey-input');
+  return field?.dataset.entityId === 'sensor.office_temp' && field.disabled &&
+    !row.querySelector('.hotkey-action-select') &&
+    row.querySelector('.btn-clear-hotkey')?.checkVisibility() === true &&
+    row.querySelector('.hotkey-item-note')?.textContent.trim().length > 0;
+})()`;
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without. The list
 // is in name order, so the second is a row that sits among the first few the "light" search shows
 // (the Colour strip comes before the Desk lamp, whose hotkey fell below the fold).
@@ -1139,11 +1151,15 @@ const scenes = [
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
-  // The entity list, where each row picks the action its hotkey runs from a select.
+  // The entity list, where each row picks the action its hotkey runs from a select. A hotkey an
+  // earlier version saved on a sensor comes first, with only its Clear button.
   {
     name: 'settings-hotkeys-entities',
-    config: hotkeysOn,
-    setup: (ctx) => openHotkeysFor(ctx, ''),
+    config: hotkeysWithSensor,
+    setup: async (ctx) => {
+      await openHotkeysFor(ctx, '');
+      await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+    },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
   // pager (Previous available, Next not).
@@ -2440,6 +2456,14 @@ const scenes = [
     keepToasts: true,
     setup: async (ctx) => {
       await openAlertConfig(ctx);
+      // Measured once the dialog has stopped scaling in.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-config-modal').getAnimations({ subtree: true }).length`,
+        'the alert dialog to finish opening'
+      );
+      await ctx.ev(
+        `window.__alertFieldEnd = document.getElementById('alert-threshold').getBoundingClientRect().right`
+      );
       await typeInto(ctx, '#alert-threshold', '');
       await typeInto(ctx, '#alert-duration', '1.5');
       await ctx.click('#save-alert');
@@ -2456,14 +2480,6 @@ const scenes = [
     size: MINIMUM_SIZE,
     setup: async (ctx) => {
       await openRemoveConfirmation(ctx);
-      // Measured once the dialog has stopped scaling in.
-      await ctx.waitForExpression(
-        `!document.getElementById('alert-config-modal').getAnimations({ subtree: true }).length`,
-        'the alert dialog to finish opening'
-      );
-      await ctx.ev(
-        `window.__alertFieldEnd = document.getElementById('alert-threshold').getBoundingClientRect().right`
-      );
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },
