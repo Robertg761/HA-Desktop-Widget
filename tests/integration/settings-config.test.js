@@ -2946,6 +2946,9 @@ describe('Settings + Config Integration', () => {
       await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
+      // Keywords and pasted emoji are not words to spellcheck or capitalize.
+      expect(iconInput.spellcheck).toBe(false);
+      expect(iconInput.getAttribute('autocapitalize')).toBe('off');
 
       // Act
       iconInput.value = 'timer';

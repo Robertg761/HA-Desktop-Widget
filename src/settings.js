@@ -3018,6 +3018,9 @@ function renderCustomEntityIconRows() {
     input.maxLength = 64;
     input.value = pickerQuery || pendingIcon || '';
     input.autocomplete = 'off';
+    // Icon keywords and pasted emoji, not prose: no spelling squiggles or menus on them.
+    input.spellcheck = false;
+    input.setAttribute('autocapitalize', 'off');
     input.setAttribute('aria-label', t('Custom icon for {{entityId}}', { entityId }));
     input.dataset.customIconInput = entityId;
     actions.appendChild(input);

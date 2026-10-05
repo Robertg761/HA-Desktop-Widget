@@ -290,6 +290,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       // Sensors are offered but not preselected, the same as in first-run setup.
       expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(0);
       expect(document.querySelector('.room-device-search').hidden).toBe(false);
+      // It takes entity names and ids, which are not words to spellcheck or capitalize.
+      expect(document.querySelector('.room-device-search').spellcheck).toBe(false);
+      expect(document.querySelector('.room-device-search').getAttribute('autocapitalize')).toBe(
+        'off'
+      );
     });
 
     it('opens the unscoped starter list on the controllable entities, and keeps ticks when the rest is shown', async () => {

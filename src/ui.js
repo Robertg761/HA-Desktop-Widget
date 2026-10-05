@@ -1349,6 +1349,9 @@ function showAddPageModal({ starter = false } = {}) {
   const deviceSearch = document.createElement('input');
   deviceSearch.type = 'search';
   deviceSearch.className = 'form-control room-device-search';
+  // Entity names and ids, not prose: no spelling squiggles or menus on them.
+  deviceSearch.spellcheck = false;
+  deviceSearch.setAttribute('autocapitalize', 'off');
   deviceSearch.placeholder = t('Search entities');
   deviceSearch.setAttribute('aria-label', t('Search entities'));
   const filterDevices = () => {
