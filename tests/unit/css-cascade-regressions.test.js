@@ -556,9 +556,15 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(form, 'position')).toBe('sticky');
       // Held at the content edge, so the body's own padding is taken back: negative top and margins,
       // and the same amount as padding on the field itself, which leaves the layout at rest as it was.
+      // At the end the body keeps the scrollbar's room out of its padding, so less is taken back.
+      const scrollbar = resolvedValue(form, '--modal-scrollbar-size');
       expect(resolvedValue(form, 'top')).toBe(`calc(-1 * ${inset})`);
-      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) calc(-1 * ${inset}) 0`);
+      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) 0 0`);
+      expect(resolvedValue(form, 'margin-inline').replace(/\s+/g, ' ')).toBe(
+        `calc(-1 * ${inset}) calc(${scrollbar} - ${inset})`
+      );
       expect(resolvedValue(form, 'padding')).toBe(`${inset} ${inset} 14px`);
+      expect(resolvedValue(form, 'padding-inline-end')).toBe(`calc(${inset} - ${scrollbar})`);
     });
 
     // A window under 480px high gives a dialog body 12px of padding instead of 16px. An add field that
@@ -571,8 +577,11 @@ describe('stylesheet cascade regressions', () => {
       const form = document.querySelector('.todo-add-form');
       expect(resolvedValue(body, 'padding')).toBe('1rem');
       expect(resolvedValue(body, 'padding', short)).toBe('0.75rem');
-      expect(resolvedValue(form, 'margin')).toBe('calc(-1 * 1rem) calc(-1 * 1rem) 0');
-      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) calc(-1 * 0.75rem) 0');
+      const inline = (options) =>
+        resolvedValue(form, 'margin-inline', options).replace(/\s+/g, ' ');
+      expect(inline()).toBe('calc(-1 * 1rem) calc(9px - 1rem)');
+      expect(inline(short)).toBe('calc(-1 * 0.75rem) calc(9px - 0.75rem)');
+      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) 0 0');
       expect(resolvedValue(form, 'top', short)).toBe('calc(-1 * 0.75rem)');
     });
   });
