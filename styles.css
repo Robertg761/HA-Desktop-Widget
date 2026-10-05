@@ -11344,6 +11344,17 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   overflow-wrap: anywhere;
 }
 
+/* Why a saved hotkey cannot fire, under its name: Home Assistant no longer lists the entity, or a
+   hotkey cannot act on it. Its field is dimmed as disabled, and only the clear button is live. */
+.hotkey-item .hotkey-item-note {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: -8px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
 /* The hotkey takes what the action and the clear button leave, and the action drops under it when
    the row is too narrow for both (150% text, a small window). The clear button keeps its place
    when there is nothing to clear, so setting or recording a hotkey moves nothing, and every row

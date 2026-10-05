@@ -443,6 +443,9 @@ describe('hotkeys module', () => {
           };
         }
         state.setStates(states);
+        // The living room light holding a hotkey is not among these lamps, and a hotkey on an entity
+        // Home Assistant does not list keeps a row ahead of the pages.
+        state.CONFIG.globalHotkeys.hotkeys = {};
       });
       const rows = () => container.querySelectorAll('.hotkey-item');
       const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
@@ -1620,6 +1623,110 @@ describe('hotkeys module', () => {
         (input) => input.dataset.entityId
       );
       expect(rows).toEqual(['light.desk']);
+    });
+
+    describe('that an earlier version saved anyway', () => {
+      const rowOf = (entityId) =>
+        [...document.querySelectorAll('#hotkeys-list .hotkey-item')].find(
+          (row) => row.querySelector('.hotkey-input')?.dataset.entityId === entityId
+        );
+
+      beforeEach(() => {
+        state.CONFIG.globalHotkeys.hotkeys = {
+          'sensor.office_temp': 'Ctrl+Alt+T',
+          'light.gone': { hotkey: 'Ctrl+Alt+G', action: 'toggle' },
+          'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' },
+        };
+      });
+
+      it('keeps a row, first, with the hotkey and a Clear button, and says why it does nothing', () => {
+        hotkeys.renderHotkeysTab();
+
+        const ids = [...document.querySelectorAll('#hotkeys-list .hotkey-input')].map(
+          (input) => input.dataset.entityId
+        );
+        expect(ids).toEqual(['light.gone', 'sensor.office_temp', 'light.desk']);
+
+        const row = rowOf('sensor.office_temp');
+        expect(row.querySelector('.entity-name').textContent).toBe('Office temp');
+        const field = row.querySelector('.hotkey-input');
+        expect(field.value).toBe('Ctrl+Alt+T');
+        // Nothing to record or to pick: only the Clear button is live.
+        expect(field.disabled).toBe(true);
+        expect(row.querySelector('.hotkey-action-select')).toBeNull();
+        const clear = row.querySelector('.btn-clear-hotkey');
+        expect(clear.getAttribute('aria-label')).toBe('Clear hotkey for Office temp');
+        const note = document.getElementById(clear.getAttribute('aria-describedby'));
+        expect(note.textContent).toBe('Hotkeys cannot control this kind of entity');
+        expect(field.getAttribute('aria-describedby')).toBe(note.id);
+      });
+
+      it('names one Home Assistant no longer lists by its id, as unavailable', () => {
+        hotkeys.renderHotkeysTab();
+
+        const row = rowOf('light.gone');
+        expect(row.querySelector('.entity-name').textContent).toBe('light.gone');
+        expect(row.querySelector('.hotkey-item-note').textContent).toBe('Unavailable');
+        expect(row.querySelector('.hotkey-input').value).toBe('Ctrl+Alt+G');
+      });
+
+      it('is found by the search, and drops out of the list once it is cleared', async () => {
+        document.getElementById('hotkey-entity-search').value = 'office';
+        hotkeys.renderHotkeysTab();
+        expect(rowOf('sensor.office_temp')).toBeDefined();
+        expect(rowOf('light.gone')).toBeUndefined();
+
+        mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: true });
+        await expect(hotkeys.clearEntityHotkey('sensor.office_temp')).resolves.toBe(true);
+        expect(mockElectronAPI.unregisterHotkey).toHaveBeenCalledWith('sensor.office_temp');
+        expect(rowOf('sensor.office_temp')).toBeUndefined();
+      });
+
+      it('waits for Home Assistant to send its entities before calling any of them gone', () => {
+        state.setStates({});
+        hotkeys.renderHotkeysTab();
+
+        expect(document.querySelector('#hotkeys-list .hotkey-item')).toBeNull();
+        expect(document.querySelector('#hotkeys-list .hotkeys-empty').textContent).toBe(
+          'Connect to Home Assistant to assign hotkeys'
+        );
+      });
+    });
+  });
+
+  describe('a garage door, a valve, a lock, a humidifier and a siren', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates(
+        Object.fromEntries(
+          ['cover.garage', 'valve.garden', 'lock.front', 'humidifier.bedroom', 'siren.hall'].map(
+            (id) => [id, { entity_id: id, state: 'off', attributes: {} }]
+          )
+        )
+      );
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+
+    it("are listed with the actions their tiles have, not a light switch's", () => {
+      hotkeys.renderHotkeysTab();
+
+      const actions = Object.fromEntries(
+        [...document.querySelectorAll('#hotkeys-list select.hotkey-action-select')].map(
+          (select) => [select.dataset.entityId, [...select.options].map((option) => option.value)]
+        )
+      );
+      // A cover, a valve and a lock have no turn_on or turn_off service; a toggle does what a
+      // click on the tile does.
+      expect(actions).toEqual({
+        'cover.garage': ['toggle'],
+        'valve.garden': ['toggle'],
+        'lock.front': ['toggle'],
+        'humidifier.bedroom': ['toggle', 'turn_on', 'turn_off'],
+        'siren.hall': ['toggle', 'turn_on', 'turn_off'],
+      });
     });
   });
 

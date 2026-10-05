@@ -441,7 +441,7 @@ const {
   acceleratorsConflict,
   validateAccelerator,
 } = require('./src/accelerators.cjs');
-const { supportsEntityHotkey } = require('./src/entity-hotkeys.cjs');
+const { liveEntityHotkeys, supportsEntityHotkey } = require('./src/entity-hotkeys.cjs');
 const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
@@ -9504,8 +9504,8 @@ ipcMain.handle('update-tray-entity-icon', (event, payload) => {
 });
 
 // The hotkey items of a tile's menu: Add or Edit only where a hotkey has an action to run, and
-// Remove wherever one is set, which is also the way to free a chord an earlier version let a sensor
-// or a camera take. `requestHotkey(remove)` hands the request to the renderer.
+// Remove wherever one is set, which also clears one an earlier version let a sensor or a camera
+// save. `requestHotkey(remove)` hands the request to the renderer.
 function entityTileHotkeyMenuItems(entityId, hasHotkey, requestHotkey) {
   const items = [];
   if (supportsEntityHotkey(entityId)) {
@@ -11295,7 +11295,7 @@ ipcMain.handle(
     if (!normalizedEntityId) {
       return { success: false, error: 'Invalid entity ID' };
     }
-    // A hotkey on any other domain would hold its chord for a shortcut that does nothing.
+    // A hotkey on any other domain would be a shortcut that does nothing.
     if (!supportsEntityHotkey(normalizedEntityId)) {
       return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
     }
@@ -11911,10 +11911,10 @@ function handlePortalShortcutActivated(shortcutId) {
   if (!config?.globalHotkeys?.enabled) return;
 
   const entityId = shortcutId.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
-  const hotkeyConfig = config.globalHotkeys.hotkeys?.[entityId];
-  if (!hotkeyConfig) return;
-  const { hotkey, action } =
-    typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+  // Config decides here too: a removed hotkey, or one that cannot act, is inert.
+  const live = liveEntityHotkeys(config.globalHotkeys.hotkeys).find(([id]) => id === entityId);
+  if (!live) return;
+  const { hotkey, action } = live[1];
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
   }
@@ -12003,25 +12003,19 @@ function syncLegacyPortalShortcuts(shortcuts) {
 function collectPortalShortcuts() {
   const shortcuts = [];
   if (config?.globalHotkeys?.enabled) {
-    Object.entries(config.globalHotkeys.hotkeys || {}).forEach(([entityId, hotkeyConfig]) => {
-      const { hotkey, action } =
-        typeof hotkeyConfig === 'object'
-          ? hotkeyConfig
-          : { hotkey: hotkeyConfig, action: 'toggle' };
-      if (hotkey && hotkey.trim()) {
-        shortcuts.push({
-          id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
-          // Shown in the desktop's shortcut settings. Sent with every bind, so a
-          // language change applies the next time the shortcuts are rebound.
-          description:
-            action === 'turn_on'
-              ? mainT('Turn on {{entity}}', { entity: entityId })
-              : action === 'turn_off'
-                ? mainT('Turn off {{entity}}', { entity: entityId })
-                : mainT('Toggle {{entity}}', { entity: entityId }),
-          accelerator: hotkey,
-        });
-      }
+    liveEntityHotkeys(config.globalHotkeys.hotkeys).forEach(([entityId, { hotkey, action }]) => {
+      shortcuts.push({
+        id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
+        // Shown in the desktop's shortcut settings. Sent with every bind, so a
+        // language change applies the next time the shortcuts are rebound.
+        description:
+          action === 'turn_on'
+            ? mainT('Turn on {{entity}}', { entity: entityId })
+            : action === 'turn_off'
+              ? mainT('Turn off {{entity}}', { entity: entityId })
+              : mainT('Toggle {{entity}}', { entity: entityId }),
+        accelerator: hotkey,
+      });
     });
   }
   const popupHotkey = typeof config?.popupHotkey === 'string' ? config.popupHotkey.trim() : '';
@@ -12342,32 +12336,28 @@ function registerGlobalHotkeys() {
 
   // Register each configured hotkey
   let allRegistered = true;
-  Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
-    const { hotkey, action } =
-      typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
-    if (hotkey && hotkey.trim()) {
-      try {
-        const success = globalShortcut.register(hotkey, () => {
-          // Send hotkey event to renderer process
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
-          }
-        });
-
-        if (!success) {
-          allRegistered = false;
-          log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
-          }
-        } else {
-          registeredEntityHotkeyAccelerators.add(hotkey);
-          log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
+  liveEntityHotkeys(config.globalHotkeys.hotkeys).forEach(([entityId, { hotkey, action }]) => {
+    try {
+      const success = globalShortcut.register(hotkey, () => {
+        // Send hotkey event to renderer process
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
         }
-      } catch (error) {
+      });
+
+      if (!success) {
         allRegistered = false;
-        log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
+        log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
+        }
+      } else {
+        registeredEntityHotkeyAccelerators.add(hotkey);
+        log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
       }
+    } catch (error) {
+      allRegistered = false;
+      log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
     }
   });
   return {
@@ -12415,19 +12405,17 @@ function hotkeyConflictResult(entityId) {
 }
 
 // Command+K, Super+K and Win+K are one chord, so the comparison goes through the shared model
-// instead of lower-casing the text.
+// instead of lower-casing the text. A saved hotkey that cannot act (one an earlier version let a
+// sensor take) holds no chord.
 function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
   if (!hotkey || typeof hotkey !== 'string') return null;
 
   return (
-    Object.entries(config?.globalHotkeys?.hotkeys || {}).find(([entityId, hotkeyConfig]) => {
-      if (entityId === excludedEntityId) return false;
-      const configuredHotkey =
-        typeof hotkeyConfig === 'object' && hotkeyConfig?.hotkey
-          ? hotkeyConfig.hotkey
-          : hotkeyConfig;
-      return acceleratorsConflict(configuredHotkey, hotkey, process.platform);
-    }) || null
+    liveEntityHotkeys(config?.globalHotkeys?.hotkeys).find(
+      ([entityId, { hotkey: configuredHotkey }]) =>
+        entityId !== excludedEntityId &&
+        acceleratorsConflict(configuredHotkey, hotkey, process.platform)
+    ) || null
   );
 }
 

@@ -6,7 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const { ENTITY_HOTKEY_DOMAINS, supportsEntityHotkey } = require('../../src/entity-hotkeys.cjs');
+const {
+  ENTITY_HOTKEY_DOMAINS,
+  liveEntityHotkeys,
+  supportsEntityHotkey,
+} = require('../../src/entity-hotkeys.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -21,6 +25,13 @@ describe('the entities a hotkey can act on', () => {
     'input_button.doorbell',
     'input_boolean.guest_mode',
     'fan.bedroom',
+    // A tile's menu has added hotkeys to these since 3.4.8, and a toggle opens or closes, locks or
+    // unlocks, or switches them, as a click on the tile does.
+    'cover.garage',
+    'valve.garden',
+    'lock.front',
+    'humidifier.bedroom',
+    'siren.hall',
   ])('takes %s, whose domain Settings has actions for', (entityId) => {
     expect(supportsEntityHotkey(entityId)).toBe(true);
   });
@@ -31,12 +42,19 @@ describe('the entities a hotkey can act on', () => {
     'camera.porch',
     'media_player.living_room',
     'climate.hall',
-    'cover.garage',
-    'lock.front',
     'timer.laundry',
     'weather.home',
-  ])('refuses %s, where a toggle would do nothing or skip its confirmation', (entityId) => {
+  ])('refuses %s, where a toggle would do nothing', (entityId) => {
     expect(supportsEntityHotkey(entityId)).toBe(false);
+  });
+
+  it('takes no domain whose toggle a tile click would ignore', () => {
+    const uiSource = fs.readFileSync(path.resolve(__dirname, '../../src/ui.js'), 'utf8');
+    const start = uiSource.indexOf('function toggleEntity(');
+    const toggle = uiSource.slice(start, uiSource.indexOf('default:', start));
+    for (const domain of ENTITY_HOTKEY_DOMAINS) {
+      expect(toggle).toContain(`case '${domain}':`);
+    }
   });
 
   it('refuses anything that is not an entity id', () => {
@@ -80,12 +98,17 @@ describe("a tile menu's hotkey items", () => {
     expect(itemsFor('light.desk', true).labels).toEqual(['Edit Hotkey', 'Remove Hotkey']);
   });
 
+  it('offers Add Hotkey on a garage door and a lock, as it did before 4.0', () => {
+    expect(itemsFor('cover.garage', false).labels).toEqual(['Add Hotkey']);
+    expect(itemsFor('lock.front', true).labels).toEqual(['Edit Hotkey', 'Remove Hotkey']);
+  });
+
   it('offers nothing on a sensor, which a hotkey cannot act on', () => {
     expect(itemsFor('sensor.office_temp', false).labels).toEqual([]);
     expect(itemsFor('camera.porch', false).labels).toEqual([]);
   });
 
-  it('still offers Remove on a sensor an earlier version gave a hotkey, so its chord can be freed', () => {
+  it('still offers Remove on a sensor an earlier version gave a hotkey, so it can be cleared', () => {
     expect(itemsFor('sensor.office_temp', true).labels).toEqual(['Remove Hotkey']);
   });
 
@@ -107,5 +130,95 @@ describe("main's register-hotkey handler", () => {
       handler.indexOf('config.globalHotkeys.hotkeys[normalizedEntityId] =')
     );
     expect(handler).toContain("mainT('Hotkeys cannot control this kind of entity')");
+  });
+});
+
+describe('a hotkey an earlier version saved on an entity it cannot act on', () => {
+  const { acceleratorsConflict } = require('../../src/accelerators.cjs');
+  const between = (from, to) => {
+    const start = mainSource.indexOf(from);
+    const end = mainSource.indexOf(to, start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return mainSource.slice(start, end);
+  };
+  const hotkeys = {
+    'sensor.office_temp': 'Ctrl+Alt+T',
+    'camera.porch': { hotkey: 'Ctrl+Alt+P', action: 'toggle' },
+    'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'turn_on' },
+    'switch.kettle': 'Ctrl+Alt+K',
+  };
+  const mainWith = () => {
+    const context = {
+      config: { globalHotkeys: { enabled: true, hotkeys }, popupHotkey: '' },
+      liveEntityHotkeys,
+      acceleratorsConflict,
+      process: { platform: 'linux' },
+      mainT: (text, vars = {}) => text.replace(/\{\{(\w+)\}\}/g, (_, name) => vars[name]),
+      portalShortcutsActive: false,
+      hasLegacyGlobalShortcutFallback: true,
+      registeredEntityHotkeyAccelerators: new Set(),
+      globalShortcut: { register: jest.fn(() => true), unregister: jest.fn() },
+      mainWindow: { isDestroyed: () => false, webContents: { send: jest.fn() } },
+      log: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      Date,
+    };
+    vm.runInNewContext(
+      [
+        "const PORTAL_ENTITY_SHORTCUT_PREFIX = 'entity.';",
+        "const PORTAL_POPUP_SHORTCUT_ID = 'popup-toggle';",
+        between('function registerGlobalHotkeys()', 'function validateHotkey('),
+        between('function findConfiguredEntityHotkey(', '// Popup Hotkey Management'),
+        between('function collectPortalShortcuts()', 'function reportPortalShortcutSyncResult('),
+        between('function handlePortalShortcutActivated(', '// Hyprland binds name the portal'),
+        'this.api = { registerGlobalHotkeys, findConfiguredEntityHotkey, collectPortalShortcuts, handlePortalShortcutActivated };',
+      ].join('\n'),
+      context
+    );
+    return { ...context.api, context };
+  };
+
+  it('is the list main reads, and leaves out what cannot act', () => {
+    expect(liveEntityHotkeys(hotkeys)).toEqual([
+      ['light.desk', { hotkey: 'Ctrl+Alt+D', action: 'turn_on' }],
+      ['switch.kettle', { hotkey: 'Ctrl+Alt+K', action: 'toggle' }],
+    ]);
+    expect(liveEntityHotkeys({ 'light.a': '  ', 'light.b': null, 'light.c': {} })).toEqual([]);
+    expect(liveEntityHotkeys(undefined)).toEqual([]);
+  });
+
+  it('is not registered as a global shortcut', () => {
+    const { registerGlobalHotkeys, context } = mainWith();
+    expect(registerGlobalHotkeys()).toMatchObject({ success: true });
+    expect(context.globalShortcut.register.mock.calls.map(([accelerator]) => accelerator)).toEqual([
+      'Ctrl+Alt+D',
+      'Ctrl+Alt+K',
+    ]);
+  });
+
+  it('is not bound through the desktop portal, and a stale portal session cannot fire it', () => {
+    const { collectPortalShortcuts, handlePortalShortcutActivated, context } = mainWith();
+    expect(collectPortalShortcuts().map((shortcut) => shortcut.id)).toEqual([
+      'entity.light.desk',
+      'entity.switch.kettle',
+    ]);
+
+    handlePortalShortcutActivated('entity.sensor.office_temp');
+    expect(context.mainWindow.webContents.send).not.toHaveBeenCalled();
+    handlePortalShortcutActivated('entity.light.desk');
+    expect(context.mainWindow.webContents.send).toHaveBeenCalledWith('hotkey-triggered', {
+      entityId: 'light.desk',
+      hotkey: 'Ctrl+Alt+D',
+      action: 'turn_on',
+    });
+  });
+
+  it('does not hold its chord against another entity or the popup', () => {
+    const { findConfiguredEntityHotkey } = mainWith();
+    expect(findConfiguredEntityHotkey('Ctrl+Alt+T', 'light.desk')).toBeNull();
+    expect(findConfiguredEntityHotkey('Ctrl+Alt+T')).toBeNull();
+    expect(findConfiguredEntityHotkey('Ctrl+Alt+P')).toBeNull();
+    // A hotkey that can act still does.
+    expect(findConfiguredEntityHotkey('Ctrl+Alt+K', 'light.desk')?.[0]).toBe('switch.kettle');
   });
 });

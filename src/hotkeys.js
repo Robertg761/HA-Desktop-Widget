@@ -122,6 +122,21 @@ function getActionOptionsForDomain(domain) {
       { value: 'increase_speed', label: t('Increase Speed') },
       { value: 'decrease_speed', label: t('Decrease Speed') },
     ],
+    // A toggle opens or closes, or locks or unlocks, as a click on the tile does; these domains
+    // have no turn_on or turn_off service.
+    cover: [{ value: 'toggle', label: t('Toggle') }],
+    valve: [{ value: 'toggle', label: t('Toggle') }],
+    lock: [{ value: 'toggle', label: t('Toggle') }],
+    humidifier: [
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
+    ],
+    siren: [
+      { value: 'toggle', label: t('Toggle') },
+      { value: 'turn_on', label: t('Turn On') },
+      { value: 'turn_off', label: t('Turn Off') },
+    ],
   };
 
   return options[domain] || options.switch;
@@ -150,6 +165,31 @@ function scheduleHotkeysTabRender() {
   hotkeySearchTimer = setTimeout(renderHotkeysTab, 150);
 }
 
+// The accelerator saved for an entity: an object's hotkey, or the string older versions saved.
+function getConfiguredHotkey(entityId) {
+  const configured = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
+  const hotkey = typeof configured === 'string' ? configured : configured?.hotkey;
+  return typeof hotkey === 'string' ? hotkey.trim() : '';
+}
+
+/**
+ * Saved hotkeys that no entity row would show: one on an entity a hotkey cannot act on (an earlier
+ * version let the tile menu save it on a sensor or a camera), and one on an entity Home Assistant no
+ * longer lists. Each keeps a row with its Clear button, as an alert for a gone entity does, so it
+ * can be found and removed. Until Home Assistant has sent its entities every entity would look gone,
+ * so these wait for them.
+ */
+function getUnlistedHotkeys() {
+  if (!Object.keys(state.STATES).length) return [];
+  return Object.keys(state.CONFIG.globalHotkeys?.hotkeys || {})
+    .filter((entityId) => getConfiguredHotkey(entityId))
+    .flatMap((entityId) => {
+      const entity = state.STATES[entityId];
+      if (entity && entityHotkeys.supportsEntityHotkey(entityId)) return [];
+      return [{ entityId, entity, unlisted: entity ? 'unsupported' : 'missing' }];
+    });
+}
+
 function renderHotkeysTab() {
   try {
     const container = document.getElementById('hotkeys-list');
@@ -160,26 +200,34 @@ function renderHotkeysTab() {
     // A new query starts at its first page.
     if (filter !== hotkeyListFilter) hotkeyListPage = 0;
     hotkeyListFilter = filter;
+    const scored = (item) => {
+      const name = item.entity ? getEntityDisplayName(item.entity) : item.entityId;
+      const score = filter
+        ? getSearchScore(name, filter) + getSearchScore(item.entityId, filter)
+        : 1;
+      return { ...item, score, name };
+    };
+    // Home Assistant's own order is arbitrary; name order is how the other pickers list entities.
+    const byMatchThenName = (a, b) => b.score - a.score || a.name.localeCompare(b.name, locale);
     const hotkeyEntities = Object.values(state.STATES)
       .filter((e) => entityHotkeys.supportsEntityHotkey(e.entity_id))
-      .map((entity) => {
-        const score = filter
-          ? getSearchScore(getEntityDisplayName(entity), filter) +
-            getSearchScore(entity.entity_id, filter)
-          : 1;
-        return { entity, score, name: getEntityDisplayName(entity) };
-      })
+      .map((entity) => scored({ entityId: entity.entity_id, entity }))
       .filter((item) => item.score > 0)
-      // Home Assistant's own order is arbitrary; name order is how the other pickers list entities.
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, locale));
+      .sort(byMatchThenName);
+    // The few hotkeys that cannot fire come first, where they are seen.
+    const unlisted = getUnlistedHotkeys()
+      .map(scored)
+      .filter((item) => item.score > 0)
+      .sort(byMatchThenName);
+    const rows = [...unlisted, ...hotkeyEntities];
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.
-    const shown = paginate(hotkeyEntities, hotkeyListPage);
+    const shown = paginate(rows, hotkeyListPage);
     hotkeyListPage = shown.page;
     renderKeepingFocus(container, () => {
       container.innerHTML = '';
-      if (!hotkeyEntities.length) {
+      if (!rows.length) {
         // An empty box reads as a broken list: say whether nothing matched or nothing has loaded.
         const empty = document.createElement('div');
         empty.className = 'hotkeys-empty';
@@ -196,7 +244,12 @@ function renderHotkeysTab() {
       recordHint.className = 'sr-only';
       recordHint.textContent = t('Press Enter or Space to record a hotkey');
       container.appendChild(recordHint);
-      shown.items.forEach(({ entity, name }) => {
+      shown.items.forEach((row) => {
+        if (row.unlisted) {
+          container.appendChild(createUnlistedHotkeyRow(row));
+          return;
+        }
+        const { entity, name } = row;
         const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
         const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
         const action =
@@ -246,6 +299,27 @@ function renderHotkeysTab() {
   } catch (error) {
     console.error('Error rendering hotkeys tab:', error);
   }
+}
+
+// The row of a hotkey that cannot fire (getUnlistedHotkeys): its name, or the entity id when Home
+// Assistant does not list the entity, a line that says why, the hotkey itself, dimmed and not
+// recordable, and the Clear button.
+function createUnlistedHotkeyRow({ entityId, name, unlisted }) {
+  const item = document.createElement('div');
+  item.className = 'hotkey-item';
+  const escapedEntityId = escapeHtmlAttribute(entityId);
+  const noteId = `hotkey-note-${entityId.replace(/[^\w-]/g, '_')}`;
+  const note =
+    unlisted === 'missing' ? t('Unavailable') : t('Hotkeys cannot control this kind of entity');
+  item.innerHTML = `
+                <span class="entity-name">${escapeHtml(name)}</span>
+                <span class="hotkey-item-note" id="${escapeHtmlAttribute(noteId)}">${escapeHtml(note)}</span>
+                <div class="hotkey-input-container">
+                    <input type="text" readonly disabled aria-label="${escapeHtmlAttribute(t('Hotkey for {{name}}', { name }))}" aria-describedby="${escapeHtmlAttribute(noteId)}" class="hotkey-input" value="${escapeHtmlAttribute(formatHotkey(getConfiguredHotkey(entityId)))}" data-entity-id="${escapedEntityId}" data-focus-key="hotkey-input:${escapedEntityId}">
+                    <button type="button" class="btn-clear-hotkey" title="${escapeHtmlAttribute(t('Clear hotkey'))}" aria-label="${escapeHtmlAttribute(t('Clear hotkey for {{name}}', { name }))}" aria-describedby="${escapeHtmlAttribute(noteId)}" data-focus-key="hotkey-clear:${escapedEntityId}">${lineIconMarkup('x')}</button>
+                </div>
+            `;
+  return item;
 }
 
 function getDefaultActionForEntity(entity) {
@@ -392,8 +466,7 @@ async function recordWithField(entityId, field) {
     if (field) {
       delete field.dataset.recording;
       field.removeAttribute('aria-busy');
-      const configured = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
-      const hotkey = typeof configured === 'string' ? configured : configured?.hotkey;
+      const hotkey = getConfiguredHotkey(entityId);
       field.value = hotkey ? formatHotkey(hotkey) : '';
     }
   }
