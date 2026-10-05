@@ -354,6 +354,7 @@ const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
+const { createUsagePinger, isUsagePingDisabledByEnv } = require('./src/usage-ping.cjs');
 const {
   normalizeEntityId,
   getDesktopPinBaseBounds,
@@ -1979,9 +1980,11 @@ function ensureUpdateConfigDefaults(target) {
   if (!target || typeof target !== 'object') return target;
   target.updates = {
     allowPrerelease: false,
+    anonymousUsagePing: true,
     ...(target.updates || {}),
   };
   target.updates.allowPrerelease = target.updates.allowPrerelease === true;
+  target.updates.anonymousUsagePing = target.updates.anonymousUsagePing !== false;
   return target;
 }
 
@@ -5429,6 +5432,7 @@ function loadConfig(options = {}) {
     quickAccessTileOptions: {},
     updates: {
       allowPrerelease: false,
+      anonymousUsagePing: true,
     },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
@@ -12983,6 +12987,31 @@ function setupAutoUpdates() {
   }
 }
 
+// Anonymous install count (see src/usage-ping.cjs). Packaged builds only, so
+// development, demo and smoke-test runs never count as installs.
+function setupUsagePing() {
+  if (!app.isPackaged || IS_SMOKE_TEST_MODE || IS_DEV_MODE) return;
+  if (isUsagePingDisabledByEnv(process.env)) {
+    log.info('Anonymous usage ping disabled by environment.');
+    return;
+  }
+  try {
+    createUsagePinger({
+      fs,
+      path,
+      userDataDir: app.getPath('userData'),
+      randomUUID: () => nodeCrypto.randomUUID(),
+      fetchImpl: (url, init) => net.fetch(url, init),
+      isEnabled: () => getUpdatesConfig().anonymousUsagePing !== false,
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      log,
+    }).start();
+  } catch (error) {
+    log.warn('Usage ping setup failed:', error.message);
+  }
+}
+
 function freezePendingWindowBoundsForShutdown() {
   if (windowStateSaveTimer) {
     clearTimeout(windowStateSaveTimer);
@@ -13384,6 +13413,7 @@ app
     createWindow();
     watchDisplayChanges();
     setupAutoUpdates();
+    setupUsagePing();
     schedulePostWindowStartupTasks();
   })
   .catch((error) => {

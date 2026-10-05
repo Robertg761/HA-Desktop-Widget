@@ -39,6 +39,7 @@ module.exports = [
       'src/net-fetch.cjs',
       'src/platform.cjs',
       'src/preload-api.cjs',
+      'src/usage-ping.cjs',
       'src/windows-startup.cjs',
     ],
     languageOptions: {
@@ -105,6 +106,17 @@ module.exports = [
   {
     files: ['omarchy-plugin/*.js'],
     languageOptions: { sourceType: 'script' },
+  },
+  // Cloudflare Workers (ES Modules, service-worker style globals)
+  {
+    files: ['services/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.serviceworker,
+      },
+    },
   },
   // Renderer process files (ES Modules - bundled by Vite)
   {

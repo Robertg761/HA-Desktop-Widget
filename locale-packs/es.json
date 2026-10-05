@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,8 @@
     "Set the range in the widget.": "Ajusta el rango en el widget.",
     "1 more tile is not shown here. Open the widget to see it.": "Hay 1 tarjeta más que no se muestra aquí. Abre el widget para verla.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "Hay {{count}} tarjetas más que no se muestran aquí. Abre el widget para verlas.",
-    "What's new": "Novedades"
+    "What's new": "Novedades",
+    "Count this install": "Contar esta instalación",
+    "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "Una vez al día, envía un ID de instalación aleatorio, la versión de la aplicación y tu sistema operativo para que el desarrollador pueda saber cuántas personas usan la aplicación. No se envía nada sobre tu Home Assistant, tus entidades ni tu configuración."
   }
 }

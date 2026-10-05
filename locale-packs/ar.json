@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,8 @@
     "Set the range in the widget.": "اضبط النطاق في الأداة.",
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
-    "What's new": "الجديد"
+    "What's new": "الجديد",
+    "Count this install": "احتساب هذا التثبيت",
+    "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "مرة واحدة يوميًا، يتم إرسال معرّف تثبيت عشوائي وإصدار التطبيق ونظام التشغيل لديك حتى يتمكن المطوّر من معرفة عدد مستخدمي التطبيق. لا يتم إرسال أي شيء عن Home Assistant أو الكيانات أو الإعدادات الخاصة بك."
   }
 }

@@ -24,7 +24,7 @@
   <main class="legal-page">
     <h1>Privacy policy</h1>
     <p class="legal-meta">Draft updated 30 September 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
-    <p><strong>Planned service.</strong> This draft describes the proposed hosted Cloud Sync service and its account data. It does not describe features available in the 4.0 desktop app. Account sign-in, subscriptions, and Delete Account controls are planned separately; final privacy information will be published when that service becomes available. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
+    <p><strong>Planned service.</strong> Apart from the anonymous install count described at the end, this draft describes the proposed hosted Cloud Sync service and its account data. It does not describe features available in the 4.0 desktop app. Account sign-in, subscriptions, and Delete Account controls are planned separately; final privacy information will be published when that service becomes available. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
     <p>Cloud Sync is an optional service for HA Desktop Widget. It keeps the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync.</p>
 
     <h2>Information we handle</h2>
@@ -48,6 +48,10 @@
 
     <h2>Security and requests</h2>
     <p>The service uses HTTPS, stores only hashes of service session tokens, and checks profile revisions before accepting changes. Optional profile encryption is available in the app. To request access, correction, account deletion help, or to report a privacy or security issue, email <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a>.</p>
+
+    <h2>Anonymous install count in the desktop app</h2>
+    <p>So we can tell how many people use the app (release download counts include every update), the desktop app sends one small request a day to a counter hosted on Cloudflare. It contains a random install ID created on your computer, the app version, and your operating system family (Windows, macOS, or Linux). It contains nothing about you, your Home Assistant, your entities, or your settings.</p>
+    <p>The counter stores only the install ID, the days it was first and last seen, and its latest version and operating system. It does not store IP addresses or browser or app identifiers, and we use it only to count installs. To stop sending it, turn off <strong>Settings → Updates → Count this install</strong>, or set the <code>DO_NOT_TRACK=1</code> environment variable. The install ID is kept in <code>usage-ping.json</code> in the app's settings folder; deleting that file gives the app a new, unrelated ID.</p>
 
     <h2>Changes</h2>
     <p>We will post changes to this page and update its effective date. We will give additional notice when required by applicable law.</p>

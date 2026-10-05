@@ -1639,5 +1639,7 @@
   "Set the range in the widget.": "Set the range in the widget.",
   "1 more tile is not shown here. Open the widget to see it.": "1 more tile is not shown here. Open the widget to see it.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
-  "What's new": "What's new"
+  "What's new": "What's new",
+  "Count this install": "Count this install",
+  "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent."
 }
