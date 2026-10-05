@@ -533,11 +533,18 @@ function createResultRow(item, index) {
   const meta = createElement('span', 'command-palette-result-meta');
   // A command row says what kind of row it is, not the entity's state before the command runs (a
   // "Turn on" row showing "Off" read as if it were the result).
-  const domain = createElement(
-    'span',
-    'command-palette-result-domain',
-    item.tabId ? t('Page') : item.service ? t('Command') : utils.getEntityTypeDescription(entity)
-  );
+  const domain = createElement('span', 'command-palette-result-domain');
+  const kind = item.tabId ? t('Page') : item.service ? t('Command') : '';
+  if (kind) {
+    // "Command" and "Page" say what the row does. A narrow window shrinks the pill to its glyph,
+    // and the word stays for screen readers and the tooltip (see styles.css).
+    domain.classList.add('is-row-kind');
+    const glyph = createElement('span', 'command-palette-result-kind-icon');
+    setLineIconContent(glyph, item.tabId ? 'app-window' : 'play');
+    domain.append(glyph, createElement('span', 'command-palette-result-kind-label', kind));
+  } else {
+    domain.textContent = utils.getEntityTypeDescription(entity);
+  }
   const value = createElement(
     'span',
     'command-palette-result-state',
@@ -545,8 +552,6 @@ function createResultRow(item, index) {
   );
   // Long type names ("Panel de control de alarma") end in an ellipsis; the title keeps them whole.
   domain.title = domain.textContent;
-  // "Command" and "Page" say what the row does, which a narrow window keeps (see styles.css).
-  if (item.tabId || item.service) domain.classList.add('is-row-kind');
   meta.append(domain, value);
 
   row.append(icon, main, meta);

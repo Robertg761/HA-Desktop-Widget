@@ -374,16 +374,30 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
-    it('keeps the Command and Page pills in a narrow window, where they are all that marks the row', () => {
+    it('shrinks the Command and Page pills to a glyph in a narrow window, where they mark the row', () => {
       // A command row has its entity's icon, so without the pill "Arm Home alarm away" looked like
-      // the alarm itself.
+      // the alarm itself; kept as a word, it cut the names off where the commands differ.
       render(
         '',
-        '<button class="command-palette-result"><span class="command-palette-result-domain is-row-kind"></span></button>'
+        `<button class="command-palette-result"><span class="command-palette-result-domain is-row-kind"
+          ><span class="command-palette-result-kind-icon"></span
+          ><span class="command-palette-result-kind-label">Command</span></span></button>`
       );
       const pill = document.querySelector('.command-palette-result-domain');
-      expect(resolvedValue(pill, 'display', NARROW)).toBeNull();
-      expect(resolvedValue(pill, 'display', { viewport: { width: 400, height: 600 } })).toBeNull();
+      const glyph = document.querySelector('.command-palette-result-kind-icon');
+      const label = document.querySelector('.command-palette-result-kind-label');
+      for (const narrow of [NARROW, { viewport: { width: 400, height: 600 } }]) {
+        expect(resolvedValue(pill, 'display', narrow)).toBe('grid');
+        expect(resolvedValue(pill, 'flex', narrow)).toBe('none');
+        expect(resolvedValue(glyph, 'display', narrow)).toBe('grid');
+        // Out of sight, not out of the row's accessible name.
+        expect(resolvedValue(label, 'display', narrow)).toBeNull();
+        expect(resolvedValue(label, 'clip-path', narrow)).toBe('inset(50%)');
+        expect(resolvedValue(label, 'position', narrow)).toBe('absolute');
+      }
+      // The word, without the glyph, at the default size.
+      expect(resolvedValue(glyph, 'display', DEFAULT)).toBe('none');
+      expect(resolvedValue(label, 'clip-path', DEFAULT)).toBeNull();
     });
 
     it('keeps the palette rows the same width whether or not the list scrolls', () => {

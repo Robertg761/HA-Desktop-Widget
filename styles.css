@@ -12216,12 +12216,42 @@ label.disabled {
   }
 }
 
+/* The glyph a Command or Page pill shrinks to in a narrow window (below). */
+.command-palette-result-kind-icon {
+  display: none;
+}
+
 /* A narrow window gives the name the room an entity's type pill took, since the entity's icon says
-   much the same. A command or a page keeps its pill: a command row has its entity's icon, and only
-   the pill tells "Arm Home alarm away" from the alarm itself. */
+   much the same. A command or a page keeps a mark: a command row has its entity's icon, and only
+   the pill tells "Arm Home alarm away" from the alarm itself. The pill keeps its outline around a
+   glyph, play for a command and a window for a page, and its word stays for screen readers and in
+   its tooltip, so the name keeps the room. Kept as a word, the pill cut every "Arm Home alarm"
+   command off where the commands differ. */
 @media (width <= 400px) {
   .command-palette-result-domain:not(.is-row-kind) {
     display: none;
+  }
+
+  /* As tall as the word pill was. */
+  .command-palette-result-domain.is-row-kind {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 2px;
+    font-size: var(--font-size-base);
+  }
+
+  .command-palette-result-kind-icon {
+    display: grid;
+  }
+
+  .command-palette-result-kind-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 

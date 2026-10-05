@@ -1584,15 +1584,24 @@ describe('command palette recents', () => {
     palette.openCommandPalette();
 
     const pills = Object.fromEntries(
-      [...document.querySelectorAll('.command-palette-result')].map((row) => [
-        row.querySelector('.command-palette-result-name').textContent,
-        row.querySelector('.command-palette-result-domain').classList.contains('is-row-kind'),
-      ])
+      [...document.querySelectorAll('.command-palette-result')].map((row) => {
+        const pill = row.querySelector('.command-palette-result-domain');
+        return [
+          row.querySelector('.command-palette-result-name').textContent,
+          {
+            kind: pill.classList.contains('is-row-kind'),
+            glyph: pill.querySelector('.command-palette-result-kind-icon svg')?.dataset.icon,
+            text: pill.textContent,
+            title: pill.title,
+          },
+        ];
+      })
     );
+    // The glyph is what a narrow window shows; the word stays for screen readers and the tooltip.
     expect(pills).toMatchObject({
-      'Bed Light': false,
-      'Turn off Bed Light': true,
-      'Switch to Kitchen': true,
+      'Bed Light': { kind: false, glyph: undefined, text: 'Light' },
+      'Turn off Bed Light': { kind: true, glyph: 'play', text: 'Command', title: 'Command' },
+      'Switch to Kitchen': { kind: true, glyph: 'app-window', text: 'Page', title: 'Page' },
     });
   });
 

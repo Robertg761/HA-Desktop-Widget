@@ -660,11 +660,22 @@ async function openPaletteFor(ctx, query) {
 }
 
 // A command row has its entity's icon, so in a narrow window, where an entity's type pill gives
-// way, its Command pill is all that tells "Arm Home alarm away" from the alarm itself.
+// way, its Command mark is all that tells "Arm Home alarm away" from the alarm itself. The mark is a
+// glyph chip no wider than it is tall, so the names in view, which differ only at their ends, are
+// whole. (A word pill cut every one of them off where the commands differ.)
 const COMMAND_ROWS_MARKED = `(() => {
-  const pills = [...document.querySelectorAll('.command-palette-result .command-palette-result-domain')]
-    .filter((pill) => pill.closest('.command-palette-result').querySelector('.command-palette-result-state')?.textContent === '');
-  return pills.length > 0 && pills.every((pill) => pill.getClientRects().length > 0 && pill.offsetWidth > 0);
+  const list = document.querySelector('.command-palette-results').getBoundingClientRect();
+  const rows = [...document.querySelectorAll('.command-palette-result')].filter(
+    (row) => row.querySelector('.command-palette-result-domain.is-row-kind') &&
+      row.getBoundingClientRect().bottom <= list.bottom
+  );
+  return rows.length > 0 && rows.every((row) => {
+    const chip = row.querySelector('.command-palette-result-domain').getBoundingClientRect();
+    const glyph = row.querySelector('.command-palette-result-kind-icon svg')?.getBoundingClientRect();
+    const name = row.querySelector('.command-palette-result-name');
+    return glyph?.width > 0 && chip.width <= chip.height + 1 &&
+      name.scrollWidth <= name.clientWidth;
+  });
 })()`;
 
 // The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
@@ -2550,7 +2561,7 @@ const scenes = [
     size: NARROW_SIZE,
     setup: async (ctx) => {
       await openPaletteFor(ctx, 'alarm');
-      await ctx.expect(COMMAND_ROWS_MARKED, 'every command row keeps its Command pill');
+      await ctx.expect(COMMAND_ROWS_MARKED, 'every command row is marked, and its name is whole');
     },
   },
   {
