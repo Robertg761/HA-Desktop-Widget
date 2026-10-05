@@ -6,8 +6,13 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { getAppImageCommandLink, getToggleCommand } = require('../../src/linux-desktop.cjs');
+const {
+  forgetInheritedAppImage,
+  getAppImageCommandLink,
+  getToggleCommand,
+} = require('../../src/linux-desktop.cjs');
 const { ensureAppImageCommandLink } = require('../../src/linux-desktop-entry.cjs');
+const { getRelaunchOptions, supportsAutoUpdater } = require('../../src/platform.cjs');
 
 describe('the command that toggles the widget', () => {
   const bin = path.join(path.sep, 'usr', 'bin');
@@ -233,6 +238,112 @@ describe("an AppImage's command, which outlasts its updates", () => {
     const fsModule = fakeFs();
     expect(ensureAppImageCommandLink({ env: { PATH }, home, fsModule })).toBe(false);
     expect(fsModule.symlinkSync).not.toHaveBeenCalled();
+  });
+});
+
+// A widget started from inside another AppImage (a terminal or an editor packaged as one) inherits
+// that app's APPIMAGE and APPDIR. Main drops them at startup, so nothing acts on the other app.
+describe('an APPIMAGE inherited from another AppImage', () => {
+  // System paths, as the rule compares them with the system's own path module.
+  const widgetAppImage = path.join(path.sep, 'home', 'u', 'Apps', 'HA Desktop Widget.AppImage');
+  const widgetMount = path.join(path.sep, 'tmp', '.mount_HA');
+  const missing = () => {
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  };
+  const forget = (env, execPath, realpath = missing) =>
+    forgetInheritedAppImage({ env, execPath, realpath });
+
+  it("is this widget's own when it runs from the AppImage's mount, and is kept", () => {
+    const env = { APPIMAGE: widgetAppImage, APPDIR: widgetMount };
+    expect(forget(env, path.join(widgetMount, 'home-assistant-widget'))).toBe('');
+    expect(env).toEqual({ APPIMAGE: widgetAppImage, APPDIR: widgetMount });
+  });
+
+  it('is kept for the same mount reached through a symlink, such as a linked TMPDIR', () => {
+    const linkedMount = path.join(path.sep, 'home', 'u', 'tmp', '.mount_HA');
+    const execPath = path.join(widgetMount, 'home-assistant-widget');
+    const env = { APPIMAGE: widgetAppImage, APPDIR: linkedMount };
+    const realpath = (file) => (file === linkedMount ? widgetMount : file);
+    expect(forget(env, execPath, realpath)).toBe('');
+    expect(env.APPIMAGE).toBe(widgetAppImage);
+  });
+
+  it('is kept when there is no APPDIR to check it against', () => {
+    const env = { APPIMAGE: widgetAppImage };
+    expect(forget(env, path.join(path.sep, 'opt', 'x', 'home-assistant-widget'))).toBe('');
+    expect(env.APPIMAGE).toBe(widgetAppImage);
+  });
+
+  describe('is dropped, with its APPDIR, for a widget outside that mount', () => {
+    const terminal = path.join(path.sep, 'home', 'u', 'Apps', 'Terminal.AppImage');
+    const terminalMount = path.join(path.sep, 'tmp', '.mount_Term');
+    const installed = path.join(path.sep, 'opt', 'HA Desktop Widget', 'home-assistant-widget');
+
+    it.each([
+      ['installed', terminalMount, installed, (file) => file],
+      [
+        'installed, after the terminal closed and its mount went away',
+        terminalMount,
+        installed,
+        missing,
+      ],
+      [
+        'in a folder whose name only starts like the mount',
+        terminalMount,
+        path.join(path.sep, 'tmp', '.mount_Term2', 'home-assistant-widget'),
+        (file) => file,
+      ],
+    ])('%s', (_, appDir, execPath, realpath) => {
+      const env = { APPIMAGE: terminal, APPDIR: appDir, PATH: '/usr/bin' };
+      expect(forget(env, execPath, realpath)).toBe(terminal);
+      expect(env).toEqual({ PATH: '/usr/bin' });
+    });
+  });
+
+  it('leaves the other app alone: no command link, restart or AppImage update', () => {
+    // Linux paths, as getAppImageCommandLink builds them whatever system runs the test.
+    const env = {
+      APPIMAGE: '/home/u/Apps/Terminal.AppImage',
+      APPDIR: '/tmp/.mount_Term',
+      PATH: '/usr/bin',
+    };
+    forget(env, '/opt/HA Desktop Widget/home-assistant-widget', (file) => file);
+
+    const fsModule = {
+      lstatSync: jest.fn(missing),
+      readlinkSync: jest.fn(missing),
+      existsSync: jest.fn(() => false),
+      mkdirSync: jest.fn(),
+      unlinkSync: jest.fn(),
+      symlinkSync: jest.fn(),
+    };
+    expect(ensureAppImageCommandLink({ env, home: '/home/u', fsModule })).toBe(false);
+    expect(fsModule.symlinkSync).not.toHaveBeenCalled();
+    expect(getRelaunchOptions({ argv: ['widget'], env }).execPath).toBeUndefined();
+    expect(supportsAutoUpdater('linux', env)).toBe(false);
+  });
+
+  it('is dropped in main before anything reads it', () => {
+    const main = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const drop = main.indexOf('\nconst inheritedAppImage = forgetInheritedAppImage();\n');
+    expect(drop).toBeGreaterThan(-1);
+    // The desktop-layer handoff runs while main.js loads; the rest run later, but are listed so
+    // that none of them moves above the drop.
+    for (const reader of [
+      'spawnLayerShellHelper()',
+      'process.env.APPIMAGE',
+      'ensureAppImageDesktopEntry(',
+      'ensureAppImageCommandLink(',
+      'repairStaleAppImageLaunchers(',
+      'getLinuxStartupExecutablePath(app, process.env)',
+      'getRelaunchOptions(',
+      'supportsAutoUpdater(process.platform, process.env)',
+    ]) {
+      expect({ reader, afterTheDrop: main.indexOf(reader) > drop }).toEqual({
+        reader,
+        afterTheDrop: true,
+      });
+    }
   });
 });
 

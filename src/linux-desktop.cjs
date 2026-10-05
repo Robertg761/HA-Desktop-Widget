@@ -170,6 +170,63 @@ function legacyPortalBindingNotice({ legacyAppId, id, accelerator = '' } = {}) {
   );
 }
 
+/**
+ * Whether APPIMAGE names the AppImage this process runs from. Its runtime sets APPIMAGE, and APPDIR
+ * to where it mounted the image, and starts the executable from APPDIR. A program started from
+ * inside another AppImage (a terminal or an editor packaged as one) inherits that app's two
+ * variables, and its executable is not in that APPDIR. Without APPDIR there is nothing to check
+ * APPIMAGE against, and it is taken as it is.
+ * @param {Object} [options]
+ * @param {Object} [options.env]
+ * @param {string} [options.execPath] - process.execPath.
+ * @param {(file: string) => string} [options.realpath]
+ * @returns {boolean}
+ */
+function isOwnAppImage({
+  env = process.env,
+  execPath = process.execPath,
+  realpath = fs.realpathSync,
+} = {}) {
+  if (!env.APPIMAGE) return false;
+  if (!env.APPDIR) return true;
+  const isInside = (dir, file) => {
+    const relative = path.relative(dir, file);
+    return (
+      relative !== '' &&
+      relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative)
+    );
+  };
+  if (isInside(env.APPDIR, execPath)) return true;
+  // The same mount under another name, such as a TMPDIR that is a symlink.
+  try {
+    return isInside(realpath(env.APPDIR), realpath(execPath));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Drop an APPIMAGE and APPDIR this process inherited from another AppImage, before anything reads
+ * them. Left in place, they make that app look like this one: the updater would take its file for
+ * this install, a restart or the desktop-layer handoff would start it, and the menu launcher,
+ * autostart entry, ~/.local/bin command and Omarchy bar would open it.
+ * @param {Object} [options] - As isOwnAppImage takes them; env is changed in place.
+ * @returns {string} The APPIMAGE that was dropped, or '' when nothing was.
+ */
+function forgetInheritedAppImage({
+  env = process.env,
+  execPath = process.execPath,
+  realpath = fs.realpathSync,
+} = {}) {
+  if (!env.APPIMAGE || isOwnAppImage({ env, execPath, realpath })) return '';
+  const inherited = String(env.APPIMAGE);
+  delete env.APPIMAGE;
+  delete env.APPDIR;
+  return inherited;
+}
+
 // The name the Arch package puts on PATH. The .deb links the executable's own name
 // (home-assistant-widget, from package.json), and an AppImage gets a link of this name (below).
 const COMMAND_NAME = 'ha-desktop-widget';
@@ -235,15 +292,8 @@ function getToggleCommand({
       return null;
     }
   };
-  // APPIMAGE is set for this process by its AppImage runtime, which runs it from APPDIR. A widget
-  // started from inside another AppImage (a terminal or an editor packaged as one) inherits that
-  // app's APPIMAGE and APPDIR, and its executable is not in that APPDIR.
-  const relative = env.APPDIR ? path.relative(env.APPDIR, execPath) : '';
-  const fromThisAppImage =
-    !!env.APPIMAGE &&
-    (!env.APPDIR || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative)));
   let launch;
-  if (fromThisAppImage) {
+  if (isOwnAppImage({ env, execPath, realpath })) {
     const link = getAppImageCommandLink(home);
     const linked = resolve(link);
     launch = [shellWord(linked && linked === resolve(env.APPIMAGE) ? link : env.APPIMAGE)];
@@ -266,6 +316,7 @@ module.exports = {
   APP_ID,
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
+  forgetInheritedAppImage,
   getLaunchAction,
   getAppImageCommandLink,
   getHyprlandSocketCandidates,
@@ -274,6 +325,7 @@ module.exports = {
   hasLiveHyprlandInstance,
   isGnome,
   isHyprland,
+  isOwnAppImage,
   isPortalBindingRegistered,
   hyprlandBinding,
 };

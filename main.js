@@ -37,6 +37,7 @@ const {
   settingsFileErrorCode,
 } = require('./src/settings-file-controller.cjs');
 const {
+  forgetInheritedAppImage,
   getLaunchAction,
   getToggleCommand,
   hasIsolatedProfile,
@@ -48,6 +49,10 @@ const {
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
 } = require('./src/linux-desktop.cjs');
+// Started from inside another AppImage, such as a terminal packaged as one, this process inherits
+// that app's APPIMAGE and APPDIR. Dropped before anything reads them, so the updater, a restart, the
+// desktop-layer handoff and the launchers this app writes all act on this app and not that one.
+const inheritedAppImage = forgetInheritedAppImage();
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
 // Started by an explicit --show or --toggle (the Omarchy bar, a launcher or a key binding) rather
@@ -157,6 +162,7 @@ configureMainLogging(log, { isPackaged: app.isPackaged });
 
 // Log the app starting up
 log.info('App starting...');
+if (inheritedAppImage) log.info(`Ignoring APPIMAGE inherited from ${inheritedAppImage}`);
 
 const IS_DEV_MODE = process.argv.includes('--dev');
 const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
