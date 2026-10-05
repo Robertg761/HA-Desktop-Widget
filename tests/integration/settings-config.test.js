@@ -1990,7 +1990,10 @@ describe('Settings + Config Integration', () => {
         'Installed'
       );
       expect(rowFor('Español').querySelector('.language-pack-name').lang).toBe('es');
-      expect(spanishOption.lang).toBe('es');
+      // An option is in one language: the installed one's name is French, but the other's
+      // "(Not downloaded)" is in the interface's language, so that option is not marked Spanish.
+      expect(frenchOption.lang).toBe('fr');
+      expect(spanishOption.lang).toBe('');
       expect(document.body.textContent).not.toContain('Download first');
     });
 

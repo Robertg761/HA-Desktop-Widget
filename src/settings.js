@@ -4721,8 +4721,12 @@ function syncLanguageSelectOptions() {
     const option = document.createElement('option');
     option.value = pack.locale;
     option.textContent = getLanguagePackDisplayName(pack);
-    option.lang = pack.locale;
-    if (!pack.installed) {
+    // The name is in its own language, so a screen reader reads it in that voice. An option holds
+    // one language, though, and "(Not downloaded)" is in the interface's: marked as Arabic, a German
+    // suffix was read with the Arabic voice. An option with the suffix stays in the interface's.
+    if (pack.installed) {
+      option.lang = pack.locale;
+    } else {
       option.disabled = true;
       option.textContent += ` (${t('Not downloaded')})`;
     }
