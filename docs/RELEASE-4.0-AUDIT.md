@@ -86,13 +86,13 @@ for the starting commit, not for the Electron update made during this audit.
   `[4.0.0] - Unreleased` changelog section. The Tag Release workflow requires these
   on main. Replace the changelog's Unreleased date with the actual release date
   after completing the checks below. Preparation does not create a release tag.
-- Check that the website is deployed from the commit being released. The live site was serving
-  copy from before the audit fixes, which only a deploy of main replaces. After the website
-  changes are merged, confirm in Vercel that the production branch is main, then run
-  `node scripts/check-website-deploy.cjs --wait 600` (or dispatch the Website deploy check
-  workflow, which also runs after each change to `website/` on main) and see it pass before the
-  release is tagged. The site deploys when main changes, so it reads correctly on both sides of
-  the release; it needs no edit on release day.
+- Check that the website is deployed from the commit being released. The site is published by
+  hand with the Vercel CLI, not by GitHub, so a change merged to main is not live until someone
+  deploys it: from a checkout of main, `cd website && vercel deploy --prod` (the folder must be
+  linked to the Vercel project with `vercel link` first). Then run
+  `node scripts/check-website-deploy.cjs --wait 300`, or dispatch the Website deploy check
+  workflow, and see it pass before the release is tagged. The pages read correctly on both sides
+  of the release, so they need no edit on release day.
 - Read the new app and website sections of [privacy.html](../website/privacy.html) before the
   release. They are legal wording written from what the app and the site request, and the
   maintainer should approve them.
