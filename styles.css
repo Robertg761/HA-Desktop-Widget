@@ -17054,10 +17054,19 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
-  ::-webkit-scrollbar,
-  .modal-body::-webkit-scrollbar {
+  ::-webkit-scrollbar {
     width: 12px;
     height: 12px;
+  }
+
+  /* A dialog body gives back the gutter it holds, so its scrollbar's width lives in one place. */
+  .modal-body {
+    --modal-scrollbar-size: 12px;
+  }
+
+  .modal-body::-webkit-scrollbar {
+    width: var(--modal-scrollbar-size);
+    height: var(--modal-scrollbar-size);
   }
 
   ::-webkit-scrollbar-thumb,
