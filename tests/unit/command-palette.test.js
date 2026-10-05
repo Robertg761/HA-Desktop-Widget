@@ -1453,6 +1453,54 @@ describe('command palette recents', () => {
       }
     });
 
+    it('opens on a layout without Latin letters, from the key where K sits', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Russian and Arabic layouts report their own letter for Ctrl+K.
+      expect(shortcut(control, { key: 'л', code: 'KeyK' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
+    it.each([
+      ['Arabic', 'ن'],
+      ['Greek', 'κ'],
+      ['Hebrew', 'ל'],
+      // The Burmese K key types a vowel sign, a mark rather than a letter.
+      ['Burmese', 'ု'],
+    ])('opens on an %s layout too', (_layout, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(true);
+    });
+
+    it.each([
+      ['punctuation', ';'],
+      ['a dead key', 'Dead'],
+      ['an accented Latin letter', 'é'],
+      ['a combining accent', '́'],
+      ['a digit', '5'],
+    ])('stays shut on a Latin layout whose US K key types %s', (_what, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // The layout has its K somewhere else, which is the key that opens the palette there.
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
+    });
+
+    it('follows the printed K on a layout that moves it, and not the US position', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Dvorak: the US K key types T, and K is where the US V is.
+      expect(shortcut(control, { key: 't', code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
+      expect(shortcut(control, { key: 'k', code: 'KeyV' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
     it('leaves Ctrl+K in a Mac text field alone, since it deletes to the end of the line there', () => {
       window.electronAPI = { platform: 'darwin' };
       try {
@@ -1537,6 +1585,42 @@ describe('command palette recents', () => {
     } finally {
       i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
     }
+  });
+
+  it('marks the Command and Page pills, which a narrow window keeps, and not an entity type', () => {
+    const { palette, paletteState } = load();
+    paletteState.setConfig({
+      homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+      customTabs: [
+        { id: 'main', name: 'Main', entityIds: [] },
+        { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+      ],
+      activeTabId: 'main',
+    });
+    paletteState.setServices({ light: { turn_on: {}, turn_off: {} } });
+    paletteState.setStates({ 'light.bed_light': bedLight('on') });
+    palette.openCommandPalette();
+
+    const pills = Object.fromEntries(
+      [...document.querySelectorAll('.command-palette-result')].map((row) => {
+        const pill = row.querySelector('.command-palette-result-domain');
+        return [
+          row.querySelector('.command-palette-result-name').textContent,
+          {
+            kind: pill.classList.contains('is-row-kind'),
+            glyph: pill.querySelector('.command-palette-result-kind-icon svg')?.dataset.icon,
+            text: pill.textContent,
+            title: pill.title,
+          },
+        ];
+      })
+    );
+    // The glyph is what a narrow window shows; the word stays for screen readers and the tooltip.
+    expect(pills).toMatchObject({
+      'Bed Light': { kind: false, glyph: undefined, text: 'Light' },
+      'Turn off Bed Light': { kind: true, glyph: 'play', text: 'Command', title: 'Command' },
+      'Switch to Kitchen': { kind: true, glyph: 'app-window', text: 'Page', title: 'Page' },
+    });
   });
 
   it('does not offer switching to the page already on screen', () => {

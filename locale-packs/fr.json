@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.67",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,12 @@
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
     "What's new": "Nouveautés",
+    "Remove Hotkey": "Supprimer le raccourci",
+    "Hotkey removed for {{name}}": "Raccourci supprimé pour {{name}}",
+    "Hotkeys cannot control this kind of entity": "Les raccourcis ne peuvent pas contrôler ce type d'entité",
+    "Failed to clear hotkey": "Impossible d'effacer le raccourci",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Activez ou contrôlez des entités depuis n'importe où. Maintenez {{ctrl}}, {{alt}} ou {{meta}} avec la touche, et aussi {{shift}} si vous le souhaitez (par exemple <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Mode réorganisation activé. Glissez ou appuyez sur {{modifier}}+flèches pour réordonner. Appuyez sur Échap pour terminer.",
     "Fan only": "Ventilation seule",
     "Remove tile": "Retirer la vignette",
     "Remove {{name}} from {{page}}": "Retirer {{name}} de {{page}}"

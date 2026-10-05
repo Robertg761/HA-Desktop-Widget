@@ -301,6 +301,75 @@ const pinScene = (name, entityId, extra = {}) => ({
   ...extra,
 });
 
+// Gives an open pin new bounds, as dragging its corner does. Bounds can only change in edit mode;
+// the pin redraws for its new size.
+async function resizePin(ctx, entityId, size) {
+  await ctx.ev(`(async () => {
+    await window.electronAPI.setDesktopPinEditMode(true);
+    await window.electronAPI.updateDesktopPinBounds(${JSON.stringify(entityId)}, ${JSON.stringify(size)});
+    await window.electronAPI.setDesktopPinEditMode(false);
+  })()`);
+  await ctx.sleep(900);
+}
+
+// Every button of a pin lies inside its window, and none has its label cut short.
+const PIN_BUTTONS_FIT = `(() => {
+  const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
+  const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  return (
+    buttons.length > 0 &&
+    buttons.every((button) => {
+      const box = button.getBoundingClientRect();
+      return box.bottom <= innerHeight && box.right <= innerWidth;
+    }) &&
+    labels.every((label) => label.scrollWidth <= label.clientWidth)
+  );
+})()`;
+
+// A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
+// their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
+const resizedPinScene = (family, entityId, size, extra = {}) =>
+  pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
+    ...extra,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      await resizePin(ctx, entityId, size);
+      if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
+        throw new Error('Layout check failed: a pin button is cut off or its label shortened');
+      }
+      return { capture: pin };
+    },
+  });
+
+// A lamp that can only be switched on and off (a relay or a smart plug): no brightness to show.
+// The fixture's own lights all dim, and a light added to it would join every list of lights.
+const onOffLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.porch',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Porch light',
+        supported_color_modes: ['onoff'],
+        color_mode: 'onoff',
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+// A page of the one entity a scene pins, for one the pins page does not hold: only Quick Access
+// entities can be pinned, and a second page keeps the tab strip the runner waits for.
+const pinPage = (entityId) => ({
+  customTabs: [
+    { id: 'pins', name: 'Pins', entityIds: [entityId] },
+    { id: 'default', name: 'Home', entityIds: ['light.desk_lamp'] },
+  ],
+  activeTabId: 'pins',
+});
+
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
 // A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
@@ -397,6 +466,25 @@ const DIALOG_FITS = `(() => {
   return box.left >= -1 && box.right <= innerWidth + 1 && box.top >= -1 && box.bottom <= innerHeight + 1 &&
     [...content.querySelectorAll('.modal-header .close-btn, .modal-footer .btn')]
       .filter((element) => element.getClientRects().length > 0).every(inside);
+})()`;
+// The alert dialog's errors: under their own field and inside its column, the field marked invalid,
+// the first one focused, no error toast, the duration field still level with the cooldown beside
+// it, and the fields as wide as before the errors made the body scroll (window.__alertFieldEnd).
+const ALERT_ERRORS_UNDER_FIELDS = `(() => {
+  const box = (element) => element.getBoundingClientRect();
+  const under = (id) => {
+    const field = document.getElementById(id);
+    const error = document.getElementById(id + '-error');
+    if (!field || !error || field.getAttribute('aria-invalid') !== 'true') return false;
+    return box(error).top >= box(field).bottom && box(error).left >= box(field).left - 1 &&
+      box(error).right <= box(field).right + 1;
+  };
+  return under('alert-threshold') && under('alert-duration') &&
+    document.activeElement?.id === 'alert-threshold' &&
+    !document.querySelector('#toast-container .toast.error') &&
+    Math.abs(box(document.getElementById('alert-duration')).top -
+      box(document.getElementById('alert-cooldown')).top) < 1 &&
+    Math.abs(box(document.getElementById('alert-threshold')).right - window.__alertFieldEnd) < 0.5;
 })()`;
 const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls .control-item')].every((tile) => {
   const box = tile.getBoundingClientRect();
@@ -502,6 +590,18 @@ const FORMAT_SIZE = { width: 520, height: 1040 };
 // The list of entities is shown only while the Entity hotkeys switch is on, so every scene that
 // photographs it turns the switch on.
 const hotkeysOn = { globalHotkeys: { enabled: true, hotkeys: {} } };
+// An earlier version let a sensor's tile menu save a hotkey that does nothing.
+const hotkeysWithSensor = {
+  globalHotkeys: { enabled: true, hotkeys: { 'sensor.office_temp': 'Ctrl+Alt+T' } },
+};
+const SENSOR_HOTKEY_ROW = `(() => {
+  const row = document.querySelector('#hotkeys-list .hotkey-item');
+  const field = row?.querySelector('.hotkey-input');
+  return field?.dataset.entityId === 'sensor.office_temp' && field.disabled &&
+    !row.querySelector('.hotkey-action-select') &&
+    row.querySelector('.btn-clear-hotkey')?.checkVisibility() === true &&
+    row.querySelector('.hotkey-item-note')?.textContent.trim().length > 0;
+})()`;
 // Hotkeys for two rows, so the Hotkeys scenes show a row with a hotkey beside one without. The list
 // is in name order, so the second is a row that sits among the first few the "light" search shows
 // (the Colour strip comes before the Desk lamp, whose hotkey fell below the fold).
@@ -640,6 +740,25 @@ async function openPaletteFor(ctx, query) {
   await ctx.insertText(query);
   await ctx.waitForSelector('.command-palette-result');
 }
+
+// A command row has its entity's icon, so in a narrow window, where an entity's type pill gives
+// way, its Command mark is all that tells "Arm Home alarm away" from the alarm itself. The mark is a
+// glyph chip no wider than it is tall, so the names in view, which differ only at their ends, are
+// whole. (A word pill cut every one of them off where the commands differ.)
+const COMMAND_ROWS_MARKED = `(() => {
+  const list = document.querySelector('.command-palette-results').getBoundingClientRect();
+  const rows = [...document.querySelectorAll('.command-palette-result')].filter(
+    (row) => row.querySelector('.command-palette-result-domain.is-row-kind') &&
+      row.getBoundingClientRect().bottom <= list.bottom
+  );
+  return rows.length > 0 && rows.every((row) => {
+    const chip = row.querySelector('.command-palette-result-domain').getBoundingClientRect();
+    const glyph = row.querySelector('.command-palette-result-kind-icon svg')?.getBoundingClientRect();
+    const name = row.querySelector('.command-palette-result-name');
+    return glyph?.width > 0 && chip.width <= chip.height + 1 &&
+      name.scrollWidth <= name.clientWidth;
+  });
+})()`;
 
 // The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
 async function openPaletteEmpty(ctx) {
@@ -1160,11 +1279,15 @@ const scenes = [
   // Settings pages the first scenes do not reach, and the custom colour editor.
   { name: 'settings-dashboard', setup: (ctx) => openSettingsTab(ctx, 'dashboard') },
   { name: 'settings-hotkeys', setup: (ctx) => openHotkeysPage(ctx) },
-  // The entity list, where each row picks the action its hotkey runs from a select.
+  // The entity list, where each row picks the action its hotkey runs from a select. A hotkey an
+  // earlier version saved on a sensor comes first, with only its Clear button.
   {
     name: 'settings-hotkeys-entities',
-    config: hotkeysOn,
-    setup: (ctx) => openHotkeysFor(ctx, ''),
+    config: hotkeysWithSensor,
+    setup: async (ctx) => {
+      await openHotkeysFor(ctx, '');
+      await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+    },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
   // pager (Previous available, Next not).
@@ -2038,14 +2161,7 @@ const scenes = [
     config: pinsPage,
     setup: async (ctx) => {
       const pin = await ctx.openPin('light.desk_lamp');
-      if (size) {
-        await ctx.ev(`(async () => {
-          await window.electronAPI.setDesktopPinEditMode(true);
-          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
-          await window.electronAPI.setDesktopPinEditMode(false);
-        })()`);
-        await ctx.sleep(900);
-      }
+      if (size) await resizePin(ctx, 'light.desk_lamp', size);
       await pin.evaluate(`(() => {
         document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
         document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
@@ -2067,7 +2183,15 @@ const scenes = [
   // theme, where pins stay dark glass.
   pinScene('pin-light-off', 'light.shelf_leds'),
   pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
+  pinScene('pin-light-onoff', 'light.porch', {
+    config: pinPage('light.porch'),
+    extraStates: onOffLight,
+  }),
   pinScene('pin-climate', 'climate.bedroom'),
+  // A thermostat in heat_cool holds a range, which has two sliders where a single target has one,
+  // and its mode button leads the row with Home Assistant's own name for the mode ("Heat/Cool", not
+  // the "Auto" of the auto mode).
+  pinScene('pin-climate-range', 'climate.heat_pump'),
   pinScene('pin-fan', 'fan.office'),
   pinScene('pin-cover', 'cover.garage_door'),
   pinScene('pin-media', 'media_player.kitchen_speaker'),
@@ -2079,16 +2203,32 @@ const scenes = [
   pinScene('pin-scene', 'scene.movie_time'),
   pinScene('pin-script', 'script.goodnight'),
   pinScene('pin-lock', 'lock.back_door'),
+  pinScene('pin-switch', 'switch.coffee_maker'),
   pinScene('pin-action', 'automation.morning_routine'),
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
   pinScene('pin-timer', 'timer.laundry'),
+  // Pins dragged a little bigger, between the default and the roomy 260x190: the four modes or
+  // speeds come back and must still fit their row, and the weather's units keep their case.
+  resizedPinScene('climate', 'climate.bedroom', { width: 200, height: 170 }),
+  resizedPinScene('fan', 'fan.office', { width: 200, height: 170 }),
+  resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
+  resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
+  resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
+  // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
+  // balanced layout brought back a fourth mode that German cut to "Kü...".
+  resizedPinScene('climate-range', 'climate.heat_pump', { width: 200, height: 170 }),
+  resizedPinScene(
+    'de-climate',
+    'climate.bedroom',
+    { width: 185, height: 158 },
+    { ui: { language: 'de' } }
+  ),
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
-  // A thermostat in heat_cool, whose button leads the row with Home Assistant's own name for the
-  // mode ("Heat/Cool", not the "Auto" of the auto mode), in English and in French, the longest.
-  pinScene('pin-climate-heat-cool', 'climate.heat_pump'),
+  // The heat_cool thermostat in French, whose "Chaud/Froid" is the longest name for the mode.
   pinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
   pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
@@ -2509,6 +2649,36 @@ const scenes = [
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },
+  // An empty threshold and a wait that is not a whole number of seconds are each said under their
+  // own field, which is marked invalid, and the first takes the focus. A toast said only the first,
+  // was gone in seconds and covered the quiet hours. Toasts are kept, so one would show here. The
+  // errors make the body scroll, and the fields keep their width.
+  {
+    name: 'layout-dialog-alert-config-invalid',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx);
+      // Measured once the dialog has stopped scaling in.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-config-modal').getAnimations({ subtree: true }).length`,
+        'the alert dialog to finish opening'
+      );
+      await ctx.ev(
+        `window.__alertFieldEnd = document.getElementById('alert-threshold').getBoundingClientRect().right`
+      );
+      await typeInto(ctx, '#alert-threshold', '');
+      await typeInto(ctx, '#alert-duration', '1.5');
+      await ctx.click('#save-alert');
+      await ctx.waitForSelector('#alert-duration-error');
+      await ctx.expect(
+        ALERT_ERRORS_UNDER_FIELDS,
+        'each error under its own field, and no error toast'
+      );
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
   {
     name: 'layout-dialog-confirm-minimum',
     size: MINIMUM_SIZE,
@@ -2619,7 +2789,10 @@ const scenes = [
   {
     name: 'layout-palette-narrow',
     size: NARROW_SIZE,
-    setup: (ctx) => openPaletteFor(ctx, 'alarm'),
+    setup: async (ctx) => {
+      await openPaletteFor(ctx, 'alarm');
+      await ctx.expect(COMMAND_ROWS_MARKED, 'every command row is marked, and its name is whole');
+    },
   },
   {
     name: 'layout-palette-de',

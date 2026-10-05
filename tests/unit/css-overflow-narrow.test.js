@@ -184,6 +184,22 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(page, 'margin-inline')).toBe('auto');
     });
 
+    it('keeps the alert dialog fields the same width when an error makes its body scroll', () => {
+      render(
+        '',
+        '<div id="alert-config-modal" class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+      );
+      const body = document.querySelector('.modal-body');
+      expect(resolvedValue(body, 'scrollbar-gutter')).toBe('stable');
+      // The 9px gutter is the end margin, at the inset a short window gives a dialog body too.
+      expect(resolvedValue(body, 'padding-inline-end')).toBe('max(0px, calc(1rem - 9px))');
+      expect(resolvedValue(body, 'padding-inline-end', SHORT)).toBe(
+        'max(0px, calc(0.75rem - 9px))'
+      );
+      expect(resolvedValue(body, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(body, 'padding-inline-end', { forcedColors: true })).toBe('1rem');
+    });
+
     it('lays hotkey rows out in two tiers with a clear button that keeps its place', () => {
       render(
         '',
@@ -402,6 +418,44 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(pill, 'display', { viewport: { width: 400, height: 600 } })).toBe(
         'none'
       );
+    });
+
+    it('shrinks the Command and Page pills to a glyph in a narrow window, where they mark the row', () => {
+      // A command row has its entity's icon, so without the pill "Arm Home alarm away" looked like
+      // the alarm itself; kept as a word, it cut the names off where the commands differ.
+      render(
+        '',
+        `<button class="command-palette-result"><span class="command-palette-result-domain is-row-kind"
+          ><span class="command-palette-result-kind-icon"></span
+          ><span class="command-palette-result-kind-label">Command</span></span></button>`
+      );
+      const pill = document.querySelector('.command-palette-result-domain');
+      const glyph = document.querySelector('.command-palette-result-kind-icon');
+      const label = document.querySelector('.command-palette-result-kind-label');
+      for (const narrow of [NARROW, { viewport: { width: 400, height: 600 } }]) {
+        expect(resolvedValue(pill, 'display', narrow)).toBe('grid');
+        expect(resolvedValue(pill, 'flex', narrow)).toBe('none');
+        expect(resolvedValue(glyph, 'display', narrow)).toBe('grid');
+        // Out of sight, not out of the row's accessible name.
+        expect(resolvedValue(label, 'display', narrow)).toBeNull();
+        expect(resolvedValue(label, 'clip-path', narrow)).toBe('inset(50%)');
+        expect(resolvedValue(label, 'position', narrow)).toBe('absolute');
+      }
+      // The word, without the glyph, at the default size.
+      expect(resolvedValue(glyph, 'display', DEFAULT)).toBe('none');
+      expect(resolvedValue(label, 'clip-path', DEFAULT)).toBeNull();
+    });
+
+    it('keeps the palette rows the same width whether or not the list scrolls', () => {
+      render('', '<div class="command-palette-results"></div>');
+      const results = document.querySelector('.command-palette-results');
+      // The gutter is reserved, and it is the end margin: the start margin matches it.
+      expect(resolvedValue(results, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(results, 'padding')).toBe('6px 0');
+      expect(resolvedValue(results, 'padding-inline-start')).toBe('9px');
+      // The system's own scrollbar in forced colours is wider than the 9px gutter.
+      expect(resolvedValue(results, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(results, 'padding-inline', { forcedColors: true })).toBe('6px');
     });
 
     it('keeps the climate target on one line, under the current reading when it must', () => {

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.67",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,12 @@
     "1 more tile is not shown here. Open the widget to see it.": "Hay 1 tarjeta más que no se muestra aquí. Abre el widget para verla.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "Hay {{count}} tarjetas más que no se muestran aquí. Abre el widget para verlas.",
     "What's new": "Novedades",
+    "Remove Hotkey": "Quitar atajo",
+    "Hotkey removed for {{name}}": "Se quitó el atajo de {{name}}",
+    "Hotkeys cannot control this kind of entity": "Los atajos no pueden controlar este tipo de entidad",
+    "Failed to clear hotkey": "No se pudo borrar el atajo",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Activa o controla entidades desde cualquier lugar. Mantén {{ctrl}}, {{alt}} o {{meta}} con la tecla, y también {{shift}} si quieres (por ejemplo <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Modo de reorganización activado. Arrastra o pulsa {{modifier}}+flechas para reordenar. Pulsa Esc para finalizar.",
     "Fan only": "Solo ventilador",
     "Remove tile": "Quitar la tarjeta",
     "Remove {{name}} from {{page}}": "Quitar {{name}} de {{page}}"

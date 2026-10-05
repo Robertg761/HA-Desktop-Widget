@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.68",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,12 @@
     "1 more tile is not shown here. Open the widget to see it.": "1 और टाइल यहाँ नहीं दिख रही है। उसे देखने के लिए विजेट खोलें।",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} और टाइल यहाँ नहीं दिख रही हैं। उन्हें देखने के लिए विजेट खोलें।",
     "What's new": "नया क्या है",
+    "Remove Hotkey": "हॉटकी हटाएं",
+    "Hotkey removed for {{name}}": "{{name}} की हॉटकी हटाई गई",
+    "Hotkeys cannot control this kind of entity": "हॉटकी इस प्रकार की एंटिटी को नियंत्रित नहीं कर सकतीं",
+    "Failed to clear hotkey": "हॉटकी हटाई नहीं जा सकी",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "कहीं से भी एंटिटी टॉगल या नियंत्रित करें। कुंजी के साथ {{ctrl}}, {{alt}} या {{meta}} दबाए रखें, और चाहें तो {{shift}} भी (उदाहरण के लिए <code>{{example}}</code>)।",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "पुनर्व्यवस्थित मोड सक्षम। क्रम बदलने के लिए खींचें या {{modifier}}+तीर कुंजियाँ दबाएं। पूरा करने के लिए Esc दबाएं।",
     "Fan only": "केवल पंखा",
     "Remove tile": "टाइल हटाएं",
     "Remove {{name}} from {{page}}": "{{name}} को {{page}} से हटाएं"

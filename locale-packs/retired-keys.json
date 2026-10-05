@@ -1395,19 +1395,31 @@
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
   },
-  "Last updated: {{time}}": {
+  "Use slider or a preset": {
     "retiredIn": "4.0.0",
-    "reason": "The camera viewer no longer shows the camera's own last update before a picture loads"
+    "reason": "The light pin's caption says only On or Off; the brightness block below it shows the level (re-audit R-105)."
+  },
+  "{{percent}}% airflow": {
+    "retiredIn": "4.0.0",
+    "reason": "The fan pin's status says only On; the meter below it shows the speed (re-audit R-105)."
+  },
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that names this platform's modifier keys and leaves out Shift alone"
+  },
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by the same notice with the platform's name for the Alt key (Option on macOS)"
+  },
+  "Drying": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
   },
   "Heat Cool": {
     "retiredIn": "4.0.0",
     "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
   },
   "Fan Only": {
-    "retiredIn": "4.0.0",
-    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
-  },
-  "Drying": {
     "retiredIn": "4.0.0",
     "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
   },
@@ -1418,5 +1430,9 @@
   "Remove {{name}} from Quick Access": {
     "retiredIn": "4.0.0",
     "reason": "The tile's remove button is named for the page the tile is on, as its dialog is"
+  },
+  "Last updated: {{time}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The camera viewer no longer shows the camera's own last update before a picture loads"
   }
 }
