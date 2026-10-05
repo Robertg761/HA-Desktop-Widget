@@ -43,6 +43,37 @@ describe('the Readable preset', () => {
     expect(parseColor(resolvedValue(document.querySelector('.toast'), 'background'))[3]).toBe(1);
   });
 
+  // The light, fan, cover, climate and media pop-ups open with focus on their heading. The preset's
+  // ring is !important, so it boxed the title of every pop-up like a field.
+  it('draws no focus ring around a pop-up heading that took focus as the pop-up opened', () => {
+    render(
+      'high-contrast opaque-panels',
+      `<div class="modal"><div class="modal-header">
+        <h2 tabindex="-1" data-focus-visible>Desk lamp</h2>
+        <button class="close-btn" data-focus-visible></button>
+      </div></div>`
+    );
+    expect(resolvedValue(document.querySelector('h2'), 'outline')).toBe('none');
+    // A control in the same header keeps the preset's ring.
+    expect(resolvedValue(document.querySelector('.close-btn'), 'outline')).toBe('3px solid #fff');
+  });
+
+  // The media card's track is a button drawn as text. The preset's grey button fill made it a
+  // square slab behind the title, flush against the words.
+  it('keeps the media card track drawn as text, at rest and under the pointer', () => {
+    render(
+      'high-contrast opaque-panels',
+      `<div class="media-tile"><button class="media-tile-info" id="media-tile-info"></button>
+        <button class="media-tile-btn"></button></div>`
+    );
+    const track = document.querySelector('.media-tile-info');
+    expect(resolvedValue(track, 'background')).toBe('transparent');
+    track.setAttribute('data-hover', '');
+    expect(resolvedValue(track, 'background')).toBe('transparent');
+    // The card's other buttons keep the preset's fill.
+    expect(resolvedValue(document.querySelector('.media-tile-btn'), 'background')).toBe('#202020');
+  });
+
   it('leaves them translucent for the glass themes', () => {
     render('', '<div class="toast"></div>');
     expect(resolvedValue(document.body, '--dialog-bg')).toContain('transparent');

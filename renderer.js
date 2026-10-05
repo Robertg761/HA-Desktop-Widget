@@ -3,6 +3,7 @@ import { installClippedTextTooltips } from './src/clipped-text-tooltips.js';
 import { installLayerDrag } from './src/layer-drag.js';
 import { installRangeProgress } from './src/range-progress.js';
 import desktopPinResize from './src/desktop-pin-resize.cjs';
+import accelerators from './src/accelerators.cjs';
 // Load all required modules (ES Modules)
 import log from './src/logger.js';
 import {
@@ -1222,7 +1223,7 @@ function getOAuthStatePanel() {
         ? [
             {
               label: t('Cancel'),
-              className: 'btn btn-secondary',
+              className: 'btn btn-secondary btn-neutral',
               onClick: cancelOAuthReauthorization,
             },
           ]
@@ -2019,10 +2020,12 @@ async function executeDesktopCompanionCommand({ action, payload }) {
       throw new Error(result?.error || 'Profile could not be saved on this desktop');
     }
     // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
-    // save from Settings does, so Undo and Restore dashboard can bring it back.
+    // save from Settings does, so Undo and Restore dashboard can bring it back. It is not part of
+    // a burst of edits: Restore dashboard keeps that layout however soon after an edit it comes.
     rememberDashboard(
       previousConfig,
-      result?.homeAssistant ? result : { ...previousConfig, ...patch }
+      result?.homeAssistant ? result : { ...previousConfig, ...patch },
+      { wholeLayout: true }
     );
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
@@ -2301,13 +2304,24 @@ function showConfigRecoveryNotice(recovery) {
   uiUtils.showToast(message, 'error', 20000);
 }
 
-// The palette opens with the platform's own modifier: Cmd+K on macOS, Ctrl+K elsewhere (it takes
-// either, but the tip should name the one a person there would reach for).
-function applyPaletteShortcutHint() {
-  const hint = document.getElementById('command-palette-hint');
-  if (!hint) return;
-  const shortcut = window.electronAPI?.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K';
-  hint.setAttribute('data-i18n-vars', JSON.stringify({ shortcut }));
+// Text in index.html that names keys names them as this platform's keyboard prints them, as the
+// hotkey recorders and fields do. The palette opens with the platform's own modifier, Cmd+K on macOS
+// and Ctrl+K elsewhere (it takes either, but the tip names the one a person there would reach for).
+// The entity hotkeys help names the keys a hotkey can start from: Shift alone is refused, and the
+// Meta key is Super, Win or Cmd.
+function applyPlatformKeyNames() {
+  const platform = window.electronAPI?.platform;
+  const keys = (accelerator) => accelerators.formatAccelerator(accelerator, platform);
+  const setVars = (id, vars) =>
+    document.getElementById(id)?.setAttribute('data-i18n-vars', JSON.stringify(vars));
+  setVars('command-palette-hint', { shortcut: keys('CommandOrControl+K') });
+  setVars('entity-hotkeys-help', {
+    ctrl: keys('Ctrl'),
+    alt: keys('Alt'),
+    meta: keys('Super'),
+    shift: keys('Shift'),
+    example: keys('CommandOrControl+Shift+A'),
+  });
 }
 
 // The language the window was last drawn in; null until the first locale is applied.
@@ -2317,7 +2331,7 @@ async function refreshLocaleBootstrap() {
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
   if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
-  applyPaletteShortcutHint();
+  applyPlatformKeyNames();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
   if (appliedLocale !== null && locale !== appliedLocale) {
@@ -3267,9 +3281,10 @@ window.electronAPI.onDesktopPinEditModeEnded?.(() => {
   ui.exitReorganizeMode();
 });
 
-window.electronAPI.onEntityTileHotkeyRequested(({ entityId } = {}) => {
+window.electronAPI.onEntityTileHotkeyRequested(({ entityId, remove } = {}) => {
   if (IS_DESKTOP_PIN_MODE || !entityId) return;
-  hotkeys.assignHotkeyToEntity(entityId);
+  if (remove) void hotkeys.removeEntityHotkey(entityId);
+  else hotkeys.assignHotkeyToEntity(entityId);
 });
 
 window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
@@ -3985,30 +4000,17 @@ function wireUI() {
           await hotkeys.assignHotkeyToEntity(target.dataset.entityId, {
             action: actionSelect?.value,
           });
-        } else if (target.classList.contains('btn-clear-hotkey')) {
-          const container = target.parentElement;
-          const input = container.querySelector('.hotkey-input');
-          const entityId = input.dataset.entityId;
-          try {
-            const result = await window.electronAPI.unregisterHotkey(entityId);
-            if (result?.success !== true) {
-              throw new Error(result?.error || t('Error toggling hotkeys'));
-            }
-            input.value = '';
-            delete state.CONFIG.globalHotkeys.hotkeys[entityId];
-            hotkeys.renderHotkeysTab();
+        } else if (target.closest('.btn-clear-hotkey')) {
+          // The click lands on the icon inside the button as often as on the button.
+          const controls = target.closest('.hotkey-input-container');
+          const entityId = controls?.querySelector('.hotkey-input')?.dataset.entityId;
+          if (!entityId) return;
+          if (await hotkeys.clearEntityHotkey(entityId)) {
             // The list was rebuilt under the Clear button, which is hidden now there is nothing to
             // clear; the row's own field is where the keyboard goes on.
             hotkeysList
               .querySelector(`.hotkey-input[data-focus-key="hotkey-input:${entityId}"]`)
               ?.focus();
-            if (result.warning) {
-              uiUtils.showToast(result.warning, 'warning', 4000);
-            }
-          } catch (error) {
-            log.error('Failed to clear entity hotkey:', error);
-            const errorMessage = error?.message || t('Error toggling hotkeys');
-            uiUtils.showToast(errorMessage, 'error', 3000);
           }
         }
       });

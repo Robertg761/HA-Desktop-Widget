@@ -236,6 +236,17 @@ describe('visual snapshot scenes', () => {
       'media-tile',
       'pin-light',
       'pin-light-long',
+      'pin-light-onoff',
+      'pin-switch',
+      'pin-climate-200x170',
+      'pin-fan-200x170',
+      'pin-cover-200x170',
+      'pin-weather-200x170',
+      'pin-climate-240x180',
+      'pin-weather-240x180',
+      'pin-climate-range',
+      'pin-climate-range-200x170',
+      'pin-de-climate-185x158',
       'pin-de-cover',
       'pin-fr-climate',
       'pin-ar-light',
@@ -372,16 +383,44 @@ describe('visual snapshot scenes', () => {
     }
   });
 
-  it('shows every desktop pin family it can pin, and only pins entities the fixture holds', () => {
-    const states = new Map(buildStates().map((entity) => [entity.entity_id, entity]));
+  it('shows every desktop pin family it can pin, and only pins entities the home holds', () => {
+    const fixtureStates = buildStates();
     const families = new Set();
     for (const scene of scenes.filter((entry) => entry.pin)) {
+      // A scene may pin an entity it brings itself.
+      const states = new Map(
+        [...fixtureStates, ...(scene.extraStates?.(new Date()) || [])].map((entity) => [
+          entity.entity_id,
+          entity,
+        ])
+      );
       expect(states.has(scene.pin)).toBe(true);
       families.add(resolveDesktopPinProfile(states.get(scene.pin)).family);
     }
     expect([...families].sort()).toEqual(
       [...DESKTOP_PIN_SUPPORTED_FAMILIES].filter((family) => family !== 'unsupported').sort()
     );
+  });
+
+  it('pins a light that only switches, whose pin has no brightness to show', () => {
+    const scene = scenes.find((entry) => entry.name === 'pin-light-onoff');
+    const [light] = scene.extraStates(new Date());
+
+    expect(light.entity_id).toBe(scene.pin);
+    expect(light.attributes.supported_color_modes).toEqual(['onoff']);
+  });
+
+  it('pins a heat/cool thermostat, whose two sliders crowd a pin more than one target does', () => {
+    const heatPump = buildStates().find((entity) => entity.entity_id === 'climate.heat_pump');
+    expect(heatPump.attributes).toMatchObject({
+      target_temp_low: expect.any(Number),
+      target_temp_high: expect.any(Number),
+    });
+    for (const name of ['pin-climate-range', 'pin-climate-range-200x170']) {
+      expect(scenes.find((entry) => entry.name === name).pin).toBe('climate.heat_pump');
+    }
+    // German's mode names are the longest a pin a little past the default size has to fit.
+    expect(scenes.find((entry) => entry.name === 'pin-de-climate-185x158').ui.language).toBe('de');
   });
 
   it('puts every pinned entity on a page the scene shows, since only those can be pinned', () => {

@@ -795,7 +795,8 @@ describe('dashboard data display', () => {
       renderTiles([entity('light.lamp', 'on', { friendly_name: 'Hue lamp 3' })]);
       await removeFirstTile();
       expect(uiUtils.showConfirm).toHaveBeenCalledWith(
-        'Remove from Quick Access',
+        // Not 'Remove from Quick Access' above a question about one page.
+        'Remove tile',
         // The page it is taken off, since the same entity on another page stays.
         'Remove "Reading light" from "Polish"?',
         { confirmText: 'Remove', confirmClass: 'btn-danger' }
@@ -1182,6 +1183,24 @@ describe('dashboard data display', () => {
       return document.querySelector('.climate-modal');
     };
 
+    it('names each mode as Home Assistant does, the same as everywhere else', () => {
+      const { formatStateName } = require('../../src/format.js');
+      const modal = open(
+        climate('auto', { hvac_modes: ['off', 'heat', 'heat_cool', 'auto', 'fan_only'] })
+      );
+      const label = (mode) =>
+        modal.querySelector(`.climate-mode-btn[data-mode="${mode}"] .climate-mode-label`)
+          .textContent;
+      const names = { heat: 'Heat', heat_cool: 'Heat/Cool', auto: 'Auto', fan_only: 'Fan only' };
+      for (const [mode, name] of Object.entries(names)) {
+        expect({ mode, dialog: label(mode), state: formatStateName(mode) }).toEqual({
+          mode,
+          dialog: name,
+          state: name,
+        });
+      }
+    });
+
     it('tells Heat/Cool from Auto by its icon', () => {
       const modal = open(climate('auto'));
       const icon = (mode) =>
@@ -1310,6 +1329,12 @@ describe('dashboard data display', () => {
       });
       const modal = openSettings(entity('sensor.pool', 'unavailable', { friendly_name: 'Pool' }));
       expect(modal.querySelector('#tile-chart-type-select')).not.toBeNull();
+    });
+
+    it('opens on the name the tile shows for an entity Home Assistant gave no name', () => {
+      const modal = openSettings(entity('switch.no_name', 'on', {}));
+      expect(tile('switch.no_name').querySelector('.control-name').textContent).toBe('no name');
+      expect(modal.querySelector('#rename-input').value).toBe('no name');
     });
 
     it('does not offer them for a text sensor', () => {
