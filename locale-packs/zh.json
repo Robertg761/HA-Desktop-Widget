@@ -2004,6 +2004,8 @@
     "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "有可用更新：v{{version}}。此安装包无法自行更新；请使用“下载更新”从 GitHub 获取。",
     "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "便携版更新可用：v{{version}}。请使用“下载便携版更新”获取便携版。",
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "有可用的便携版测试更新：v{{version}}。请使用“下载便携版更新”获取便携版。",
-    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "在窗口管理器中绑定一个按键来运行 <code>{{command}}</code>，它会显示或隐藏小组件。"
+    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "在窗口管理器中绑定一个按键来运行 <code>{{command}}</code>，它会显示或隐藏小组件。",
+    "HA Desktop Widget is still running": "HA Desktop Widget 仍在运行",
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "从应用启动器打开它即可恢复。GNOME 只有安装 AppIndicator 扩展后才会在系统托盘中显示它的图标。"
   }
 }

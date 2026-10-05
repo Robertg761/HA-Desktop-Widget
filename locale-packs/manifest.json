@@ -8,7 +8,7 @@
       "version": "1.2.65",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/de.json",
-      "sha256": "063ac17b51917200a147f15ca0a2517759e39a707548d7e989665c9265617cff",
+      "sha256": "8ad1efacd3e6911e850b4cb312e386b4c5296ab397050e89a976ac26359512e8",
       "notes": "German language pack for HA Desktop Widget."
     },
     {
@@ -18,7 +18,7 @@
       "version": "1.2.65",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/zh.json",
-      "sha256": "f5e3a0e50eb6c29700c2041675be4ecb1e3dfd30b865a8f1a69ce0898171925e",
+      "sha256": "ac6b0e772d4b98076dd07b34cf9f4c20aa8dd5f73ae3c758fe8e1e49336baa39",
       "notes": "Simplified Chinese language pack for HA Desktop Widget."
     },
     {
@@ -28,7 +28,7 @@
       "version": "1.2.66",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/hi.json",
-      "sha256": "5c4ac4cec8ecce8a6f9d5f46612f1fb1b7ff85628960dbe636ab00589bc0e72c",
+      "sha256": "033e7496665aced29bf7e0cff5ed3aa7c212fbfd7a7ceb47e78fb64083cab676",
       "notes": "Hindi language pack for HA Desktop Widget."
     },
     {
@@ -38,7 +38,7 @@
       "version": "1.2.65",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/es.json",
-      "sha256": "772de2784593a32f0039a2f4848fe3fcf3bb1a0fc71a5ca4f0d424bbab0d9660",
+      "sha256": "8ff394e026ab586ea17d05bb8ff79fa7e919bb487d91b0a1c0c4b964ee641161",
       "notes": "Spanish language pack for HA Desktop Widget."
     },
     {
@@ -48,7 +48,7 @@
       "version": "1.2.65",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/fr.json",
-      "sha256": "e3a56043329cba89d8313188bb64b57a7803f33458dd7c0b6c94ea4e60c5442d",
+      "sha256": "39fba8f049e84f2e188555036ffc43001a535c2f004caf2b7c3ae93149af2def",
       "notes": "French language pack for HA Desktop Widget."
     },
     {
@@ -58,7 +58,7 @@
       "version": "1.2.66",
       "minAppVersion": "3.4.1",
       "downloadUrl": "https://raw.githubusercontent.com/Robertg761/HA-Desktop-Widget/main/locale-packs/ar.json",
-      "sha256": "d439c479ac22a4c9e10fdd607d2fdb72c5fa3bf2cdc0d03d56588a9e688652dc",
+      "sha256": "1499c21fe815ccd2016ab564ae4fc542604b405424dbcd00c8d398521aa43d70",
       "notes": "Arabic language pack for HA Desktop Widget."
     }
   ]

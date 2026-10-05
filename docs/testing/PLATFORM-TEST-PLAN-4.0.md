@@ -795,9 +795,9 @@ Needs: A GNOME without an AppIndicator extension.
 1. Click the widget's Minimize button. Look for a way back: the Dock, Alt+Tab, the overview, a tray icon.
 2. Start the app again with the same command you used before (the app grid starts your real profile, not the throwaway folder). Then close the widget with the X, and again with Alt+F4, and look for a way back each time.
 
-Expected: The widget does not vanish with no way back. Either it minimizes like a normal window and shows in the overview, or the app tells you once that GNOME needs an AppIndicator extension to show its tray icon. Starting the app again brings the widget back.
+Expected: The widget does not vanish with no way back. Minimize minimizes it like a normal window, and it shows in the Dock, Alt+Tab and the overview. The X and Alt+F4 hide it; the first time in a run a notification says "HA Desktop Widget is still running", to open it from the app launcher and that GNOME shows its tray icon only with an AppIndicator extension. Clicking the notification, or starting the app again, brings the widget back.
 
-Capture: What you saw after Minimize.
+Capture: What you saw after Minimize, and the notification after the X.
 
 Ref: MP-41
 

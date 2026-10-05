@@ -2004,6 +2004,8 @@
     "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Actualización disponible: v{{version}}. Este paquete no puede actualizarse solo; usa «Descargar actualización» para obtenerla de GitHub.",
     "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil.",
     "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización beta portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil.",
-    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Asigna una tecla en tu gestor de ventanas para ejecutar <code>{{command}}</code>, que muestra u oculta el widget."
+    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Asigna una tecla en tu gestor de ventanas para ejecutar <code>{{command}}</code>, que muestra u oculta el widget.",
+    "HA Desktop Widget is still running": "HA Desktop Widget se sigue ejecutando",
+    "Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.": "Ábrelo desde el lanzador de aplicaciones para recuperarlo. GNOME solo muestra su icono en la bandeja del sistema con una extensión AppIndicator."
   }
 }

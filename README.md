@@ -482,6 +482,10 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 - **Firewall**: Ensure your OS firewall allows the app to connect to your network
 - **Network**: Test connectivity by opening your HA URL in a web browser
 
+### Linux
+
+- **No tray icon on GNOME**: Stock GNOME shows no tray icons. Install an AppIndicator extension (such as "AppIndicator and KStatusNotifierItem Support") to get the widget's icon. Without one, Minimize leaves the widget in the dock and the window switcher, but the title-bar X, Ctrl+W and Alt+F4 hide it with no icon to bring it back: open HA Desktop Widget from your app launcher again, which shows the widget that is still running.
+
 ### Performance Issues
 
 - **Reduce Entities**: Limit the number of entities in Quick Access

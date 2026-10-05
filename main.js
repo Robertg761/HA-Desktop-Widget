@@ -7614,6 +7614,7 @@ function createWindow() {
         return;
       }
       mainWindow.hide();
+      announceHiddenWithoutTray();
     }
   });
 
@@ -10952,6 +10953,27 @@ ipcMain.handle('restart-app', async (event) => {
     return { success: false, error: error?.message || String(error) };
   }
 });
+
+// Stock GNOME has no tray without an AppIndicator extension, so a widget its X, Ctrl+W or Alt+F4
+// hid has no icon to come back from, and looks as if it quit. Say once per run where it went.
+let announcedHiddenWithoutTray = false;
+function announceHiddenWithoutTray() {
+  if (process.platform !== 'linux' || !trayHostMissing || !isGnome()) return;
+  if (announcedHiddenWithoutTray || !ElectronNotification.isSupported?.()) return;
+  announcedHiddenWithoutTray = true;
+  try {
+    const notification = new ElectronNotification({
+      title: mainT('HA Desktop Widget is still running'),
+      body: mainT(
+        'Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.'
+      ),
+    });
+    notification.on('click', () => showMainWindowFromTray());
+    notification.show();
+  } catch (error) {
+    log.warn('Could not say where the hidden widget went:', error?.message || error);
+  }
+}
 
 /**
  * The title bar's minimize button. The widget normally hides to the tray instead, but a desktop
