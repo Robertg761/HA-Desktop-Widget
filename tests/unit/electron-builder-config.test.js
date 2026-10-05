@@ -78,18 +78,30 @@ const positives = (list) => list.filter((entry) => !entry.startsWith('!'));
 const negatives = (list) => list.filter((entry) => entry.startsWith('!'));
 
 /**
- * The patterns electron-builder ends up matching the app's own files against on a platform, as its
- * own code builds them from the top-level and the platform `files`.
+ * The configuration as electron-builder holds it once loaded. Its getConfig ends in doMergeConfigs,
+ * which turns the top-level `files` into a file set of its own and leaves each platform's list as
+ * written, and how the two combine follows from that. The YAML alone does not show it.
  */
-function effectivePatterns(platform) {
+function loadedConfig() {
+  const { doMergeConfigs } = require('app-builder-lib/out/util/config/config');
+  const text = fs.readFileSync(path.join(root, 'electron-builder.yml'), 'utf8');
+  return doMergeConfigs([yaml.load(text)]);
+}
+
+/**
+ * The matchers electron-builder packs the app's own files with on a platform, as its
+ * getMainFileMatchers builds them from the loaded configuration. Each one is a file set, and the
+ * app gets the files of all of them. The first also carries electron-builder's own exclusions.
+ */
+function mainFileMatchers(platform) {
   const { getMainFileMatchers } = require('app-builder-lib/out/fileMatcher');
-  const logger = { isEnabled: false, add() {} };
+  const loaded = loadedConfig();
   const packager = {
     info: {
-      debugLogger: logger,
+      debugLogger: { isEnabled: false, add() {} },
       projectDir: root,
       buildResourcesDir: 'build',
-      config,
+      config: loaded,
       isPrepackedAppAsar: false,
     },
   };
@@ -97,11 +109,27 @@ function effectivePatterns(platform) {
     root,
     path.join(root, 'dist', 'app'),
     (value) => value,
-    config[platform],
+    loaded[platform],
     packager,
     path.join(root, 'dist'),
     false
-  )[0].patterns;
+  );
+}
+
+/** The patterns of the first matcher, which holds the platform's own list. */
+const effectivePatterns = (platform) => mainFileMatchers(platform)[0].patterns;
+
+/**
+ * The app files electron-builder packs on a platform, relative to the repository: the folder walked
+ * once per matcher by its own computeFileSets, which is what the asar is made from. node_modules
+ * is collected separately (see packedFiles).
+ */
+async function packedAppFiles(platform) {
+  const { computeFileSets } = require('app-builder-lib/out/util/appFileCopier');
+  const platformPackager = { info: { areNodeModulesHandledExternally: false } };
+  const fileSets = await computeFileSets(mainFileMatchers(platform), null, platformPackager, false);
+  const files = fileSets.flatMap((set) => set.files.filter((file) => set.metadata.has(file)));
+  return [...new Set(files.map((file) => path.relative(root, file).split(path.sep).join('/')))];
 }
 
 /**
@@ -113,12 +141,13 @@ function effectivePatterns(platform) {
  */
 function packedFiles(packageName, platform) {
   const { getNodeModuleFileMatcher } = require('app-builder-lib/out/fileMatcher');
+  const loaded = loadedConfig();
   const filter = getNodeModuleFileMatcher(
     root,
     path.join(root, 'dist', 'app'),
     (value) => value,
-    config[platform],
-    { config, debugLogger: { isEnabled: false, add() {} } }
+    loaded[platform],
+    { config: loaded, debugLogger: { isEnabled: false, add() {} } }
   ).createFilter();
   const packageDir = path.join(root, 'node_modules', ...packageName.split('/'));
   const packed = [];
@@ -138,21 +167,38 @@ function packedFiles(packageName, platform) {
   return packed;
 }
 
-describe('what the Windows and macOS packages contain', () => {
-  // The top-level and the platform `files` are added to one list, so the platform lists hold only
-  // exclusions and the top-level allowlist decides what the app's own files are. A list made of
-  // exclusions alone would pack everything (tests, internal docs, the website, vendored sources);
-  // it is the allowlist beside it that stops that, so it must stay.
-  it.each(['linux', 'mac', 'win'])('packs only an allowlist of files on %s', (platform) => {
-    const patterns = effectivePatterns(platform);
-    expect(patterns).not.toContain('**/*');
-    for (const entry of positives(config.files)) expect(patterns).toContain(entry);
-  });
+describe('what the packages contain', () => {
+  // Once electron-builder has loaded the configuration, the top-level `files` is one file set and a
+  // platform's list another, and the app is packed from both. A set that holds only exclusions
+  // packs everything but them: the tests, internal docs, the website and the vendored sources. So
+  // each platform list names package.json too, and the top-level allowlist bounds the rest.
+  it.each(['linux', 'mac', 'win'])(
+    'packs only the allowlisted app files on %s',
+    async (platform) => {
+      const { Minimatch } = require('minimatch');
+      const allowlist = positives(config.files).map((entry) => new Minimatch(entry, { dot: true }));
+      const packed = await packedAppFiles(platform);
+      expect(packed).toEqual(
+        expect.arrayContaining(['index.html', 'main.js', 'package.json', 'src/i18n-main.cjs'])
+      );
+      expect(packed.filter((file) => !allowlist.some((pattern) => pattern.match(file)))).toEqual(
+        []
+      );
+      // No matcher is the "everything but" that a list of exclusions alone turns into.
+      for (const matcher of mainFileMatchers(platform)) {
+        expect(matcher.patterns).not.toContain('**/*');
+        expect(positives(matcher.patterns).length).toBeGreaterThan(0);
+      }
+    },
+    // The first walk also loads app-builder-lib, which takes seconds on a busy machine.
+    30000
+  );
 
-  it('keeps the platform lists to exclusions, which the top-level allowlist already bounds', () => {
+  it('gives each platform list package.json and exclusions, so the allowlist bounds the rest', () => {
     expect(positives(config.files).length).toBeGreaterThan(0);
-    expect(positives(config.mac.files)).toEqual([]);
-    expect(positives(config.win.files)).toEqual([]);
+    for (const platform of ['mac', 'win']) {
+      expect(positives(config[platform].files)).toEqual(['package.json']);
+    }
   });
 
   it('shares one list between macOS and Windows', () => {

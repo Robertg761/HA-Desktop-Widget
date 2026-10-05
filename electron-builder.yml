@@ -9,6 +9,13 @@ directories:
   buildResources: build
   output: dist
 afterPack: scripts/after-pack-mac-adhoc-sign.cjs
+# The app's own files are this allowlist. mac and win each have a `files` list as well, for what
+# only that platform drops, and electron-builder does not add one to the other: once it has
+# loaded this file, the top-level list is a file set of its own and the platform list another, and a
+# set made only of exclusions packs everything but them, the whole repository with its tests, docs,
+# website and vendored sources. So every platform list also names package.json, which ships anyway,
+# and this allowlist still bounds the rest. tests/unit/electron-builder-config.test.js loads the
+# configuration the way electron-builder does and fails if a platform packs a file it does not name.
 files:
   - index.html
   # Self-hosted Inter / Plus Jakarta Sans woff2 subsets referenced by the
@@ -179,8 +186,10 @@ mac:
   # re-derive this list from package-lock.json. The alias makes mac.files and
   # win.files one shared array instance; do not reuse the anchor under top-level
   # files/extraFiles/extraResources — app-builder-lib normalizes those in place,
-  # which would corrupt the shared list for the platform sections.
-  files: &dbusNextExcludes
+  # which would corrupt the shared list for the platform sections. package.json is here so
+  # that the list is not exclusions alone (see the top-level `files`).
+  files: &macWinFiles
+    - package.json
     - '!node_modules/dbus-next/**/*'
     - '!node_modules/event-stream/**/*'
     - '!node_modules/hexy/**/*'
@@ -198,7 +207,7 @@ mac:
     - '!node_modules/stream-combiner/**/*'
 win:
   icon: build/icon.ico
-  files: *dbusNextExcludes
+  files: *macWinFiles
   target:
     - target: nsis
       arch: [x64]
