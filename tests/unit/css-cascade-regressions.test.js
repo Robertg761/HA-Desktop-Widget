@@ -1414,6 +1414,24 @@ describe('stylesheet cascade regressions', () => {
         ).toBe('none');
       }
     );
+
+    it.each([
+      ['heat', '255, 132, 96'],
+      ['cool', '3, 169, 244'],
+      ['heat_cool', '0, 150, 136'],
+      ['auto', '0, 150, 136'],
+      ['off', '130, 150, 176'],
+      ['dry', '130, 150, 176'],
+      ['fan_only', '130, 150, 176'],
+    ])('tints a climate pin in %s mode %s', (mode, tint) => {
+      render('desktop-pin-mode', panel('climate', 'compact', `data-state="${mode}"`));
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-tint-rgb'
+        )
+      ).toBe(tint);
+    });
   });
 
   describe('desktop pin text', () => {

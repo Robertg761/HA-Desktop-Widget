@@ -2367,8 +2367,20 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-tint-rgb: 176, 222, 120;
 }
 
+/* A thermostat's tint says what it is doing: warm while it heats, and the blue and teal the cool
+   and auto states have above while it cools or runs on auto. Off, drying or only moving air, it
+   is neutral. */
+.desktop-pin-climate-control[data-state='cool'] {
+  --desktop-pin-tint-rgb: 3, 169, 244;
+}
+
+.desktop-pin-climate-control:is([data-state='heat_cool'], [data-state='auto']) {
+  --desktop-pin-tint-rgb: 0, 150, 136;
+}
+
 .desktop-pin-toggle-control[data-state='off'],
 .desktop-pin-fan-control[data-state='off'],
+.desktop-pin-climate-control:is([data-state='off'], [data-state='dry'], [data-state='fan_only']),
 .desktop-pin-vacuum-control[data-state='docked'],
 .desktop-pin-camera-control[data-state='idle'] {
   --desktop-pin-tint-rgb: 130, 150, 176;
