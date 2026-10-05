@@ -7055,8 +7055,6 @@ function populateAlertEntityPicker() {
         badge.className = 'alert-badge';
         setLineIconContent(badge, 'bell');
         badge.title = t('Alert configured');
-        badge.style.marginLeft = '8px';
-        badge.style.fontSize = '14px';
         item.querySelector('.entity-item-main').appendChild(badge);
       }
 
