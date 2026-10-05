@@ -30,7 +30,41 @@ files:
   - build/trayTemplate.png
   - build/trayTemplate@2x.png
   - package.json
+  # usocket is dbus-next's optional native add-on for passing file descriptors. The app never uses
+  # it: every dbus-next connection in src/ (portal-global-shortcuts, portal-color-scheme,
+  # kwin-window-raise, linux-tray-host) gets its address from getNetSessionBusAddress(), which
+  # makes dbus-next open an ordinary net socket instead. Excluding the package alone
+  # left everything it pulls in, about 6 MB in the asar: node-gyp, tar, undici, nan, nopt and their
+  # helpers. Those are the packages package-lock.json reaches only through usocket, and nothing
+  # that ships requires them; tests/unit/electron-builder-config.test.js recomputes the list from
+  # the lock file and fails if it drifts, e.g. when an upgrade of electron-updater starts needing
+  # one. electron-builder hoists the production tree before it filters, so a package that
+  # package-lock.json nests under node-gyp or tar (undici, which, isexe, env-paths, yallist) is
+  # matched at node_modules/<name>, and each is listed by that name. semver is the one exception:
+  # node-gyp's copy is hoisted to the top while electron-updater keeps its own beside it, so a
+  # pattern for the name could one day remove the copy electron-updater needs. Its 58 files stay.
   - '!node_modules/usocket/**/*'
+  - '!node_modules/node-gyp/**/*'
+  - '!node_modules/nan/**/*'
+  - '!node_modules/bindings/**/*'
+  - '!node_modules/file-uri-to-path/**/*'
+  - '!node_modules/tar/**/*'
+  - '!node_modules/@isaacs/fs-minipass/**/*'
+  - '!node_modules/chownr/**/*'
+  - '!node_modules/minipass/**/*'
+  - '!node_modules/minizlib/**/*'
+  - '!node_modules/exponential-backoff/**/*'
+  - '!node_modules/fdir/**/*'
+  - '!node_modules/picomatch/**/*'
+  - '!node_modules/tinyglobby/**/*'
+  - '!node_modules/nopt/**/*'
+  - '!node_modules/abbrev/**/*'
+  - '!node_modules/proc-log/**/*'
+  - '!node_modules/undici/**/*'
+  - '!node_modules/which/**/*'
+  - '!node_modules/isexe/**/*'
+  - '!node_modules/env-paths/**/*'
+  - '!node_modules/yallist/**/*'
 asar: true
 compression: normal
 # Chromium draws its own interface (the right-click menu in a text field, the spelling menu, the

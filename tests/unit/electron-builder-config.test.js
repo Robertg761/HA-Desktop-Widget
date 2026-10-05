@@ -370,3 +370,176 @@ describe('the Chromium locales that ship', () => {
     expect(comment).toContain('detectSystemLocale');
   });
 });
+
+describe('the usocket dependency subtree that no longer ships', () => {
+  const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+  const locked = lock.packages;
+  const hasNodeModules = fs.existsSync(path.join(root, 'node_modules', 'electron-updater'));
+  const itWithNodeModules = hasNodeModules ? it : it.skip;
+
+  // The lock-file path of the package a `require(name)` from `from` finds, the way npm lays them
+  // out: the nearest node_modules folder going up. null when nothing is installed under that name.
+  function resolveDependency(from, name) {
+    let base = from;
+    for (;;) {
+      const candidate = `${base ? `${base}/` : ''}node_modules/${name}`;
+      if (locked[candidate]) return candidate;
+      if (!base) return null;
+      const cut = base.lastIndexOf('/node_modules/');
+      base = cut === -1 ? '' : base.slice(0, cut);
+    }
+  }
+
+  // What npm installs for a package: dependencies, optional ones, and peers that are not optional.
+  function dependencyNames(entry) {
+    return [
+      ...Object.keys(entry.dependencies || {}),
+      ...Object.keys(entry.optionalDependencies || {}),
+      ...Object.keys(entry.peerDependencies || {}).filter(
+        (name) => !entry.peerDependenciesMeta?.[name]?.optional
+      ),
+    ];
+  }
+
+  // Every package the app's own dependencies and optionalDependencies reach, without going through
+  // the ones in `skipped`. That is what electron-builder packs, before the exclusions in `files`.
+  function reachable(skipped = new Set()) {
+    const seen = new Set();
+    const queue = [''];
+    while (queue.length) {
+      const from = queue.pop();
+      for (const name of dependencyNames(locked[from])) {
+        const found = resolveDependency(from, name);
+        if (found && !skipped.has(found) && !seen.has(found)) {
+          seen.add(found);
+          queue.push(found);
+        }
+      }
+    }
+    return seen;
+  }
+
+  const everything = reachable();
+  const withoutUsocket = reachable(new Set(['node_modules/usocket']));
+  // The folders usocket alone brings in, nested copies included.
+  const orphaned = [...everything].filter((entry) => !withoutUsocket.has(entry)).sort();
+  const packageName = (entry) => entry.replace(/^.*node_modules\//, '');
+  const topLevel = (entry) => /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(entry);
+  const shippedNames = new Set([...withoutUsocket].map(packageName));
+  const excludedFolders = negatives(config.files)
+    .map((entry) => /^!node_modules\/((?:@[^/]+\/)?[^/]+)\/\*\*\/\*$/.exec(entry)?.[1])
+    .filter(Boolean)
+    .sort();
+
+  // electron-builder hoists the production tree before it filters (app-builder-lib's
+  // node-module-collector/hoist.js), so a package nested under node-gyp in the lock file is matched
+  // at node_modules/<name>. A name is therefore safe to exclude only if nothing that ships has a
+  // package of that name, in whichever place the hoisting puts it.
+  it('excludes usocket and every package that only it needs, which package-lock.json says is these', () => {
+    expect(orphaned).toContain('node_modules/usocket');
+    expect(orphaned).toEqual(expect.arrayContaining(['node_modules/node-gyp', 'node_modules/tar']));
+    const orphanNames = [...new Set(orphaned.map(packageName))];
+    expect(excludedFolders).toEqual(orphanNames.filter((name) => !shippedNames.has(name)).sort());
+    // semver is the one name both sides use (node-gyp's 7.8.5, electron-updater's 7.7.4). Which of
+    // the two hoisting puts at the top is not ours to rely on, so it is left in, 58 files. A new
+    // name here means a new case to look at, not a pattern to add.
+    expect(orphanNames.filter((name) => shippedNames.has(name))).toEqual(['semver']);
+    // A nested orphan sits under another orphan, so excluding that parent cannot reach into a
+    // package that ships, and its own top-level name is the only place the pattern has to cover.
+    for (const entry of orphaned.filter((candidate) => !topLevel(candidate))) {
+      const parent = entry.slice(0, entry.lastIndexOf('/node_modules/'));
+      expect(orphaned).toContain(parent);
+    }
+    // Every top-level negation is one of these: the dbus-next ones live in the platform lists.
+    expect(negatives(config.files)).toHaveLength(excludedFolders.length);
+  });
+
+  it('leaves nothing that ships depending on an excluded package', () => {
+    const excluded = new Set(orphaned);
+    // Once usocket is gone, none of what it pulled in is reachable from anything that remains.
+    for (const entry of withoutUsocket) expect(excluded.has(entry)).toBe(false);
+    // The runtime dependencies keep everything they declare.
+    for (const runtime of ['electron-updater', 'electron-log', '@mdi/font', 'dbus-next']) {
+      const reached = [`node_modules/${runtime}`];
+      for (let index = 0; index < reached.length; index += 1) {
+        for (const name of dependencyNames(locked[reached[index]])) {
+          const found = resolveDependency(reached[index], name);
+          if (name === 'usocket' || !found) continue;
+          expect(excluded.has(found)).toBe(false);
+          if (!reached.includes(found)) reached.push(found);
+        }
+      }
+    }
+  });
+
+  it('is not required by the app itself', () => {
+    const names = orphaned.map((entry) => entry.replace(/^.*node_modules\//, ''));
+    const pattern = new RegExp(
+      String.raw`(?:require\(\s*|from\s+|import\(\s*|import\s+)['"](?:${names
+        .map((name) => name.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'))
+        .join('|')})(?:/[^'"]*)?['"]`
+    );
+    const files = [];
+    const walkInto = (entry) => {
+      const full = path.join(root, entry);
+      if (!fs.existsSync(full)) return;
+      if (fs.statSync(full).isDirectory()) {
+        for (const child of fs.readdirSync(full)) {
+          if (child !== 'node_modules') walkInto(path.join(entry, child));
+        }
+      } else if (/\.(?:c?js|mjs)$/.test(entry)) {
+        files.push(entry);
+      }
+    };
+    for (const entry of ['main.js', 'preload.js', 'renderer.js', 'profile-sync-core.js']) {
+      walkInto(entry);
+    }
+    for (const entry of positives(config.files)) {
+      const base = entry.replace(/\/\*\*\/\*$/, '');
+      if (!/^(?:src|packages\/widget-renderer)$/.test(base)) continue;
+      walkInto(base);
+    }
+    expect(files.length).toBeGreaterThan(50);
+    const offenders = files.filter((file) =>
+      pattern.test(fs.readFileSync(path.join(root, file), 'utf8'))
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  itWithNodeModules('is not required by any dependency that ships', () => {
+    const excluded = new Set(orphaned);
+    const requirePattern = /(?:require\(\s*|from\s+|import\(\s*|import\s+)['"]([^'"]+)['"]/g;
+    // Two known requires of an excluded package, neither run by the app: dbus-next loads usocket
+    // for file descriptor passing, which the app turns off by connecting through a net socket;
+    // node-gyp-build/bin.js is the command-line tool its install script uses.
+    const allowed = new Set([
+      'node_modules/dbus-next/lib/connection.js -> usocket',
+      'node_modules/node-gyp-build/bin.js -> node-gyp',
+    ]);
+    const found = [];
+    const walk = (folder, owner) => {
+      for (const child of fs.readdirSync(path.join(root, folder), { withFileTypes: true })) {
+        const entry = `${folder}/${child.name}`;
+        if (child.isDirectory()) {
+          if (child.name !== 'node_modules') walk(entry, owner);
+        } else if (/\.(?:c?js|mjs)$/.test(child.name)) {
+          const source = fs.readFileSync(path.join(root, entry), 'utf8');
+          for (const match of source.matchAll(requirePattern)) {
+            if (match[1].startsWith('.') || match[1].startsWith('node:')) continue;
+            const name = match[1].startsWith('@')
+              ? match[1].split('/').slice(0, 2).join('/')
+              : match[1].split('/')[0];
+            const resolved = resolveDependency(owner, name);
+            if (resolved && excluded.has(resolved) && !allowed.has(`${entry} -> ${name}`)) {
+              found.push(`${entry} -> ${match[1]}`);
+            }
+          }
+        }
+      }
+    };
+    for (const owner of withoutUsocket) {
+      if (fs.existsSync(path.join(root, owner))) walk(owner, owner);
+    }
+    expect(found).toEqual([]);
+  });
+});
