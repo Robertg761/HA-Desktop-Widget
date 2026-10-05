@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,8 @@
     "Set the range in the widget.": "विजेट में रेंज सेट करें।",
     "1 more tile is not shown here. Open the widget to see it.": "1 और टाइल यहाँ नहीं दिख रही है। उसे देखने के लिए विजेट खोलें।",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} और टाइल यहाँ नहीं दिख रही हैं। उन्हें देखने के लिए विजेट खोलें।",
-    "What's new": "नया क्या है"
+    "What's new": "नया क्या है",
+    "Count this install": "इस इंस्टॉल को गिनें",
+    "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "दिन में एक बार, एक रैंडम इंस्टॉल ID, ऐप का संस्करण और आपका ऑपरेटिंग सिस्टम भेजें ताकि डेवलपर देख सके कि कितने लोग ऐप का उपयोग करते हैं। आपके Home Assistant, एंटिटी या सेटिंग्स के बारे में कुछ भी नहीं भेजा जाता।"
   }
 }

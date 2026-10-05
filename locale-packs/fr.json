@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,8 @@
     "Set the range in the widget.": "Réglez la plage dans le widget.",
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
-    "What's new": "Nouveautés"
+    "What's new": "Nouveautés",
+    "Count this install": "Compter cette installation",
+    "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "Une fois par jour, envoie un identifiant d’installation aléatoire, la version de l’application et votre système d’exploitation pour que le développeur sache combien de personnes utilisent l’application. Rien sur votre Home Assistant, vos entités ou vos paramètres n’est envoyé."
   }
 }

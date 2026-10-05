@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,8 @@
     "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
     "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-    "What's new": "Neuerungen"
+    "What's new": "Neuerungen",
+    "Count this install": "Diese Installation mitzählen",
+    "Once a day, send a random install ID, the app version, and your operating system so the developer can see how many people use the app. Nothing about your Home Assistant, entities, or settings is sent.": "Einmal täglich eine zufällige Installations-ID, die App-Version und dein Betriebssystem senden, damit der Entwickler sehen kann, wie viele Menschen die App nutzen. Nichts über dein Home Assistant, deine Entitäten oder Einstellungen wird gesendet."
   }
 }

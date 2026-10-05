@@ -378,6 +378,17 @@ your own checkout, so it only proves anything on a clean, up-to-date `main`.)
   unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
   plaintext as a fallback.
 
+### Anonymous install count
+
+Release download numbers count every update, so they can't say how many people use the app.
+If you turn on **Settings → Updates → Count this install** (it is off by default), packaged
+builds send one request a day with a random install ID, the app version, and the OS family
+(Windows, macOS, or Linux). Nothing about you, your Home Assistant, or your settings is sent, and
+the counter does not store IP addresses. The ID lives in `usage-ping.json` next to `config.json`
+and is never synced or exported. `DO_NOT_TRACK=1` stops the request even when the setting is on.
+The counter service is in
+[`services/usage-counter`](services/usage-counter/README.md).
+
 ### Profile sync
 
 Profile sync keeps your widget set up the same way on every computer. It writes one file,
