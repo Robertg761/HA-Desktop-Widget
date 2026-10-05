@@ -374,6 +374,30 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
+    it('keeps the Command and Page pills in a narrow window, where they are all that marks the row', () => {
+      // A command row has its entity's icon, so without the pill "Arm Home alarm away" looked like
+      // the alarm itself.
+      render(
+        '',
+        '<button class="command-palette-result"><span class="command-palette-result-domain is-row-kind"></span></button>'
+      );
+      const pill = document.querySelector('.command-palette-result-domain');
+      expect(resolvedValue(pill, 'display', NARROW)).toBeNull();
+      expect(resolvedValue(pill, 'display', { viewport: { width: 400, height: 600 } })).toBeNull();
+    });
+
+    it('keeps the palette rows the same width whether or not the list scrolls', () => {
+      render('', '<div class="command-palette-results"></div>');
+      const results = document.querySelector('.command-palette-results');
+      // The gutter is reserved, and it is the end margin: the start margin matches it.
+      expect(resolvedValue(results, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(results, 'padding')).toBe('6px 0');
+      expect(resolvedValue(results, 'padding-inline-start')).toBe('9px');
+      // The system's own scrollbar in forced colours is wider than the 9px gutter.
+      expect(resolvedValue(results, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(results, 'padding-inline', { forcedColors: true })).toBe('6px');
+    });
+
     it('keeps the climate target on one line, under the current reading when it must', () => {
       render(
         '',

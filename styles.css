@@ -12019,11 +12019,25 @@ label.disabled {
   flex: none;
 }
 
+/* The scrollbar gutter is always reserved, so the rows keep their width when the list grows long
+   enough to scroll instead of narrowing under the typing. The 9px gutter is the end margin and the
+   start margin matches it, the way .widget-content gives its gutter back. */
 .command-palette-results {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 6px;
+  padding: 6px 0;
+  padding-inline-start: 9px;
+  scrollbar-gutter: stable;
+}
+
+/* Forced colours draws the system's own, wider scrollbar, so the list holds a gutter only while a
+   scrollbar shows, as .widget-content does there. */
+@media (forced-colors: active) {
+  .command-palette-results {
+    padding-inline: 6px;
+    scrollbar-gutter: auto;
+  }
 }
 
 .command-palette-result {
@@ -12190,10 +12204,11 @@ label.disabled {
   }
 }
 
-/* The row's icon already says what kind of thing it is, so a narrow window gives the name the
-   room the type pill took. */
+/* A narrow window gives the name the room an entity's type pill took, since the entity's icon says
+   much the same. A command or a page keeps its pill: a command row has its entity's icon, and only
+   the pill tells "Arm Home alarm away" from the alarm itself. */
 @media (width <= 400px) {
-  .command-palette-result-domain {
+  .command-palette-result-domain:not(.is-row-kind) {
     display: none;
   }
 }

@@ -545,6 +545,8 @@ function createResultRow(item, index) {
   );
   // Long type names ("Panel de control de alarma") end in an ellipsis; the title keeps them whole.
   domain.title = domain.textContent;
+  // "Command" and "Page" say what the row does, which a narrow window keeps (see styles.css).
+  if (item.tabId || item.service) domain.classList.add('is-row-kind');
   meta.append(domain, value);
 
   row.append(icon, main, meta);

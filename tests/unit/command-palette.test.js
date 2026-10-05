@@ -1539,6 +1539,33 @@ describe('command palette recents', () => {
     }
   });
 
+  it('marks the Command and Page pills, which a narrow window keeps, and not an entity type', () => {
+    const { palette, paletteState } = load();
+    paletteState.setConfig({
+      homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+      customTabs: [
+        { id: 'main', name: 'Main', entityIds: [] },
+        { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+      ],
+      activeTabId: 'main',
+    });
+    paletteState.setServices({ light: { turn_on: {}, turn_off: {} } });
+    paletteState.setStates({ 'light.bed_light': bedLight('on') });
+    palette.openCommandPalette();
+
+    const pills = Object.fromEntries(
+      [...document.querySelectorAll('.command-palette-result')].map((row) => [
+        row.querySelector('.command-palette-result-name').textContent,
+        row.querySelector('.command-palette-result-domain').classList.contains('is-row-kind'),
+      ])
+    );
+    expect(pills).toMatchObject({
+      'Bed Light': false,
+      'Turn off Bed Light': true,
+      'Switch to Kitchen': true,
+    });
+  });
+
   it('does not offer switching to the page already on screen', () => {
     const { palette, paletteState } = load();
     paletteState.setStates({});

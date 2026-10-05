@@ -658,6 +658,14 @@ async function openPaletteFor(ctx, query) {
   await ctx.waitForSelector('.command-palette-result');
 }
 
+// A command row has its entity's icon, so in a narrow window, where an entity's type pill gives
+// way, its Command pill is all that tells "Arm Home alarm away" from the alarm itself.
+const COMMAND_ROWS_MARKED = `(() => {
+  const pills = [...document.querySelectorAll('.command-palette-result .command-palette-result-domain')]
+    .filter((pill) => pill.closest('.command-palette-result').querySelector('.command-palette-result-state')?.textContent === '');
+  return pills.length > 0 && pills.every((pill) => pill.getClientRects().length > 0 && pill.offsetWidth > 0);
+})()`;
+
 // The palette with nothing typed: what was used last, the pages, the page on screen, then the rest.
 async function openPaletteEmpty(ctx) {
   await ctx.ev(`document.activeElement?.blur?.()`);
@@ -2536,7 +2544,10 @@ const scenes = [
   {
     name: 'layout-palette-narrow',
     size: NARROW_SIZE,
-    setup: (ctx) => openPaletteFor(ctx, 'alarm'),
+    setup: async (ctx) => {
+      await openPaletteFor(ctx, 'alarm');
+      await ctx.expect(COMMAND_ROWS_MARKED, 'every command row keeps its Command pill');
+    },
   },
   {
     name: 'layout-palette-de',
