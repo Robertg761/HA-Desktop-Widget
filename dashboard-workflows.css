@@ -272,6 +272,23 @@
   transition: opacity var(--transition-base);
 }
 
+/* The alert dialog's errors make its body scroll in the default window, and a scrollbar that came and
+   went with them moved every field's end edge by its 9px. The gutter is always reserved and the end
+   padding gives it back, as the Settings body does, so nothing moves sideways. */
+#alert-config-modal .modal-body {
+  scrollbar-gutter: stable;
+  padding-inline-end: max(0px, calc(var(--modal-body-inset) - 9px));
+}
+
+/* Forced colours draws the system's own, wider scrollbar, so the body holds a gutter only while one
+   shows. */
+@media (forced-colors: active) {
+  #alert-config-modal .modal-body {
+    padding-inline-end: var(--modal-body-inset);
+    scrollbar-gutter: auto;
+  }
+}
+
 .alert-advanced-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -184,6 +184,22 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(page, 'margin-inline')).toBe('auto');
     });
 
+    it('keeps the alert dialog fields the same width when an error makes its body scroll', () => {
+      render(
+        '',
+        '<div id="alert-config-modal" class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+      );
+      const body = document.querySelector('.modal-body');
+      expect(resolvedValue(body, 'scrollbar-gutter')).toBe('stable');
+      // The 9px gutter is the end margin, at the inset a short window gives a dialog body too.
+      expect(resolvedValue(body, 'padding-inline-end')).toBe('max(0px, calc(1rem - 9px))');
+      expect(resolvedValue(body, 'padding-inline-end', SHORT)).toBe(
+        'max(0px, calc(0.75rem - 9px))'
+      );
+      expect(resolvedValue(body, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(body, 'padding-inline-end', { forcedColors: true })).toBe('1rem');
+    });
+
     it('lays hotkey rows out in two tiers with a clear button that keeps its place', () => {
       render(
         '',

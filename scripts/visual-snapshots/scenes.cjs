@@ -399,8 +399,8 @@ const DIALOG_FITS = `(() => {
       .filter((element) => element.getClientRects().length > 0).every(inside);
 })()`;
 // The alert dialog's errors: under their own field and inside its column, the field marked invalid,
-// the first one focused, no error toast, and the duration field still level with the cooldown beside
-// it.
+// the first one focused, no error toast, the duration field still level with the cooldown beside
+// it, and the fields as wide as before the errors made the body scroll (window.__alertFieldEnd).
 const ALERT_ERRORS_UNDER_FIELDS = `(() => {
   const box = (element) => element.getBoundingClientRect();
   const under = (id) => {
@@ -414,7 +414,8 @@ const ALERT_ERRORS_UNDER_FIELDS = `(() => {
     document.activeElement?.id === 'alert-threshold' &&
     !document.querySelector('#toast-container .toast.error') &&
     Math.abs(box(document.getElementById('alert-duration')).top -
-      box(document.getElementById('alert-cooldown')).top) < 1;
+      box(document.getElementById('alert-cooldown')).top) < 1 &&
+    Math.abs(box(document.getElementById('alert-threshold')).right - window.__alertFieldEnd) < 0.5;
 })()`;
 const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls .control-item')].every((tile) => {
   const box = tile.getBoundingClientRect();
@@ -2430,7 +2431,8 @@ const scenes = [
   },
   // An empty threshold and a wait that is not a whole number of seconds are each said under their
   // own field, which is marked invalid, and the first takes the focus. A toast said only the first,
-  // was gone in seconds and covered the quiet hours. Toasts are kept, so one would show here.
+  // was gone in seconds and covered the quiet hours. Toasts are kept, so one would show here. The
+  // errors make the body scroll, and the fields keep their width.
   {
     name: 'layout-dialog-alert-config-invalid',
     size: DEFAULT_SIZE,
@@ -2454,6 +2456,14 @@ const scenes = [
     size: MINIMUM_SIZE,
     setup: async (ctx) => {
       await openRemoveConfirmation(ctx);
+      // Measured once the dialog has stopped scaling in.
+      await ctx.waitForExpression(
+        `!document.getElementById('alert-config-modal').getAnimations({ subtree: true }).length`,
+        'the alert dialog to finish opening'
+      );
+      await ctx.ev(
+        `window.__alertFieldEnd = document.getElementById('alert-threshold').getBoundingClientRect().right`
+      );
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },
