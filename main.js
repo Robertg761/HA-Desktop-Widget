@@ -1316,9 +1316,6 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
     : !!currentConfig?.frostedGlass;
 }
 
-// On native Wayland (and as a layer surface) an opaque window is given a larger surface and no
-// shape, which leaves a square plate behind the rounded pins and shifts the widget; the windows
-// are transparent there whatever the opacity, and CSS draws it.
 // Whether Chromium draws the windows on the CPU (no GPU, or one its blocklist turns off). The
 // renderer then holds the seasonal art still, which would otherwise keep a core busy all month.
 // Asked each time: a GPU process that gives up moves a running app onto software rendering.
@@ -1330,6 +1327,9 @@ function rendersInSoftware() {
   }
 }
 
+// On native Wayland (and as a layer surface) an opaque window is given a larger surface and no
+// shape, which leaves a square plate behind the rounded pins and shifts the widget; the windows
+// are transparent there whatever the opacity, and CSS draws it.
 function windowsAreAlwaysTransparent() {
   return (
     shouldUseTransparentWindow(process.platform, process.env) ||
