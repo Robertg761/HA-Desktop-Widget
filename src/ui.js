@@ -6871,14 +6871,20 @@ function createDesktopPinClimateControlElement(entity) {
     </div>
   `;
 
-  bindClimateRangeControls(root, entity, getClimateControlCapabilities(entity), (range) => {
-    const text = `${formatNumber(range.low)}–${formatMeasurement(range.high, climateValue.unit)}`;
-    root
-      .querySelectorAll('.desktop-pin-climate-target-value, .desktop-pin-climate-kpi')
-      .forEach((element) => {
-        element.textContent = text;
-      });
-  });
+  bindClimateRangeControls(
+    root,
+    entity,
+    getClimateControlCapabilities(entity),
+    (range) => {
+      const text = `${formatNumber(range.low)}–${formatMeasurement(range.high, climateValue.unit)}`;
+      root
+        .querySelectorAll('.desktop-pin-climate-target-value, .desktop-pin-climate-kpi')
+        .forEach((element) => {
+          element.textContent = text;
+        });
+    },
+    climateValue.unit
+  );
   applyDesktopPinClimateVisualState(root, climateValue);
 
   const liveEntity = () => state.STATES?.[entity.entity_id] || entity;
@@ -14978,7 +14984,7 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
     .join('');
 }
 
-function bindClimateRangeControls(root, entity, capabilities, onChange) {
+function bindClimateRangeControls(root, entity, capabilities, onChange, unit = '') {
   const low = root.querySelector('[data-climate-range="low"]');
   const high = root.querySelector('[data-climate-range="high"]');
   if (!low || !high) return null;
@@ -14988,12 +14994,19 @@ function bindClimateRangeControls(root, entity, capabilities, onChange) {
   let pending = false;
   let displayedRange = confirmed;
   let draggedInput = null;
+  // A screen reader says each target with its unit ("20 °C"), as it does for the single target.
+  const describe = (range) => {
+    low.setAttribute('aria-valuetext', formatTemperature(range.low, unit));
+    high.setAttribute('aria-valuetext', formatTemperature(range.high, unit));
+  };
   const apply = (range) => {
     displayedRange = range;
     low.value = String(range.low);
     high.value = String(range.high);
+    describe(range);
     onChange(range);
   };
+  describe(confirmed);
   // A thumb the user is dragging or has focused keeps its value when Home Assistant reports a
   // change; it catches up once released or left.
   const isHeld = (input) => input === draggedInput || document.activeElement === input;
@@ -15229,7 +15242,8 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       capabilities,
       (range) => {
         targetValue.textContent = `${formatNumber(range.low)}–${formatMeasurement(range.high, tempUnit)}`;
-      }
+      },
+      tempUnit
     );
     const closeBtn = modal.querySelector('#climate-close');
     const cancelBtn = modal.querySelector('#climate-cancel');

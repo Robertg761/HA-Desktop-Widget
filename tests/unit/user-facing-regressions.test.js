@@ -734,6 +734,25 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelectorAll('[data-climate-range]')).toHaveLength(2);
   });
 
+  it('says each thermostat bound with its unit to a screen reader, in the dialog and the pin', () => {
+    // A bare "21" for the heating and cooling targets, where the single target says "21 °C".
+    ui.openEntityDetailModal(rangeClimate());
+    const valueText = (root, bound) =>
+      root.querySelector(`[data-climate-range="${bound}"]`).getAttribute('aria-valuetext');
+    expect(valueText(document, 'low')).toBe('19°C');
+    expect(valueText(document, 'high')).toBe('24°C');
+    inputValue('[data-climate-range="low"]', 20.5);
+    expect(valueText(document, 'low')).toBe('20.5°C');
+    document.querySelector('#climate-close').click();
+
+    const climate = rangeClimate();
+    state.setStates({ [climate.entity_id]: climate });
+    ui.renderDesktopPinnedTile(climate.entity_id, climate);
+    const pin = document.querySelector('.desktop-pin-climate-control');
+    expect(valueText(pin, 'low')).toBe('19°C');
+    expect(valueText(pin, 'high')).toBe('24°C');
+  });
+
   it('cancels pending range changes when the dialog closes', async () => {
     ui.openEntityDetailModal(rangeClimate());
     inputValue('[data-climate-range="low"]', 20);
