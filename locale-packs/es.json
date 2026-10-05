@@ -1998,6 +1998,7 @@
     "What's new": "Novedades",
     "Built in": "Integrado",
     "Hide to menu bar when focus is lost": "Ocultar en la barra de menús al perder el foco",
-    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Al hacer clic en otra ventana o cambiar de aplicación, el widget se oculta. Puedes volver a abrirlo desde la barra de menús o con el atajo del widget. Los elementos anclados al escritorio permanecen visibles."
+    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Al hacer clic en otra ventana o cambiar de aplicación, el widget se oculta. Puedes volver a abrirlo desde la barra de menús o con el atajo del widget. Los elementos anclados al escritorio permanecen visibles.",
+    "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Configura un atajo global que trae el widget al frente mientras lo mantienes pulsado. Al soltarlo, vuelve detrás de las demás ventanas."
   }
 }

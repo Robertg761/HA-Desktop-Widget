@@ -1402,5 +1402,9 @@
   "{{name}} ✓ (selected)": {
     "retiredIn": "4.0.0",
     "reason": "The weather picker names the chosen entity without repeating that it is selected (re-audit R-070)."
+  },
+  "Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded without the term z-order (re-audit R-115)."
   }
 }

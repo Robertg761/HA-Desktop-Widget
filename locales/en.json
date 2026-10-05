@@ -795,7 +795,6 @@
   "Alert removed": "Alert removed",
   "Error removing alert": "Error removing alert",
   "Configure a global hotkey that brings the window to front when pressed.": "Configure a global hotkey that brings the window to front when pressed.",
-  "Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.": "Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.",
   "Not available on this platform": "Not available on this platform",
   "Popup hotkey feature is not available on this platform.": "Popup hotkey feature is not available on this platform.",
   "Toggle mode enabled: tap to show/hide": "Toggle mode enabled: tap to show/hide",
@@ -1641,5 +1640,6 @@
   "What's new": "What's new",
   "Built in": "Built in",
   "Hide to menu bar when focus is lost": "Hide to menu bar when focus is lost",
-  "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible."
+  "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.",
+  "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows."
 }

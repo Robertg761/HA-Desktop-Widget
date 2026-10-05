@@ -7874,7 +7874,7 @@ function renderPopupHotkeyModeText() {
     helpText.textContent = usesLinuxShortcutBackend
       ? t('Configure a global hotkey that brings the window to front when pressed.')
       : t(
-          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+          'Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.'
         );
   }
   if (platformNotice) {

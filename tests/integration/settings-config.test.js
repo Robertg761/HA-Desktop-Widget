@@ -9436,4 +9436,20 @@ describe('Settings + Config Integration', () => {
       settings.closeSettings();
     });
   });
+  describe('the popup hotkey help', () => {
+    test('says what holding the hotkey does in plain words on Windows and macOS', async () => {
+      // It said the window "returns to normal z-order", a graphics programmer's term.
+      mockElectronAPI.platform = 'win32';
+      try {
+        await settings.openSettings();
+        await settings.initializePopupHotkey();
+        expect(document.getElementById('popup-hotkey-help-text').textContent).toBe(
+          'Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.'
+        );
+      } finally {
+        mockElectronAPI.platform = 'test';
+        settings.closeSettings();
+      }
+    });
+  });
 });
