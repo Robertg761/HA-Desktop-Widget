@@ -3245,6 +3245,56 @@ describe('Settings + Config Integration', () => {
           expect(choicesOf(await type('ampoule'))).not.toContain('💡');
         });
       });
+
+      test('keeps the English names when the German ones fail, and asks for them again', async () => {
+        // A fresh copy of the module, so no earlier test has loaded (and cached) the names. The
+        // German chunk fails the first time it is asked for, as a chunk can, and loads after that.
+        let germanLoads = 0;
+        let isolated;
+        let isolatedI18n;
+        jest.isolateModules(() => {
+          jest.doMock('../../emoji-names/de.json', () => {
+            germanLoads += 1;
+            if (germanLoads === 1) throw new Error('chunk failed to load');
+            return jest.requireActual('../../emoji-names/de.json');
+          });
+          isolated = require('../../src/settings.js');
+          isolatedI18n = require('../../src/i18n.js');
+          const isolatedState = require('../../src/state.js').default;
+          isolatedState.setConfig(state.CONFIG);
+          isolatedState.setStates(state.STATES);
+        });
+        isolatedI18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        try {
+          await isolated.openSettings();
+          const toggle = document.getElementById('custom-entity-icons-toggle');
+          if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+          // The German names are missing, but the English ones loaded beside them still find an
+          // emoji outside the hand-picked ones.
+          expect(choicesOf(await type('Glühbirne'))).not.toContain('💡');
+          expect(choicesOf(await type('grinning'))).toContain('😀');
+
+          // The next picker asks for the German names again, and shows what they find.
+          document.querySelector('[data-custom-icon-input="light.living_room"]').value =
+            'Glühbirne';
+          document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+            if (choicesOf(picker).includes('💡')) break;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          expect(
+            choicesOf(document.querySelector('[data-custom-icon-picker="light.living_room"]'))
+          ).toContain('💡');
+          expect(germanLoads).toBe(2);
+        } finally {
+          isolated.closeSettings();
+          jest.dontMock('../../emoji-names/de.json');
+          isolatedI18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
     });
 
     test('should match natural language keywords like tree', async () => {

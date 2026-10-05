@@ -613,6 +613,12 @@ const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
 let customEntityIconChoices = null;
 let customEntityIconChoicesLanguage = null;
 let customEntityIconChoicesPromise = null;
+// Set while a language's emoji names failed to load. The catalog is used without them, and the next
+// load or picker asks for them again; until then a failed chunk counted as loaded for good.
+let customEntityIconNamesMissing = false;
+// The pickers that have asked once for names that failed to load, so a failure is not retried on
+// every keystroke.
+const customEntityIconPickersAskedForNames = new WeakSet();
 let customEntityIconCatalog = null;
 let rgiEmojiDataCache = null;
 
@@ -1010,16 +1016,20 @@ function buildCustomEntityIconChoices(catalog, describers = []) {
 }
 
 // English as well as the interface's language: the words written into this file are English, and
-// so are most guides and forum posts people copy names from.
+// so are most guides and forum posts people copy names from. Each language stands on its own, so
+// the English names still come when the German ones fail to load. `complete` says whether all did.
 async function loadCustomEntityIconDescribers(language) {
   const languages = [...new Set([language, 'en'])];
-  try {
-    return (await Promise.all(languages.map((code) => loadEmojiNames(code)))).filter(Boolean);
-  } catch (error) {
-    // The picker still works by the English words above and by pasting.
-    log.warn('Could not load the emoji names:', error);
-    return [];
-  }
+  const results = await Promise.allSettled(languages.map((code) => loadEmojiNames(code)));
+  const failed = results.filter((result) => result.status === 'rejected');
+  // The picker still works by the names that did load, the English words above and pasting.
+  failed.forEach((result) => log.warn('Could not load the emoji names:', result.reason));
+  return {
+    describers: results
+      .filter((result) => result.status === 'fulfilled' && result.value)
+      .map((result) => result.value),
+    complete: failed.length === 0,
+  };
 }
 
 function getCustomEntityIconNameLanguage() {
@@ -1034,7 +1044,7 @@ function isCustomEntityIconCatalogCurrent() {
 }
 
 async function ensureCustomEntityIconChoicesLoaded() {
-  if (isCustomEntityIconCatalogCurrent()) {
+  if (isCustomEntityIconCatalogCurrent() && !customEntityIconNamesMissing) {
     return customEntityIconChoices;
   }
   if (customEntityIconChoicesPromise) {
@@ -1052,9 +1062,10 @@ async function ensureCustomEntityIconChoicesLoaded() {
       customEntityIconCatalog = buildCustomEntityIconCatalog(rgiEmojiDataCache);
     }
 
-    const describers = await loadCustomEntityIconDescribers(language);
+    const { describers, complete } = await loadCustomEntityIconDescribers(language);
     customEntityIconChoices = buildCustomEntityIconChoices(customEntityIconCatalog, describers);
     customEntityIconChoicesLanguage = language;
+    customEntityIconNamesMissing = !complete;
     return customEntityIconChoices;
   })();
 
@@ -2821,6 +2832,8 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
     ensureCustomEntityIconChoicesLoaded()
       .then(() => {
         if (!pickerEl.isConnected) return;
+        // This picker has just asked; names that did not come are asked for by the next one.
+        customEntityIconPickersAskedForNames.add(pickerEl);
         renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue);
       })
       .catch((error) => {
@@ -2833,6 +2846,22 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
         pickerEl.appendChild(errorState);
       });
     return;
+  }
+
+  // Names that failed to load are asked for again once per picker. It shows what was found without
+  // them meanwhile, and is drawn again for the words typed by then if they come.
+  if (customEntityIconNamesMissing && !customEntityIconPickersAskedForNames.has(pickerEl)) {
+    customEntityIconPickersAskedForNames.add(pickerEl);
+    ensureCustomEntityIconChoicesLoaded()
+      .then(() => {
+        if (customEntityIconNamesMissing || !pickerEl.isConnected) return;
+        renderCustomEntityIconPickerChoices(
+          pickerEl,
+          entityId,
+          getCustomEntityIconPickerQuery(entityId)
+        );
+      })
+      .catch((error) => log.warn('Could not load the emoji names:', error));
   }
 
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
