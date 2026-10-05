@@ -843,10 +843,6 @@ body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-cont
   background-image: var(--panel-veil-layer) !important;
 }
 
-html.desktop-pin-mode,
-html.desktop-pin-mode body {
-  background: transparent !important;
-}
 /* Minimal header */
 .widget-header {
   display: flex;
@@ -1134,6 +1130,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --desktop-pin-panel-pad: 12px;
   --desktop-pin-panel-gap: 10px;
+  --desktop-pin-panel-meter-radius: 14px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -1492,12 +1489,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   border-radius: var(--radius-lg);
   min-height: 28px;
   min-width: 0;
-  padding-inline: 2px;
+  /* No padding or tracking: a chip is a quarter of a 152px row, about 35px, and "100%" with them
+     ran into the outline the Readable preset and forced colours draw. */
+  padding-inline: 0;
   line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition:
@@ -1662,6 +1661,30 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-brightness {
   gap: 10px;
+}
+
+/* A lamp that only switches on and off (a relay, a smart plug) has no brightness to show, so its
+   state fills the body, lit with the lamp's glow while it is on. A click on it switches the lamp,
+   as a click anywhere else on the tile does. */
+.desktop-pin-light-control[data-can-set-brightness='false'] .desktop-pin-light-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.desktop-pin-light-state {
+  --desktop-pin-progress: var(--desktop-pin-light-level, 0);
+}
+
+.desktop-pin-light-state-value {
+  font-family: var(--desktop-pin-display-font);
+  font-size: clamp(20px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
+}
+
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-state-value {
+  color: rgba(var(--desktop-pin-ink-rgb), 0.6);
 }
 
 .desktop-pin-panel-control {
@@ -1961,6 +1984,18 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   filter: drop-shadow(0 0 6px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
 }
 
+/* A weather pin draws its condition with the weather card's glyph and classes, which carry the
+   colours; the glyph keeps the size of the box it is drawn in. */
+.desktop-pin-panel-glyph.weather-icon {
+  width: var(--desktop-pin-glyph-size, 28px);
+  height: var(--desktop-pin-glyph-size, 28px);
+}
+
+.desktop-pin-panel-glyph .weather-glyph {
+  width: 75%;
+  height: 75%;
+}
+
 /* At hero size the stroke is scaled down so the icon stays a line drawing. */
 .desktop-pin-scene-emoji .entity-line-icon {
   stroke-width: 1.25;
@@ -2111,9 +2146,19 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   white-space: nowrap;
 }
 
-/* The active mode, speed or state differs by more than a faint tint: a brighter label and edge. */
+/* A switch pin's button is the power icon alone, drawn at the size of the light and fan pins'
+   power icon rather than at the label's 10px. */
+.desktop-pin-toggle-action .desktop-pin-panel-button-icon {
+  display: grid;
+  font-size: var(--font-size-base);
+}
+
+/* The active mode, speed, level or state differs by more than a faint tint: a brighter label and
+   edge. */
 .desktop-pin-panel-button[data-active='true'],
-.desktop-pin-panel-button[data-active='true']:hover {
+.desktop-pin-panel-button[data-active='true']:hover,
+.desktop-pin-light-preset[data-active='true'],
+.desktop-pin-light-preset[data-active='true']:hover {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.6);
   color: rgba(var(--desktop-pin-ink-rgb), 1);
@@ -2367,8 +2412,21 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-tint-rgb: 176, 222, 120;
 }
 
+/* A thermostat's tint says what it is doing: warm while it heats, and the blue and teal that the
+   climate states get further down while it cools or runs on auto. Off, drying or only moving air,
+   it is neutral, as is an automation that is switched off. */
+.desktop-pin-climate-control[data-state='cool'] {
+  --desktop-pin-tint-rgb: 3, 169, 244;
+}
+
+.desktop-pin-climate-control:is([data-state='heat_cool'], [data-state='auto']) {
+  --desktop-pin-tint-rgb: 0, 150, 136;
+}
+
 .desktop-pin-toggle-control[data-state='off'],
 .desktop-pin-fan-control[data-state='off'],
+.desktop-pin-climate-control:is([data-state='off'], [data-state='dry'], [data-state='fan_only']),
+.desktop-pin-action-control[data-state='off'],
 .desktop-pin-vacuum-control[data-state='docked'],
 .desktop-pin-camera-control[data-state='idle'] {
   --desktop-pin-tint-rgb: 130, 150, 176;
@@ -2417,9 +2475,17 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* The default 168x148 pin is the baseline every family is drawn for: the compact layout, and the
    tight variant that smaller media pins share. Spacing, the meter and the buttons are cut down to
-   what fits a 146px-tall tile above its rounded bottom edge, in every language; larger pins have
-   room and keep the roomier base values. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight']),
+   what fits a 146px-tall tile above its rounded bottom edge, in every language. A pin dragged a
+   little bigger (the balanced layout, up to the roomy 260x190) spends its extra room on a fourth
+   mode or speed, the slider's labels and the climate's current reading, so it keeps the same
+   spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
+   keep those, and so does a media pin, which is balanced only from 285px wide (narrower, it is
+   tight) and has no row that grows. The :where() keeps these rules' weight. */
+.desktop-pin-panel-control:is(
+  [data-layout='compact'],
+  [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+  [data-dense-variant='tight']
+),
 .desktop-pin-light-control[data-layout='compact'] {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
@@ -2428,19 +2494,31 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-glyph-size: 24px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-topline {
   gap: 6px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   :is(.desktop-pin-panel-meter, .desktop-pin-cover-frame) {
   padding: 6px 8px;
 }
 
 /* Sentence case, tight tracking and little padding: capitals and wide tracking cannot hold a word
    like "Désactivé" in a third of 150px. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-button {
   min-height: 24px;
   padding: 4px 3px;
@@ -2449,7 +2527,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   text-transform: none;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-actions {
   gap: 4px;
 }
@@ -2465,20 +2547,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 4px 10px;
 }
 
-/* The header's value and the meter's would both print the same reading, and the room goes to the
-   name instead. */
-.desktop-pin-panel-control:is(
-    .desktop-pin-weather-control,
-    .desktop-pin-numeric-control,
-    .desktop-pin-enum-control,
-    .desktop-pin-vacuum-control,
-    .desktop-pin-presence-control
-  )[data-layout='compact']
-  .desktop-pin-panel-topline
-  .desktop-pin-panel-kpi {
-  display: none;
-}
-
 .desktop-pin-weather-control[data-layout='compact']
   .desktop-pin-weather-stats
   .desktop-pin-panel-stat {
@@ -2486,7 +2554,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 3px 4px;
 }
 
-.desktop-pin-weather-control[data-layout='compact'] .desktop-pin-panel-stat-label {
+/* The stats are readings, not captions, so they keep their case at every size: a unit is
+   case-sensitive (km/h, hPa), and a resized pin should not rewrite its text. */
+.desktop-pin-weather-stats .desktop-pin-panel-stat-label {
   overflow: hidden;
   letter-spacing: 0;
   text-align: center;
@@ -2503,23 +2573,22 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   margin-top: -2px;
 }
 
-/* Three modes, verbs or speeds share a 150px row. They take their label's width where equal thirds
-   cannot hold it ("Schließen", "Désactivé") and fall back to an ellipsis, with a title. */
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+/* Three modes, verbs or speeds share a 150px row, and a slightly bigger pin fits four into 184px.
+   They take their label's width where equal shares cannot hold it ("Schließen", "Désactivé",
+   "Kühlen") and fall back to an ellipsis, with a title. */
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-actions {
   display: flex;
   gap: 3px;
 }
 
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-button {
   flex: 1 1 auto;
   min-width: 0;
@@ -2956,6 +3025,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-resize-handle {
   --desktop-pin-resize-handle-size: clamp(14px, min(18vw, 18vh), 24px);
+  /* How far inside the window's edges the mark sits. A full 24px handle's mark is 2px in, which
+     puts its arc on the centre of the window's 24px rounded corner: the ring runs 2-5px inside the
+     corner, clear of the 8px around the pin's buttons. A smaller handle's arc cannot share that
+     centre, so its mark steps in further to stay inside the corner. */
+  --desktop-pin-resize-mark-inset: calc(2px + (24px - var(--desktop-pin-resize-handle-size)) / 2);
   display: none;
   position: absolute;
   width: var(--desktop-pin-resize-handle-size);
@@ -2972,18 +3046,19 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-resize-handle::before {
   content: '';
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1)),
-    rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 4px 10px rgba(0, 0, 0, 0.3);
+  /* The border is part of the size, so the ring spans exactly from the inset to the hit box's
+     inner corner, whatever its width. */
+  box-sizing: border-box;
+  width: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
+  height: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
+  border: 0 solid rgba(var(--accent-rgb), 0.95);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
   pointer-events: none;
 }
 
+/* Each mark is a quarter ring that follows the window's rounded corner just inside it, across the
+   handle's whole hit box. A triangle filling the box was clipped by the 24px corner to a thin
+   crescent along its edge. */
 .desktop-pin-resize-handle-top-left {
   top: 0;
   left: 0;
@@ -2991,7 +3066,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-left::before {
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  top: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-top-right {
@@ -3001,7 +3080,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-right::before {
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  top: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-left {
@@ -3011,7 +3094,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-left::before {
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  bottom: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-right {
@@ -3021,7 +3108,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-right::before {
-  clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  bottom: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 100%;
 }
 
 .drag-area {
@@ -4708,57 +4799,60 @@ body.first-run-active .widget-content > * {
 
 /* The palette above is drawn for a dark card: pale cloud, pale rays and a white halo come out at
    1.0 to 1.6:1 on the light one. The light theme gets the same hues stepped down to 3:1 and up on
-   the near-white card (and the dialog behind the weather picker). The Readable preset is dark
-   whatever theme is chosen, so it keeps the palette above. */
-body.theme-light:not(.high-contrast) .weather-icon {
+   the near-white card (and the dialog behind the weather picker). The Readable preset and the
+   desktop pins are dark whatever theme is chosen, so they keep the palette above. */
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon {
   --weather-primary: #c07800;
   --weather-secondary: #2b86a8;
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #dbe6f2;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #e6eef7;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-fog {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-fog {
   --weather-primary: #4f93ad;
   --weather-secondary: #2b86a8;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-clear-night {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-clear-night {
   --weather-primary: #5a78c8;
   --weather-secondary: #8a6fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-exceptional {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-exceptional {
   --weather-primary: #c07800;
   --weather-secondary: #c8423f;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-ray, .weather-glyph-bolt) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-ray, .weather-glyph-bolt) {
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-precip {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-precip {
   stroke: #1f8fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-hail {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-hail {
   fill: #2f8fc4;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-wind, .weather-glyph-fog) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-wind, .weather-glyph-fog) {
   stroke: #4f93ad;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-alert {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-alert {
   fill: #c8423f;
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph {
   filter: drop-shadow(0 1px 2px rgba(20, 30, 50, 0.3));
 }
 
@@ -12477,7 +12571,9 @@ body.high-contrast {
   color-scheme: dark !important;
 }
 
-body.opaque-panels,
+/* A pin's body is the transparent window around its rounded shell, which this paints instead, so
+   the preset gives the pin no square plate behind its corners. */
+body.opaque-panels:not(.desktop-pin-mode),
 body.opaque-panels
   :is(
     .widget-header,
@@ -12586,7 +12682,12 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
   body.high-contrast .theme-option.selected,
   body.high-contrast .donate-amount-chip.selected,
-  body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
+  body.high-contrast
+    :is(
+      .desktop-pin-panel-button,
+      .desktop-pin-light-preset,
+      .desktop-pin-power
+    )[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
   }
@@ -15954,8 +16055,8 @@ body.desktop-pin-mode
   padding: 6px 8px;
 }
 
-/* A small climate pin shows its target as one row ("TARGET 22°C") and drops the header copy of
-   the same number, so the mode buttons fit above the rounded bottom edge. */
+/* A small climate pin shows its target as one row ("TARGET 22°C"), so the mode buttons fit above
+   the rounded bottom edge. */
 body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-stat {
@@ -15969,12 +16070,6 @@ body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-value {
   width: auto;
-}
-
-body.desktop-pin-mode
-  .desktop-pin-panel-control[data-dense-variant='tight']
-  .desktop-pin-climate-kpi {
-  display: none;
 }
 
 /* A toast raised in a pin (a failed command) has 168px to sit in, so it shrinks to the window
@@ -16837,6 +16932,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .entity-item.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-preset[data-active='true'],
   .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;

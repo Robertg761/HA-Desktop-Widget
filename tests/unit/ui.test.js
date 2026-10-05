@@ -6380,6 +6380,128 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control.dataset.state).toBe('off');
     });
 
+    it('fills an on/off lamp pin with its state, since it has no brightness to show', () => {
+      const porch = {
+        entity_id: 'light.porch',
+        state: 'on',
+        attributes: { friendly_name: 'Porch light', supported_color_modes: ['onoff'] },
+      };
+      state.setStates({ [porch.entity_id]: porch });
+      ui.renderDesktopPinnedTile(porch.entity_id, porch);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      // The body is not left empty: the state is its meter, and the caption under the name, which
+      // the default pin hides, is not the only place it is written.
+      expect(
+        control.querySelector('.desktop-pin-light-state .desktop-pin-light-state-value')
+          ?.textContent
+      ).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-status')).toBeNull();
+
+      const off = { ...porch, state: 'off' };
+      state.setStates({ [porch.entity_id]: off });
+      ui.renderDesktopPinnedTile(porch.entity_id, off);
+      expect(document.querySelector('#desktop-pin-content .desktop-pin-light-control')).toBe(
+        control
+      );
+      expect(control.querySelector('.desktop-pin-light-state-value').textContent).toBe('Off');
+      expect(control.dataset.state).toBe('off');
+    });
+
+    it('says whether a dimmable lamp is on under its name, not the level its meter shows', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control.querySelector('.desktop-pin-light-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('80%');
+      expect(control.querySelector('.desktop-pin-light-state')).toBeNull();
+    });
+
+    it('marks the preset chip that matches the lamp brightness and the fan speed', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 191 },
+        },
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+        },
+      });
+      const marked = (selector) =>
+        [...document.querySelectorAll(selector)].map((chip) => [
+          chip.textContent.trim(),
+          chip.dataset.active,
+          chip.getAttribute('aria-pressed'),
+        ]);
+
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      expect(marked('.desktop-pin-light-preset')).toEqual([
+        ['25%', 'false', 'false'],
+        ['50%', 'false', 'false'],
+        ['75%', 'true', 'true'],
+        ['100%', 'false', 'false'],
+      ]);
+
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset')).toEqual([
+        ['Off', 'false', 'false'],
+        ['Mid', 'true', 'true'],
+        ['High', 'false', 'false'],
+      ]);
+
+      // A fan that is off is at the Off chip, whatever speed it last ran at.
+      state.setStates({
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'off',
+          attributes: { friendly_name: 'Office fan', percentage: 0, supported_features: 1 },
+        },
+      });
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset').map(([label, active]) => [label, active])).toEqual([
+        ['Off', 'true'],
+        ['Mid', 'false'],
+        ['High', 'false'],
+      ]);
+    });
+
+    it('marks no speed on a fan that runs at a speed Home Assistant does not report', () => {
+      // A fan running in a preset mode reports no percentage. It is on, so its level is not Off.
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Office fan',
+          percentage: null,
+          preset_mode: 'auto',
+          supported_features: 1,
+        },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      ui.renderDesktopPinnedTile(fan.entity_id, fan);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const chips = [...control.querySelectorAll('.desktop-pin-fan-preset')];
+      expect(chips.map((chip) => chip.textContent.trim())).toEqual(['Off', 'Mid', 'High']);
+      expect(chips.map((chip) => chip.dataset.active)).toEqual(['false', 'false', 'false']);
+      expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual([
+        'false',
+        'false',
+        'false',
+      ]);
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('On');
+    });
+
     it('does not switch a light off when the click lands beside the brightness track', () => {
       state.setStates({
         'light.desk': {
@@ -6615,6 +6737,205 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       for (const step of document.querySelectorAll('.desktop-pin-numeric-step')) {
         expect(step.hasAttribute('aria-pressed')).toBe(false);
       }
+    });
+
+    it('draws a weather pin with the current condition, or the icon the user chose', () => {
+      const weather = { ...sampleStates['weather.home'], state: 'cloudy' };
+      state.setStates({ 'weather.home': weather });
+      ui.renderDesktopPinnedTile('weather.home', weather);
+
+      const glyph = () =>
+        document.querySelector('.desktop-pin-weather-control .desktop-pin-panel-glyph');
+      // The weather domain's own icon is a sun behind a cloud, which was wrong on a cloudy day.
+      expect(glyph().dataset.weatherCondition).toBe('cloudy');
+      expect(glyph().querySelector('[data-icon="cloud-sun"]')).toBeNull();
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(true);
+
+      const night = { ...weather, state: 'clear-night' };
+      state.setStates({ 'weather.home': night });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().dataset.weatherCondition).toBe('clear-night');
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(false);
+      expect(glyph().classList.contains('weather-icon-clear-night')).toBe(true);
+
+      state.setConfig({ ...state.CONFIG, customEntityIcons: { 'weather.home': '☔' } });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().textContent).toBe('☔');
+      expect(glyph().dataset.weatherCondition).toBeUndefined();
+      expect(glyph().classList.contains('weather-icon')).toBe(false);
+    });
+
+    it('lights a lock pin only by its state, never its Unlock verb, and says the state once', () => {
+      const lock = {
+        entity_id: 'lock.back_door',
+        state: 'locked',
+        attributes: { friendly_name: 'Back door' },
+      };
+      state.setStates({ [lock.entity_id]: lock });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-toggle-control');
+      const action = control.querySelector('.desktop-pin-toggle-action');
+      expect(action.textContent.trim()).toBe('Unlock');
+      // The selected look on "Unlock" read as if the door were unlocked.
+      expect(action.dataset.active).toBe('false');
+      expect(control.querySelector('.desktop-pin-panel-meter').textContent.trim()).toBe('Locked');
+      expect(control.querySelector('.desktop-pin-panel-status')).toBeNull();
+
+      const unlocked = { ...lock, state: 'unlocked' };
+      state.setStates({ [lock.entity_id]: unlocked });
+      ui.renderDesktopPinnedTile(lock.entity_id, unlocked);
+      expect(action.textContent.trim()).toBe('Lock');
+      expect(action.dataset.active).toBe('false');
+    });
+
+    it('switches a switch pin with the power icon, which names the state, not a third "Off"', () => {
+      const plug = {
+        entity_id: 'switch.coffee_maker',
+        state: 'on',
+        attributes: { friendly_name: 'Coffee maker' },
+      };
+      state.setStates({ [plug.entity_id]: plug });
+      ui.renderDesktopPinnedTile(plug.entity_id, plug);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-toggle-control');
+      const action = control.querySelector('.desktop-pin-toggle-action');
+      expect(action.querySelector('svg[data-icon="power"]')).toBeTruthy();
+      expect(action.textContent.trim()).toBe('');
+      expect([action.getAttribute('aria-label'), action.title, action.dataset.active]).toEqual([
+        'On',
+        'On',
+        'true',
+      ]);
+      expect(control.querySelector('.desktop-pin-panel-status')).toBeNull();
+      expect(control.textContent.match(/\bOn\b/g)).toEqual(['On']);
+
+      action.click();
+      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
+        entity_id: 'switch.coffee_maker',
+      });
+    });
+
+    it.each([
+      ['weather', sampleStates['weather.home']],
+      ['numeric', sampleStates['input_number.night_brightness']],
+      ['enum', sampleStates['input_select.bedtime_scene']],
+      ['vacuum', sampleStates['vacuum.roomba']],
+      ['presence', sampleStates['person.robert']],
+      [
+        'fan',
+        {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+        },
+      ],
+      ['climate', sampleStates['climate.bedroom_air_conditioner']],
+    ])(
+      'leaves the %s pin header to the name at every size, since the body prints the value',
+      (_family, entity) => {
+        state.setStates({ [entity.entity_id]: entity });
+        for (const [width, height] of [
+          [168, 148],
+          [200, 170],
+          [280, 200],
+        ]) {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(entity.entity_id, entity);
+          expect({
+            width,
+            header: document.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi'),
+          }).toEqual({ width, header: null });
+        }
+      }
+    );
+
+    it('shows a heat/cool range in the header of a pin bigger than the default, not in boxes', () => {
+      const range = {
+        entity_id: 'climate.hall',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Hall',
+          current_temperature: 21,
+          target_temp_low: 19,
+          target_temp_high: 24,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat_cool'],
+          supported_features: 2,
+        },
+      };
+      state.setStates({ [range.entity_id]: range });
+      const render = (width, height) => {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(range.entity_id, range);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+        return {
+          layout: control.dataset.layout,
+          header: control.querySelector('.desktop-pin-climate-kpi')?.textContent ?? null,
+          boxes: control.querySelectorAll('.desktop-pin-panel-stat').length,
+          current: control.querySelector('.desktop-pin-climate-inline-copy')?.textContent ?? null,
+          sliders: control.querySelectorAll('[data-climate-range]').length,
+        };
+      };
+
+      // The default pin leaves the range to its sliders: beside it the name had a few letters.
+      expect(render(168, 148)).toEqual({
+        layout: 'compact',
+        header: null,
+        boxes: 0,
+        current: 'Now 21°C',
+        sliders: 2,
+      });
+      // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
+      for (const [width, height, layout] of [
+        [200, 170, 'balanced'],
+        [280, 200, 'roomy'],
+      ]) {
+        expect(render(width, height)).toEqual({
+          layout,
+          header: expect.stringMatching(/^19.*24/),
+          boxes: 0,
+          current: 'Now 21°C',
+          sliders: 2,
+        });
+      }
+    });
+
+    it('says whether a fan runs under its name, not the speed its meter shows', () => {
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      for (const [width, height] of [
+        [168, 148],
+        [200, 170],
+      ]) {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(fan.entity_id, fan);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+        expect([
+          control.querySelector('.desktop-pin-panel-status').textContent,
+          control.querySelector('.desktop-pin-fan-value').textContent,
+        ]).toEqual(['On', '66%']);
+      }
+
+      // Dragging the slider keeps the line to whether it runs.
+      jest.useFakeTimers();
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const slider = control.querySelector('.desktop-pin-fan-slider');
+      slider.value = '33';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(control.querySelector('.desktop-pin-panel-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('33%');
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+      jest.advanceTimersByTime(1000);
+      jest.useRealTimers();
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {
@@ -6938,6 +7259,47 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ).toBeNull();
     });
 
+    it.each([
+      ['climate', 'climate.thermostat', '.desktop-pin-climate-mode'],
+      ['fan', 'fan.office', '.desktop-pin-fan-preset'],
+    ])(
+      'keeps a compact %s pin to three buttons until the balanced layout has room for four',
+      (_family, entityId, buttonSelector) => {
+        state.setStates({
+          'climate.thermostat': {
+            ...sampleStates['climate.thermostat'],
+            attributes: {
+              ...sampleStates['climate.thermostat'].attributes,
+              hvac_modes: ['off', 'heat', 'cool', 'auto'],
+            },
+          },
+          'fan.office': {
+            entity_id: 'fan.office',
+            state: 'on',
+            attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+          },
+        });
+        const render = (width, height) => {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(entityId, state.STATES[entityId]);
+          const control = document.querySelector('#desktop-pin-content .desktop-pin-control');
+          return [
+            control.dataset.layout,
+            control.dataset.denseVariant,
+            control.querySelectorAll(buttonSelector).length,
+          ];
+        };
+
+        // A little past the default size the fourth button came back, and German cut its row to
+        // "Kü...", "Hei...". Wide but short, the default pin's three fit as well.
+        expect(render(180, 156)).toEqual(['compact', 'tight', 3]);
+        expect(render(190, 160)).toEqual(['compact', 'tight', 3]);
+        expect(render(300, 155)).toEqual(['compact', 'tight', 3]);
+        expect(render(195, 160)).toEqual(['balanced', 'standard', 4]);
+      }
+    );
+
     it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
       setDesktopPinViewport(195, 160);
       state.setStates({
@@ -7078,30 +7440,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           attributes: { friendly_name: 'Morning Routine' },
         },
         expectedLabel: 'Trigger',
+        expectedState: 'On',
         expectedService: 'trigger',
       },
       {
         entityId: 'button.refresh_router',
         entity: sampleStates['button.refresh_router'],
         expectedLabel: 'Press',
+        expectedState: 'Ready',
         expectedService: 'press',
       },
       {
         entityId: 'input_button.tv_rewind',
         entity: sampleStates['input_button.tv_rewind'],
         expectedLabel: 'Press',
+        expectedState: 'Ready',
         expectedService: 'press',
       },
     ])(
       'renders $entityId desktop action tiles and triggers the primary service',
-      ({ entityId, entity, expectedLabel, expectedService }) => {
+      ({ entityId, entity, expectedLabel, expectedState, expectedService }) => {
         state.setStates({ [entityId]: entity });
 
         ui.renderDesktopPinnedTile(entityId, state.STATES[entityId], { hasSnapshot: true });
 
         const control = document.querySelector('#desktop-pin-content .desktop-pin-action-control');
         expect(control).toBeTruthy();
-        expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(expectedLabel);
+        // The meter says the entity's state; only the button names the action.
+        expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(expectedState);
+        expect(control?.querySelector('.desktop-pin-action-primary')?.textContent.trim()).toBe(
+          expectedLabel
+        );
+        expect(
+          control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
+        ).toBeNull();
 
         control.querySelector('.desktop-pin-action-primary').click();
 
@@ -7555,12 +7927,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-toggle-control',
         assertUpdated: (control) => {
+          const action = control?.querySelector('.desktop-pin-toggle-action');
           expect(control?.dataset.state).toBe('off');
-          expect(control?.querySelector('.desktop-pin-panel-status')?.textContent).toBe('Off');
-          expect(control?.querySelector('.desktop-pin-toggle-action')?.textContent).toBe('Off');
-          expect(
-            control?.querySelector('.desktop-pin-toggle-action')?.hasAttribute('aria-pressed')
-          ).toBe(false);
+          expect(control?.querySelector('.desktop-pin-panel-meter')?.textContent.trim()).toBe(
+            'Off'
+          );
+          // The power icon names the state in its label, as the light and fan pins' does.
+          expect(action?.getAttribute('aria-label')).toBe('Off');
+          expect(action?.dataset.active).toBe('false');
+          expect(action?.hasAttribute('aria-pressed')).toBe(false);
         },
       },
       {
@@ -7662,7 +8037,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(control?.querySelector('.desktop-pin-panel-name')?.textContent).toBe(
             'Restart Router'
           );
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Press');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Ready');
         },
       },
       {

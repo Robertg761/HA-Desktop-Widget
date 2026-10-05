@@ -5947,7 +5947,10 @@ function getDesktopPinDenseRenderProfile(domain = '') {
   if (layoutProfile.isMicro) {
     denseVariant = 'micro';
   } else if (domain === 'climate' || domain === 'fan' || domain === 'cover') {
-    if (!layoutProfile.isBalanced && (layoutProfile.height <= 150 || layoutProfile.width <= 176)) {
+    // A fourth mode, speed or verb only fits its row from the balanced layout's 195x160 up. A
+    // compact pin a little past the default (180x156, 190x160) brought it back and cut German and
+    // French labels to "Kü...", so every compact pin keeps the default pin's three.
+    if (layoutProfile.isCompact) {
       denseVariant = 'tight';
     }
   } else if (domain === 'media_player') {
@@ -6030,13 +6033,22 @@ function getDesktopPinClimateRenderProfile(entity) {
   const layoutProfile = getDesktopPinDenseRenderProfile('climate');
   const climateValue = getDesktopPinClimateValue(entity);
   const maxModes = layoutProfile.isDenseMicro ? 2 : layoutProfile.isDenseTight ? 3 : 4;
+  const isSmall = layoutProfile.isDenseTight || layoutProfile.isDenseMicro;
+  // A heat/cool range has two sliders where a single target has one, and beside them the body has
+  // no room for a Target box: at 200x170 and 280x200 the Current and Target boxes pushed the mode
+  // row off the tile. So a range pin shows the room temperature as a line of its own and prints the
+  // range in the header beside the name. The default-size pin leaves the range to its sliders:
+  // printed beside the name there, it cut most names to a few letters.
+  const isRange = climateValue.canSetRange;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
-    showCurrentStat: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
-    showCompactCurrent: layoutProfile.isDenseTight || layoutProfile.isDenseMicro,
-    showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
+    showTargetBox: !isRange,
+    showHeaderKpi: isRange && !layoutProfile.isDenseTight,
+    showCurrentStat: !isSmall && !isRange,
+    showCompactCurrent: isSmall || isRange,
+    showSliderLabels: !isSmall,
     modesToShow: getDesktopPinClimateModesToShow(climateValue.modes, climateValue.mode, maxModes),
   };
 }
@@ -6045,7 +6057,6 @@ function getDesktopPinFanRenderProfile() {
   const layoutProfile = getDesktopPinDenseRenderProfile('fan');
   return {
     ...layoutProfile,
-    showHeaderKpi: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
     showSliderLabels: !layoutProfile.isDenseTight && !layoutProfile.isDenseMicro,
     presets:
       layoutProfile.isDenseTight || layoutProfile.isDenseMicro
@@ -6297,7 +6308,6 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (!root) return;
 
   const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
-  const canSetBrightness = root.dataset.canSetBrightness === 'true';
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty('--desktop-pin-light-level', String(safePct / 100));
   root.style.setProperty(
@@ -6315,19 +6325,19 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
     brightnessFill.style.width = `${safePct}%`;
   }
 
-  const status = root.querySelector('.desktop-pin-light-status');
-  if (status) {
-    status.textContent = canSetBrightness
-      ? isOn
-        ? t('{{percent}}% brightness', { percent: safePct })
-        : t('Use slider or a preset')
-      : isOn
-        ? t('On')
-        : t('Off');
-  }
+  // The brightness block prints the level, so the line under the name says only whether the lamp
+  // is on. A lamp without brightness has no such line: its state fills the body instead.
+  root
+    .querySelectorAll('.desktop-pin-light-status, .desktop-pin-light-state-value')
+    .forEach((element) => {
+      element.textContent = isOn ? t('On') : t('Off');
+    });
 
   const powerButton = root.querySelector('.desktop-pin-light-power');
   if (powerButton) setDesktopPinPowerButtonState(powerButton, isOn);
+
+  const presets = root.querySelectorAll('.desktop-pin-light-preset');
+  markPresetButtons(presets, safePct, 'brightness', { pin: true });
 
   const slider = root.querySelector('.desktop-pin-light-slider');
   if (slider && slider.value !== String(safePct)) {
@@ -6425,15 +6435,7 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-glyph">${entityIconMarkup(entity)}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${utils.escapeHtml(
-            capabilities.canSetBrightness
-              ? isOn
-                ? t('{{percent}}% brightness', { percent: brightnessPct })
-                : t('Use slider or a preset')
-              : isOn
-                ? t('On')
-                : t('Off')
-          )}</div>
+          ${capabilities.canSetBrightness ? '<div class="desktop-pin-light-status"></div>' : ''}
         </div>
         <button class="desktop-pin-power desktop-pin-light-power" type="button">${lineIconMarkup('power')}</button>
       </div>
@@ -6457,7 +6459,9 @@ function createDesktopPinLightControlElement(entity) {
             `<button class="desktop-pin-light-preset" type="button" data-brightness="${percent}" aria-label="${escapeHtmlAttribute(t('{{percent}}% brightness', { percent }))}">${formatPercent(percent)}</button>`
         ).join('')}
       </div>`
-          : ''
+          : `<div class="desktop-pin-panel-meter desktop-pin-light-state">
+        <div class="desktop-pin-light-state-value"></div>
+      </div>`
       }
     </div>
   `;
@@ -6784,9 +6788,10 @@ function createDesktopPinClimateControlElement(entity) {
     domain: 'climate',
     state: climateValue.mode,
   });
-  const climateStatus = renderProfile.showCompactCurrent
-    ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
-    : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
+  const climateStatus =
+    renderProfile.isDenseTight || renderProfile.isDenseMicro
+      ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
+      : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
   const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
       ? t('No live room temperature')
@@ -6808,13 +6813,18 @@ function createDesktopPinClimateControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: climateStatus,
-        asideMarkup: `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${utils.escapeHtml(
-          formatTemperature(climateValue.targetTemp ?? climateValue.currentTemp, climateValue.unit)
-        )}</div>`,
+        asideMarkup: renderProfile.showHeaderKpi
+          ? `<div class="desktop-pin-panel-kpi desktop-pin-climate-kpi">${utils.escapeHtml(
+              formatTemperature(
+                climateValue.targetTemp ?? climateValue.currentTemp,
+                climateValue.unit
+              )
+            )}</div>`
+          : '',
       })}
       <div class="desktop-pin-panel-body">
         ${
-          climateValue.canSetRange && (renderProfile.isDenseTight || renderProfile.isDenseMicro)
+          !renderProfile.showTargetBox
             ? ''
             : renderProfile.showCurrentStat
               ? `
@@ -6977,37 +6987,41 @@ function getDesktopPinFanValue(entity) {
   return { percentage, isOn, canSetPercentage: !!capabilities.canSetPercentage };
 }
 
+// The meter prints the speed, so the line under the name says only whether the fan runs, as the
+// lamp pin's does. A fan running at a speed Home Assistant does not report (a preset mode leaves
+// the percentage empty) is on at no known level: its meter says On, and no speed chip is marked,
+// where it read "0%" and marked Off.
+function getDesktopPinFanCopy({ percentage, isOn }, { canSetPercentage, compact }) {
+  const level = !isOn ? 0 : canSetPercentage && percentage > 0 ? percentage : null;
+  return {
+    level,
+    meterText: level > 0 ? formatPercent(level) : isOn ? t('On') : t('Off'),
+    statusText: isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
+  };
+}
+
 function applyDesktopPinFanVisualState(root, fanValue) {
   if (!root || !fanValue) return;
   const { percentage, isOn } = fanValue;
-  const canSetPercentage = root.dataset.canSetPercentage === 'true';
   const denseVariant = root.dataset.denseVariant || 'standard';
-  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
+  const copy = getDesktopPinFanCopy(fanValue, {
+    canSetPercentage: root.dataset.canSetPercentage === 'true',
+    compact: denseVariant === 'tight' || denseVariant === 'micro',
+  });
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty(
     '--desktop-pin-progress',
     String(Math.max(0, Math.min(1, percentage / 100)))
   );
 
-  const kpiText = isOn ? (canSetPercentage ? formatPercent(percentage) : t('On')) : t('Off');
-  const headerKpi = root.querySelector('.desktop-pin-fan-kpi');
-  if (headerKpi) headerKpi.textContent = kpiText;
-
   const meterKpi = root.querySelector('.desktop-pin-fan-value');
-  if (meterKpi) meterKpi.textContent = kpiText;
+  if (meterKpi) meterKpi.textContent = copy.meterText;
 
   const spinner = root.querySelector('.desktop-pin-fan-glyph');
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status)
-    status.textContent = isOn
-      ? canSetPercentage
-        ? t('{{percent}}% airflow', { percent: percentage })
-        : t('On')
-      : compactStatus
-        ? t('Ready')
-        : t('Ready to start');
+  if (status) status.textContent = copy.statusText;
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -7017,6 +7031,9 @@ function applyDesktopPinFanVisualState(root, fanValue) {
 
   const power = root.querySelector('.desktop-pin-fan-power');
   if (power) setDesktopPinPowerButtonState(power, isOn);
+
+  const presets = root.querySelectorAll('.desktop-pin-fan-preset');
+  markPresetButtons(presets, copy.level ?? NaN, 'speed', { pin: true });
 }
 
 function queueDesktopPinFanPercentage(entity, percentage) {
@@ -7054,11 +7071,10 @@ function createDesktopPinFanControlElement(entity) {
     domain: 'fan',
     state: fanValue.isOn ? 'on' : 'off',
   });
-  const fanKpiText = fanValue.isOn
-    ? capabilities.canSetPercentage
-      ? formatPercent(fanValue.percentage)
-      : t('On')
-    : t('Off');
+  const copy = getDesktopPinFanCopy(fanValue, {
+    canSetPercentage: !!capabilities.canSetPercentage,
+    compact: renderProfile.isDenseTight || renderProfile.isDenseMicro,
+  });
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
   root.dataset.canSetPercentage = capabilities.canSetPercentage ? 'true' : 'false';
@@ -7067,24 +7083,17 @@ function createDesktopPinFanControlElement(entity) {
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText: fanValue.isOn
-          ? capabilities.canSetPercentage
-            ? t('{{percent}}% airflow', { percent: fanValue.percentage })
-            : t('On')
-          : renderProfile.isDenseTight || renderProfile.isDenseMicro
-            ? t('Ready')
-            : t('Ready to start'),
+        statusText: copy.statusText,
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             <button class="desktop-pin-power desktop-pin-fan-power" type="button">${lineIconMarkup('power')}</button>
-            ${renderProfile.showHeaderKpi ? `<div class="desktop-pin-panel-kpi desktop-pin-fan-kpi">${utils.escapeHtml(fanKpiText)}</div>` : ''}
           </div>
         `,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-fan-glyph" data-active="${fanValue.isOn ? 'true' : 'false'}">${entityIconMarkup(entity)}</div>
-          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(fanKpiText)}</div>
+          <div class="desktop-pin-panel-kpi desktop-pin-fan-value">${utils.escapeHtml(copy.meterText)}</div>
         </div>
         ${
           capabilities.canSetPercentage
@@ -7924,6 +7933,13 @@ function updateExistingDesktopPinSceneControl(root, entity) {
   return true;
 }
 
+// The verb a scene, script or lock pin's button shows. A switch's button is the power icon instead.
+function getDesktopPinToggleVerb(entity) {
+  const domain = getEntityDomain(entity?.entity_id);
+  if (domain === 'lock') return entity.state === 'locked' ? t('Unlock') : t('Lock');
+  return t('Run');
+}
+
 // A lock's button names the action it takes ("Unlock"), so its label says which lock. Other toggles
 // show their state as the label, which is the whole of their name.
 function getDesktopPinToggleActionAriaLabel(entity) {
@@ -7977,22 +7993,14 @@ function createDesktopPinToggleEntityControlElement(entity) {
     state: entity.state,
   });
   const icon = entityIconMarkup(entity);
-  const actionLabel = isSceneLike
-    ? t('Run')
-    : isLock
-      ? isOn
-        ? t('Unlock')
-        : t('Lock')
-      : isOn
-        ? t('On')
-        : t('Off');
-  const statusText = isSceneLike ? t('Tap to trigger') : utils.getEntityDisplayState(entity);
+  const isSwitch = !isSceneLike && !isLock;
   const toggleActionAriaLabel = getDesktopPinToggleActionAriaLabel(entity);
 
+  // The meter says the state in large type, so the header carries only the name.
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
-        statusText,
+        statusText: isSceneLike ? t('Tap to trigger') : '',
         // The button below already names the action, so only scenes get a header note.
         asideMarkup: isSceneLike
           ? `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Ready'))}</div>`
@@ -8004,13 +8012,21 @@ function createDesktopPinToggleEntityControlElement(entity) {
           <div class="desktop-pin-panel-kpi">${utils.escapeHtml(isSceneLike ? t('Run') : utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions">
-          <button class="desktop-pin-panel-button desktop-pin-toggle-action" type="button" data-active="${isOn ? 'true' : 'false'}"${toggleActionAriaLabel ? ` aria-label="${escapeHtmlAttribute(toggleActionAriaLabel)}"` : ''}>${desktopPinButtonLabelMarkup(actionLabel)}</button>
+          <button class="desktop-pin-panel-button desktop-pin-toggle-action" type="button" data-active="false"${toggleActionAriaLabel ? ` aria-label="${escapeHtmlAttribute(toggleActionAriaLabel)}"` : ''}>${
+            isSwitch
+              ? `<span class="desktop-pin-panel-button-icon">${lineIconMarkup('power')}</span>`
+              : desktopPinButtonLabelMarkup(getDesktopPinToggleVerb(entity))
+          }</button>
         </div>
       </div>
     </div>
   `;
 
   const action = root.querySelector('.desktop-pin-toggle-action');
+  // A switch's button is the power icon, lit while the switch is on, as the light and fan pins'
+  // is. A lock's names what it does and is never drawn as the selected one: "Unlock" lit up while
+  // the door was locked read as if it were unlocked.
+  if (isSwitch) setDesktopPinPowerButtonState(action, isOn);
   bindDesktopPinButton(action, () => {
     const live = state.STATES?.[entity.entity_id] || entity;
     if (isLock && live.state === 'locked' && !confirmPinUnlock(action)) return;
@@ -8029,15 +8045,7 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   const isSceneLike = domain === 'scene' || domain === 'script';
   const isLock = domain === 'lock';
   const isOn = isLock ? entity.state === 'locked' : entity.state === 'on';
-  const actionLabel = isSceneLike
-    ? t('Run')
-    : isLock
-      ? isOn
-        ? t('Unlock')
-        : t('Lock')
-      : isOn
-        ? t('On')
-        : t('Off');
+  const isSwitch = !isSceneLike && !isLock;
   const displayState = utils.getEntityDisplayState(entity);
 
   syncDesktopPinPanelRootState(root, entity, {
@@ -8045,9 +8053,6 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   });
 
   syncDesktopPinPanelName(root, entity);
-
-  const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = isSceneLike ? t('Tap to trigger') : displayState;
 
   const headerKpi = root.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi');
   const meterKpi = root.querySelector('.desktop-pin-panel-meter .desktop-pin-panel-kpi');
@@ -8058,16 +8063,17 @@ function updateExistingDesktopPinToggleEntityControl(root, entity) {
   if (glyph) renderEntityIcon(glyph, entity);
 
   const action = root.querySelector('.desktop-pin-toggle-action');
-  if (action) {
+  if (action && isSwitch) {
+    setDesktopPinPowerButtonState(action, isOn);
+  } else if (action) {
     // Something changed the lock while its button asked to be confirmed: the question is stale.
     if (!(isLock && isOn)) cancelPinUnlockConfirmation(action);
     // A button that is asking keeps asking until it is answered or times out.
     if (!pinUnlockConfirmations.has(action)) {
-      setDesktopPinButtonLabel(action, actionLabel);
+      setDesktopPinButtonLabel(action, getDesktopPinToggleVerb(entity));
       const ariaLabel = getDesktopPinToggleActionAriaLabel(entity);
       if (ariaLabel) action.setAttribute('aria-label', ariaLabel);
     }
-    action.dataset.active = isOn ? 'true' : 'false';
   }
 
   return true;
@@ -8384,16 +8390,17 @@ function createDesktopPinActionControlElement(entity) {
     state: entity.state,
   });
 
+  // The meter shows the entity's state (whether an automation is switched on), not the verb the
+  // button below already shows. A header "Ready" said the same whether it was on or off.
   root.innerHTML = `
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(t('Ready'))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
           <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
-          <div class="desktop-pin-panel-value">${utils.escapeHtml(ctaLabel)}</div>
+          <div class="desktop-pin-panel-value">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>
         </div>
         <div class="desktop-pin-panel-actions desktop-pin-action-actions">
           ${createDesktopPinButtonMarkup({
@@ -8433,14 +8440,11 @@ function updateExistingDesktopPinActionControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = t('Ready');
-
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
-  if (value) value.textContent = ctaLabel;
+  if (value) value.textContent = utils.getEntityDisplayState(entity);
 
   const button = root.querySelector('.desktop-pin-action-primary');
   const buttonLabel = button?.querySelector('.desktop-pin-panel-button-label');
@@ -8549,7 +8553,6 @@ function createDesktopPinNumericControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(formatDesktopPinNumericValue(spec.value, entity, { spec }))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         ${meterMarkup}
@@ -8569,9 +8572,7 @@ function createDesktopPinNumericControlElement(entity) {
       getImmediateValue: (target) => Number(target?.value),
       applyVisualValue: (nextValue) => {
         const formatted = formatDesktopPinNumericValue(nextValue, entity, { spec });
-        const kpi = root.querySelector('.desktop-pin-panel-kpi');
         const value = root.querySelector('.desktop-pin-panel-value');
-        if (kpi) kpi.textContent = formatted;
         if (value) value.textContent = formatted;
         slider.setAttribute('aria-valuetext', formatted);
       },
@@ -8621,9 +8622,6 @@ function updateExistingDesktopPinNumericControl(root, entity) {
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
-
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = formattedValue;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
@@ -8709,7 +8707,6 @@ function createDesktopPinEnumControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(enumState.currentOption || t('Unknown'))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -8765,9 +8762,6 @@ function updateExistingDesktopPinEnumControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = enumState.currentOption || t('Unknown');
-
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
 
@@ -8787,7 +8781,6 @@ function createDesktopPinPresenceControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -8829,9 +8822,6 @@ function updateExistingDesktopPinPresenceControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
 
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = displayState;
-
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
 
@@ -8865,6 +8855,30 @@ function getDesktopPinWeatherStatMarkup(stat) {
   return `<div class="desktop-pin-panel-stat" title="${escapeHtmlAttribute(stat)}"><div class="desktop-pin-panel-stat-label">${text}</div></div>`;
 }
 
+// The glyph is the current condition, as the weather card draws it, unless the user or Home
+// Assistant gave the entity an icon of its own: the weather domain's own icon is a sun behind a
+// cloud, which was wrong on a cloudy day and at night.
+function renderDesktopPinWeatherGlyph(glyph, entity) {
+  if (!glyph) return;
+  [...glyph.classList]
+    .filter((name) => name.startsWith('weather-icon'))
+    .forEach((name) => glyph.classList.remove(name));
+  if (getEntityIconDescriptor(entity).kind !== 'line') {
+    delete glyph.dataset.weatherCondition;
+    renderEntityIcon(glyph, entity);
+    return;
+  }
+  const condition = normalizeWeatherCondition(entity?.state);
+  // The card's classes carry the colours for each condition.
+  glyph.classList.add('weather-icon', `weather-icon-${condition}`);
+  // renderEntityIcon skips a redraw when its key is unchanged, and the condition replaced its icon.
+  delete glyph.dataset.iconKey;
+  delete glyph.dataset.iconKind;
+  if (glyph.dataset.weatherCondition !== condition || !glyph.firstElementChild) {
+    renderWeatherIcon(glyph, condition, { size: 20 });
+  }
+}
+
 function createDesktopPinWeatherControlElement(entity) {
   const stats = getDesktopPinWeatherStats(entity);
   const temperature = entity?.attributes?.temperature;
@@ -8883,11 +8897,10 @@ function createDesktopPinWeatherControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: getWeatherConditionLabel(entity.state),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(temperatureValue)}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
+          <div class="desktop-pin-panel-glyph"></div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(temperatureValue)}</div>
         </div>
         <div class="desktop-pin-weather-stats">
@@ -8905,6 +8918,8 @@ function createDesktopPinWeatherControlElement(entity) {
       </div>
     </div>
   `;
+
+  renderDesktopPinWeatherGlyph(root.querySelector('.desktop-pin-panel-glyph'), entity);
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-weather-focus'), () => {
     requestDesktopPinFocusMain(entity.entity_id);
@@ -8936,11 +8951,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = getWeatherConditionLabel(entity.state);
 
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = temperatureValue;
-
-  const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) renderEntityIcon(glyph, entity);
+  renderDesktopPinWeatherGlyph(root.querySelector('.desktop-pin-panel-glyph'), entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = temperatureValue;
@@ -9053,7 +9064,6 @@ function createDesktopPinVacuumControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: utils.getEntityTypeDescription(entity),
-        asideMarkup: `<div class="desktop-pin-panel-kpi">${utils.escapeHtml(utils.getEntityDisplayState(entity))}</div>`,
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
@@ -9093,9 +9103,6 @@ function updateExistingDesktopPinVacuumControl(root, entity) {
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) status.textContent = utils.getEntityTypeDescription(entity);
-
-  const kpi = root.querySelector('.desktop-pin-panel-kpi');
-  if (kpi) kpi.textContent = displayState;
 
   const glyph = root.querySelector('.desktop-pin-panel-glyph');
   if (glyph) renderEntityIcon(glyph, entity);
@@ -14436,12 +14443,14 @@ function updateTimerDisplays() {
 }
 
 // Marks the preset chip that matches the level now shown (25%, 50%..., Low, Medium...), so a row of
-// presets shows where the slider is and a screen reader hears which one is on.
-function markPresetButtons(buttons, level, dataName) {
+// presets shows where the slider is and a screen reader hears which one is on. A dialog's chips
+// take the .active look; a pin's are drawn from data-active, like its other selected buttons.
+function markPresetButtons(buttons, level, dataName, { pin = false } = {}) {
   const shown = Math.round(Number(level));
   buttons.forEach((button) => {
     const selected = Number(button.dataset[dataName]) === shown;
-    button.classList.toggle('active', selected);
+    if (pin) button.dataset.active = selected ? 'true' : 'false';
+    else button.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
   });
 }

@@ -301,6 +301,77 @@ const pinScene = (name, entityId, extra = {}) => ({
   ...extra,
 });
 
+// Gives an open pin new bounds, as dragging its corner does. Bounds can only change in edit mode;
+// the pin redraws for its new size.
+async function resizePin(ctx, entityId, size) {
+  await ctx.ev(`(async () => {
+    await window.electronAPI.setDesktopPinEditMode(true);
+    await window.electronAPI.updateDesktopPinBounds(${JSON.stringify(entityId)}, ${JSON.stringify(size)});
+    await window.electronAPI.setDesktopPinEditMode(false);
+  })()`);
+  await ctx.sleep(900);
+}
+
+// Every button of a pin lies inside its window, and none has its label cut short.
+const PIN_BUTTONS_FIT = `(() => {
+  const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
+  const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  return (
+    buttons.length > 0 &&
+    buttons.every((button) => {
+      const box = button.getBoundingClientRect();
+      return box.bottom <= innerHeight && box.right <= innerWidth;
+    }) &&
+    labels.every((label) => label.scrollWidth <= label.clientWidth)
+  );
+})()`;
+
+// A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
+// their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
+const resizedPinScene = (family, entityId, size, extra = {}) =>
+  pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
+    ...extra,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      await resizePin(ctx, entityId, size);
+      if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
+        throw new Error('Layout check failed: a pin button is cut off or its label shortened');
+      }
+      return { capture: pin };
+    },
+  });
+
+// A lamp that can only be switched on and off (a relay or a smart plug): no brightness to show.
+// The fixture's own lights all dim, and a light added to it would join every list of lights.
+const onOffLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.porch',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Porch light',
+        supported_color_modes: ['onoff'],
+        color_mode: 'onoff',
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+// A page of the one entity a scene pins, for one the pins page does not hold: only Quick Access
+// entities can be pinned, and a second page keeps the tab strip the runner waits for.
+const pinPage = (entityId) => ({
+  customTabs: [
+    { id: 'pins', name: 'Pins', entityIds: [entityId] },
+    { id: 'default', name: 'Home', entityIds: ['light.desk_lamp'] },
+  ],
+  activeTabId: 'pins',
+});
+// A thermostat that holds a heat/cool range, which has two sliders where a single target has one.
+const heatPumpPage = pinPage('climate.heat_pump');
+
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
 // A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
@@ -1997,14 +2068,7 @@ const scenes = [
     config: pinsPage,
     setup: async (ctx) => {
       const pin = await ctx.openPin('light.desk_lamp');
-      if (size) {
-        await ctx.ev(`(async () => {
-          await window.electronAPI.setDesktopPinEditMode(true);
-          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
-          await window.electronAPI.setDesktopPinEditMode(false);
-        })()`);
-        await ctx.sleep(900);
-      }
+      if (size) await resizePin(ctx, 'light.desk_lamp', size);
       await pin.evaluate(`(() => {
         document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
         document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
@@ -2026,7 +2090,12 @@ const scenes = [
   // theme, where pins stay dark glass.
   pinScene('pin-light-off', 'light.shelf_leds'),
   pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
+  pinScene('pin-light-onoff', 'light.porch', {
+    config: pinPage('light.porch'),
+    extraStates: onOffLight,
+  }),
   pinScene('pin-climate', 'climate.bedroom'),
+  pinScene('pin-climate-range', 'climate.heat_pump', { config: heatPumpPage }),
   pinScene('pin-fan', 'fan.office'),
   pinScene('pin-cover', 'cover.garage_door'),
   pinScene('pin-media', 'media_player.kitchen_speaker'),
@@ -2038,10 +2107,33 @@ const scenes = [
   pinScene('pin-scene', 'scene.movie_time'),
   pinScene('pin-script', 'script.goodnight'),
   pinScene('pin-lock', 'lock.back_door'),
+  pinScene('pin-switch', 'switch.coffee_maker'),
   pinScene('pin-action', 'automation.morning_routine'),
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
   pinScene('pin-timer', 'timer.laundry'),
+  // Pins dragged a little bigger, between the default and the roomy 260x190: the four modes or
+  // speeds come back and must still fit their row, and the weather's units keep their case.
+  resizedPinScene('climate', 'climate.bedroom', { width: 200, height: 170 }),
+  resizedPinScene('fan', 'fan.office', { width: 200, height: 170 }),
+  resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
+  resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
+  resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
+  // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
+  // balanced layout brought back a fourth mode that German cut to "Kü...".
+  resizedPinScene(
+    'climate-range',
+    'climate.heat_pump',
+    { width: 200, height: 170 },
+    { config: heatPumpPage }
+  ),
+  resizedPinScene(
+    'de-climate',
+    'climate.bedroom',
+    { width: 185, height: 158 },
+    { ui: { language: 'de' } }
+  ),
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
