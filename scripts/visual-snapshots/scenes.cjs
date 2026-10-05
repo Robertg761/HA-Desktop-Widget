@@ -743,6 +743,14 @@ const PROBLEM_TOASTS_LAID_OUT = `(() => {
   });
 })()`;
 
+// The problem toast's text runs onto a second line. Its icon and close button only take room from
+// text that wraps, so a reason short enough for one line would leave them unchecked.
+const PROBLEM_TOAST_WRAPS = `(() => {
+  const range = document.createRange();
+  range.selectNodeContents(document.querySelector('#toast-container .toast.error .toast-message'));
+  return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size > 1;
+})()`;
+
 // The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
 // Both are raised by the app, so the stack has the icons, the close button and the layout the app
 // gives it, which a toast built here by hand did not.
@@ -754,6 +762,7 @@ async function showToasts(ctx) {
   await ctx.click('#reorganize-quick-controls-btn');
   await ctx.waitForSelector('#toast-container .toast.info');
   await ctx.sleep(500);
+  await ctx.expect(PROBLEM_TOAST_WRAPS, 'the error toast wrapping onto a second line');
   await ctx.expect(PROBLEM_TOASTS_LAID_OUT, 'the error toast with its icon and close button');
 }
 
