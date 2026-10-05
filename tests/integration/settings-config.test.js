@@ -7493,9 +7493,9 @@ describe('Settings + Config Integration', () => {
       test('leaves the bell on an alert row to the stylesheet, so it keeps its side in Arabic', () => {
         document.querySelector('.add-alert-btn').click();
 
-        const badge = document.querySelector(
-          '#alert-entity-picker-list .entity-selector-btn[data-entity-id="switch.kitchen"]'
-        ).parentElement.querySelector('.alert-badge');
+        const button = '.entity-selector-btn[data-entity-id="switch.kitchen"]';
+        const row = document.querySelector(`#alert-entity-picker-list ${button}`).parentElement;
+        const badge = row.querySelector('.alert-badge');
         // An inline left margin doubled the logical one in right-to-left text, and a fixed 14px
         // ignored the text size.
         expect(badge.getAttribute('style')).toBeNull();
