@@ -74,8 +74,11 @@ import {
   formatClockDateTime,
   formatClockTime,
   formatList,
+  formatMeasurement,
   formatPercent,
   getClockFaceTimeOptions,
+  getSensorReading,
+  parseNumericState,
 } from './format.js';
 import {
   SHOW_DURATION_MS,
@@ -4767,7 +4770,9 @@ function renderLanguagePackList() {
     meta.className = 'language-pack-meta';
     // The same words as the selector's suffix: a language is either downloaded or it is not.
     const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
-    const versionLabel = pack.version ? `v${pack.version}` : '';
+    // "v1.2.64" is left-to-right text. In an Arabic line its digits would join the date after it
+    // ("2026/10/v1.2.64"), so it keeps its own order.
+    const versionLabel = pack.version ? isolateLtr(`v${pack.version}`) : '';
     const downloadedLabel = pack.downloadedAt ? ` • ${formatClockDateTime(pack.downloadedAt)}` : '';
     meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
 
@@ -6909,9 +6914,11 @@ function renderAlertsListInline() {
 
       const alertConfig = alerts[entityId];
       // "Above 25 °C", not "Above threshold 25": the reading's unit says what the number is, and a
-      // template lets a language put the number where its grammar wants it.
-      const unit = entity?.attributes?.unit_of_measurement;
-      const thresholdText = `${formatNumber(Number(alertConfig.threshold))}${unit ? ` ${unit}` : ''}`;
+      // template lets a language put the number where its grammar wants it. The figure keeps its
+      // left-to-right order in an Arabic sentence, which would make it "C° 25".
+      const thresholdText = isolateLtr(
+        formatMeasurement(Number(alertConfig.threshold), entity?.attributes?.unit_of_measurement)
+      );
       let alertType = alertConfig.onNumericThreshold
         ? alertConfig.comparison === 'below'
           ? t('Below {{value}}', { value: thresholdText })
@@ -7155,16 +7162,24 @@ function addAlertFieldHelp(group) {
 }
 
 // "Currently 21.5 °C" under the threshold, so the number to type is in the unit of the reading it is
-// compared with. A sensor that has no number to show leaves it empty.
+// compared with. A sensor that has no number to show leaves it empty. The reading is written as its
+// tile writes it, except that a duration stays in the unit Home Assistant sends ("75 min", not
+// "1 hr 15 min"), because that is the unit the threshold is typed in. Both the reading and a bare
+// unit keep their left-to-right order in an Arabic sentence.
 function updateAlertThresholdHelp(modal, entity) {
   const help = modal.querySelector('#alert-threshold-help');
   if (!help) return;
-  const reading = entity ? Number.parseFloat(entity.state) : Number.NaN;
+  const number = parseNumericState(entity?.state);
   const unit = entity?.attributes?.unit_of_measurement;
-  help.textContent = Number.isFinite(reading)
-    ? t('Currently {{value}}', { value: `${formatNumber(reading)}${unit ? ` ${unit}` : ''}` })
+  const reading =
+    number === null
+      ? ''
+      : (entity.attributes?.device_class !== 'duration' && getSensorReading(entity)?.text) ||
+        formatMeasurement(number, unit);
+  help.textContent = reading
+    ? t('Currently {{value}}', { value: isolateLtr(reading) })
     : unit
-      ? t('In {{unit}}', { unit })
+      ? t('In {{unit}}', { unit: isolateLtr(unit) })
       : '';
 }
 

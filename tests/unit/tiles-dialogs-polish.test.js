@@ -383,6 +383,28 @@ describe('tile and device dialog polish', () => {
         'Opening 30\u00a0%'
       );
     });
+
+    it('keeps the percentage after an Arabic state word in order, as a light shows it', () => {
+      // Bare, the digits after "\u0645\u0641\u062a\u0648\u062d" read right to left and the sign lands in front: "%70".
+      i18n.setLocaleBootstrap({
+        activeLocale: 'ar',
+        messages: { Open: '\u0645\u0641\u062a\u0648\u062d', On: '\u062a\u0634\u063a\u064a\u0644' },
+      });
+      try {
+        renderTiles([
+          entity('cover.window', 'open', { current_position: 70, supported_features: 15 }),
+          entity('fan.ceiling', 'on', { percentage: 40, supported_features: 1 }),
+        ]);
+        expect(tile('cover.window').querySelector('.control-state').textContent).toBe(
+          '\u0645\u0641\u062a\u0648\u062d \u206670%\u2069'
+        );
+        expect(tile('fan.ceiling').querySelector('.control-state').textContent).toBe(
+          '\u062a\u0634\u063a\u064a\u0644 \u206640%\u2069'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
   });
 
   it('gives a sensor value its own text direction, so a duration in Arabic reads in order', () => {

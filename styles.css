@@ -17128,17 +17128,20 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   text-align: right;
 }
 
-/* A name that is cut after two lines (the hotkey rows' and the pins') cannot be aligned with
-   text-align: Chromium draws the ellipsis after the aligned text, outside the box, whenever the
-   last line is short, and the name looks cut for no reason. It is as wide as its text instead,
-   which sits the box, and so the name, at the reading edge. The hotkey row's name gives up its
-   full-row basis; the controls under it keep theirs, so they still wrap below it. */
+/* A name that is cut after a few lines (the hotkey rows', the pins' and the media dialog's track
+   and artist) cannot be aligned with text-align: Chromium draws the ellipsis after the aligned
+   text, outside the box, whenever the last line is short, and the name looks cut for no reason. It
+   is as wide as its text instead, which sits the box, and so the name, at the reading edge. The
+   hotkey row's name gives up its full-row basis; the controls under it keep theirs, so they still
+   wrap below it. */
 [dir='rtl']
   :is(
     .desktop-pin-light-name,
     .desktop-pin-panel-name,
     .desktop-pin-media-title,
-    .desktop-pin-media-artist
+    .desktop-pin-media-artist,
+    .media-detail-title,
+    .media-detail-artist
   ) {
   width: fit-content;
   max-width: 100%;

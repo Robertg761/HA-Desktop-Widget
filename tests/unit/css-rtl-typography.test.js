@@ -131,7 +131,7 @@ describe('right-to-left and script-aware typography', () => {
       expect(stylesheet.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/match-parent/);
     });
 
-    it('sits the names that are cut after two lines at the reading edge by their width, not their alignment', () => {
+    it('sits the names that are cut after a few lines at the reading edge by their width, not their alignment', () => {
       // Chromium draws a line-clamp ellipsis outside the box when right-aligned text ends short, so
       // these names are not aligned: the box is as wide as the text and starts at the edge.
       for (const [selector, html] of [
@@ -139,6 +139,10 @@ describe('right-to-left and script-aware typography', () => {
         ['.desktop-pin-panel-name', '<div class="desktop-pin-panel-name">Weather</div>'],
         ['.desktop-pin-media-title', '<div class="desktop-pin-media-title">Song</div>'],
         ['.desktop-pin-media-artist', '<div class="desktop-pin-media-artist">Band</div>'],
+        // The media dialog's track and artist, beside an Arabic header and state that start at the
+        // right, sat at the left.
+        ['.media-detail-title', '<div class="media-detail-title">Kind of Blue</div>'],
+        ['.media-detail-artist', '<div class="media-detail-artist">Miles Davis</div>'],
       ]) {
         render(html);
         expect(resolvedValue(document.querySelector(selector), 'width')).toBeNull();
@@ -236,6 +240,13 @@ describe('right-to-left and script-aware typography', () => {
       );
       for (const field of document.querySelectorAll('input')) {
         expect(resolvedValue(field, 'direction')).toBeNull();
+      }
+      // A dir attribute in the markup would beat all of that and put the hint at the left edge.
+      const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+      for (const id of ['ha-token', 'profile-sync-folder-path']) {
+        const tag = html.match(new RegExp(`<input[^>]*\\bid="${id}"[^>]*>`))?.[0];
+        expect(tag).toBeTruthy();
+        expect(tag).not.toMatch(/\sdir=/);
       }
     });
   });

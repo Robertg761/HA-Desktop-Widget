@@ -5996,8 +5996,10 @@ function getDeviceTileStateText(entity) {
       : domain === 'fan' && entity.state === 'on'
         ? attributes.percentage
         : null;
+  // The percentage keeps its left-to-right order after an Arabic word, so it reads "70%" as a
+  // light's brightness does, not "%70".
   return percent != null && Number.isFinite(Number(percent))
-    ? `${label} ${formatPercent(Math.round(Number(percent)))}`
+    ? `${label} ${isolateLtr(formatPercent(Math.round(Number(percent))))}`
     : label;
 }
 

@@ -843,6 +843,13 @@ const presetLight = (now) => {
   ];
 };
 
+// The language packs on the General page, one row each.
+async function openLanguagePacks(ctx) {
+  await openSettingsTab(ctx, 'general');
+  await ctx.waitForSelector('#language-packs-list .language-pack-row');
+  await revealInSettings(ctx, '#language-packs-list', 'center');
+}
+
 // Restore points that differ by what they hold, one of them with a page nobody named. The list is
 // built when the dialog opens, so the history is put back as it was straight after.
 async function openRestoreDashboard(ctx) {
@@ -1207,15 +1214,7 @@ const scenes = [
     },
   },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
-  // The language packs on the General page, one row each.
-  {
-    name: 'settings-language-packs',
-    setup: async (ctx) => {
-      await openSettingsTab(ctx, 'general');
-      await ctx.waitForSelector('#language-packs-list .language-pack-row');
-      await revealInSettings(ctx, '#language-packs-list', 'center');
-    },
-  },
+  { name: 'settings-language-packs', setup: openLanguagePacks },
   {
     name: 'settings-custom-color',
     setup: async (ctx) => {
@@ -1694,6 +1693,15 @@ const scenes = [
     config: alertsConfig,
     setup: (ctx) => openAlertConfig(ctx, 'binary_sensor.front_door'),
   },
+  // Lines that put a left-to-right run in an Arabic sentence: a threshold with its unit ("Above
+  // 25°C") and a pack's version beside the date it was installed.
+  {
+    name: 'ar-settings-alerts',
+    ui: { language: 'ar' },
+    config: alertsConfig,
+    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+  },
+  { name: 'ar-settings-language-packs', ui: { language: 'ar' }, setup: openLanguagePacks },
   {
     name: 'ar-dialog-manage-quick-access',
     ui: { language: 'ar' },

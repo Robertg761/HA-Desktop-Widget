@@ -2121,6 +2121,30 @@ describe('Settings + Config Integration', () => {
       expect(meta).not.toMatch(/[AP]M/);
     });
 
+    test('keeps a pack version apart from its install date in an Arabic line', async () => {
+      const i18n = require('../../src/i18n.js');
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          version: '1.2.64',
+          latestVersion: '1.2.64',
+          installed: true,
+          downloadedAt: '2026-10-05T02:02:00.000Z',
+        },
+      ]);
+      i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: { Installed: 'مثبت' } });
+      try {
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+        // Bare, the version's digits joined the date after it: "مثبت • 05 • 2026/10/v1.2.64".
+        const meta = document.querySelector('.language-pack-meta').textContent;
+        expect(meta.startsWith('مثبت • \u2066v1.2.64\u2069 • ')).toBe(true);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     test('names the language on every language pack button', async () => {
       window.electronAPI.getLocalePacks.mockResolvedValueOnce([
         { locale: 'fr', displayName: 'Français', version: '1.0.0', installed: false },
@@ -6722,9 +6746,46 @@ describe('Settings + Config Integration', () => {
       };
       afterEach(() => document.getElementById('inline-alerts-list')?.remove());
 
-      test('a threshold rule reads "Above 25 °C", with the entity unit', () => {
+      test('a threshold rule reads "Above 25°C", with the entity unit as the tile writes it', () => {
         const row = renderRow('sensor.office_temperature', temperatureAlert());
-        expect(row.querySelector('.alert-type').textContent).toBe('Above 25 °C');
+        expect(row.querySelector('.alert-type').textContent).toBe('Above 25°C');
+      });
+
+      describe('in other languages', () => {
+        const i18n = require('../../src/i18n.js');
+        afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
+
+        test('the threshold and the reading keep their order in an Arabic sentence', () => {
+          i18n.setLocaleBootstrap({
+            activeLocale: 'ar',
+            messages: {
+              'Above {{value}}': 'أعلى من {{value}}',
+              'Currently {{value}}': 'القيمة الحالية {{value}}',
+              'In {{unit}}': 'بوحدة {{unit}}',
+            },
+          });
+          // Bare, the degree sign comes after the C: "أعلى من C° 25".
+          const row = renderRow('sensor.office_temperature', temperatureAlert());
+          expect(row.querySelector('.alert-type').textContent).toBe('أعلى من \u206625°C\u2069');
+
+          state.STATES['sensor.office_temperature'].state = '21.4';
+          settings.openAlertConfigModal('sensor.office_temperature');
+          expect(document.getElementById('alert-threshold-help').textContent).toBe(
+            'القيمة الحالية \u206621.4°C\u2069'
+          );
+          state.STATES['sensor.office_temperature'].state = 'unavailable';
+          settings.openAlertConfigModal('sensor.office_temperature');
+          expect(document.getElementById('alert-threshold-help').textContent).toBe(
+            'بوحدة \u2066°C\u2069'
+          );
+          state.STATES['sensor.office_temperature'].state = '21.5';
+        });
+
+        test("the gap before the unit is the language's own", () => {
+          i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+          const row = renderRow('sensor.office_temperature', temperatureAlert());
+          expect(row.querySelector('.alert-type').textContent).toBe('Above 25\u00a0°C');
+        });
       });
 
       test('a below rule, and a unitless sensor, read without a dangling "threshold"', () => {
@@ -6784,7 +6845,38 @@ describe('Settings + Config Integration', () => {
         settings.openAlertConfigModal('sensor.office_temperature');
 
         expect(document.getElementById('alert-threshold-help').textContent).toBe(
-          'Currently 21.5 °C'
+          'Currently 21.5°C'
+        );
+      });
+
+      test('the reading is rounded as the tile rounds it, and a duration stays in its unit', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '21.4567',
+          attributes: {
+            friendly_name: 'Office temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 21.5°C'
+        );
+
+        // The tile reads "1 hr 15 min", but the threshold is typed in minutes.
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '75',
+          attributes: {
+            friendly_name: 'Run time',
+            unit_of_measurement: 'min',
+            device_class: 'duration',
+          },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 75\u00a0min'
         );
       });
 

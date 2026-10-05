@@ -204,6 +204,8 @@ describe('visual snapshot scenes', () => {
       'ar-settings-appearance-custom',
       'ar-dialog-notifications',
       'ar-dialog-diagnostics',
+      'ar-settings-alerts',
+      'ar-settings-language-packs',
       'hi-main',
       'hi-settings-appearance',
       'zh-main',
