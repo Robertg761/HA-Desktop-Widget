@@ -3949,7 +3949,8 @@ function setProfileSyncPassphraseRevealed(revealed) {
     const input = document.getElementById(id);
     if (input) input.type = revealed ? 'text' : 'password';
   });
-  // The label stays put: aria-pressed already tells a screen reader which way it is set.
+  // The label stays put: aria-pressed tells a screen reader which way it is set, and the
+  // stylesheet draws the pressed state.
   if (reveal) reveal.setAttribute('aria-pressed', String(revealed));
 }
 

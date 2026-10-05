@@ -1271,6 +1271,33 @@ const scenes = [
       );
     },
   },
+  // The passphrase shown in plain text: Show passphrase looks pressed, unlike the buttons beside it.
+  {
+    name: 'settings-profile-sync-passphrase-shown',
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'advanced');
+      await ctx.click('#profile-sync-enabled');
+      await ctx.click('#profile-sync-encryption-enabled');
+      await ctx.waitForExpression(
+        `!document.getElementById('profile-sync-passphrase-group').classList.contains('hidden')`,
+        'the passphrase field'
+      );
+      await typeInto(ctx, '#profile-sync-passphrase', 'correct horse');
+      await ctx.click('#profile-sync-passphrase-reveal');
+      await revealInSettings(ctx, '#profile-sync-passphrase-group', 'center');
+      // Waited for rather than checked at once: the button's colours change through a transition.
+      await ctx.waitForExpression(
+        `(() => {
+          const reveal = document.getElementById('profile-sync-passphrase-reveal');
+          const other = document.getElementById('profile-sync-choose-folder');
+          return document.getElementById('profile-sync-passphrase').type === 'text' &&
+            getComputedStyle(reveal).backgroundColor !== getComputedStyle(other).backgroundColor &&
+            getComputedStyle(reveal).borderColor !== getComputedStyle(other).borderColor;
+        })()`,
+        'Show passphrase looks pressed while the passphrase is shown'
+      );
+    },
+  },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
   // The language packs on the General page, one row each.
   {

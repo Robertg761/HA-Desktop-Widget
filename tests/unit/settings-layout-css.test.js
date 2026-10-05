@@ -122,4 +122,37 @@ describe('Settings layout', () => {
       expect(resolvedValue(document.querySelector('.settings-search-box'), 'position')).toBeNull();
     });
   });
+  describe('Show passphrase', () => {
+    // The label stays put while the passphrase shows, so the button has to look pressed: it was
+    // pixel for pixel the same either way.
+    const button = (pressed) => {
+      render(
+        `<div id="settings-modal"><button type="button" id="profile-sync-passphrase-reveal" class="btn btn-secondary" aria-pressed="${pressed}">Show passphrase</button></div>`
+      );
+      const reveal = document.getElementById('profile-sync-passphrase-reveal');
+      return ['background', 'border-color', 'box-shadow'].map((property) =>
+        resolvedValue(reveal, property)
+      );
+    };
+
+    it('looks pressed while the passphrase is shown', () => {
+      const [background, border, ring] = button(true);
+      const [plainBackground, plainBorder] = button(false);
+      expect(background).not.toBe(plainBackground);
+      expect(border).not.toBe(plainBorder);
+      expect(ring).toMatch(/^inset 0 0 0 1px /);
+    });
+
+    it('keeps the pressed look in forced colours and high contrast', () => {
+      render(
+        '<div id="settings-modal"><button id="profile-sync-passphrase-reveal" class="btn btn-secondary" aria-pressed="true"></button></div>',
+        { bodyClass: 'high-contrast' }
+      );
+      const reveal = document.getElementById('profile-sync-passphrase-reveal');
+      expect(resolvedValue(reveal, 'outline', { forcedColors: true })).toBe('2px solid Highlight');
+      expect(resolvedValue(reveal, 'box-shadow', { forcedColors: false })).toMatch(
+        /^inset 0 0 0 2px /
+      );
+    });
+  });
 });

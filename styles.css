@@ -12547,6 +12547,7 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
   body.high-contrast .theme-option.selected,
   body.high-contrast .donate-amount-chip.selected,
+  body.high-contrast #profile-sync-passphrase-reveal[aria-pressed='true'],
   body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
@@ -14803,6 +14804,16 @@ body.theme-light
   margin: 0;
 }
 
+/* Show passphrase is a toggle whose label stays put (aria-pressed says which way it is set), so
+   being pressed has to show: a deeper accent fill with a full accent edge, the way a selected chip
+   is drawn. Unpressed and pressed were pixel for pixel the same, with the passphrase in plain text
+   beside a button that still offered to show it. */
+#profile-sync-passphrase-reveal[aria-pressed='true'] {
+  background: rgba(var(--accent-rgb), 0.3);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 #settings-modal .profile-sync-passphrase-confirm {
   display: grid;
   gap: 6px;
@@ -16819,6 +16830,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .media-mute-toggle.active,
   .entity-item.selected,
   .donate-amount-chip.selected,
+  #profile-sync-passphrase-reveal[aria-pressed='true'],
   .desktop-pin-panel-button[data-active='true'],
   .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
