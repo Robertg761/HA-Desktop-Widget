@@ -966,7 +966,9 @@ describe('command palette recents', () => {
       const input = document.querySelector('.command-palette-input');
       input.value = 'turn on desk';
       input.dispatchEvent(new Event('input'));
-      paletteState.setStates({ 'light.desk': { ...lamp(), state: 'unavailable' } });
+      // One entity changing does not redraw the list (a full snapshot does), so the row is stale
+      // and the command re-checks the entity it is about to run.
+      paletteState.setEntityState({ ...lamp(), state: 'unavailable' });
       await run('Turn on Desk lamp');
 
       expect(toast).toHaveBeenCalledWith('Could not run command: Entity is unavailable', 'error');
@@ -1314,6 +1316,59 @@ describe('command palette recents', () => {
 
       expect(emptyText()).toBeNull();
       expect(resultNames()).toContain('Bed Light');
+    });
+
+    it('redraws a list that page commands already fill when the first snapshot arrives', () => {
+      // Opened before the first snapshot, the palette already offers "Switch to Kitchen".
+      const { palette, paletteState } = load();
+      paletteState.setStates({});
+      palette.openCommandPalette();
+      expect(resultNames()).toEqual(['Switch to Kitchen']);
+
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+
+      expect(resultNames()).toEqual(expect.arrayContaining(['Bed Light', 'Turn on Bed Light']));
+      expect(resultNames()).toContain('Switch to Kitchen');
+    });
+
+    it('drops a device the snapshot after a reconnect no longer has, and keeps the typed search', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({
+        'light.bed_light': bedLight('off'),
+        'light.desk': { entity_id: 'light.desk', state: 'off', attributes: {} },
+      });
+      palette.openCommandPalette();
+      search('desk');
+      expect(resultNames()).toContain('desk');
+
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+
+      expect(document.querySelector('.command-palette-input').value).toBe('desk');
+      expect(resultNames()).toEqual([]);
+      expect(emptyText().textContent).toContain('No matching results');
+    });
+
+    it('keeps the row the keyboard is on when a snapshot redraws the list', () => {
+      const { palette, paletteState } = load();
+      paletteState.setStates({ 'light.bed_light': bedLight('off') });
+      palette.openCommandPalette();
+      const highlighted = () =>
+        document.querySelector('.command-palette-result.highlighted .command-palette-result-name')
+          ?.textContent;
+      const input = document.querySelector('.command-palette-input');
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      const chosen = highlighted();
+      expect(chosen).not.toBe(resultNames()[0]);
+
+      paletteState.setStates({
+        'light.bed_light': bedLight('off'),
+        'light.aaa_first': { entity_id: 'light.aaa_first', state: 'off', attributes: {} },
+      });
+
+      // The snapshot redrew the list with a new device in it, and the highlight
+      // stayed on the row it was on.
+      expect(resultNames()).toContain('aaa first');
+      expect(highlighted()).toBe(chosen);
     });
 
     it('stops listening for entities once it is closed', () => {

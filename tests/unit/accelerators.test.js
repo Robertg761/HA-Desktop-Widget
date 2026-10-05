@@ -293,14 +293,64 @@ describe('accelerator model', () => {
     });
 
     it('ignores keys no accelerator can name', () => {
-      for (const code of ['CapsLock', 'IntlBackslash', 'ContextMenu', 'NumpadEnter']) {
-        const recorded = acceleratorFromKeyEvent(
-          keydown({ key: 'x', code, ctrlKey: true }),
-          'linux'
-        );
-        expect(recorded.complete).toBe(false);
-        expect(recorded.key).toBe('');
+      const unnamed = {
+        CapsLock: 'CapsLock',
+        ContextMenu: 'ContextMenu',
+        NumLock: 'NumLock',
+        AudioVolumeUp: 'AudioVolumeUp',
+        // The yen key and an IME's keys name nothing Electron can register.
+        IntlYen: '¥',
+        Lang1: 'Unidentified',
+        KeyA: 'Process',
+      };
+      for (const platform of PLATFORMS) {
+        for (const [code, key] of Object.entries(unnamed)) {
+          const recorded = acceleratorFromKeyEvent(keydown({ key, code, ctrlKey: true }), platform);
+          // KeyA is a mapped code: the layout fallback must not run when the code names the key.
+          expect(recorded.key).toBe(code === 'KeyA' ? 'A' : '');
+          expect(recorded.complete).toBe(code === 'KeyA');
+        }
       }
+    });
+
+    it('records an ISO, Japanese or numpad key by the name its layout gives it', () => {
+      const layouts = [
+        // The extra ISO key beside the left Shift: "<" on a German layout, "\\" on a British one.
+        ['IntlBackslash', '<', 'Ctrl+<'],
+        ['IntlBackslash', '\\', 'Ctrl+\\'],
+        ['IntlRo', '\\', 'Ctrl+\\'],
+        ['NumpadEnter', 'Enter', 'Ctrl+Enter'],
+      ];
+      for (const platform of PLATFORMS) {
+        for (const [code, key, accelerator] of layouts) {
+          const recorded = acceleratorFromKeyEvent(keydown({ key, code, ctrlKey: true }), platform);
+          expect(recorded).toEqual({
+            accelerator,
+            key: accelerator.slice('Ctrl+'.length),
+            complete: true,
+            needsModifier: false,
+          });
+          expect(validateAccelerator(recorded.accelerator, platform).valid).toBe(true);
+        }
+      }
+    });
+
+    it('asks for a modifier on an international key pressed alone, and ignores a composed glyph', () => {
+      expect(
+        acceleratorFromKeyEvent(keydown({ key: '<', code: 'IntlBackslash' }), 'win32')
+      ).toEqual({
+        accelerator: '<',
+        key: '<',
+        complete: false,
+        needsModifier: true,
+      });
+      // A Mac's Option turns the key into a glyph outside ASCII, which nothing can register.
+      const composed = acceleratorFromKeyEvent(
+        keydown({ key: '≤', code: 'IntlBackslash', altKey: true }),
+        'darwin'
+      );
+      expect(composed.key).toBe('');
+      expect(composed.complete).toBe(false);
     });
 
     it('falls back to the key name when an event has no code', () => {

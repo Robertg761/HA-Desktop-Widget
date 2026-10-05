@@ -173,6 +173,10 @@ describe('stylesheet one-offs', () => {
         '<div class="modal-content confirm-modal-content"><div class="modal-footer"><button class="btn btn-secondary">x</button></div></div>',
       ],
       [
+        'an option of a segmented control such as the Settings mode switch',
+        '<div class="segmented-control"><button class="segmented-option">x</button></div>',
+      ],
+      [
         'a transport button of the media player',
         '<div class="media-detail-controls"><button class="btn media-detail-seek-btn">x</button></div>',
       ],

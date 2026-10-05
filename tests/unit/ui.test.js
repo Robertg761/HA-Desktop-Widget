@@ -9351,6 +9351,31 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(document.activeElement.dataset.tab).toBe('p3');
       });
 
+      it('does not redraw the pages after a save the host answers with them stored unnamed', async () => {
+        // Main stores a page nobody named with an empty name, where the renderer shows it as "All"
+        // or "View 2" with a marker. That is the same layout, so the bar stays as it was drawn.
+        setPages([
+          { id: 'p1', name: '', entityIds: [] },
+          { id: 'p2', name: '', entityIds: [] },
+        ]);
+        ui.renderActiveTab();
+        mockElectronAPI.updateConfig.mockImplementationOnce(async (patch) => ({
+          ...state.CONFIG,
+          ...patch,
+          customTabs: patch.customTabs.map(({ nameIsDefault, ...page }) =>
+            nameIsDefault ? { ...page, name: '' } : page
+          ),
+        }));
+
+        links()[1].click();
+        const drawn = links()[1];
+        await settle();
+
+        expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
+        expect(state.CONFIG.activeTabId).toBe('p2');
+        expect(drawn.isConnected).toBe(true);
+      });
+
       it('does not steal focus the bar never had', () => {
         setPages(pagesNamed(3), 'p2');
         ui.renderActiveTab();
