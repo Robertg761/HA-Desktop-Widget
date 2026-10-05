@@ -12,6 +12,7 @@ const {
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const { blurFocusedControlsOnDisable } = require('../helpers/chromium-focus.js');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
@@ -863,6 +864,57 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds
       ).toHaveLength(1000);
     });
+    // Load rooms disables itself while it waits, which in Chromium drops the keyboard's focus to
+    // <body>; the next Tab then started again at the top of the dialog.
+    describe('keeping the keyboard in place while rooms load', () => {
+      let restoreDisable;
+      beforeEach(() => {
+        restoreDisable = blurFocusedControlsOnDisable();
+        // Not connected when the dialog opens, so it waits for the button to be pressed.
+        require('../../src/websocket.js').isConnected.mockReturnValue(false);
+      });
+      afterEach(() => restoreDisable());
+
+      const pressLoadRooms = async () => {
+        ui.showAddPageModal();
+        const loadRooms = document.querySelector('.room-dashboard button');
+        loadRooms.focus();
+        await loadRooms.onclick();
+        return loadRooms;
+      };
+
+      it('puts focus back on the button when it comes back as Retry', async () => {
+        mockRequest.mockRejectedValue(new Error('Disconnected'));
+
+        const loadRooms = await pressLoadRooms();
+
+        expect(loadRooms.textContent).toBe('Retry');
+        expect(document.activeElement).toBe(loadRooms);
+      });
+
+      it('moves focus to the room picker it filled once the rooms are in', async () => {
+        registryResponses();
+
+        const loadRooms = await pressLoadRooms();
+
+        expect(loadRooms.hidden).toBe(true);
+        expect(document.activeElement).toBe(document.querySelector('#add-page-room'));
+      });
+
+      it('leaves focus alone when the person has moved on while the rooms loaded', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        const loadRooms = document.querySelector('.room-dashboard button');
+        loadRooms.focus();
+        const loading = loadRooms.onclick();
+        const name = document.querySelector('#add-page-name');
+        name.focus();
+        await loading;
+
+        expect(document.activeElement).toBe(name);
+      });
+    });
+
     it('offers retry when device states are not ready', async () => {
       mockRequest.mockRejectedValueOnce(new Error('not connected'));
       ui.showAddPageModal({ starter: true });

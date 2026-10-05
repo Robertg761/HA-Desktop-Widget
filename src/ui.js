@@ -1445,8 +1445,13 @@ function showAddPageModal({ starter = false } = {}) {
   // Remember the name we filled in from a room so a name the user typed is never overwritten.
   let autoFilledName = '';
   loadRooms.onclick = async () => {
-    loadRooms.disabled = true;
-    if (starter) saveBtn.disabled = true;
+    // Pressed from the keyboard, the button is about to be disabled, which drops focus to <body>.
+    // It gets focus back if it is still there (as Retry), and the room picker it filled if not.
+    const pressedWithFocus = document.activeElement === loadRooms;
+    const enableControls = uiUtils.disableControlsKeepingFocus([
+      loadRooms,
+      starter ? saveBtn : null,
+    ]);
     roomStatus.textContent = t('Loading rooms...');
     try {
       if (starter) {
@@ -1510,9 +1515,14 @@ function showAddPageModal({ starter = false } = {}) {
       );
       loadRooms.textContent = t('Retry');
     } finally {
-      if (!submissionInFlight) loadRooms.disabled = false;
       // A failed load must not leave the dialog unable to save: an empty page is still a page.
-      if (starter && !submissionInFlight) saveBtn.disabled = false;
+      if (!submissionInFlight) {
+        enableControls();
+        // A hidden button cannot keep focus; the person has not moved on if focus has gone nowhere.
+        const active = document.activeElement;
+        const lost = !active || active === document.body || active === loadRooms;
+        if (pressedWithFocus && loadRooms.hidden && modal.isConnected && lost) roomSelect.focus();
+      }
     }
   };
   roomSelect.onchange = () => {
