@@ -1319,7 +1319,7 @@ function showAddPageModal({ starter = false } = {}) {
         </div>
       </div>
       <div class="modal-footer">
-        <button id="add-page-cancel-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+        <button id="add-page-cancel-btn" class="btn btn-secondary btn-neutral">${utils.escapeHtml(t('Cancel'))}</button>
         <button id="add-page-save-btn" class="btn btn-primary">${utils.escapeHtml(dialogTitle)}</button>
       </div>
     </div>
@@ -2559,8 +2559,8 @@ function showRenameModal(entityId) {
           ${trayControlMarkup}
         </div>
         <div class="modal-footer">
-          <button id="reset-rename-btn" class="btn btn-secondary btn-reset">${utils.escapeHtml(t('Reset to Default'))}</button>
-          <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
+          <button id="reset-rename-btn" class="btn btn-secondary btn-neutral">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="cancel-rename-btn" class="btn btn-secondary btn-neutral">${utils.escapeHtml(t('Cancel'))}</button>
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
         </div>
       </div>
@@ -11602,7 +11602,7 @@ function requestAlarmCode(entity, { title, submitLabel } = {}) {
     // A way out that says so, beside the one that does the thing; the dialog's X is the same close.
     const cancel = document.createElement('button');
     cancel.type = 'button';
-    cancel.className = 'btn btn-secondary';
+    cancel.className = 'btn btn-secondary btn-neutral';
     cancel.textContent = t('Cancel');
     cancel.addEventListener('click', () => modal.querySelector('.close-btn').click());
     const actions = document.createElement('div');
@@ -12660,7 +12660,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="media-close-footer">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="media-close-footer">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;
@@ -14579,7 +14579,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="brightness-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="brightness-cancel">${utils.escapeHtml(t('Close'))}</button>
           <button class="btn btn-primary" id="turn-off-btn">${utils.escapeHtml(t('Turn Off'))}</button>
         </div>
       </div>
@@ -15201,7 +15201,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="climate-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="climate-cancel">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;
@@ -15630,7 +15630,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="fan-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="fan-cancel">${utils.escapeHtml(t('Close'))}</button>
           ${
             capabilities.canSetPercentage
               ? ''
@@ -15921,7 +15921,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="cover-cancel">${utils.escapeHtml(t('Close'))}</button>
+          <button class="btn btn-secondary btn-neutral" id="cover-cancel">${utils.escapeHtml(t('Close'))}</button>
         </div>
       </div>
     `;

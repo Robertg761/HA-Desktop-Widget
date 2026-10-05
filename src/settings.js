@@ -2887,7 +2887,7 @@ function renderCustomEntityIconRows() {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'btn btn-secondary btn-reset btn-sm';
+    resetBtn.className = 'btn btn-secondary btn-neutral btn-sm';
     resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;

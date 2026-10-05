@@ -104,7 +104,7 @@ describe('text contrast of the rules', () => {
       <div id="settings-modal"><div class="modal-content">
         <button class="btn btn-secondary" id="test-connection"></button>
         <div class="segmented-control"><button class="btn btn-secondary btn-sm"></button></div>
-        <button class="btn btn-secondary" id="cancel-x"></button>
+        <button class="btn btn-secondary btn-neutral" id="cancel-x"></button>
       </div></div>
       <div id="quick-controls"><div class="control-item" data-active="true">
         <div class="control-icon"></div></div></div>`;

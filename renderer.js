@@ -1084,7 +1084,7 @@ function getOAuthStatePanel() {
         ? [
             {
               label: t('Cancel'),
-              className: 'btn btn-secondary',
+              className: 'btn btn-secondary btn-neutral',
               onClick: cancelOAuthReauthorization,
             },
           ]

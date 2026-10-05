@@ -570,6 +570,7 @@ describe('hotkeys module', () => {
       const cancel = document.querySelector('.hotkey-capture-cancel');
 
       expect(cancel.textContent).toBe('Cancel');
+      expect(cancel.classList.contains('btn-neutral')).toBe(true);
       // Pressing a key could not reach it anyway: every key is the recording's.
       expect(cancel.tabIndex).toBe(-1);
       cancel.click();

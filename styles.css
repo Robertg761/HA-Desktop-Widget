@@ -9110,13 +9110,13 @@ body.theme-light:not(.high-contrast)
   box-shadow: none;
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset) {
+.btn-secondary:not(.btn-neutral) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: all var(--transition-base);
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset):active {
+.btn-secondary:not(.btn-neutral):active {
   transform: scale(0.98);
 }
 
@@ -9128,19 +9128,17 @@ body.theme-light:not(.high-contrast)
   transition: all var(--transition-base);
 }
 
-/* Neutral actions keep lower emphasis even with accent-forward button styling */
-.btn-secondary[id*='cancel'],
-.btn-secondary[id*='close'],
-.btn-secondary.btn-reset {
+/* Neutral actions (Cancel, Close, Reset) keep lower emphasis beside the accent-forward secondary
+   recipe. A class says which they are: matching ids that contain "cancel" or "close" left every
+   Cancel built without such an id (the alarm code's, the hotkey recorder's) in accent blue. */
+.btn-secondary.btn-neutral {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border-color);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.btn-secondary[id*='cancel']:hover,
-.btn-secondary[id*='close']:hover,
-.btn-secondary.btn-reset:hover {
+.btn-secondary.btn-neutral:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
@@ -12992,18 +12990,14 @@ body.software-glass.frosted-glass .modal-content {
   color: var(--accent-text-hover);
 }
 
-.btn-secondary[id*='cancel'],
-.btn-secondary[id*='close'],
-.btn-secondary.btn-reset {
+.btn-secondary.btn-neutral {
   background: transparent;
   border-color: var(--tile-border-hover);
   color: var(--text-secondary);
   box-shadow: none;
 }
 
-.btn-secondary[id*='cancel']:hover,
-.btn-secondary[id*='close']:hover,
-.btn-secondary.btn-reset:hover {
+.btn-secondary.btn-neutral:hover {
   background: var(--tile-bg-hover);
   color: var(--text-primary);
   box-shadow: none;

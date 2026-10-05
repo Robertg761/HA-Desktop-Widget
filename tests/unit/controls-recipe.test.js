@@ -24,6 +24,54 @@ describe('the control recipe', () => {
     document.body.innerHTML = '';
   });
 
+  // Cancel, Close and Reset sit beside the action a dialog is for, so they are drawn quieter than
+  // the accent secondary recipe. The rule used to find them by an id containing "cancel" or
+  // "close", which left every Cancel built without one (the alarm code's, the hotkey recorder's)
+  // in accent blue beside the primary button.
+  describe('neutral buttons', () => {
+    const colours = (button) => ({
+      color: resolvedValue(button, 'color'),
+      background: resolvedValue(button, 'background'),
+    });
+
+    it('draws a neutral button in the quiet recipe, with or without an id', () => {
+      render(
+        '',
+        `<button class="btn btn-secondary btn-neutral">Cancel</button>
+         <button id="cover-cancel" class="btn btn-secondary btn-neutral">Close</button>
+         <button class="btn btn-secondary">Retry</button>`
+      );
+      const [plain, named, accent] = document.querySelectorAll('button');
+
+      expect(colours(plain)).toEqual(colours(named));
+      expect(cascadedDeclaration(plain, 'background').value).toBe('transparent');
+      expect(cascadedDeclaration(plain, 'color').value).toBe('var(--text-secondary)');
+      expect(cascadedDeclaration(accent, 'color').value).toBe('var(--accent-text)');
+    });
+
+    it('goes by the class, not by what the id happens to contain', () => {
+      render('', '<button id="close-cancel-thing" class="btn btn-secondary">Retry</button>');
+
+      expect(cascadedDeclaration(document.querySelector('button'), 'color').value).toBe(
+        'var(--accent-text)'
+      );
+      expect(read('styles.css')).not.toMatch(/\[id\*=/);
+    });
+
+    it("marks every Cancel and Close in the window's markup as neutral", () => {
+      document.body.innerHTML = read('index.html').replace(
+        /^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g,
+        ''
+      );
+      const ways = [...document.querySelectorAll('button.btn-secondary')].filter((button) =>
+        /^(Cancel|Close)\b/.test(button.dataset.i18n || '')
+      );
+
+      expect(ways.length).toBeGreaterThanOrEqual(7);
+      ways.forEach((button) => expect(button.classList.contains('btn-neutral')).toBe(true));
+    });
+  });
+
   describe('fonts', () => {
     // Buttons and fields otherwise draw in the browser's control font (Arial on Linux).
     it.each(['button', 'input', 'select', 'textarea'])(

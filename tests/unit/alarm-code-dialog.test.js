@@ -60,6 +60,8 @@ describe('the alarm code dialog', () => {
 
     expect(dialog().querySelector('h2').textContent).toBe('Home alarm');
     expect(buttons().map((button) => button.textContent)).toEqual(['Cancel', 'Apply']);
+    // Neutral, as Cancel is in every other dialog, not an accent button beside the one that acts.
+    expect(buttons()[0].classList.contains('btn-neutral')).toBe(true);
 
     buttons()[0].click();
     expect(await pending).toBeNull();

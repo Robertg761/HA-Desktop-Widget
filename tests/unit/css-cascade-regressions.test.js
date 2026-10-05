@@ -517,7 +517,7 @@ describe('stylesheet cascade regressions', () => {
         '',
         `<div class="confirm-modal-content">
           <div class="modal-footer">
-            <button class="btn btn-secondary" id="confirm-cancel-btn">Keep editing</button>
+            <button class="btn btn-secondary btn-neutral" id="confirm-cancel-btn">Keep editing</button>
             <button class="btn btn-secondary" id="confirm-alternate-btn">Discard color edits</button>
             <button class="btn btn-primary" id="confirm-ok-btn">Save and Continue</button>
           </div>

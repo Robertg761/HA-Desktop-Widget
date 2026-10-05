@@ -410,7 +410,7 @@ function captureHotkey() {
                     <p>${escapeHtml(t('Press the desired key combination...'))}</p>
                     <div id="hotkey-preview" class="hotkey-preview-box" role="status"></div>
                     <p><small>${escapeHtml(t('Press Esc to cancel.'))}</small></p>
-                    <button type="button" class="btn btn-secondary hotkey-capture-cancel" tabindex="-1">${escapeHtml(t('Cancel'))}</button>
+                    <button type="button" class="btn btn-secondary btn-neutral hotkey-capture-cancel" tabindex="-1">${escapeHtml(t('Cancel'))}</button>
                 </div>
             `;
       document.body.appendChild(modal);
