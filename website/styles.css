@@ -272,11 +272,15 @@ h1 {
   font-size: 13.5px;
   color: var(--faint);
 }
-.facts li { display: flex; align-items: center; gap: 8px; }
+/* The check mark is part of the line, not a flex item beside it: a fact that wraps on a phone then
+   keeps its mark next to its first word instead of at the edge of the row it fills. */
 .facts li::before {
   content: '';
+  display: inline-block;
   width: 14px;
   height: 14px;
+  margin-inline-end: 8px;
+  vertical-align: -2px;
   background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
