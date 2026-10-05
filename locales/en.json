@@ -518,12 +518,10 @@
   "Hyprland shortcuts": "Hyprland shortcuts",
   "Hyprland bindings": "Hyprland bindings",
   "Copy bindings": "Copy bindings",
-  "Refresh shortcut status": "Refresh shortcut status",
   "Configuration format": "Configuration format",
   "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.",
   "Lua (.lua)": "Lua (.lua)",
   "Hyprlang (.conf)": "Hyprlang (.conf)",
-  "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.": "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.",
   "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.",
   "Check popup shortcut": "Check popup shortcut",
   "Popup shortcut received. You can use it to bring the widget forward.": "Popup shortcut received. You can use it to bring the widget forward.",
@@ -777,7 +775,6 @@
   "Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.": "Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.",
   "This build cannot save a sync passphrase.": "This build cannot save a sync passphrase.",
   "Failed to save sync passphrase.": "Failed to save sync passphrase.",
-  "Custom icons saved. Icons apply to entities already shown in your tabs/tiles.": "Custom icons saved. Icons apply to entities already shown in your tabs/tiles.",
   "Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?": "Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?",
   "Changing \"Always on top\" may require a restart. Restart now?": "Changing \"Always on top\" may require a restart. Restart now?",
   "Settings were saved, but one or more changes could not be applied immediately.": "Settings were saved, but one or more changes could not be applied immediately.",
@@ -1641,5 +1638,8 @@
   "Built in": "Built in",
   "Hide to menu bar when focus is lost": "Hide to menu bar when focus is lost",
   "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.",
-  "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows."
+  "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.",
+  "On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.": "On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.",
+  "Refresh hotkey status": "Refresh hotkey status",
+  "Custom icons saved. They show on your pages right away.": "Custom icons saved. They show on your pages right away."
 }

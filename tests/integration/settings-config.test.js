@@ -8182,8 +8182,9 @@ describe('Settings + Config Integration', () => {
 
         await settings.saveSettings();
 
+        // Pages, as the rest of the app calls them, not "tabs/tiles".
         expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-          expect.stringContaining('Custom icons saved'),
+          'Custom icons saved. They show on your pages right away.',
           'success',
           expect.any(Number)
         );

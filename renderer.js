@@ -1370,7 +1370,7 @@ async function renderFirstRunDesktopHelp(content) {
         'p',
         'first-run-copy',
         t(
-          'On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.'
+          'On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.'
         )
       )
     );

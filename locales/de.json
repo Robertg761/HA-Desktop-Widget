@@ -515,7 +515,6 @@
   "Enter a whole number of seconds from 0 to 86400.": "Gib eine ganze Sekundenzahl zwischen 0 und 86400 ein.",
   "Hyprland shortcuts": "Hyprland-Tastenkürzel",
   "Copy bindings": "Belegungen kopieren",
-  "Refresh shortcut status": "Status aktualisieren",
   "Follow Omarchy theme": "Omarchy-Theme verwenden",
   "Hyprland bindings": "Hyprland-Tastenbelegungen",
   "Use the current Omarchy palette. Your custom colors are kept for when this is off.": "Die aktuelle Omarchy-Farbpalette verwenden. Eigene Farben bleiben für die Nutzung ohne diese Option erhalten.",
@@ -523,7 +522,6 @@
   "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Wähle das Format deiner Hyprland-Konfiguration und kopiere die Belegungen, nachdem du mögliche Tastenkonflikte geprüft hast.",
   "Lua (.lua)": "Lua (.lua)",
   "Hyprlang (.conf)": "Hyprlang (.conf)",
-  "On Hyprland, the widget sits underneath normal windows. Use the popup shortcut to bring it forward, or open it from the tray.": "Unter Hyprland liegt das Widget unter normalen Fenstern. Hol es mit dem Popup-Tastenkürzel nach vorn oder öffne es über den Infobereich.",
   "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Lege in den Einstellungen ein Popup-Tastenkürzel fest und kopiere dessen Belegung in deine Hyprland-Konfiguration. Drücke es und prüfe hier, bevor du die Einrichtung abschließt. Du kannst das auch später erledigen.",
   "Check popup shortcut": "Popup-Tastenkürzel prüfen",
   "Popup shortcut received. You can use it to bring the widget forward.": "Popup-Tastenkürzel empfangen. Du kannst damit das Widget nach vorn holen.",
@@ -777,7 +775,6 @@
   "Enter a passphrase or use an existing saved passphrase before enabling encrypted sync.": "Gib eine Passphrase ein oder verwende eine gespeicherte, bevor du die verschlüsselte Synchronisierung aktivierst.",
   "This build cannot save a sync passphrase.": "Dieser Build kann keine Sync-Passphrase speichern.",
   "Failed to save sync passphrase.": "Sync-Passphrase konnte nicht gespeichert werden.",
-  "Custom icons saved. Icons apply to entities already shown in your tabs/tiles.": "Eigene Symbole gespeichert. Sie gelten für Entitäten, die bereits in deinen Tabs/Kacheln angezeigt werden.",
   "Changing opacity between 100% and transparent on Linux requires an app restart. Restart now?": "Unter Linux erfordert der Wechsel der Deckkraft zwischen 100 % und transparent einen Neustart der App. Jetzt neu starten?",
   "Changing \"Always on top\" may require a restart. Restart now?": "Das Ändern von „Immer im Vordergrund“ erfordert möglicherweise einen Neustart. Jetzt neu starten?",
   "Settings were saved, but one or more changes could not be applied immediately.": "Die Einstellungen wurden gespeichert, aber eine oder mehrere Änderungen konnten nicht sofort angewendet werden.",
@@ -1641,5 +1638,8 @@
   "Built in": "Integriert",
   "Hide to menu bar when focus is lost": "Bei Fokusverlust in die Menüleiste ausblenden",
   "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Ein Klick auf ein anderes Fenster oder ein App-Wechsel blendet das Widget aus. Über die Menüleiste oder das Popup-Tastenkürzel lässt es sich wieder öffnen. Angeheftete Desktop-Pins bleiben sichtbar.",
-  "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Lege ein globales Tastenkürzel fest, das das Widget nach vorn holt, solange du es gedrückt hältst. Lässt du los, kehrt es hinter die anderen Fenster zurück."
+  "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "Lege ein globales Tastenkürzel fest, das das Widget nach vorn holt, solange du es gedrückt hältst. Lässt du los, kehrt es hinter die anderen Fenster zurück.",
+  "On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.": "Unter Hyprland liegt das Widget unter normalen Fenstern. Hol es mit dem Popup-Tastenkürzel nach vorn oder öffne es über den Infobereich.",
+  "Refresh hotkey status": "Status aktualisieren",
+  "Custom icons saved. They show on your pages right away.": "Eigene Symbole gespeichert. Sie erscheinen sofort auf deinen Seiten."
 }

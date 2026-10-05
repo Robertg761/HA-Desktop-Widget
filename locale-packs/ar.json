@@ -1999,6 +1999,9 @@
     "Built in": "مدمجة",
     "Hide to menu bar when focus is lost": "إخفاء في شريط القوائم عند فقدان التركيز",
     "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "يُخفى عنصر الواجهة عند النقر على نافذة أخرى أو التبديل بين التطبيقات. أعد فتحه من شريط القوائم أو باستخدام مفتاح اختصار النافذة المنبثقة. تظل العناصر المثبتة على سطح المكتب ظاهرة.",
-    "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "كوّن اختصارًا عامًا يُحضر الأداة إلى الأمام أثناء الضغط المستمر عليه. وعند الإفلات تعود خلف النوافذ الأخرى."
+    "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "كوّن اختصارًا عامًا يُحضر الأداة إلى الأمام أثناء الضغط المستمر عليه. وعند الإفلات تعود خلف النوافذ الأخرى.",
+    "On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.": "على Hyprland، توجد الأداة أسفل النوافذ العادية. استخدم اختصار النافذة المنبثقة لإحضارها إلى الأمام، أو افتحها من علبة النظام.",
+    "Refresh hotkey status": "تحديث حالة الاختصارات",
+    "Custom icons saved. They show on your pages right away.": "تم حفظ الأيقونات المخصصة. تظهر على صفحاتك فورًا."
   }
 }

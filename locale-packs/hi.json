@@ -1999,6 +1999,9 @@
     "Built in": "अंतर्निहित",
     "Hide to menu bar when focus is lost": "फ़ोकस हटने पर मेनू बार में छिपाएँ",
     "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "दूसरी विंडो पर क्लिक करने या ऐप बदलने पर विजेट छिप जाता है। इसे मेनू बार या पॉपअप हॉटकी से फिर खोलें। डेस्कटॉप पर पिन किए गए आइटम दिखाई देते रहते हैं।",
-    "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "एक ग्लोबल हॉटकी कॉन्फ़िगर करें जो दबाए रखने पर विजेट को सामने ले आए। छोड़ने पर वह दूसरी विंडो के पीछे लौट जाता है।"
+    "Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.": "एक ग्लोबल हॉटकी कॉन्फ़िगर करें जो दबाए रखने पर विजेट को सामने ले आए। छोड़ने पर वह दूसरी विंडो के पीछे लौट जाता है।",
+    "On Hyprland, the widget sits underneath normal windows. Use the popup hotkey to bring it forward, or open it from the tray.": "Hyprland पर विजेट सामान्य विंडो के नीचे रहता है। इसे सामने लाने के लिए पॉपअप हॉटकी का उपयोग करें, या सिस्टम ट्रे से खोलें।",
+    "Refresh hotkey status": "हॉटकी स्थिति रीफ़्रेश करें",
+    "Custom icons saved. They show on your pages right away.": "कस्टम आइकन सहेजे गए। वे आपके पेजों पर तुरंत दिखते हैं।"
   }
 }

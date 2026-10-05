@@ -35,6 +35,16 @@ describe('index.html', () => {
     });
   });
 
+  describe('the Hotkeys page', () => {
+    test('calls the popup hotkey by that one name', () => {
+      // The Hyprland note said "popup shortcut" and its button "Refresh shortcut status", right
+      // above the setting named Popup hotkey.
+      const page = byId('hotkeys-tab');
+      expect(page.textContent).toContain('Popup hotkey');
+      expect(page.textContent).not.toMatch(/popup shortcut|shortcut status/i);
+    });
+  });
+
   describe('landmarks and headings', () => {
     test('the window title is the h1 and Quick Access an h2, inside one main landmark', () => {
       const title = document.querySelector('.widget-title');

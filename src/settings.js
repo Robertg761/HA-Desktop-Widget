@@ -6936,11 +6936,7 @@ async function persistSettings() {
     }
 
     if (customIconsEdited) {
-      showToast(
-        t('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.'),
-        'success',
-        2600
-      );
+      showToast(t('Custom icons saved. They show on your pages right away.'), 'success', 2600);
     }
 
     const shouldClearSavedPassphrase =
