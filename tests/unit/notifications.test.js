@@ -573,6 +573,24 @@ describe('persistent notification helpers', () => {
     const describedBy = button.getAttribute('aria-describedby');
     expect(describedBy).toBe('persistent-notifications-count');
     expect(button.contains(document.getElementById(describedBy))).toBe(true);
-    expect(button.getAttribute('aria-label')).toBe('Home Assistant Notifications');
+    expect(button.getAttribute('aria-label')).toBe('Home Assistant notifications');
+  });
+
+  it('calls the bell, its panel and the Settings switch by one name', () => {
+    // The bell said "Home Assistant Notifications", the panel "Persistent Notifications" and the
+    // switch "Home Assistant notifications": three names for one thing.
+    const html = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../index.html'),
+      'utf8'
+    );
+    document.body.innerHTML = html.slice(html.indexOf('<body'), html.lastIndexOf('</body>'));
+    const name = 'Home Assistant notifications';
+    const button = document.getElementById('persistent-notifications-btn');
+    expect(button.dataset.i18nAriaLabel).toBe(name);
+    expect(button.dataset.i18nTitle).toBe(name);
+    expect(document.getElementById('persistent-notifications-title').dataset.i18n).toBe(name);
+    expect(document.querySelector('label[for="persistent-notification-toasts"]').dataset.i18n).toBe(
+      name
+    );
   });
 });

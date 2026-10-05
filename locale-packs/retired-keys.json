@@ -1398,5 +1398,13 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Home Assistant Notifications": {
+    "retiredIn": "4.0.0",
+    "reason": "The bell and its panel now use the Settings switch's name, Home Assistant notifications"
+  },
+  "Persistent Notifications": {
+    "retiredIn": "4.0.0",
+    "reason": "The bell and its panel now use the Settings switch's name, Home Assistant notifications"
   }
 }
