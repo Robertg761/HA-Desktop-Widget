@@ -347,10 +347,12 @@ folder that may be stale or have uncommitted edits:
 (
   set -euo pipefail # any failed step, a fetch included, stops before the deploy
   git fetch origin
-  rm -rf /tmp/ha-site && mkdir -p /tmp/ha-site
+  rm -rf /tmp/ha-site # one command a line: set -e ignores a failure on the left of &&
+  mkdir -p /tmp/ha-site
   git archive origin/main website | tar -x -C /tmp/ha-site # exactly what main holds
   cp -r website/.vercel /tmp/ha-site/website/              # the link `vercel link` made
-  cd /tmp/ha-site/website && vercel deploy --prod
+  cd /tmp/ha-site/website
+  vercel deploy --prod
 )
 ```
 
