@@ -6358,6 +6358,57 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control.dataset.state).toBe('off');
     });
 
+    it('marks the preset chip that matches the lamp brightness and the fan speed', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 191 },
+        },
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+        },
+      });
+      const marked = (selector) =>
+        [...document.querySelectorAll(selector)].map((chip) => [
+          chip.textContent.trim(),
+          chip.dataset.active,
+          chip.getAttribute('aria-pressed'),
+        ]);
+
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      expect(marked('.desktop-pin-light-preset')).toEqual([
+        ['25%', 'false', 'false'],
+        ['50%', 'false', 'false'],
+        ['75%', 'true', 'true'],
+        ['100%', 'false', 'false'],
+      ]);
+
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset')).toEqual([
+        ['Off', 'false', 'false'],
+        ['Mid', 'true', 'true'],
+        ['High', 'false', 'false'],
+      ]);
+
+      // A fan that is off is at the Off chip, whatever speed it last ran at.
+      state.setStates({
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'off',
+          attributes: { friendly_name: 'Office fan', percentage: 0, supported_features: 1 },
+        },
+      });
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset').map(([label, active]) => [label, active])).toEqual([
+        ['Off', 'true'],
+        ['Mid', 'false'],
+        ['High', 'false'],
+      ]);
+    });
+
     it('does not switch a light off when the click lands beside the brightness track', () => {
       state.setStates({
         'light.desk': {

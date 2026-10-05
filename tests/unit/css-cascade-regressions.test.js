@@ -1432,6 +1432,40 @@ describe('stylesheet cascade regressions', () => {
         )
       ).toBe(tint);
     });
+
+    it('gives a light preset chip its whole width, so "100%" clears an outline', () => {
+      render(
+        'desktop-pin-mode high-contrast opaque-panels',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
+          <button class="desktop-pin-light-preset">100%</button></div>`
+      );
+      const chip = document.querySelector('.desktop-pin-light-preset');
+      expect(resolvedValue(chip, 'padding-inline')).toBe('0');
+      expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+    });
+
+    it.each(THEME_CASES)('marks the lamp preset at the current level (%s)', (_, theme) => {
+      render(
+        `desktop-pin-mode ${theme}`,
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
+          <button class="desktop-pin-light-preset" data-active="true">75%</button>
+          <button class="desktop-pin-light-preset" data-active="false">100%</button></div>`
+      );
+      const [on, off] = document.querySelectorAll('.desktop-pin-light-preset');
+      expect(resolvedValue(on, 'border-color')).not.toBe(resolvedValue(off, 'border-color'));
+    });
+
+    it('marks the lamp preset at the current level under forced colours', () => {
+      render(
+        'desktop-pin-mode',
+        `<button class="desktop-pin-light-preset" data-active="true">75%</button>`
+      );
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'outline', {
+          forcedColors: true,
+        })
+      ).toBe('2px solid Highlight');
+    });
   });
 
   describe('desktop pin text', () => {

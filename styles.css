@@ -1492,12 +1492,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   border-radius: var(--radius-lg);
   min-height: 28px;
   min-width: 0;
-  padding-inline: 2px;
+  /* No padding or tracking: a chip is a quarter of a 152px row, about 35px, and "100%" with them
+     ran into the outline the Readable preset and forced colours draw. */
+  padding-inline: 0;
   line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition:
@@ -2111,9 +2113,12 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   white-space: nowrap;
 }
 
-/* The active mode, speed or state differs by more than a faint tint: a brighter label and edge. */
+/* The active mode, speed, level or state differs by more than a faint tint: a brighter label and
+   edge. */
 .desktop-pin-panel-button[data-active='true'],
-.desktop-pin-panel-button[data-active='true']:hover {
+.desktop-pin-panel-button[data-active='true']:hover,
+.desktop-pin-light-preset[data-active='true'],
+.desktop-pin-light-preset[data-active='true']:hover {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.6);
   color: rgba(var(--desktop-pin-ink-rgb), 1);
@@ -12560,7 +12565,12 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
   body.high-contrast .theme-option.selected,
   body.high-contrast .donate-amount-chip.selected,
-  body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
+  body.high-contrast
+    :is(
+      .desktop-pin-panel-button,
+      .desktop-pin-light-preset,
+      .desktop-pin-power
+    )[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
   }
@@ -16811,6 +16821,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .entity-item.selected,
   .donate-amount-chip.selected,
   .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-preset[data-active='true'],
   .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;

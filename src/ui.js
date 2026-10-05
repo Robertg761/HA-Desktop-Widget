@@ -6325,6 +6325,9 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   const powerButton = root.querySelector('.desktop-pin-light-power');
   if (powerButton) setDesktopPinPowerButtonState(powerButton, isOn);
 
+  const presets = root.querySelectorAll('.desktop-pin-light-preset');
+  markPresetButtons(presets, safePct, 'brightness', { pin: true });
+
   const slider = root.querySelector('.desktop-pin-light-slider');
   if (slider && slider.value !== String(safePct)) {
     slider.value = String(safePct);
@@ -7013,6 +7016,9 @@ function applyDesktopPinFanVisualState(root, fanValue) {
 
   const power = root.querySelector('.desktop-pin-fan-power');
   if (power) setDesktopPinPowerButtonState(power, isOn);
+
+  const presets = root.querySelectorAll('.desktop-pin-fan-preset');
+  markPresetButtons(presets, isOn ? percentage : 0, 'speed', { pin: true });
 }
 
 function queueDesktopPinFanPercentage(entity, percentage) {
@@ -14432,12 +14438,14 @@ function updateTimerDisplays() {
 }
 
 // Marks the preset chip that matches the level now shown (25%, 50%..., Low, Medium...), so a row of
-// presets shows where the slider is and a screen reader hears which one is on.
-function markPresetButtons(buttons, level, dataName) {
+// presets shows where the slider is and a screen reader hears which one is on. A dialog's chips
+// take the .active look; a pin's are drawn from data-active, like its other selected buttons.
+function markPresetButtons(buttons, level, dataName, { pin = false } = {}) {
   const shown = Math.round(Number(level));
   buttons.forEach((button) => {
     const selected = Number(button.dataset[dataName]) === shown;
-    button.classList.toggle('active', selected);
+    if (pin) button.dataset.active = selected ? 'true' : 'false';
+    else button.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
   });
 }
