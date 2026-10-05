@@ -14823,9 +14823,11 @@ body.theme-light
   display: none;
 }
 
-/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
+/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. The
+   field gives way down to 200px, so the button keeps its place beside it at the default size now that
+   it carries an eye. */
 #settings-modal .profile-sync-passphrase-row > input {
-  flex: 1 1 220px;
+  flex: 1 1 200px;
   min-width: 0;
   margin: 0;
 }
@@ -14861,7 +14863,7 @@ body.theme-light
 
 #settings-modal .profile-sync-file-row > input,
 #settings-modal .profile-sync-file-row > select {
-  flex: 1 1 220px;
+  flex: 1 1 200px;
   min-width: 0;
   margin: 0;
 }

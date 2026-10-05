@@ -1318,6 +1318,18 @@ const scenes = [
         })()`,
         'Show passphrase looks pressed while the passphrase is shown'
       );
+      // The open eye shows, and the button keeps its place beside the field: with the eye added it
+      // first dropped under the field at the default size.
+      await ctx.expect(
+        `(() => {
+          const reveal = document.getElementById('profile-sync-passphrase-reveal');
+          const field = document.getElementById('profile-sync-passphrase');
+          return reveal.querySelector('.passphrase-reveal-icon-shown').getBoundingClientRect().width > 0 &&
+            !reveal.querySelector('.passphrase-reveal-icon-hidden').getBoundingClientRect().width &&
+            Math.abs(reveal.getBoundingClientRect().top - field.getBoundingClientRect().top) < 2;
+        })()`,
+        'the open eye, beside the field'
+      );
     },
   },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
