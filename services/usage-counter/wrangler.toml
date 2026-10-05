@@ -9,8 +9,7 @@ enabled = false
 [[d1_databases]]
 binding = "DB"
 database_name = "ha-desktop-widget-usage"
-# Replace with the id printed by `npx wrangler d1 create ha-desktop-widget-usage`.
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "6ab4347d-c8bf-46d3-b584-8cab24aa0456"
 
 # Serve the Worker on the hostname the app pings (src/usage-ping.cjs). Needs the
 # hadesktopwidget.com zone on Cloudflare; otherwise delete this block and point
