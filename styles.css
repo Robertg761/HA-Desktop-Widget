@@ -3040,18 +3040,16 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-resize-handle::before {
   content: '';
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1)),
-    rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 4px 10px rgba(0, 0, 0, 0.3);
+  width: calc(var(--desktop-pin-resize-handle-size) - 5px);
+  height: calc(var(--desktop-pin-resize-handle-size) - 5px);
+  border: 0 solid rgba(var(--accent-rgb), 0.95);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
   pointer-events: none;
 }
 
+/* Each mark is a quarter ring that follows the window's rounded corner 5px inside it, across the
+   handle's whole hit box. A triangle filling the box was clipped by the 24px corner to a thin
+   crescent along its edge. */
 .desktop-pin-resize-handle-top-left {
   top: 0;
   left: 0;
@@ -3059,7 +3057,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-left::before {
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  top: 5px;
+  left: 5px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-top-right {
@@ -3069,7 +3071,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-right::before {
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  top: 5px;
+  right: 5px;
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-left {
@@ -3079,7 +3085,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-left::before {
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  bottom: 5px;
+  left: 5px;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-right {
@@ -3089,7 +3099,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-right::before {
-  clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  bottom: 5px;
+  right: 5px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 100%;
 }
 
 .drag-area {

@@ -1502,6 +1502,65 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(meter, '--desktop-pin-progress')).toBe('1');
     });
 
+    // The cascade helper does not match pseudo-elements, so these read the corner rules themselves.
+    const pseudoRule = (selector) => {
+      let found = null;
+      const visit = (rules) => {
+        for (const rule of rules) {
+          if (rule.cssRules && !rule.selectorText) visit(rule.cssRules);
+          else if (rule.selectorText?.replace(/\s+/g, ' ') === selector) found = rule;
+        }
+      };
+      for (const sheet of document.styleSheets) visit(sheet.cssRules);
+      return found;
+    };
+
+    it.each([
+      ['top', 'left'],
+      ['top', 'right'],
+      ['bottom', 'left'],
+      ['bottom', 'right'],
+    ])('draws the %s-%s resize mark as a ring inside the rounded corner', (vertical, side) => {
+      const rule = pseudoRule(`.desktop-pin-resize-handle-${vertical}-${side}::before`);
+      // A triangle filling the corner box was clipped by the window's rounded corner to a sliver.
+      expect(rule.style.getPropertyValue('clip-path')).toBe('');
+      expect(rule.style.getPropertyValue(`border-${vertical}-${side}-radius`)).toBe('100%');
+      expect(rule.style.getPropertyValue(`border-${vertical}-width`)).toBe('3px');
+      expect(rule.style.getPropertyValue(`border-${side}-width`)).toBe('3px');
+      expect(rule.style.getPropertyValue(vertical)).toBe('5px');
+      expect(rule.style.getPropertyValue(side)).toBe('5px');
+    });
+
+    it('keeps the whole resize mark inside the window corner at every handle size', () => {
+      render('desktop-pin-mode', '<div class="desktop-pin-shell"></div>');
+      const corner = parseFloat(
+        resolvedValue(document.querySelector('.desktop-pin-shell'), 'clip-path').match(
+          /round\s+([\d.]+)px/
+        )[1]
+      );
+      const handleSize = pseudoRule('.desktop-pin-resize-handle')
+        .style.getPropertyValue('--desktop-pin-resize-handle-size')
+        .match(/clamp\(([\d.]+)px,.*,\s*([\d.]+)px\)/)
+        .slice(1)
+        .map(Number);
+      const before = pseudoRule('.desktop-pin-resize-handle::before').style;
+      const inset = parseFloat(pseudoRule('.desktop-pin-resize-handle-top-left::before').style.top);
+      expect(before.getPropertyValue('width')).toBe(
+        `calc(var(--desktop-pin-resize-handle-size) - ${inset}px)`
+      );
+      for (const size of handleSize) {
+        // The ring's outer edge is a quarter circle about (size, size), from the window's corner.
+        const radius = size - inset;
+        for (let degrees = 0; degrees <= 90; degrees += 5) {
+          const angle = (degrees * Math.PI) / 180;
+          const x = size - radius * Math.cos(angle);
+          const y = size - radius * Math.sin(angle);
+          // Inside the window's rounded corner: within `corner` of the arc's centre.
+          expect(Math.hypot(corner - x, corner - y)).toBeLessThanOrEqual(corner);
+        }
+      }
+    });
+
     it('keeps the dark weather palette on a pin in the light theme, where pins stay dark glass', () => {
       const cloud = (bodyClass) => {
         render(
