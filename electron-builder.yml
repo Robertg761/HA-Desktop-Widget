@@ -9,12 +9,18 @@ directories:
   output: dist
 afterPack: scripts/after-pack-mac-adhoc-sign.cjs
 # The app's own files are this allowlist. linux, mac and win each have a `files` list as well, for
-# what only that platform drops, and electron-builder does not add one to the other: once it has
-# loaded this file, the top-level list is a file set of its own and the platform list another, and a
-# set made only of exclusions packs everything but them, the whole repository with its tests, docs,
-# website and vendored sources. So every platform list also names package.json, which ships anyway,
-# and this allowlist still bounds the rest. tests/unit/electron-builder-config.test.js loads the
-# configuration the way electron-builder does and fails if a platform packs a file it does not name.
+# what only that platform drops. electron-builder reads the two lists one way for the app's own
+# files and another way for node_modules:
+# - For the app's files, once it has loaded this file, the top-level list is a file set of its own
+#   and the platform list another, and neither adds to the other. A set made only of exclusions
+#   packs everything but them, the whole repository with its tests, docs, website and vendored
+#   sources. So every platform list also names package.json, which ships anyway, and this
+#   allowlist still bounds the rest.
+# - For node_modules, it takes the exclusions of both lists and applies them together. An
+#   exclusion here therefore removes a package from every platform, which is why the dbus-next
+#   list, which Linux needs, sits under mac and win.
+# tests/unit/electron-builder-config.test.js loads the configuration the way electron-builder does
+# and fails if a platform packs a file it does not name.
 files:
   - index.html
   # Self-hosted Inter / Plus Jakarta Sans woff2 subsets referenced by the
@@ -92,22 +98,29 @@ files:
   - '!node_modules/uiohook-napi/src/**/*'
 asar: true
 compression: normal
-# Chromium draws its own interface (the right-click menu in a text field, the spelling menu, the
-# dialogs it opens) from one locale .pak file per language, and Electron ships all 55 of them,
-# about 46 MB per install. These are the ones that match the app's seven languages (APP_LANGUAGES in
-# src/i18n-main.cjs: en, de, es, fr, ar, hi, zh), including the regional paks Chromium sends those
-# languages to. Checked against Electron 43 on Linux by setting LANG and reading app.getLocale():
+# Chromium keeps the text of its own built-in interface in one locale .pak file per language: what
+# it draws for a page by itself, such as the bubble that says why a form field's value is not
+# allowed (the alarm code and helper value dialogs show it), the date picker and the media controls.
+# Electron ships all 55 paks, about 46 MB per install. The menus a right-click opens in a text
+# field, spelling suggestions included, do not come from them: src/application-menu.cjs builds those
+# from the app's own catalogs, so they follow the language the app shows. These are the paks that
+# match the app's seven languages (APP_LANGUAGES in src/i18n-main.cjs: en, de, es, fr, ar, hi, zh),
+# including the regional paks Chromium sends those languages to. Checked against Electron 43 on
+# Linux by setting LANG and reading app.getLocale():
 #   es-419  every Latin American Spanish system (es-MX, es-AR, es-US, ...); es-ES gets es
 #   zh-TW   zh-HK, zh-MO and Traditional Chinese; zh-CN covers zh-SG and Simplified Chinese
 #   en-GB   en-AU, en-CA, en-IN, en-NZ and en-ZA; en-US is every other English, and the fallback
 #           for a system language with no pak, which Chromium cannot start without
 # de-AT, de-CH, fr-CA, fr-BE, ar-EG and hi-IN need nothing extra: they resolve to de, fr, ar and
-# hi. A system language the app has no pak for (pt-BR, ja) gets Chromium's English menus, the same
-# language its own text is in. Which language the app itself shows does not depend on these files;
-# detectSystemLocale in src/i18n-main.cjs reads the operating system. electron-builder keeps a pak
-# whose name is an entry or the part of one before its dash, so "es-419" would keep es.pak by
-# itself; both are listed so the intent reads plainly. Windows and Linux use this list. macOS has
-# its own under `mac`, because it names the same choice with underscores.
+# hi. A system language with no pak here (pt-BR, ja) gets Chromium's built-in text in English, the
+# language the app falls back to for its own text. Chromium then also reports en-US as
+# app.getLocale() and the renderer's navigator.language. Which language the app itself shows does
+# not depend on these files: detectSystemLocale in src/i18n-main.cjs reads the operating system.
+# On macOS the same choice also removes the app's other .lproj folders, which set the language of
+# the system's own dialogs (see `mac`). electron-builder keeps a pak whose name is an entry or the
+# part of one before its dash, so "es-419" would keep es.pak by itself; both are listed so the
+# intent reads plainly. Windows and Linux use this list. macOS has its own under `mac`, because it
+# names the same choice with underscores.
 electronLanguages:
   - en-US
   - en-GB
@@ -139,6 +152,10 @@ mac:
   # The same languages as the top-level electronLanguages, as macOS names them: the Electron
   # framework keeps a locale.pak in a folder per language ("es_419.lproj", "en_GB.lproj"), and
   # electron-builder matches an entry against that folder name, so the dashes above would not match.
+  # The list also trims the .lproj folders in the app's own Contents/Resources. Those tell macOS
+  # which languages the app has, and it shows its own dialogs and panels (open and save, the
+  # message boxes) in the first of the user's languages found there, so a pt-BR Mac gets them in
+  # English, like the rest of the app.
   # Each language also has _FEMININE, _MASCULINE and _NEUTER folders, holding paks of 18 bytes in
   # every language kept here. They cost nothing, and Chromium may look for them next to its
   # language's folder, so they stay.
@@ -189,14 +206,16 @@ mac:
   # Linux Wayland, so mac/win packages strip it. win.files repeats the list, because YAML
   # cannot join two lists and the two differ in their uiohook-napi lines;
   # tests/unit/electron-builder-config.test.js keeps the copies equal. Do NOT hoist these
-  # into the top-level `files` list: top-level and per-platform lists are additive, so that
-  # would strip dbus-next from Linux builds too and break portal global shortcuts at
-  # runtime. When upgrading dbus-next, re-derive this list from package-lock.json.
+  # into the top-level `files` list: for node_modules, electron-builder applies the
+  # exclusions of the top-level list and the platform's list together, so that would strip
+  # dbus-next from Linux builds too and break portal global shortcuts at runtime. When
+  # upgrading dbus-next, re-derive this list from package-lock.json.
   #
   # Then the uiohook-napi prebuilds of the other systems. Every package keeps the x64 and arm64
   # builds of its own system and no other, which also drops linux-loong64. The macOS app is
   # universal and needs both darwin builds; x64ArchFiles above has the merge take them as they are.
-  # package.json is here so that the list is not exclusions alone (see the top-level `files`).
+  # package.json is here because, for the app's own files, this list is a file set of its own
+  # and one made only of exclusions would pack the whole repository (see the top-level `files`).
   files:
     - package.json
     - '!node_modules/dbus-next/**/*'
