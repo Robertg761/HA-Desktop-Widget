@@ -104,6 +104,7 @@ import {
   getQuickAccessTabOverflow,
   getQuickAccessTabRevealDelta,
   getQuickAccessTabWheelDelta,
+  watchSensorValueFitInputs,
 } from './quick-access-ui-helpers.js';
 import {
   bindTabListKeyboard,
@@ -4421,6 +4422,10 @@ function renderSensorTileChart(tile, entity, series = []) {
 function fitSensorTileValue(readout) {
   const value = readout?.querySelector('.control-sensor-value');
   if (!value?.isConnected) return;
+  // Measured at the size the stylesheet gives it, with no transition in the way. Under reduced
+  // motion every property eases over 0.01ms, so a refit read the previous fitted size as the
+  // natural one, decided the number fitted, and left it cut at full size once the size settled.
+  value.style.transition = 'none';
   value.style.removeProperty('font-size');
   const fitted = getFittedSensorValueFontSize({
     fontSize: parseFloat(getComputedStyle(value).fontSize),
@@ -4428,6 +4433,9 @@ function fitSensorTileValue(readout) {
     availableWidth: value.clientWidth,
   });
   if (fitted !== null) value.style.fontSize = `${fitted}px`;
+  // Laid out at its new size before the transition comes back, so it does not ease into it.
+  void value.offsetWidth;
+  value.style.removeProperty('transition');
   readout.dataset.fitWidth = String(readout.clientWidth);
   readout.dataset.fitSize = readout.closest('.control-item')?.dataset.valueSize || '';
 }
@@ -4445,6 +4453,15 @@ const sensorValueFitObserver =
         });
       })
     : null;
+
+// Every reading on screen, fitted again: see watchSensorValueFitInputs for when.
+function refitSensorTileValues() {
+  document.querySelectorAll('.control-sensor-readout').forEach(fitSensorTileValue);
+}
+
+if (typeof document !== 'undefined' && document.body && document.defaultView) {
+  watchSensorValueFitInputs(document, refitSensorTileValues);
+}
 
 function observeSensorTileValueFit(tile) {
   const readout = tile?.querySelector('.control-sensor-readout');

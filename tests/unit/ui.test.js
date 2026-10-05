@@ -4966,6 +4966,44 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(sensorTile.querySelector('.control-sensor-unit').textContent).toBe('W');
     });
 
+    it('measures a reading for its fit at the stylesheet size, with no transition running', () => {
+      // Under reduced motion every property eases over 0.01ms. A refit that cleared the fitted size
+      // and measured at once read the old, smaller size as the natural one, judged the number to fit
+      // and left it cut at full size once the size settled ('1,234,567,8... Wh').
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.energy_total'];
+      state.setConfig(config);
+      const reading = (value) => ({
+        entity_id: 'sensor.energy_total',
+        state: value,
+        attributes: { friendly_name: 'Energy', unit_of_measurement: 'Wh' },
+      });
+      state.setStates({ 'sensor.energy_total': reading('1234567890.12') });
+      ui.renderActiveTab();
+      const value = document.querySelector(
+        '[data-entity-id="sensor.energy_total"] .control-sensor-value'
+      );
+      Object.defineProperty(value, 'scrollWidth', { configurable: true, get: () => 145 });
+      Object.defineProperty(value, 'clientWidth', { configurable: true, get: () => 119 });
+      const measured = [];
+      const realGetComputedStyle = window.getComputedStyle;
+      const spy = jest.spyOn(window, 'getComputedStyle').mockImplementation((element, ...rest) => {
+        if (element !== value) return realGetComputedStyle(element, ...rest);
+        measured.push({ transition: value.style.transition, fontSize: value.style.fontSize });
+        return { fontSize: '18px' };
+      });
+      try {
+        value.style.fontSize = '13.5px';
+        ui.updateEntityInUI(reading('1234567891.12'));
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(measured).toEqual([{ transition: 'none', fontSize: '' }]);
+      expect(value.style.fontSize).toBe('14.5px');
+      expect(value.style.transition).toBe('');
+    });
+
     it('keeps quick access numeric sensor formatting after live entity updates', () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['sensor.office_temperature'];

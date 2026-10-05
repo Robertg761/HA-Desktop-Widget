@@ -187,10 +187,52 @@ function getFittedSensorValueFontSize({ fontSize, naturalWidth, availableWidth }
   return Math.min(fontSize, Math.max(SENSOR_VALUE_MIN_FONT_PX, fitted));
 }
 
+/**
+ * Calls `refit` whenever what a sensor reading's fit was measured against changes while its tile
+ * keeps its width, which is all a resize observer sees: a web font arriving, after a fit taken in
+ * the fallback face ('123,456… W' cut at full size once Plus Jakarta Sans was in), and the density
+ * switching, which resizes the unit and the tile's padding. Each is answered once, on the next
+ * frame, however many fonts or class changes arrive together.
+ *
+ * @param {Document} doc
+ * @param {() => void} refit - Fits every reading on screen again.
+ * @returns {() => void} Stops watching.
+ */
+function watchSensorValueFitInputs(doc, refit) {
+  const view = doc.defaultView;
+  let frame = 0;
+  const schedule = () => {
+    if (frame) return;
+    frame = view.requestAnimationFrame(() => {
+      frame = 0;
+      refit();
+    });
+  };
+  const fonts = doc.fonts;
+  fonts?.addEventListener?.('loadingdone', schedule);
+  fonts?.ready?.then(schedule, () => {});
+
+  const isCompact = () => doc.body.classList.contains('density-compact');
+  let compact = isCompact();
+  const densityObserver = new view.MutationObserver(() => {
+    if (isCompact() === compact) return;
+    compact = isCompact();
+    schedule();
+  });
+  densityObserver.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+
+  return () => {
+    fonts?.removeEventListener?.('loadingdone', schedule);
+    densityObserver.disconnect();
+    if (frame) view.cancelAnimationFrame(frame);
+  };
+}
+
 export {
   QUICK_ACCESS_TAB_EDGE_INSET,
   SENSOR_VALUE_MIN_FONT_PX,
   getFittedSensorValueFontSize,
+  watchSensorValueFitInputs,
   getNextQuickAccessFocusIndex,
   getNextQuickAccessFocusIndexByLayout,
   getQuickAccessTabOverflow,

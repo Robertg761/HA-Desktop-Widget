@@ -487,6 +487,18 @@ async function expectTilesLaidOut(ctx) {
 }
 
 // The same, and every part of every tile inside it.
+// A reading too wide for its tile is drawn smaller, down to 10px, before it is cut with an
+// ellipsis. One cut while still larger was fitted in the fallback face before the display font
+// arrived, or before the density changed, and never fitted again. Waited for, since the fit
+// follows the font's arrival by a frame.
+async function expectSensorReadingsFitted(ctx) {
+  await ctx.waitForExpression(
+    `[...document.querySelectorAll('#quick-controls .control-sensor-value')].every((value) =>
+      value.scrollWidth <= value.clientWidth + 1 || parseFloat(getComputedStyle(value).fontSize) <= 10)`,
+    'every sensor reading whole, or at its smallest size'
+  );
+}
+
 async function expectTilesInOrder(ctx) {
   await ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its content');
   await expectTilesLaidOut(ctx);
@@ -2242,7 +2254,10 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { density: 'compact' },
     config: edgePage,
-    setup: expectTilesInOrder,
+    setup: async (ctx) => {
+      await expectTilesInOrder(ctx);
+      await expectSensorReadingsFitted(ctx);
+    },
   },
   // The two number sensors with their value at the largest size, one of them under a name on two
   // lines: the tile grows, the line stays below the reading.
@@ -2655,6 +2670,7 @@ const scenes = [
     size: FORMAT_SIZE,
     ui: language ? { language } : {},
     config: formatsPage,
+    setup: expectSensorReadingsFitted,
   })),
   {
     name: 'format-palette-fr',
