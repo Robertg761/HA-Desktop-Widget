@@ -1193,6 +1193,22 @@ describe('UI Utilities', () => {
       expect(tooltips.length).toBe(1);
     });
 
+    // What it opens is a tooltip that repeats the dot's own label, not a menu: announced with
+    // aria-haspopup, it was a menu button whose menu never came.
+    it('is a button described by its tooltip, not a menu button', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(statusIndicator.getAttribute('role')).toBe('button');
+
+      [false, true].forEach((open) => {
+        statusIndicator.click();
+        expect(tooltip.classList.contains('visible')).toBe(!open);
+        expect(statusIndicator.hasAttribute('aria-haspopup')).toBe(false);
+        expect(statusIndicator.hasAttribute('aria-expanded')).toBe(false);
+      });
+      expect(tooltip.getAttribute('role')).toBe('tooltip');
+    });
+
     it('should show tooltip on mouseenter and hide on mouseleave', () => {
       uiUtils.initializeConnectionStatusTooltip();
       statusIndicator.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));

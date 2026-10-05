@@ -2199,7 +2199,6 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   connectionStatusTooltipTarget = target;
   if (pinned) connectionStatusTooltipPinned = true;
   target.setAttribute('aria-describedby', tooltip.id);
-  target.setAttribute('aria-expanded', 'true');
   tooltip.classList.add('visible');
   tooltip.setAttribute('aria-hidden', 'false');
   positionConnectionStatusTooltip(target);
@@ -2210,7 +2209,6 @@ function hideConnectionStatusTooltip({ force = false } = {}) {
   if (connectionStatusTooltipPinned && !force) return;
   if (connectionStatusTooltipTarget) {
     connectionStatusTooltipTarget.removeAttribute('aria-describedby');
-    connectionStatusTooltipTarget.setAttribute('aria-expanded', 'false');
   }
   connectionStatusTooltipTarget = null;
   connectionStatusTooltipPinned = false;
@@ -2322,10 +2320,9 @@ function initializeConnectionStatusTooltip() {
     ensureConnectionStatusTooltip();
     status.setAttribute('tabindex', '0');
     status.setAttribute('role', 'button');
-    status.setAttribute('aria-haspopup', 'true');
-    if (!status.hasAttribute('aria-expanded')) {
-      status.setAttribute('aria-expanded', 'false');
-    }
+    // No aria-haspopup or aria-expanded: what opens is a tooltip (role=tooltip), which repeats the
+    // label the dot already has and is tied to it by aria-describedby. Announced as a menu button,
+    // it promised a menu that never came.
     bindConnectionStatusHandlers(status);
   } catch (error) {
     console.error('Error initializing connection status tooltip:', error);
