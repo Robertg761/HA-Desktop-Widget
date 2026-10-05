@@ -21,9 +21,9 @@ Once per UTC day, packaged builds `POST` this to `https://usage.hadesktopwidget.
 - The Worker never reads or stores IP addresses or user agents, and Workers
   Logs are off in `wrangler.toml`.
 
-Users turn it off with **Settings → Updates → Count this install**, or by
-setting `DO_NOT_TRACK=1` or `HA_WIDGET_DISABLE_USAGE_PING=1` in the
-environment. Development, demo and smoke-test runs never send it.
+It is off by default: users opt in with **Settings → Updates → Count this
+install**. Setting `DO_NOT_TRACK=1` or `HA_WIDGET_DISABLE_USAGE_PING=1` in the
+environment stops it even when the setting is on. Development, demo and smoke-test runs never send it.
 
 ## Deploying
 

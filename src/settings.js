@@ -5524,7 +5524,7 @@ async function openSettings(uiHooks) {
       allowPrereleaseUpdates.checked = state.CONFIG.updates?.allowPrerelease === true;
     }
     if (anonymousUsagePing) {
-      anonymousUsagePing.checked = state.CONFIG.updates?.anonymousUsagePing !== false;
+      anonymousUsagePing.checked = state.CONFIG.updates?.anonymousUsagePing === true;
     }
 
     // Initialize "Start at login" checkbox

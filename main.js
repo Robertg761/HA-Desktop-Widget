@@ -1980,11 +1980,11 @@ function ensureUpdateConfigDefaults(target) {
   if (!target || typeof target !== 'object') return target;
   target.updates = {
     allowPrerelease: false,
-    anonymousUsagePing: true,
+    anonymousUsagePing: false,
     ...(target.updates || {}),
   };
   target.updates.allowPrerelease = target.updates.allowPrerelease === true;
-  target.updates.anonymousUsagePing = target.updates.anonymousUsagePing !== false;
+  target.updates.anonymousUsagePing = target.updates.anonymousUsagePing === true;
   return target;
 }
 
@@ -5432,7 +5432,7 @@ function loadConfig(options = {}) {
     quickAccessTileOptions: {},
     updates: {
       allowPrerelease: false,
-      anonymousUsagePing: true,
+      anonymousUsagePing: false,
     },
     popupHotkey: '', // Global hotkey to temporarily bring window to front while held
     popupHotkeyHideOnRelease: false, // Hide window when popup hotkey is released (instead of just restoring z-order)
@@ -12990,8 +12990,9 @@ function setupAutoUpdates() {
   }
 }
 
-// Anonymous install count (see src/usage-ping.cjs). Packaged builds only, so
-// development, demo and smoke-test runs never count as installs.
+// Anonymous install count (see src/usage-ping.cjs). Off unless the user turns it
+// on in Settings. Packaged builds only, so development, demo and smoke-test runs
+// never count as installs.
 function setupUsagePing() {
   if (!app.isPackaged || IS_SMOKE_TEST_MODE || IS_DEV_MODE) return;
   if (isUsagePingDisabledByEnv(process.env)) {
@@ -13005,7 +13006,7 @@ function setupUsagePing() {
       userDataDir: app.getPath('userData'),
       randomUUID: () => nodeCrypto.randomUUID(),
       fetchImpl: (url, init) => net.fetch(url, init),
-      isEnabled: () => getUpdatesConfig().anonymousUsagePing !== false,
+      isEnabled: () => getUpdatesConfig().anonymousUsagePing === true,
       appVersion: app.getVersion(),
       platform: process.platform,
       log,

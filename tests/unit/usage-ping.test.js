@@ -5,6 +5,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
 
 const {
   USAGE_PING_URL,
@@ -137,5 +138,20 @@ describe('anonymous usage ping', () => {
 
   test('utcDay uses the UTC calendar date', () => {
     expect(utcDay(Date.parse('2026-10-02T23:59:59-05:00'))).toBe('2026-10-03');
+  });
+
+  test('is off until the user turns it on', () => {
+    const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const start = mainSource.indexOf('function ensureUpdateConfigDefaults(');
+    const end = mainSource.indexOf('\n}\n', start) + 3;
+    expect(start).toBeGreaterThan(-1);
+    const context = vm.createContext({});
+    vm.runInContext(mainSource.slice(start, end), context);
+    const defaults = (config) => context.ensureUpdateConfigDefaults(config).updates;
+
+    expect(defaults({}).anonymousUsagePing).toBe(false);
+    expect(defaults({ updates: { allowPrerelease: true } }).anonymousUsagePing).toBe(false);
+    expect(defaults({ updates: { anonymousUsagePing: 'yes' } }).anonymousUsagePing).toBe(false);
+    expect(defaults({ updates: { anonymousUsagePing: true } }).anonymousUsagePing).toBe(true);
   });
 });
