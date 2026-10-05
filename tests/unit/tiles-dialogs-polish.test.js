@@ -385,7 +385,8 @@ describe('tile and device dialog polish', () => {
     });
 
     it('keeps the percentage after an Arabic state word in order, as a light shows it', () => {
-      // Bare, the digits after "\u0645\u0641\u062a\u0648\u062d" read right to left and the sign lands in front: "%70".
+      // Bare, the digits after the Arabic word for Open read right to left and the sign lands in
+      // front: "%70".
       i18n.setLocaleBootstrap({
         activeLocale: 'ar',
         messages: { Open: '\u0645\u0641\u062a\u0648\u062d', On: '\u062a\u0634\u063a\u064a\u0644' },

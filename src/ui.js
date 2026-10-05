@@ -15006,7 +15006,6 @@ function bindClimateRangeControls(root, entity, capabilities, onChange, unit = '
     describe(range);
     onChange(range);
   };
-  describe(confirmed);
   // A thumb the user is dragging or has focused keeps its value when Home Assistant reports a
   // change; it catches up once released or left.
   const isHeld = (input) => input === draggedInput || document.activeElement === input;
