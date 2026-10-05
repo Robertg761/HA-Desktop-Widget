@@ -164,6 +164,86 @@ describe('alert evaluator and the states no reading comes with', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  describe('a match that holds through an outage', () => {
+    const newStates = () => notify.mock.calls.map(([, , to]) => to);
+
+    it('does not tell again about a Specific State that was still true when the entity came back', () => {
+      build({ onSpecificState: true, targetState: 'on' });
+      evaluator.reset(states('sensor.door', 'off'));
+      for (const value of ['on', 'unavailable', 'on', 'unknown', 'unavailable', 'on']) {
+        evaluator.check('sensor.door', value);
+      }
+      expect(newStates()).toEqual(['on']);
+
+      // Once the condition really ends, the next match is news again.
+      evaluator.check('sensor.door', 'off');
+      evaluator.check('sensor.door', 'on');
+      expect(newStates()).toEqual(['on', 'on']);
+    });
+
+    it('tells about a match the entity came back from the outage in, when it was off before', () => {
+      build({ onSpecificState: true, targetState: 'on' });
+      evaluator.reset(states('sensor.door', 'on'));
+      evaluator.check('sensor.door', 'off');
+      evaluator.check('sensor.door', 'unavailable');
+      evaluator.check('sensor.door', 'on');
+      expect(newStates()).toEqual(['on']);
+    });
+
+    it('does not tell again about a threshold still crossed after an outage or a reconnect', () => {
+      build({ onNumericThreshold: true, threshold: 25, comparison: 'above' });
+      evaluator.reset(states('sensor.door', '20'));
+      evaluator.check('sensor.door', '26');
+      evaluator.check('sensor.door', 'unavailable');
+      evaluator.check('sensor.door', '26.1');
+      // Home Assistant restarts: the socket drops and the snapshot it comes back with still has
+      // the entity restoring.
+      evaluator.suspend();
+      evaluator.reconcile(states('sensor.door', 'unavailable'));
+      evaluator.check('sensor.door', '26.2');
+      expect(newStates()).toEqual(['26']);
+
+      evaluator.check('sensor.door', '20');
+      evaluator.check('sensor.door', '27');
+      expect(newStates()).toEqual(['26', '27']);
+    });
+
+    it('starts a wait over that an outage interrupted, since nobody can say the condition held', () => {
+      build({ onSpecificState: true, targetState: 'on', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', 'off'));
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(30 * 1000);
+      evaluator.check('sensor.door', 'unavailable');
+      jest.advanceTimersByTime(60 * 1000);
+      expect(notify).not.toHaveBeenCalled();
+
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(60 * 1000 - 1);
+      expect(notify).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      expect(newStates()).toEqual(['on']);
+
+      // Told about, the match then holds through the next outage like any other.
+      evaluator.check('sensor.door', 'unavailable');
+      evaluator.check('sensor.door', 'on');
+      jest.advanceTimersByTime(60 * 1000);
+      expect(notify).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes unavailable and unknown as one outage for a rule about going unavailable', () => {
+      build({ onSpecificState: true, targetState: 'unavailable' });
+      evaluator.reset(states('sensor.door', 'on'));
+      evaluator.check('sensor.door', 'unavailable');
+      evaluator.check('sensor.door', 'unknown');
+      evaluator.check('sensor.door', 'unavailable');
+      expect(newStates()).toEqual(['unavailable']);
+
+      evaluator.check('sensor.door', 'on');
+      evaluator.check('sensor.door', 'unavailable');
+      expect(newStates()).toEqual(['unavailable', 'unavailable']);
+    });
+  });
+
   it('matches a typed label against the raw state', () => {
     build({ onSpecificState: true, targetState: 'Not home' });
     evaluator.reset(states('sensor.door', 'home'));

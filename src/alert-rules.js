@@ -104,6 +104,26 @@ function isUsableState(rule, value) {
   return !!rule && (!!rule.onStateChange || matchesTargetState(rule, value));
 }
 
+// An entity without a reading has not left a Specific State or threshold condition, unless the rule
+// names that very state: a lamp that drops off Wi-Fi for a second, or every entity while Home
+// Assistant restarts, is still on as far as anyone knows. So the outage keeps a match already told
+// about, and the entity coming back in the same condition is not news. (A State Change rule judges
+// an outage against its last real reading instead.)
+const outageLeavesMatch = (rule, value) =>
+  !!rule && !rule.onStateChange && NO_READING_STATES.has(value) && !matchesTargetState(rule, value);
+
+const disarm = (record) => {
+  clearTimeout(record.timer);
+  record.timer = null;
+  record.matched = false;
+};
+
+// A duration still being waited out when the entity goes offline starts over once it is back:
+// nobody can say the condition held through the outage.
+const stopWaiting = (record) => {
+  if (record.timer) disarm(record);
+};
+
 function matchesTargetState(rule, value) {
   const target = normalizeAlertState(rule.targetState);
   return !!rule.onSpecificState && !!target && normalizeAlertState(value) === target;
@@ -199,15 +219,12 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
       }
       // A fresh snapshot may end a condition while disconnected. Keep cooldowns and already
       // notified matches that still hold, but take the snapshot as the new change baseline.
-      const valid = isUsableState(rule, value);
-      if (
-        !valid ||
+      if (outageLeavesMatch(rule, value)) stopWaiting(record);
+      else if (
+        !isUsableState(rule, value) ||
         (rule?.onStateChange ? value !== record.previous : !matchesAlert(rule || {}, value))
-      ) {
-        clearTimeout(record.timer);
-        record.timer = null;
-        record.matched = false;
-      }
+      )
+        disarm(record);
       record.previous = value;
       if (hasReading(value)) record.lastReal = value;
     });
@@ -251,6 +268,10 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     }
     let previous = record.previous;
     record.previous = value;
+    if (outageLeavesMatch(rule, value)) {
+      stopWaiting(record);
+      return;
+    }
     const offline = !!rule.onStateChange && NO_READING_STATES.has(value);
     if (rule.onStateChange && NO_READING_STATES.has(previous)) {
       // Unavailable to unknown, or back, is the same outage: its waiting period, or the news
@@ -258,9 +279,7 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
       if (offline) return;
       // Back from an outage. News of it that was still waiting is moot, and the entity is judged
       // against the last real reading: a lamp that was on and is on again has not changed.
-      clearTimeout(record.timer);
-      record.timer = null;
-      record.matched = false;
+      disarm(record);
       previous = record.lastReal;
     }
     if (hasReading(value)) record.lastReal = value;
@@ -269,11 +288,7 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
     const silenced = offline && rule.notifyOnUnavailable === false;
     const matched =
       valid && !silenced && (rule.onStateChange ? changed : matchesAlert(rule, value));
-    if (rule.onStateChange ? changed || !valid : !matched) {
-      clearTimeout(record.timer);
-      record.timer = null;
-      record.matched = false;
-    }
+    if (rule.onStateChange ? changed || !valid : !matched) disarm(record);
     if (!matched || record.matched) return;
     record.matched = true;
     arm(id, record, rule, previous, offline);
