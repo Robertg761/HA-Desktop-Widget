@@ -60,6 +60,49 @@ describe('settings search', () => {
     expect(toggle.onclick).toHaveBeenCalledTimes(1);
     expect(section.classList.contains('collapsed')).toBe(false);
   });
+  const titles = (results) => results.map((button) => button.firstChild.textContent);
+
+  test('lists a group once for rows it found only by the group name', () => {
+    // "theme" listed every row under Seasonal Themes, a holiday each, because the caption had the
+    // word; Mode came along for the Theme caption.
+    const results = search('theme');
+    expect(titles(results)).toEqual(['Theme', 'Seasonal Themes', 'Appearance']);
+    expect(results[1].lastChild.textContent).toBe('Appearance');
+  });
+
+  test('a group result opens its page on the group, ringing the whole group', () => {
+    search('theme')
+      .find((button) => button.firstChild.textContent === 'Seasonal Themes')
+      .click();
+    const caption = [...modal.querySelectorAll('.settings-group-caption')].find(
+      (node) => node.textContent.trim() === 'Seasonal Themes'
+    );
+    const group = caption.closest('.settings-group');
+    expect(document.getElementById('personalization-tab').classList.contains('active')).toBe(true);
+    expect(group.classList.contains('settings-search-target')).toBe(true);
+    expect(group.contains(document.activeElement)).toBe(true);
+  });
+
+  test('keeps a row whose own name matches, beside its group', () => {
+    // Holiday colors names colour itself; the colour editor rows only sit under Colors.
+    const found = titles(search('color'));
+    expect(found).toContain('Holiday colors');
+    expect(found).toContain('Colors');
+    expect(found).not.toContain('Hex');
+  });
+
+  test('finds a button by its own label, not by the help of the row it sits in', () => {
+    // Export settings and Import settings each matched "hotkey" through their row's sentence
+    // "hotkeys and profile sync stay on this computer", under the row that says it.
+    const found = titles(search('hotkey'));
+    expect(found).toContain('Export and import');
+    expect(found).not.toContain('Export settings');
+    expect(found).not.toContain('Import settings');
+    expect(titles(search('export'))).toEqual(
+      expect.arrayContaining(['Export and import', 'Export settings'])
+    );
+  });
+
   test('uses current translated labels and does not index credentials', () => {
     document.querySelector('label[for="ha-token"]').textContent = 'Clé secrète';
     document.getElementById('ha-token').value = 'secret-do-not-index';
@@ -402,7 +445,8 @@ describe('settings search', () => {
         1
       );
       const hits = titles(search('readability'));
-      expect(hits).toContain('Layout density');
+      // The Readability group, whose rows (Layout density among them) it names, is one result too.
+      expect(hits).toContain('Readability');
       expect(hits).not.toContain('Mode');
     });
 
