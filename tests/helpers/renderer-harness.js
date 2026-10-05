@@ -347,12 +347,16 @@ function createRendererHarness() {
 
       // The renderer tells main it is ready when init() is done; until then the panel, the toasts
       // and the status are still being drawn. If init() fails instead, the renderer logs why.
+      // The bridge is wrapped, not given a new implementation, so whatever configureApi set up for
+      // it still answers, a one-off answer included, and the call is still seen.
       const initDone = new Promise((resolve, reject) => {
-        const signalReady = electronAPI.signalRendererReady.getMockImplementation();
-        electronAPI.signalRendererReady.mockImplementation((...args) => {
-          resolve();
-          return signalReady?.(...args);
-        });
+        const signalReady = electronAPI.signalRendererReady;
+        if (typeof signalReady === 'function') {
+          electronAPI.signalRendererReady = jest.fn((...args) => {
+            resolve();
+            return signalReady(...args);
+          });
+        }
         log.error.mockImplementation((message, error) => {
           if (message === 'Error in DOMContentLoaded handler:') reject(error);
         });
