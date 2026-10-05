@@ -89,6 +89,35 @@ describe('German register and terms', () => {
   });
 });
 
+describe('punctuation and register of the other packs', () => {
+  // Each pack writes its marks one way. Chinese uses full-width punctuation beside its characters
+  // and addresses the reader as 你, French uses the straight apostrophe the rest of the pack uses,
+  // and Spanish names the Settings panel "Configuración" (its values are "ajustes").
+  it('writes Chinese punctuation full-width and addresses the reader as 你', () => {
+    const offenders = currentEntries(readPack('zh'))
+      .filter(
+        ([, text]) => /[\u4e00-\u9fff][,!:;?]|[,!:;?][\u4e00-\u9fff]/.test(text) || /您/.test(text)
+      )
+      .map(([key, text]) => `${key.slice(0, 60)} => ${text}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('writes the French apostrophe straight', () => {
+    const offenders = currentEntries(readPack('fr'))
+      .filter(([, text]) => /[’‘]/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+
+  it('names the Spanish Settings panel Configuración', () => {
+    // macOS's own "Ajustes del Sistema" is the name of that app, not of this panel.
+    const offenders = currentEntries(readPack('es'))
+      .filter(([, text]) => /\ben Ajustes\b(?! del Sistema)/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the palette hint for locks and alarms', () => {
   const normalize = (text) =>
     String(text)
