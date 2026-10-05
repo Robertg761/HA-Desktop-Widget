@@ -344,11 +344,16 @@ has to read correctly on both sides of the release. Publish exactly what `main` 
 folder that may be stale or have uncommitted edits:
 
 ```bash
-git fetch origin
-rm -rf /tmp/ha-site && mkdir -p /tmp/ha-site
-git archive origin/main website | tar -x -C /tmp/ha-site   # exactly what main holds
-cp -r website/.vercel /tmp/ha-site/website/                 # the link `vercel link` made
-(cd /tmp/ha-site/website && vercel deploy --prod)
+(
+  set -euo pipefail # any failed step, a fetch included, stops before the deploy
+  git fetch origin
+  rm -rf /tmp/ha-site # one command a line: set -e ignores a failure on the left of &&
+  mkdir -p /tmp/ha-site
+  git archive origin/main website | tar -x -C /tmp/ha-site # exactly what main holds
+  cp -r website/.vercel /tmp/ha-site/website/              # the link `vercel link` made
+  cd /tmp/ha-site/website
+  vercel deploy --prod
+)
 ```
 
 Then run the Website deploy check workflow, which checks out `main` and compares every live page,
