@@ -58,6 +58,32 @@ describe('the control recipe', () => {
       expect(read('styles.css')).not.toMatch(/\[id\*=/);
     });
 
+    // The connection panel's own neutral is solid: the dialogs' transparent one reads as disabled
+    // on its red error tint. The Cancel shown while browser authorization waits is marked neutral
+    // and must look like the panel's other second actions, not like a dialog's.
+    it.each(['background', 'color', 'border-color'])(
+      'keeps a neutral button in the connection panel in the panel’s %s',
+      (property) => {
+        render(
+          '',
+          `<div class="widget-state-panel widget-state-error"><div class="widget-state-actions">
+            <button class="btn btn-secondary btn-neutral">Cancel</button>
+            <button class="btn btn-secondary">Open Settings</button>
+          </div></div>`
+        );
+        const [cancel, settings] = document.querySelectorAll('button');
+
+        expect(cascadedDeclaration(cancel, property).value).toBe(
+          cascadedDeclaration(settings, property).value
+        );
+        cancel.dataset.hover = '';
+        settings.dataset.hover = '';
+        expect(cascadedDeclaration(cancel, property).value).toBe(
+          cascadedDeclaration(settings, property).value
+        );
+      }
+    );
+
     it("marks every Cancel and Close in the window's markup as neutral", () => {
       document.body.innerHTML = read('index.html').replace(
         /^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g,

@@ -9556,14 +9556,18 @@ body.theme-light:not(.high-contrast)
 }
 
 /* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled, so
-   the panel's second action is the neutral button the dialogs use for Cancel. */
-.widget-state-actions .btn-secondary {
+   the panel's second action is the neutral button the dialogs use for Cancel. It stays solid when
+   the button is marked .btn-neutral (the Cancel shown while browser authorization waits): the
+   dialogs' transparent neutral reads as disabled on the red panel just the same. */
+.widget-state-actions .btn-secondary,
+.widget-state-actions .btn-secondary.btn-neutral {
   background: var(--tile-bg);
   border-color: var(--tile-border-hover);
   color: var(--text-primary);
 }
 
-.widget-state-actions .btn-secondary:hover {
+.widget-state-actions .btn-secondary:hover,
+.widget-state-actions .btn-secondary.btn-neutral:hover {
   background: var(--tile-bg-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
