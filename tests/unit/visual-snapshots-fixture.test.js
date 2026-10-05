@@ -384,6 +384,19 @@ describe('visual snapshot scenes', () => {
     }
   });
 
+  it('fills the notifications panel in no scene by hand', () => {
+    // Rows, a count and a footer written by a scene are not what the app draws, so they can hide a
+    // regression; the scenes that open the panel show all of them over the real subscription.
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../scripts/visual-snapshots/scenes.cjs'),
+      'utf8'
+    );
+    expect(source).not.toMatch(/persistent-notifications-(list|summary|toolbar|empty)/);
+    expect(scenes.map((scene) => scene.name)).toEqual(
+      expect.arrayContaining(['notifications-markdown', 'ar-dialog-notifications'])
+    );
+  });
+
   it('draws the Arabic notifications over the real subscription, not with rows made by hand', async () => {
     // Hand-made rows held plain text, so they hid that the Markdown paragraphs the app draws read
     // in the wrong order in Arabic.

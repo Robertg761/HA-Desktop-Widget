@@ -726,7 +726,8 @@ async function showToasts(ctx) {
 // The notifications Home Assistant holds arrive over the app's subscription: the bell shows them and
 // the panel draws their Markdown with its own rows, English text as Home Assistant writes it under
 // whatever language the app is in. Rows drawn by hand once hid that Arabic scrambled the Markdown
-// paragraphs, so the scenes that are about the rows take this way.
+// paragraphs, so every scene of the panel takes this way. Two notifications give it its footer too,
+// the count and Dismiss all, as the app writes them.
 async function openNotifications(ctx) {
   ctx.showNotifications();
   await ctx.waitForSelector('#persistent-notifications-btn:not(.hidden)');
@@ -734,33 +735,6 @@ async function openNotifications(ctx) {
   await ctx.waitForSelector(
     '#persistent-notifications-modal:not(.hidden) .persistent-notification-message a'
   );
-}
-
-// The footer a long list gets: how many there are, and one way to clear them. This scene fills the
-// panel by hand, with the English the app writes, and so has no bell in the header.
-async function showNotificationsFooter(ctx) {
-  await ctx.ev(`(() => {
-    const notes = [
-      ['Front door left open.', 'The front door has been open for 10 minutes. Check /config/automations.yaml.'],
-      ['Backup finished', 'Next run: tomorrow at 03:00 (home-assistant_2026-10-04.tar).'],
-    ];
-    const list = document.getElementById('persistent-notifications-list');
-    list.replaceChildren(...notes.map(([title, message]) => {
-      const item = document.createElement('div');
-      item.className = 'persistent-notification-item';
-      item.innerHTML =
-        '<div class="persistent-notification-content"><div class="persistent-notification-title"></div>' +
-        '<div class="persistent-notification-message"></div><div class="persistent-notification-time">5m ago</div></div>' +
-        '<button type="button" class="btn btn-secondary btn-sm persistent-notification-dismiss">Dismiss</button>';
-      item.querySelector('.persistent-notification-title').textContent = title;
-      item.querySelector('.persistent-notification-message').textContent = message;
-      return item;
-    }));
-    document.getElementById('persistent-notifications-empty').classList.add('hidden');
-    document.getElementById('persistent-notifications-summary').textContent = '2 notifications';
-    document.getElementById('persistent-notifications-toolbar').classList.remove('hidden');
-    document.getElementById('persistent-notifications-modal').classList.remove('hidden');
-  })()`);
 }
 
 async function openDiagnostics(ctx) {
@@ -1759,10 +1733,6 @@ const scenes = [
     },
   },
   { name: 'ar-dialog-notifications', ui: { language: 'ar' }, setup: openNotifications },
-  {
-    name: 'dialog-notifications-footer',
-    setup: showNotificationsFooter,
-  },
   { name: 'ar-dialog-diagnostics', ui: { language: 'ar' }, setup: openDiagnostics },
   { name: 'hi-main', ui: { language: 'hi' } },
   {
