@@ -14831,13 +14831,23 @@ body.theme-light
 }
 
 /* Show passphrase is a toggle whose label stays put (aria-pressed says which way it is set), so
-   being pressed has to show: a deeper accent fill with a full accent edge, the way a selected chip
+   its state has to show. Its eye is crossed out while the passphrase is hidden and open while it
+   shows, and pressed it takes a deeper accent fill with a full accent edge, the way a selected chip
    is drawn. Unpressed and pressed were pixel for pixel the same, with the passphrase in plain text
-   beside a button that still offered to show it. */
+   beside a button that still offered to show it; an accent ring inside the edge then read as a
+   second focus ring beside the focused field. */
+#profile-sync-passphrase-reveal[aria-pressed='true'] .passphrase-reveal-icon-hidden,
+#profile-sync-passphrase-reveal:not([aria-pressed='true']) .passphrase-reveal-icon-shown {
+  display: none;
+}
+
+#profile-sync-passphrase-reveal > svg {
+  flex: none;
+}
+
 #profile-sync-passphrase-reveal[aria-pressed='true'] {
   background: rgba(var(--accent-rgb), 0.3);
   border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 #settings-modal .profile-sync-passphrase-confirm {

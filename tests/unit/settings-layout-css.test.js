@@ -127,20 +127,30 @@ describe('Settings layout', () => {
     // pixel for pixel the same either way.
     const button = (pressed) => {
       render(
-        `<div id="settings-modal"><button type="button" id="profile-sync-passphrase-reveal" class="btn btn-secondary" aria-pressed="${pressed}">Show passphrase</button></div>`
+        `<div id="settings-modal"><button type="button" id="profile-sync-passphrase-reveal" class="btn btn-secondary" aria-pressed="${pressed}"><svg class="passphrase-reveal-icon-hidden"></svg><svg class="passphrase-reveal-icon-shown"></svg><span>Show passphrase</span></button></div>`
       );
       const reveal = document.getElementById('profile-sync-passphrase-reveal');
-      return ['background', 'border-color', 'box-shadow'].map((property) =>
-        resolvedValue(reveal, property)
-      );
+      return {
+        background: resolvedValue(reveal, 'background'),
+        border: resolvedValue(reveal, 'border-color'),
+        ring: resolvedValue(reveal, 'box-shadow'),
+        hiddenEye: resolvedValue(reveal.querySelector('.passphrase-reveal-icon-hidden'), 'display'),
+        openEye: resolvedValue(reveal.querySelector('.passphrase-reveal-icon-shown'), 'display'),
+      };
     };
 
-    it('looks pressed while the passphrase is shown', () => {
-      const [background, border, ring] = button(true);
-      const [plainBackground, plainBorder] = button(false);
-      expect(background).not.toBe(plainBackground);
-      expect(border).not.toBe(plainBorder);
-      expect(ring).toMatch(/^inset 0 0 0 1px /);
+    it('looks pressed while the passphrase is shown, with no ring like a focus ring', () => {
+      const pressed = button(true);
+      const plain = button(false);
+      expect(pressed.background).not.toBe(plain.background);
+      expect(pressed.border).not.toBe(plain.border);
+      // An accent ring inside the edge read as a second focus ring beside the focused field.
+      expect(pressed.ring || '').not.toMatch(/inset/);
+    });
+
+    it('shows an open eye while the passphrase is shown, and a crossed-out one while hidden', () => {
+      expect(button(true)).toMatchObject({ hiddenEye: 'none', openEye: null });
+      expect(button(false)).toMatchObject({ hiddenEye: null, openEye: 'none' });
     });
 
     it('keeps the pressed look in forced colours and high contrast', () => {
