@@ -18,6 +18,8 @@
  *   SNAPSHOT_DEBUG_PORT   the app's remote debugging port (default 9333); give parallel runs on
  *                         one machine different ports
  *   SNAPSHOT_SCENES       only run scenes whose name matches this regular expression
+ *   SNAPSHOT_SHARD        k/n: of the scenes left, only run the k-th of n contiguous parts, so CI
+ *                         can split the suite across jobs (see shard.cjs)
  *   SNAPSHOT_REDUCED_MOTION  set to 1 to run with the OS's reduced-motion setting on, as the
  *                         Windows and macOS runners do
  */
@@ -42,6 +44,7 @@ const {
   buildSubscriptionEvents,
 } = require('./fixture.cjs');
 const { scenes } = require('./scenes.cjs');
+const { parseShard, selectScenes } = require('./shard.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const OUT_DIR = path.resolve(process.argv[2] || path.join(ROOT, 'visual-snapshots'));
@@ -190,8 +193,20 @@ async function listTargets() {
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const platformTag = { darwin: 'macos', win32: 'windows' }[process.platform] || 'linux';
-  const selected = scenes.filter((scene) => !SCENE_FILTER || SCENE_FILTER.test(scene.name));
-  if (!selected.length) throw new Error(`No scene matches ${SCENE_FILTER}`);
+  const shard = parseShard(process.env.SNAPSHOT_SHARD);
+  const { matched, selected } = selectScenes(scenes, { filter: SCENE_FILTER, shard });
+  if (!matched.length) throw new Error(`No scene matches ${SCENE_FILTER}`);
+  if (shard) {
+    const part = `Shard ${shard.index}/${shard.count}`;
+    // A filter can match fewer scenes than there are shards; the shards after them have nothing.
+    if (!selected.length) {
+      console.log(`${part}: no scenes (${matched.length} match)`);
+      return;
+    }
+    console.log(
+      `${part}: ${selected.length} of ${matched.length} scenes, ${selected[0].name} to ${selected.at(-1).name}`
+    );
+  }
 
   const server = await startMockHomeAssistant({
     token: TOKEN,
