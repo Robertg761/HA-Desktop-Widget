@@ -33,6 +33,33 @@ files:
   - '!node_modules/usocket/**/*'
 asar: true
 compression: normal
+# Chromium draws its own interface (the right-click menu in a text field, the spelling menu, the
+# dialogs it opens) from one locale .pak file per language, and Electron ships all 55 of them,
+# about 46 MB per install. These are the ones that match the app's seven languages (APP_LANGUAGES in
+# src/i18n-main.cjs: en, de, es, fr, ar, hi, zh), including the regional paks Chromium sends those
+# languages to. Checked against Electron 43 on Linux by setting LANG and reading app.getLocale():
+#   es-419  every Latin American Spanish system (es-MX, es-AR, es-US, ...); es-ES gets es
+#   zh-TW   zh-HK, zh-MO and Traditional Chinese; zh-CN covers zh-SG and Simplified Chinese
+#   en-GB   en-AU, en-CA, en-IN, en-NZ and en-ZA; en-US is every other English, and the fallback
+#           for a system language with no pak, which Chromium cannot start without
+# de-AT, de-CH, fr-CA, fr-BE, ar-EG and hi-IN need nothing extra: they resolve to de, fr, ar and
+# hi. A system language the app has no pak for (pt-BR, ja) gets Chromium's English menus, the same
+# language its own text is in. Which language the app itself shows does not depend on these files;
+# detectSystemLocale in src/i18n-main.cjs reads the operating system. electron-builder keeps a pak
+# whose name is an entry or the part of one before its dash, so "es-419" would keep es.pak by
+# itself; both are listed so the intent reads plainly. Windows and Linux use this list. macOS has
+# its own under `mac`, because it names the same choice with underscores.
+electronLanguages:
+  - en-US
+  - en-GB
+  - de
+  - es
+  - es-419
+  - fr
+  - ar
+  - hi
+  - zh-CN
+  - zh-TW
 publish:
   - provider: github
     owner: Robertg761
@@ -50,6 +77,53 @@ mac:
     # runtime, after the Dock has already drawn (and bounced) the icon at every launch.
     LSUIElement: true
   x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
+  # The same languages as the top-level electronLanguages, as macOS names them: the Electron
+  # framework keeps a locale.pak in a folder per language ("es_419.lproj", "en_GB.lproj"), and
+  # electron-builder matches an entry against that folder name, so the dashes above would not match.
+  # Each language also has _FEMININE, _MASCULINE and _NEUTER folders, holding paks of 18 bytes in
+  # every language kept here. They cost nothing, and Chromium may look for them next to its
+  # language's folder, so they stay.
+  electronLanguages:
+    - en
+    - en_FEMININE
+    - en_MASCULINE
+    - en_NEUTER
+    - en_GB
+    - en_GB_FEMININE
+    - en_GB_MASCULINE
+    - en_GB_NEUTER
+    - de
+    - de_FEMININE
+    - de_MASCULINE
+    - de_NEUTER
+    - es
+    - es_FEMININE
+    - es_MASCULINE
+    - es_NEUTER
+    - es_419
+    - es_419_FEMININE
+    - es_419_MASCULINE
+    - es_419_NEUTER
+    - fr
+    - fr_FEMININE
+    - fr_MASCULINE
+    - fr_NEUTER
+    - ar
+    - ar_FEMININE
+    - ar_MASCULINE
+    - ar_NEUTER
+    - hi
+    - hi_FEMININE
+    - hi_MASCULINE
+    - hi_NEUTER
+    - zh_CN
+    - zh_CN_FEMININE
+    - zh_CN_MASCULINE
+    - zh_CN_NEUTER
+    - zh_TW
+    - zh_TW_FEMININE
+    - zh_TW_MASCULINE
+    - zh_TW_NEUTER
   # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
   # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
   # @nornagon/put). It is only required lazily by src/portal-global-shortcuts.cjs on

@@ -252,3 +252,121 @@ describe('package metadata', () => {
     expect(config.mac.extendInfo.LSUIElement).toBe(true);
   });
 });
+
+describe('the Chromium locales that ship', () => {
+  const { APP_LANGUAGES } = require('../../src/i18n-main.cjs');
+  const electronLocales = path.join(
+    path.dirname(require.resolve('electron/package.json')),
+    'dist',
+    'locales'
+  );
+  const hasElectronLocales = fs.existsSync(electronLocales);
+  const itWithElectron = hasElectronLocales ? it : it.skip;
+
+  /**
+   * Which of a folder's locale files electron-builder keeps for a list of wanted languages, by the
+   * rule in app-builder-lib's ElectronFramework.js: a file stays when its name is a wanted entry,
+   * or the part of one before a dash or an underscore ("es" stays for "es-419").
+   */
+  function keptBy(wanted, names, extension = '.pak') {
+    const wantedLower = wanted.map((entry) => entry.trim().toLowerCase());
+    return names
+      .filter((file) => path.extname(file) === extension)
+      .filter((file) => {
+        const language = path.basename(file, extension).toLowerCase();
+        return wantedLower.some(
+          (entry) =>
+            entry === language ||
+            entry.startsWith(`${language}-`) ||
+            entry.startsWith(`${language}_`)
+        );
+      })
+      .map((file) => path.basename(file, extension))
+      .sort();
+  }
+
+  it('is a list, so Windows and Linux both use it, and macOS has a list of its own', () => {
+    expect(Array.isArray(config.electronLanguages)).toBe(true);
+    expect(config.win.electronLanguages).toBeUndefined();
+    expect(config.linux.electronLanguages).toBeUndefined();
+    expect(Array.isArray(config.mac.electronLanguages)).toBe(true);
+  });
+
+  it('keeps exactly the paks for the languages the app has, and the regional ones Chromium maps them to', () => {
+    expect([...config.electronLanguages].sort()).toEqual(
+      ['ar', 'de', 'en-GB', 'en-US', 'es', 'es-419', 'fr', 'hi', 'zh-CN', 'zh-TW'].sort()
+    );
+  });
+
+  it('has a pak for every language the app has, and for no other', () => {
+    const languages = config.electronLanguages.map((entry) => entry.split('-')[0]);
+    for (const language of APP_LANGUAGES) expect(languages).toContain(language);
+    for (const language of languages) expect(APP_LANGUAGES).toContain(language);
+    // Chromium cannot start without its English pak, and falls back to it for any other language.
+    expect(config.electronLanguages).toContain('en-US');
+  });
+
+  // The paks Chromium picks for a system language, as read from app.getLocale() under Electron 43
+  // with LANG set to each (see the comment in electron-builder.yml).
+  it.each([
+    ['es-MX', 'es-419'],
+    ['es-AR', 'es-419'],
+    ['es-US', 'es-419'],
+    ['es-ES', 'es'],
+    ['zh-TW', 'zh-TW'],
+    ['zh-HK', 'zh-TW'],
+    ['zh-CN', 'zh-CN'],
+    ['zh-SG', 'zh-CN'],
+    ['en-GB', 'en-GB'],
+    ['en-AU', 'en-GB'],
+    ['en-CA', 'en-GB'],
+    ['en-US', 'en-US'],
+    ['de-AT', 'de'],
+    ['fr-CA', 'fr'],
+    ['ar-EG', 'ar'],
+    ['hi-IN', 'hi'],
+  ])('keeps the pak Chromium uses for %s (%s)', (_systemLocale, pak) => {
+    expect(keptBy(config.electronLanguages, [`${pak}.pak`])).toEqual([pak]);
+  });
+
+  itWithElectron('removes every other locale from Electron, and keeps one pak for each', () => {
+    const names = fs.readdirSync(electronLocales);
+    expect(names.length).toBeGreaterThan(50);
+    const kept = keptBy(config.electronLanguages, names);
+    expect(kept).toEqual(
+      ['ar', 'de', 'en-GB', 'en-US', 'es', 'es-419', 'fr', 'hi', 'zh-CN', 'zh-TW'].sort()
+    );
+    // Each name in the list is a file Electron has, so a typo cannot quietly keep nothing.
+    for (const entry of config.electronLanguages) expect(names).toContain(`${entry}.pak`);
+  });
+
+  it('keeps the same languages on macOS, named for its folders, with their gender variants', () => {
+    // macOS keeps a locale.pak in <language>.lproj; en-US is plain "en" there.
+    const folder = (entry) => (entry === 'en-US' ? 'en' : entry.replace('-', '_'));
+    const expected = config.electronLanguages.flatMap((entry) =>
+      ['', '_FEMININE', '_MASCULINE', '_NEUTER'].map((variant) => `${folder(entry)}${variant}`)
+    );
+    expect([...config.mac.electronLanguages].sort()).toEqual(expected.sort());
+    // The same rule keeps the folders and drops the rest.
+    const folders = [
+      'en.lproj',
+      'en_GB.lproj',
+      'es_419.lproj',
+      'es_419_FEMININE.lproj',
+      'zh_TW.lproj',
+      'pt_BR.lproj',
+      'ja.lproj',
+      'ja_NEUTER.lproj',
+    ];
+    expect(keptBy(config.mac.electronLanguages, folders, '.lproj')).toEqual(
+      ['en', 'en_GB', 'es_419', 'es_419_FEMININE', 'zh_TW'].sort()
+    );
+  });
+
+  it('names the app languages in the comment that explains the choice', () => {
+    const text = fs.readFileSync(path.join(root, 'electron-builder.yml'), 'utf8');
+    const comment = text.slice(0, text.indexOf('\nelectronLanguages:'));
+    for (const pak of ['es-419', 'zh-TW', 'en-GB', 'en-US']) expect(comment).toContain(pak);
+    expect(comment).toContain('detectSystemLocale');
+  });
+});
