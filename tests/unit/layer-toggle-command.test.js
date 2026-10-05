@@ -82,7 +82,8 @@ describe('the command that toggles the widget', () => {
   });
 
   it('is the executable when the name on PATH leads to another copy, or there is none', () => {
-    const execPath = path.join(path.sep, 'home', 'u', 'linux-unpacked', 'home-assistant-widget');
+    // Written the Linux way, as it is shown: a Windows path.join would add backslashes to quote.
+    const execPath = '/home/u/linux-unpacked/home-assistant-widget';
     expect(
       getToggleCommand({
         argv: ['widget'],
@@ -97,14 +98,14 @@ describe('the command that toggles the widget', () => {
   });
 
   it('keeps the profile this widget runs on, so the command reaches it', () => {
-    const execPath = path.join(path.sep, 'opt', 'x', 'home-assistant-widget');
+    const execPath = '/opt/x/home-assistant-widget';
     const run = (argv, isPackaged = true) =>
       getToggleCommand({
         argv,
         env: {},
         execPath,
         isPackaged,
-        appPath: path.join(path.sep, 'repo'),
+        appPath: '/repo',
         realpath: realpathFrom({}),
       });
     expect(run(['widget', '--user-data-dir=/tmp/test profile'])).toBe(
@@ -112,9 +113,7 @@ describe('the command that toggles the widget', () => {
     );
     expect(run(['widget', '--isolated-profile'])).toBe(`${execPath} --toggle`);
     // A run from source names the app folder, and --dev picks its own profile.
-    expect(run(['electron', '.', '--dev'], false)).toBe(
-      `${execPath} ${path.join(path.sep, 'repo')} --dev --toggle`
-    );
+    expect(run(['electron', '.', '--dev'], false)).toBe(`${execPath} /repo --dev --toggle`);
   });
 });
 
