@@ -6912,37 +6912,137 @@ describe('Settings + Config Integration', () => {
       duration.value = '90000';
       expect(press(duration).defaultPrevented).toBe(true);
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
+      expect(document.getElementById('alert-duration-error').textContent).toBe(
+        'Enter a whole number of seconds from 0 to 86400.'
       );
 
-      mockUiUtils.showToast.mockClear();
+      duration.value = '60';
+      duration.dispatchEvent(new Event('input', { bubbles: true }));
       expect(press(document.getElementById('alert-quiet-enabled')).defaultPrevented).toBe(false);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.getElementById('alert-duration-error')).toBeNull();
 
-      // Opening again must not stack a second listener.
+      // Opening again must not stack a second listener: one Enter saves once.
       settings.openAlertConfigModal('sensor.office_temperature');
-      document.getElementById('alert-duration').value = '90000';
       press(document.getElementById('alert-duration'));
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
       expect(modal.getAttribute('role')).toBe('dialog');
     });
 
-    test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
-      settings.openAlertConfigModal('sensor.office_temperature');
-      const duration = document.getElementById('alert-duration');
-      duration.value = '90000';
+    describe('a value that cannot be saved', () => {
+      const error = (id) => document.getElementById(`${id}-error`);
+      const chooseCondition = (value) => {
+        const condition = document.getElementById('alert-condition');
+        condition.value = value;
+        condition.dispatchEvent(new Event('change', { bubbles: true }));
+      };
 
-      await settings.saveAlert();
+      test('is said under its field, which is marked invalid and focused, not in a toast', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const duration = document.getElementById('alert-duration');
+        duration.value = '90000';
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
-      );
-      expect(document.activeElement).toBe(duration);
-      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        await settings.saveAlert();
+
+        expect(error('alert-duration').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(duration.getAttribute('aria-invalid')).toBe('true');
+        expect(duration.getAttribute('aria-describedby')).toBe(
+          'alert-duration-help alert-duration-error'
+        );
+        // In the field's own notes, under its help, so it stays in the field's grid cell.
+        expect(error('alert-duration').previousElementSibling.id).toBe('alert-duration-help');
+        expect(document.activeElement).toBe(duration);
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+        // Editing the value answers it.
+        duration.value = '120';
+        duration.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(error('alert-duration')).toBeNull();
+        expect(duration.hasAttribute('aria-invalid')).toBe(false);
+      });
+
+      test('is flagged with every other wrong field at once, and the first takes the focus', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('above');
+        document.getElementById('alert-threshold').value = '';
+        document.getElementById('alert-cooldown').value = '1.5';
+
+        await settings.saveAlert();
+
+        expect(error('alert-threshold').textContent).toBe('Enter a valid numeric threshold.');
+        expect(error('alert-cooldown').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(error('alert-duration')).toBeNull();
+        expect(document.activeElement).toBe(document.getElementById('alert-threshold'));
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      });
+
+      test('asks for a target state under the state field', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('specific-state');
+        const target = document.getElementById('target-state-input');
+        target.value = '  ';
+
+        await settings.saveAlert();
+
+        expect(error('target-state-input').textContent).toBe('Enter a target state.');
+        expect(document.activeElement).toBe(target);
+
+        // The field leaves with its condition, and takes its error with it.
+        chooseCondition('state-change');
+        expect(error('target-state-input')).toBeNull();
+      });
+
+      test('for quiet hours runs under the start and the end, and goes when either changes', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const start = document.getElementById('alert-quiet-start');
+        const end = document.getElementById('alert-quiet-end');
+        end.value = start.value;
+
+        await settings.saveAlert();
+
+        const message = error('alert-quiet-end');
+        expect(message.textContent).toBe('Choose different start and end times for quiet hours.');
+        expect(message.previousElementSibling).toBe(end.closest('label'));
+        expect(message.parentElement.id).toBe('alert-advanced-options');
+        expect(document.activeElement).toBe(end);
+
+        start.value = '23:00';
+        start.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).toBeNull();
+      });
+
+      test('is gone when quiet hours are switched off, and when the dialog opens again', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const end = document.getElementById('alert-quiet-end');
+        end.value = document.getElementById('alert-quiet-start').value;
+        document.getElementById('alert-duration').value = '-1';
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).not.toBeNull();
+
+        quietEnabled.checked = false;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+        expect(error('alert-duration')).not.toBeNull();
+
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(error('alert-duration')).toBeNull();
+        expect(document.getElementById('alert-duration').hasAttribute('aria-invalid')).toBe(false);
+      });
     });
   });
 
@@ -7727,7 +7827,9 @@ describe('Settings + Config Integration', () => {
           await settings.saveAlert();
 
           expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith('Enter a target state.', 'error');
+          expect(document.getElementById('target-state-input-error').textContent).toBe(
+            'Enter a target state.'
+          );
         });
       });
 

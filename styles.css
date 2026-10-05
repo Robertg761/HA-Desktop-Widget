@@ -11604,6 +11604,11 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   color: var(--warning-text);
 }
 
+/* An inline field error (field-errors.js) reads red in every dialog, not only in Settings. */
+.form-error {
+  color: var(--error-text);
+}
+
 .form-help code {
   background: var(--surface-2);
   /* No vertical padding, so the chip does not raise the line, and a hair of side padding, so the

@@ -398,6 +398,23 @@ const DIALOG_FITS = `(() => {
     [...content.querySelectorAll('.modal-header .close-btn, .modal-footer .btn')]
       .filter((element) => element.getClientRects().length > 0).every(inside);
 })()`;
+// The alert dialog's errors: under their own field and inside its column, the field marked invalid,
+// the first one focused, no toast, and the duration field still level with the cooldown beside it.
+const ALERT_ERRORS_UNDER_FIELDS = `(() => {
+  const box = (element) => element.getBoundingClientRect();
+  const under = (id) => {
+    const field = document.getElementById(id);
+    const error = document.getElementById(id + '-error');
+    if (!field || !error || field.getAttribute('aria-invalid') !== 'true') return false;
+    return box(error).top >= box(field).bottom && box(error).left >= box(field).left - 1 &&
+      box(error).right <= box(field).right + 1;
+  };
+  return under('alert-threshold') && under('alert-duration') &&
+    document.activeElement?.id === 'alert-threshold' &&
+    !document.querySelector('#toast-container .toast') &&
+    Math.abs(box(document.getElementById('alert-duration')).top -
+      box(document.getElementById('alert-cooldown')).top) < 1;
+})()`;
 const TILES_HOLD_THEIR_CONTENT = `[...document.querySelectorAll('#quick-controls .control-item')].every((tile) => {
   const box = tile.getBoundingClientRect();
   return [...tile.querySelectorAll('.control-icon, .control-name, .control-state')]
@@ -2388,6 +2405,24 @@ const scenes = [
     config: alertsConfig,
     setup: async (ctx) => {
       await openAlertConfig(ctx, 'binary_sensor.front_door');
+      await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
+    },
+  },
+  // An empty threshold and a wait that is not a whole number of seconds are each said under their
+  // own field, which is marked invalid, and the first takes the focus. A toast said only the first,
+  // was gone in seconds and covered the quiet hours. Toasts are kept, so one would show here.
+  {
+    name: 'layout-dialog-alert-config-invalid',
+    size: DEFAULT_SIZE,
+    config: alertsConfig,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await openAlertConfig(ctx);
+      await typeInto(ctx, '#alert-threshold', '');
+      await typeInto(ctx, '#alert-duration', '1.5');
+      await ctx.click('#save-alert');
+      await ctx.waitForSelector('#alert-duration-error');
+      await ctx.expect(ALERT_ERRORS_UNDER_FIELDS, 'each error under its own field, and no toast');
       await ctx.expect(DIALOG_FITS, 'the dialog and its buttons lie inside the window');
     },
   },

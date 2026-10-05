@@ -298,6 +298,13 @@
   grid-template-rows: 1fr auto;
 }
 
+/* The duration and the cooldown share their rows (label, field, notes), so the two fields stay level
+   however each label wraps and whichever of them shows an error under its help. */
+.alert-advanced-options > label:has(#alert-duration, #alert-cooldown) {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+}
+
 .alert-advanced-options label:has(#alert-condition),
 .alert-advanced-options label:has(#alert-threshold),
 .alert-advanced-options > .form-group,
@@ -332,6 +339,34 @@
 
 .alert-advanced-options label .alert-field-help:empty {
   display: none;
+}
+
+/* A field's help and its error, one under the other in the field's cell. A threshold with no unit or
+   reading to show has nothing here until it has an error. */
+.alert-advanced-options .alert-field-notes {
+  display: grid;
+  gap: 8px;
+}
+
+.alert-advanced-options .alert-field-notes:has(> .alert-field-help:empty:only-child) {
+  display: none;
+}
+
+.alert-advanced-options .field-error {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* An error about a pair (quiet hours' start and end) or a group (the target state) runs under all
+   of it, as close to it as a help line. */
+.alert-advanced-options > .field-error {
+  grid-column: 1 / -1;
+  margin-top: -8px;
+}
+
+/* The field an error is about stays red while it has focus, too. */
+.alert-advanced-options .form-control[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 /* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a
