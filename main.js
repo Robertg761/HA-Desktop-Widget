@@ -351,11 +351,7 @@ if (
 // --------------------------- end early startup -----------------------------
 
 const profileSyncCore = require('./profile-sync-core.js');
-const {
-  createLocalizationService,
-  detectSystemLocale,
-  pickSpellCheckerLanguage,
-} = require('./src/i18n-main.cjs');
+const { createLocalizationService, detectSystemLocale } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
@@ -457,6 +453,7 @@ const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
+const { turnOffSpellChecker } = require('./src/spell-checker.cjs');
 const {
   createSerializedTaskRunner,
   createLatestTaskCoalescer,
@@ -1240,26 +1237,6 @@ const localizationService = createLocalizationService({
   // net.fetch is invoked here.
   fetchImpl: (url, init) => net.fetch(url, init),
 });
-// On Windows and Linux the spell checker starts in the language of the locale .pak Chromium loaded,
-// and the package ships only the paks of the app's languages, so a pt-BR or Italian system would
-// check its spelling in English. Set it from the system's own languages; see
-// pickSpellCheckerLanguage. macOS uses its own spell checker, which follows the system already.
-function applySystemSpellCheckerLanguage(targetSession) {
-  if (process.platform === 'darwin') return;
-  try {
-    const language = pickSpellCheckerLanguage(
-      app.getPreferredSystemLanguages(),
-      targetSession.availableSpellCheckerLanguages,
-      targetSession.getSpellCheckerLanguages()
-    );
-    if (!language) return;
-    targetSession.setSpellCheckerLanguages([language]);
-    log.info(`Spell checker set to the system language: ${language}`);
-  } catch (error) {
-    // Spelling suggestions are a convenience; startup must go on without them.
-    log.warn('Could not set the spell checker language:', error?.message || error);
-  }
-}
 // Installed language packs follow the manifest on main, so an upgrade's new strings arrive without
 // the user finding the Update button. Only started once the window is up; see
 // schedulePostWindowStartupTasks.
@@ -3438,6 +3415,8 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      // Off on purpose, as in every window: see src/spell-checker.cjs.
+      spellcheck: false,
     },
   };
 
@@ -7467,6 +7446,9 @@ function createWindow() {
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,
+      // The app has no use for spell-check, so it is off on purpose in every window. The session's
+      // own spell checker is turned off at startup as well; see src/spell-checker.cjs.
+      spellcheck: false,
     },
   };
 
@@ -13410,11 +13392,17 @@ app
       },
     });
     protectAutoHideDuringMenu(Menu.getApplicationMenu());
+    // The first use of the session starts Chromium's spell checker, which downloads a dictionary
+    // unless this runs before control returns to the event loop. See src/spell-checker.cjs.
+    try {
+      turnOffSpellChecker(session.defaultSession);
+    } catch (error) {
+      log.warn('Could not turn off the spell checker:', error?.message || error);
+    }
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),
       isTrustedWebContents: isTrustedAppWebContents,
     });
-    applySystemSpellCheckerLanguage(session.defaultSession);
 
     // Set app ID for Windows (helps with icon caching and taskbar behavior)
     if (process.platform === 'win32') {

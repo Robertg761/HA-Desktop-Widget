@@ -41,7 +41,8 @@ function createMacWindowMenu(onMinimize) {
 }
 
 // Electron fills role labels with fixed English text, so the visible labels are set here.
-// The menu is built each time it opens, so a language change applies to the next one.
+// The menu is built each time it opens, so a language change applies to the next one. It has no
+// spelling items: spell-check is off on purpose (see src/spell-checker.cjs).
 function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
   return [
     { role: 'undo', label: t('Undo'), enabled: !!editFlags.canUndo },
@@ -53,26 +54,6 @@ function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
     { role: 'delete', label: t('Delete'), enabled: !!editFlags.canDelete },
     { type: 'separator' },
     { role: 'selectAll', label: t('Select All'), enabled: !!editFlags.canSelectAll },
-  ];
-}
-
-// What a right-click on a misspelled word adds above the edit actions: the dictionary's
-// suggestions, then a way to teach it the word. Fields that hold addresses, ids and paths turn
-// spell checking off, so this shows up where prose is written.
-function createSpellingContextMenuItems(params = {}, webContents, t = (text) => text) {
-  const word = params.misspelledWord;
-  if (!word) return [];
-  const suggestions = (params.dictionarySuggestions || []).map((suggestion) => ({
-    label: suggestion,
-    click: () => webContents.replaceMisspelling(suggestion),
-  }));
-  return [
-    ...suggestions,
-    {
-      label: t('Add to dictionary'),
-      click: () => webContents.session?.addWordToSpellCheckerDictionary?.(word),
-    },
-    { type: 'separator' },
   ];
 }
 
@@ -109,10 +90,7 @@ function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform, opti
     if (!params.isEditable && !hasSelection) return;
     event?.preventDefault?.();
     const template = params.isEditable
-      ? [
-          ...createSpellingContextMenuItems(params, webContents, options.translate),
-          ...createEditableContextMenuTemplate(params.editFlags, options.translate),
-        ]
+      ? createEditableContextMenuTemplate(params.editFlags, options.translate)
       : createSelectionContextMenuTemplate(params.editFlags, options.translate);
     const menu = Menu.buildFromTemplate(template);
     const resumeAutoHide = options.suspendAutoHide?.();
@@ -133,7 +111,6 @@ module.exports = {
   createApplicationMenuTemplate,
   createEditableContextMenuTemplate,
   createSelectionContextMenuTemplate,
-  createSpellingContextMenuItems,
   installApplicationMenu,
   isPasteAcceleratorInput,
 };

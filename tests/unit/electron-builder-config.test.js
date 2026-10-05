@@ -481,7 +481,8 @@ describe('the Chromium locales that ship', () => {
     const comment = text.slice(0, text.indexOf('\nelectronLanguages:'));
     for (const pak of ['es-419', 'zh-TW', 'en-GB', 'en-US']) expect(comment).toContain(pak);
     expect(comment).toContain('detectSystemLocale');
-    expect(comment).toContain('pickSpellCheckerLanguage');
+    // The spell checker is off, not set from the paks; the comment points to where.
+    expect(comment).toContain('src/spell-checker.cjs');
   });
 });
 

@@ -101,12 +101,12 @@ compression: normal
 # Chromium keeps the text of its own built-in interface in one locale .pak file per language: what
 # it draws for a page by itself, such as the bubble that says why a form field's value is not
 # allowed (the alarm code and helper value dialogs show it), the date picker and the media controls.
-# Electron ships all 55 paks, about 46 MB per install. The menus a right-click opens in a text
-# field, spelling suggestions included, do not come from them: src/application-menu.cjs builds those
-# from the app's own catalogs, so they follow the language the app shows. These are the paks that
-# match the app's seven languages (APP_LANGUAGES in src/i18n-main.cjs: en, de, es, fr, ar, hi, zh),
-# including the regional paks Chromium sends those languages to. Checked against Electron 43 on
-# Linux by setting LANG and reading app.getLocale():
+# Electron ships all 55 paks, about 46 MB per install. The menu a right-click opens in a text field
+# does not come from them: src/application-menu.cjs builds it from the app's own catalogs, so it
+# follows the language the app shows. These are the paks that match the app's seven languages
+# (APP_LANGUAGES in src/i18n-main.cjs: en, de, es, fr, ar, hi, zh), including the regional paks
+# Chromium sends those languages to. Checked against Electron 43 on Linux by setting LANG and
+# reading app.getLocale():
 #   es-419  every Latin American Spanish system (es-MX, es-AR, es-US, ...); es-ES gets es
 #   zh-TW   zh-HK, zh-MO and Traditional Chinese; zh-CN covers zh-SG and Simplified Chinese
 #   en-GB   en-AU, en-CA, en-IN, en-NZ and en-ZA; en-US is every other English, and the fallback
@@ -114,9 +114,10 @@ compression: normal
 # de-AT, de-CH, fr-CA, fr-BE, ar-EG and hi-IN need nothing extra: they resolve to de, fr, ar and
 # hi. A system language with no pak here (pt-BR, ja) gets Chromium's built-in text in English, the
 # language the app falls back to for its own text. Chromium then also reports en-US as
-# app.getLocale() and the renderer's navigator.language, and on Windows and Linux it would start
-# the spell checker in English, so main.js sets the dictionary from the system's languages
-# (pickSpellCheckerLanguage in src/i18n-main.cjs). Which language the app itself shows does not
+# app.getLocale() and the renderer's navigator.language, and on Windows and Linux it would start its
+# spell checker in English. Spell-check is off on purpose, in every window and in the session
+# (src/spell-checker.cjs), so no dictionary is chosen or downloaded: a field shows no red underline
+# and its right-click menu has no spelling items. Which language the app itself shows does not
 # depend on these files either: detectSystemLocale in src/i18n-main.cjs reads the operating system.
 # On macOS the same choice also removes the app's other .lproj folders, which set the language of
 # the system's own dialogs (see `mac`). electron-builder keeps a pak whose name is an entry or the

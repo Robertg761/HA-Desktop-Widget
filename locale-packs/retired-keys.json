@@ -1422,5 +1422,9 @@
   "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": {
     "retiredIn": "4.0.0",
     "reason": "The note now names the command for the way the widget was installed"
+  },
+  "Add to dictionary": {
+    "retiredIn": "4.0.0",
+    "reason": "Spell-check is off, so the right-click menu has no spelling items"
   }
 }
