@@ -167,10 +167,11 @@ mac:
   # The list also trims the .lproj folders in the app's own Contents/Resources. Those tell macOS
   # which languages the app has, and it shows its own dialogs and panels (open and save, the
   # message boxes) in the first of the user's languages found there, so a pt-BR Mac gets them in
-  # English, like the rest of the app. The folders cannot stay for every language while the paks
-  # go: they are empty, but Chromium on macOS takes its own language from the same list, and a Mac
-  # set to a language listed there with no locale.pak would start Chromium in a language it has no
-  # strings for. (MAC-10 in docs/testing/PLATFORM-TEST-PLAN-4.0.md checks the pt-BR case.)
+  # English, like the rest of the app. Keeping the empty folders for every language while the paks
+  # go is untested: Chromium on macOS picks its own language from the same list, and with a folder
+  # but no locale.pak it may settle on a language it has no strings for, or it may fall back to
+  # en-US. Without a Mac to check that on, 4.0 keeps the folders trimmed, and MAC-10 in
+  # docs/testing/PLATFORM-TEST-PLAN-4.0.md records the English panels on a pt-BR Mac.
   # Each language also has _FEMININE, _MASCULINE and _NEUTER folders, holding paks of 18 bytes in
   # every language kept here. They cost nothing, and Chromium may look for them next to its
   # language's folder, so they stay.
