@@ -1001,6 +1001,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   pointer-events: none;
 }
 
+/* Where the desktop decides where the tile sits (see the notice below), a drag is not kept, so the
+   hint says only what still works. The notice that says why fits a pin 240px wide or more; this
+   one fits the default pin. */
+body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
+  .desktop-pin-content::after {
+  content: attr(data-resize-hint);
+}
+
 @media (max-width: 120px), (max-height: 90px) {
   body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
     display: none;

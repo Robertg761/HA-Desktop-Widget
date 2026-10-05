@@ -2150,10 +2150,12 @@ function renderCurrentMode() {
     for (const id of ['desktop-pin-content', 'desktop-pin-empty']) {
       document.getElementById(id)?.toggleAttribute('inert', desktopPinEditMode);
     }
-    // The edit-mode hint is drawn by CSS from this attribute so it follows the language.
-    document
-      .getElementById('desktop-pin-content')
-      ?.setAttribute('data-edit-hint', t('Drag or resize'));
+    // The edit-mode hint is drawn by CSS from these attributes so it follows the language. Where
+    // the desktop decides where the tile sits, a drag is not kept, so the stylesheet shows the
+    // resize hint instead of inviting one.
+    const pinContent = document.getElementById('desktop-pin-content');
+    pinContent?.setAttribute('data-edit-hint', t('Drag or resize'));
+    pinContent?.setAttribute('data-resize-hint', t('Resize only'));
     // The notice that the desktop decides where the tile sits is for sessions where nothing in the
     // app can move it. A layer surface on Hyprland is dragged by the app itself.
     document.body.classList.toggle(

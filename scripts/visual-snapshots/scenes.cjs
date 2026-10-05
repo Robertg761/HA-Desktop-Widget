@@ -1951,9 +1951,10 @@ const scenes = [
         })()`);
         await ctx.sleep(900);
       }
+      // The hints are the pin's own (renderCurrentMode sets both); the stylesheet picks the one for
+      // compositor placement.
       await pin.evaluate(`(() => {
         document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
-        document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
       })()`);
       return { capture: pin };
     },

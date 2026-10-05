@@ -735,6 +735,25 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       await loadRenderer({ bootstrapOverrides: bootstrap(supportsWindowPositioning, canDrag) });
       expect(document.body.classList.contains('desktop-pin-compositor-placement')).toBe(shown);
     });
+
+    // The notice itself only fits a pin 240px wide, so the default pin says it with its hint: a
+    // drag there looks as if it works and is gone at the next start.
+    it('swaps "Drag or resize" for a hint that does not invite a drag, at every size', async () => {
+      await loadRenderer({ bootstrapOverrides: bootstrap(false, false) });
+      const content = document.getElementById('desktop-pin-content');
+      expect(content.getAttribute('data-resize-hint')).toBe('Resize only');
+
+      const styles = require('fs').readFileSync(
+        require('path').join(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      const rule = styles.match(
+        /body\.desktop-pin-mode\.desktop-pin-edit-mode\.desktop-pin-compositor-placement\s+\.desktop-pin-content::after \{([^}]*)\}/
+      );
+      expect(rule?.[1]).toMatch(/content: attr\(data-resize-hint\);/);
+      // At the top level (a rule in a media query is indented), so the default 168x148 pin has it.
+      expect(styles[rule.index - 1]).toBe('\n');
+    });
   });
 
   it('takes the tile out of the focus order while it is being arranged', async () => {
