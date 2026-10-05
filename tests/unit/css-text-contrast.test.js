@@ -294,6 +294,26 @@ describe('text contrast of the rules', () => {
     });
   });
 
+  describe('accent fills in the light dialogs', () => {
+    const markup = `<div class="modal"><div class="modal-content">
+      <div class="media-progress-track"><div class="media-progress-fill"></div></div>
+      <div class="todo-item-row"><input type="checkbox" checked></div>
+    </div></div>`;
+
+    // The media dialog's progress and a ticked to-do were the raw accent, about 2.2:1 on the light
+    // dialog for the default blue, Aqua and Amber, while the media tile's own bar was solved.
+    it.each([...ACCENTS, 'amber'])('draws progress and a ticked box at 3:1 with %s', (accent) => {
+      applyScope(SCOPES.light, accent);
+      render(markup);
+      const surfaces = currentSurfaces(false);
+      const fill = resolvedValue(document.querySelector('.media-progress-fill'), 'background');
+      const box = resolvedValue(document.querySelector('.todo-item-row input'), 'accent-color');
+      for (const colour of [fill, box]) {
+        expect(contrastRatio(colour, surfaces.dialog)).toBeGreaterThanOrEqual(NON_TEXT_MINIMUM);
+      }
+    });
+  });
+
   describe('unavailable tiles', () => {
     const markup = `<div id="quick-controls"><div class="control-item" data-unavailable="true">
       <div class="control-info"><div class="control-name"></div>

@@ -8383,11 +8383,13 @@ body.theme-light:not(.high-contrast)
   cursor: pointer;
 }
 
+/* A ticked box is the solved accent, which keeps 3:1 on the light panel where the raw accent of a
+   pale preset did not. */
 .todo-item-row input[type='checkbox'] {
   width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -10989,10 +10991,12 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   overflow: hidden;
 }
 
+/* The solved accent, as on the media tile's seek bar: the raw accent of the default blue, Aqua or
+   Amber is about 2.2:1 on the light dialog's near-white track. */
 .media-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width var(--duration-base) linear;
 }
 
