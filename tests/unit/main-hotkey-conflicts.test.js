@@ -7,6 +7,7 @@ const path = require('path');
 const vm = require('vm');
 
 const { acceleratorsConflict, validateAccelerator } = require('../../src/accelerators.cjs');
+const { liveEntityHotkeys } = require('../../src/entity-hotkeys.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -21,6 +22,7 @@ function loadHelpers({ platform = 'linux', config = {} } = {}) {
     config,
     acceleratorsConflict,
     validateAccelerator,
+    liveEntityHotkeys,
     mainT: (text, values = {}) =>
       text.replace(/\{\{(\w+)\}\}/g, (_match, name) => String(values[name])),
   });
@@ -114,6 +116,14 @@ describe('the hotkey checks in main', () => {
       expect(findConfiguredEntityHotkey('Ctrl+Alt+J')).toBeNull();
       expect(findConfiguredEntityHotkey('')).toBeNull();
       expect(findConfiguredEntityHotkey(undefined)).toBeNull();
+    });
+
+    it('leaves a chord free that a sensor holds from an earlier version, since it does nothing', () => {
+      const { findConfiguredEntityHotkey } = loadHelpers({
+        config: { globalHotkeys: { hotkeys: { 'sensor.office_temp': 'Ctrl+Alt+T' } } },
+      });
+
+      expect(findConfiguredEntityHotkey('Ctrl+Alt+T', 'light.desk')).toBeNull();
     });
   });
 
