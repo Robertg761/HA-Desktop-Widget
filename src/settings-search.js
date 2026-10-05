@@ -1,7 +1,8 @@
+import { foldSearchMarks } from './format.js';
 import { formatNumber, t } from './i18n.js';
 
 function searchText(value) {
-  return value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[-_]/g, ' ');
+  return foldSearchMarks(value).replace(/\p{M}/gu, '').toLowerCase().replace(/[-_]/g, ' ');
 }
 
 // Controls toggled with inline display (e.g. the weather override group) are not reachable.

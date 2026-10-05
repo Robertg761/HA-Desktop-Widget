@@ -139,11 +139,10 @@ function startCameraLiveWatchdog(record, requestId) {
       clearCameraLiveWatchdog(record);
       return;
     }
-    // A paused video is not a stalled stream: the browser pauses it when the page is hidden.
-    if (video.paused) {
-      lastProgressAt = Date.now();
-      return;
-    }
+    // A video that is paused is as still as a stalled stream, and the tile has no control to
+    // pause it with. It is paused because autoplay was refused or the stream ended, and counting
+    // it as progress left a frozen frame saying "Live now" for good. A hidden window never gets
+    // here: pausing the preview stops this watchdog first.
     if (video.currentTime !== lastTime) {
       lastTime = video.currentTime;
       lastProgressAt = Date.now();

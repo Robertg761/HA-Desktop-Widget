@@ -1,6 +1,8 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
+const { createLocalizationService } = require('../../src/i18n-main.cjs');
 const {
   OMARCHY_BAR_STRING_SOURCES,
   buildOmarchyBarStatus,
@@ -14,6 +16,7 @@ const qml = fs.readFileSync(path.join(root, 'omarchy-plugin', 'Widget.qml'), 'ut
 const packLocales = ['ar', 'de', 'es', 'fr', 'hi', 'zh'];
 const readPack = (locale) =>
   JSON.parse(fs.readFileSync(path.join(root, 'locale-packs', `${locale}.json`), 'utf8')).messages;
+const placeholdersOf = (text) => [...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]);
 
 describe('the words the widget sends to the Omarchy bar panel', () => {
   it('are all strings the catalogs have, so a language can translate each', () => {
@@ -40,6 +43,61 @@ describe('the words the widget sends to the Omarchy bar panel', () => {
     expect(strings.stop).toBe('Stop');
     expect(buildOmarchyBarStrings((key) => key).open).toBe('Open');
     expect(strings.now).toBe('Now {{temperature}}');
+  });
+
+  describe('through the localization service main.js translates with', () => {
+    let userDataDir;
+
+    beforeAll(() => {
+      // An installed pack is the real pack file in the user data folder, as the Settings
+      // download leaves it.
+      userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-bar-strings-'));
+      fs.mkdirSync(path.join(userDataDir, 'locales'));
+      for (const locale of packLocales) {
+        fs.copyFileSync(
+          path.join(root, 'locale-packs', `${locale}.json`),
+          path.join(userDataDir, 'locales', `${locale}.json`)
+        );
+      }
+    });
+
+    afterAll(() => {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    });
+
+    const stringsFor = (language) => {
+      const service = createLocalizationService({
+        bundledDir: path.join(root, 'locales'),
+        getUserDataDir: () => userDataDir,
+        appVersion: '4.0.0',
+      });
+      return buildOmarchyBarStrings((key, vars) => service.translate(language, key, vars));
+    };
+    const templated = Object.entries(OMARCHY_BAR_STRING_SOURCES).filter(
+      ([, source]) => placeholdersOf(source).length > 0
+    );
+
+    it('has strings with placeholders for these tests to cover', () => {
+      expect(templated.map(([id]) => id)).toEqual(expect.arrayContaining(['now', 'omittedMany']));
+    });
+
+    it.each(['en', ...packLocales])(
+      'leaves the placeholders in %s for the plugin to fill in',
+      (language) => {
+        const strings = stringsFor(language);
+
+        for (const [id, source] of templated) {
+          expect(placeholdersOf(strings[id]).sort()).toEqual(placeholdersOf(source).sort());
+        }
+        expect(strings.now).toContain('{{temperature}}');
+        expect(strings.omittedMany).toContain('{{count}}');
+      }
+    );
+
+    it('still translates the words around a placeholder', () => {
+      expect(stringsFor('de').now).toBe('Jetzt {{temperature}}');
+      expect(stringsFor('en').now).toBe('Now {{temperature}}');
+    });
   });
 
   it('go out with the status the plugin reads', () => {

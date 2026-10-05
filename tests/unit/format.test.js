@@ -472,6 +472,22 @@ describe('sensor readings', () => {
     expect(uptime(1.5)).toBe(`1.5${NBSP}s`);
     expect(format.formatDurationReading(10, 'furlong')).toBeNull();
   });
+
+  it('joins the units of a duration with a space, never the "and" Arabic and Urdu write', () => {
+    for (const locale of ['ar', 'ur']) {
+      useLocale(locale);
+      const unit = (amount, name) =>
+        new Intl.NumberFormat(locale, { style: 'unit', unit: name, unitDisplay: 'short' }).format(
+          amount
+        );
+      expect(format.formatDurationReading(4500, 's')).toBe(
+        `${unit(1, 'hour')} ${unit(15, 'minute')}`
+      );
+      expect(format.formatDurationReading(-4500, 's')).toBe(
+        `-${unit(1, 'hour')} ${unit(15, 'minute')}`
+      );
+    }
+  });
 });
 
 describe('state words', () => {
@@ -840,6 +856,20 @@ describe('lists, search and sorting', () => {
     expect(format.normalizeSearchText('ＡＢＣ')).toBe('abc');
     expect(format.normalizeSearchText('')).toBe('');
     expect(format.normalizeSearchText(null)).toBe('');
+  });
+
+  it('finds a Turkish word whichever way the dotted and dotless i are typed', () => {
+    // Lower-casing without a locale gives "IŞIK" -> "isik" but "ışık" -> "ısık": every spelling
+    // folds to the same text, in every interface language, so a Turkish name is not missed.
+    for (const spelling of ['IŞIK', 'Işık', 'ışık', 'işik', 'isik', 'ISIK']) {
+      expect(format.normalizeSearchText(spelling)).toBe('isik');
+    }
+    expect(format.normalizeSearchText('İstanbul')).toBe(format.normalizeSearchText('ISTANBUL'));
+    expect(format.normalizeSearchText('Işık Lambası')).toBe('isik lambasi');
+    expect(utils.getSearchScore('Yatak Odası IŞIK', 'ışık')).toBeGreaterThan(0);
+    expect(utils.getSearchScore('ışık', 'IŞIK')).toBeGreaterThan(0);
+    useLocale('tr');
+    expect(utils.getSearchScore('IŞIK', 'ışık')).toBeGreaterThan(0);
   });
 
   it('folds accents and Arabic vowel marks but keeps the marks inside a Hindi word', () => {

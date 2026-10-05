@@ -618,8 +618,14 @@ function renderEmptyState(query, hasEntities) {
   return title.textContent;
 }
 
-function renderResults() {
+// Whether two rows stand for the same thing: one entity, one command on it, one page.
+function isSameResult(a, b) {
+  return a.key === b.key && a.service === b.service;
+}
+
+function renderResults({ keepHighlight = false } = {}) {
   const query = input?.value || '';
+  const highlighted = keepHighlight ? results[highlightedIndex] : null;
   const server = state.CONFIG?.homeAssistant?.url || '';
   if (recentServer !== server) {
     recentCommands = readRecentCommands(state.CONFIG);
@@ -643,7 +649,8 @@ function renderResults() {
     ranked = orderForEmptyQuery(entityRows, paletteCommands);
   }
   results = ranked.slice(0, MAX_RESULTS);
-  highlightedIndex = results.length ? 0 : -1;
+  const kept = highlighted ? results.findIndex((item) => isSameResult(item, highlighted)) : -1;
+  highlightedIndex = kept >= 0 ? kept : results.length ? 0 : -1;
   list.replaceChildren();
 
   results.forEach((item, index) => {
@@ -692,15 +699,16 @@ function openCommandPalette() {
   paletteCommands = null;
   lastPointerPosition = null;
   renderResults();
-  // Entities arriving while the palette is open (the first snapshot after launch or a reconnect)
-  // fill an empty list, instead of leaving "waiting" on screen.
+  // A full snapshot (the first one after launch, or one after a reconnect) replaces every entity
+  // under an open palette. Page commands and last session's entities can already fill the list
+  // before it arrives, so it is redrawn whether or not the list was empty, with the row the
+  // keyboard is on kept.
   unsubscribeStates?.();
   unsubscribeStates =
     state.subscribeStates?.(() => {
-      if (isPaletteOpen() && !results.length) {
-        paletteCommands = null;
-        renderResults();
-      }
+      if (!isPaletteOpen()) return;
+      paletteCommands = null;
+      renderResults({ keepHighlight: true });
     }) || null;
   requestAnimationFrame(() => {
     input.focus();

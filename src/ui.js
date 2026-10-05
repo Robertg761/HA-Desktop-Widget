@@ -84,6 +84,7 @@ import {
 import trayEntitySupport from './tray-entities.cjs';
 import desktopPinSupport from './desktop-pin-support.cjs';
 import climateControls from './climate-controls.cjs';
+import pageNameRules from './page-names.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addEntityToQuickAccessView,
@@ -692,6 +693,14 @@ function buildQuickAccessConfigPatch(config) {
   };
 }
 
+// The layout as the host stores it, for telling whether a save changed it. A page nobody named is
+// drawn with its name in the language and a marker, and comes back from the host unnamed: the same
+// layout, not one to draw again.
+function getStoredQuickAccessLayout(config) {
+  const patch = buildQuickAccessConfigPatch(config);
+  return JSON.stringify({ ...patch, customTabs: pageNameRules.toStoredPages(patch.customTabs) });
+}
+
 async function persistQuickAccessConfigSnapshot(
   nextConfig,
   previousConfig,
@@ -721,9 +730,9 @@ async function persistQuickAccessConfigSnapshot(
     }
     if (isCurrent) {
       // The optimistic render already drew this layout; only redraw when the host changed it.
-      const rendered = JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG));
+      const rendered = getStoredQuickAccessLayout(state.CONFIG);
       state.setConfig(authoritativeConfig);
-      if (JSON.stringify(buildQuickAccessConfigPatch(state.CONFIG)) !== rendered) {
+      if (getStoredQuickAccessLayout(state.CONFIG) !== rendered) {
         renderQuickAccessConfigState();
       }
     }
@@ -3822,9 +3831,10 @@ function formatEventTime(date) {
   return formatClockTime(date);
 }
 
-// An event's date for a list, with its weekday ("Thu, 10/1/2026").
+// An event's day for a list, in the words the tiles use: "Today", "Tomorrow", "Thu" within the
+// week, else "Oct 12". An all-numeric date ("10/1/2026") has to be worked out by the reader.
 function formatEventDate(date) {
-  return formatDate(date, { weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric' });
+  return formatDayLabel(date);
 }
 
 function formatDateTimeValue(value, { timeOnly = false } = {}) {
@@ -3832,7 +3842,7 @@ function formatDateTimeValue(value, { timeOnly = false } = {}) {
   if (!dateValue) return '--';
   const date = parseHomeAssistantDateTime(dateValue);
   if (Number.isNaN(date.getTime())) return String(dateValue);
-  return timeOnly ? formatEventTime(date) : `${formatEventDate(date)} ${formatEventTime(date)}`;
+  return timeOnly ? formatEventTime(date) : formatDayAndTime(date);
 }
 
 // Where a tile's next event falls. Home Assistant's calendar entity reports the next event even
@@ -11188,9 +11198,13 @@ function startOnHeading(modal, focusSelector = null) {
 // after this call can name a better first stop with `data-initial-focus`.
 function activateAccessibleDialogModal(
   modal,
-  { titleIdPrefix = 'dialog-title', dismiss, initialFocus, replaces = null } = {}
+  { titleIdPrefix = 'dialog-title', dismiss, initialFocus, replaces = null, entityId = '' } = {}
 ) {
   if (!modal) return;
+  // openEntityControls finds the open dialog for an entity by this tag, so a dialog that is rebuilt
+  // in place (it gains a control) must carry it too, or asking for the entity again would open a
+  // second dialog beside the rebuilt one.
+  if (entityId) modal.dataset.dialogEntityId = entityId;
   dialogModalIdCounter += 1;
   const titleElement = modal.querySelector('h1, h2, h3');
   if (titleElement && !titleElement.id) {
@@ -12648,6 +12662,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: entity.entity_id,
     });
 
     // Set SVG icons for media controls
@@ -12694,10 +12709,19 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     // Focus stays on a slider after a drag, so it cannot be the test for "being adjusted": the
     // volume the player settled on would never show.
     const isVolumeHeld = trackSliderGrip(volumeSlider, () => updateVolumeControls());
+    // A volume edit is under way from the first input until the player has answered the command it
+    // sent: the arrow keys never hold the slider, and a drag lets go 150 ms before the command goes
+    // out. A live update in that time would put the old volume back under the user's hand.
+    let volumeDebounceTimer = null;
+    let volumeCommandsInFlight = 0;
+    let missedVolumeUpdate = false;
+    const isVolumeBeingSet = () =>
+      isVolumeHeld() || volumeDebounceTimer !== null || volumeCommandsInFlight > 0;
     const updateVolumeControls = () => {
       const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
-      if (volumeSlider && volumeValue && !isVolumeHeld()) {
+      missedVolumeUpdate = isVolumeBeingSet();
+      if (volumeSlider && volumeValue && !missedVolumeUpdate) {
         // An off player reports no volume; show that instead of a made-up 0%.
         if (attrs.volume_level == null || !Number.isFinite(Number(attrs.volume_level))) {
           volumeValue.textContent = '—';
@@ -12780,7 +12804,6 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       }
     });
 
-    let volumeDebounceTimer;
     if (volumeSlider) {
       volumeSlider.addEventListener('input', (e) => {
         if (!canPerformMediaAction(liveMedia(), 'volume_set')) return;
@@ -12790,8 +12813,20 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         volumeSlider.setAttribute('aria-valuetext', volumeText);
         clearTimeout(volumeDebounceTimer);
         volumeDebounceTimer = setTimeout(() => {
-          callMediaPlayerService(entity.entity_id, 'volume_set', {
-            volumeLevel: value / 100,
+          volumeDebounceTimer = null;
+          volumeCommandsInFlight += 1;
+          Promise.resolve(
+            callMediaPlayerService(entity.entity_id, 'volume_set', {
+              volumeLevel: value / 100,
+            })
+          ).then((response) => {
+            volumeCommandsInFlight -= 1;
+            // What the player reported meanwhile is shown now. A command that failed (null) or
+            // was never sent, because the player stopped accepting it (nothing), leaves the slider
+            // where the user put it, so it goes back to the volume the player still has.
+            if (modal.isConnected && (missedVolumeUpdate || response == null)) {
+              updateVolumeControls();
+            }
           });
         }, 150);
       });
@@ -12827,6 +12862,9 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       img.alt = t('Album art');
       img.src = buildMediaArtworkProxyUrl(target);
       img.onerror = () => {
+        // A picture replaced while it loaded fails into a box that holds the newer one, which
+        // would be cleared and, its target being the one on record, never drawn again.
+        if (img.parentNode !== artworkBox) return;
         artworkBox.replaceChildren();
         artworkBox.hidden = true;
       };
@@ -13997,6 +14035,51 @@ function buildMediaArtworkProxyUrl(artworkUrl) {
   });
 }
 
+const mediaTilePlaceholderMarkup = () =>
+  `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
+
+// The primary card's picture: drawn when the player's artwork target changes, and again once a
+// picture that failed has waited out its retry delay. It follows the picture's target, not its
+// proxy URL: that carries a 30 s cache bucket, and the next volume change after each bucket would
+// redraw the same picture. Cheap when nothing is due, so it runs on every update.
+function renderMediaTileArtwork(artworkTarget) {
+  const artworkContainer = document.getElementById('media-tile-artwork');
+  if (!artworkContainer) return;
+  const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
+  const now = Date.now();
+  pruneExpiredArtworkRetryEntries(now);
+  // The picture this card already shows for the same target stays. The retry marker below is
+  // shared with the player's Quick Access tile, whose own request can fail while this one loaded,
+  // and a marker of its making only holds back new requests.
+  if (
+    artworkTarget &&
+    artworkContainer.querySelector('img') &&
+    lastMediaTileArtworkSrc === artworkTarget
+  ) {
+    return;
+  }
+  // A picture that failed is not asked for again at every state change.
+  if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
+    const img = document.createElement('img');
+    img.src = buildMediaArtworkProxyUrl(artworkTarget);
+    img.alt = t('Album art');
+    img.onload = () => failedMediaArtworkRetryAtByUrl.delete(retryKey);
+    img.onerror = () => {
+      failedMediaArtworkRetryAtByUrl.set(retryKey, Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS);
+      // A picture that was replaced while it loaded fails into a card that shows another one.
+      if (img.parentElement !== artworkContainer) return;
+      artworkContainer.innerHTML = mediaTilePlaceholderMarkup();
+      lastMediaTileArtworkSrc = '';
+    };
+    artworkContainer.innerHTML = '';
+    artworkContainer.appendChild(img);
+    lastMediaTileArtworkSrc = artworkTarget;
+  } else if (lastMediaTileArtworkSrc !== '') {
+    artworkContainer.innerHTML = mediaTilePlaceholderMarkup();
+    lastMediaTileArtworkSrc = '';
+  }
+}
+
 // --- Media Player Tile ---
 function updateMediaTile() {
   try {
@@ -14055,14 +14138,13 @@ function updateMediaTile() {
       getMediaFallbackText(entity, { idleText: t('No media playing') });
     const mediaArtist = entity.attributes?.media_artist || '';
     const isPlaying = entity.state === 'playing';
-    // The signature follows the picture's target, not its proxy URL: that carries a 30 s cache
-    // bucket, and the next volume change after each bucket would redraw the same picture.
+    // The words and the play button are redrawn only when one of them changes; the volume and the
+    // position change far more often and must not touch them.
     const nextSignature = JSON.stringify({
       entityId: entity.entity_id,
       state: entity.state || '',
       title: mediaTitle,
       artist: mediaArtist,
-      artwork: artworkTarget || '',
     });
 
     if (nextSignature !== lastMediaTileRenderSignature) {
@@ -14077,39 +14159,12 @@ function updateMediaTile() {
         setIconContent(playBtn, isPlaying ? 'pause' : 'play', { size: 30 });
         playBtn.classList.toggle('playing', isPlaying);
       }
-
-      // Update artwork only when the picture actually changes.
-      const artworkContainer = document.getElementById('media-tile-artwork');
-      if (artworkContainer) {
-        const retryKey = artworkTarget ? utils.base64Encode(artworkTarget) : '';
-        const now = Date.now();
-        pruneExpiredArtworkRetryEntries(now);
-        // A picture that failed is not asked for again at every state change.
-        if (artworkTarget && (failedMediaArtworkRetryAtByUrl.get(retryKey) || 0) <= now) {
-          const existingImg = artworkContainer.querySelector('img');
-          if (!existingImg || lastMediaTileArtworkSrc !== artworkTarget) {
-            const img = document.createElement('img');
-            img.src = buildMediaArtworkProxyUrl(artworkTarget);
-            img.alt = t('Album art');
-            img.onload = () => failedMediaArtworkRetryAtByUrl.delete(retryKey);
-            img.onerror = function () {
-              failedMediaArtworkRetryAtByUrl.set(
-                retryKey,
-                Date.now() + MEDIA_ARTWORK_RETRY_DELAY_MS
-              );
-              this.parentElement.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
-              lastMediaTileArtworkSrc = '';
-            };
-            artworkContainer.innerHTML = '';
-            artworkContainer.appendChild(img);
-            lastMediaTileArtworkSrc = artworkTarget;
-          }
-        } else if (lastMediaTileArtworkSrc !== '') {
-          artworkContainer.innerHTML = `<div class="media-tile-artwork-placeholder">${lineIconMarkup('music')}</div>`;
-          lastMediaTileArtworkSrc = '';
-        }
-      }
     }
+
+    // The picture is kept up outside the signature gate: a picture that failed to load is asked for
+    // again once its retry delay has passed, on whichever update comes next, even when nothing
+    // else about the player changed in between.
+    renderMediaTileArtwork(artworkTarget);
 
     // Keep seek bar updates separate from metadata/artwork render signature.
     updateMediaSeekBar(entity);
@@ -14526,6 +14581,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: light.entity_id,
     });
 
     const slider = modal.querySelector('#brightness-slider');
@@ -15146,6 +15202,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: climateEntity.entity_id,
     });
 
     const slider = modal.querySelector('#climate-slider');
@@ -15579,6 +15636,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: fanEntity.entity_id,
     });
     showUnavailableDialogState(modal, fanEntity);
 
@@ -15864,6 +15922,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
       dismiss: () => closeModal(),
       initialFocus: startOnHeading(modal, focusSelector),
       replaces,
+      entityId: coverEntity.entity_id,
     });
     showUnavailableDialogState(modal, coverEntity);
 
