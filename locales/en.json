@@ -1642,5 +1642,7 @@
   "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget is available in {{language}}.",
   "Choose rooms and entities": "Choose rooms and entities",
   "My entities": "My entities",
-  "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard."
+  "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.",
+  "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.",
+  "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget."
 }

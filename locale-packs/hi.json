@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2012,6 +2012,8 @@
     "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget {{language}} में उपलब्ध है।",
     "Choose rooms and entities": "कमरे और एंटिटी चुनें",
     "My entities": "मेरी एंटिटी",
-    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "आपका कनेक्शन सहेज लिया गया है। अपना पहला पेज बनाने के लिए किसी कमरे का पूर्वावलोकन देखें या एंटिटी चुनें। आप यह बाद में खाली डैशबोर्ड से भी कर सकते हैं।"
+    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "आपका कनेक्शन सहेज लिया गया है। अपना पहला पेज बनाने के लिए किसी कमरे का पूर्वावलोकन देखें या एंटिटी चुनें। आप यह बाद में खाली डैशबोर्ड से भी कर सकते हैं।",
+    "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "सिस्टम कीरिंग अनलॉक होने तक सहेजा गया Home Assistant टोकन पढ़ा नहीं जा सकता। उसे अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "सिस्टम कीरिंग लॉक है या नहीं चल रही है, इसलिए प्राधिकरण सहेजा नहीं जा सकता। कीरिंग अनलॉक करें, फिर विजेट को पुनः आरंभ करें।"
   }
 }

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2012,6 +2012,8 @@
     "HA Desktop Widget is available in {{language}}.": "HA Desktop Widget está disponible en {{language}}.",
     "Choose rooms and entities": "Elegir habitaciones y entidades",
     "My entities": "Mis entidades",
-    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Tu conexión está guardada. Consulta la vista previa de una habitación o elige entidades para crear tu primera página. También puedes hacerlo más tarde desde el panel vacío."
+    "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Tu conexión está guardada. Consulta la vista previa de una habitación o elige entidades para crear tu primera página. También puedes hacerlo más tarde desde el panel vacío.",
+    "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "El token guardado de Home Assistant no se puede leer hasta que se desbloquee el llavero del sistema. Desbloquéalo y reinicia el widget.",
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede guardar la autorización. Desbloquea el llavero y reinicia el widget."
   }
 }
