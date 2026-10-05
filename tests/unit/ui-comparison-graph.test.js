@@ -759,6 +759,87 @@ describe('comparison graph tile', () => {
       await wait(REDRAW_DEBOUNCE_MS + 100);
       expect(legendOf('graph:a')).toBe('29°C');
     });
+
+    // jsdom lays nothing out and has no pointer, so every plot, the ones a repaint builds included,
+    // is given the size it renders at, and a chart is under the pointer while `hover.over` says so.
+    const box = { left: 0, top: 0, right: 260, bottom: 90, width: 260, height: 90 };
+    function fakeLayoutAndHover() {
+      const hover = { over: true };
+      const matches = Element.prototype.matches;
+      const spies = [
+        jest.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(box),
+        jest.spyOn(Element.prototype, 'matches').mockImplementation(function (selector) {
+          if (selector !== ':hover') return matches.call(this, selector);
+          return hover.over && this.classList.contains('comparison-graph-frame');
+        }),
+      ];
+      hover.restore = () => spies.forEach((spy) => spy.mockRestore());
+      return hover;
+    }
+
+    it('keeps the crosshair and the tooltip under a pointer that has not moved', async () => {
+      const { a } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      const hover = fakeLayoutAndHover();
+      const graphA = () =>
+        document.querySelector('.comparison-graph-tile[data-entity-id="graph:a"]');
+      try {
+        const before = graphA().querySelector('.comparison-graph-frame');
+        // At the right edge, which is now.
+        before.dispatchEvent(new MouseEvent('pointermove', { clientX: 260, bubbles: true }));
+        expect(before.querySelector('.comparison-graph-tooltip').hidden).toBe(false);
+
+        report(a, 25);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+
+        // A new chart, with the readout still showing, and showing the new reading.
+        const frame = graphA().querySelector('.comparison-graph-frame');
+        expect(frame).not.toBe(before);
+        expect(frame.querySelector('.comparison-graph-tooltip').hidden).toBe(false);
+        expect(frame.querySelector('.comparison-graph-tooltip-value').textContent).toBe('25°C');
+        const crosshair = frame.querySelector('.comparison-graph-crosshair');
+        expect(crosshair.getAttribute('visibility')).toBe('visible');
+
+        // Once the pointer has left, a repaint brings nothing back.
+        frame.dispatchEvent(new MouseEvent('pointerleave'));
+        report(a, 26);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+        expect(graphA().querySelector('.comparison-graph-tooltip').hidden).toBe(true);
+      } finally {
+        hover.restore();
+      }
+    });
+
+    it('brings nothing back once the pointer has gone without a pointerleave', async () => {
+      const { a } = twoGraphs();
+      ui.renderActiveTab();
+      await flush();
+      const hover = fakeLayoutAndHover();
+      const graphA = () =>
+        document.querySelector('.comparison-graph-tile[data-entity-id="graph:a"]');
+      try {
+        graphA()
+          .querySelector('.comparison-graph-frame')
+          .dispatchEvent(new MouseEvent('pointermove', { clientX: 130, bubbles: true }));
+
+        // The window went to the tray with the pointer on the chart: no pointerleave came.
+        hover.over = false;
+        report(a, 25);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+        expect(graphA().querySelector('.comparison-graph-tooltip').hidden).toBe(true);
+
+        // Back over the chart without moving yet, the old point is not drawn again.
+        hover.over = true;
+        report(a, 26);
+        await wait(REDRAW_DEBOUNCE_MS + 100);
+        expect(graphA().querySelector('.comparison-graph-tooltip').hidden).toBe(true);
+        const crosshair = graphA().querySelector('.comparison-graph-crosshair');
+        expect(crosshair.getAttribute('visibility')).toBe('hidden');
+      } finally {
+        hover.restore();
+      }
+    });
   });
 
   describe('the hover readout', () => {

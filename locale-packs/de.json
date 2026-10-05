@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.64",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "Vorschau: {{name}}",
     "Last updated: {{time}}": "Zuletzt aktualisiert: {{time}}",
     "Connection is not ready": "Verbindung ist noch nicht bereit",
-    "Fan only": "Nur Lüfter",
     "Heat/Cool": "Heizen/Kühlen",
     "Disarming": "Wird unscharf geschaltet",
     "Triggered": "Ausgelöst",
@@ -1995,6 +1994,15 @@
     "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
     "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-    "What's new": "Neuerungen"
+    "What's new": "Neuerungen",
+    "Remove Hotkey": "Tastenkürzel entfernen",
+    "Hotkey removed for {{name}}": "Tastenkürzel für {{name}} entfernt",
+    "Hotkeys cannot control this kind of entity": "Tastenkürzel können diese Art von Entität nicht steuern",
+    "Failed to clear hotkey": "Tastenkürzel konnte nicht gelöscht werden",
+    "Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).": "Schalte oder steuere Entitäten von überall aus. Halte {{ctrl}}, {{alt}} oder {{meta}} zur Taste gedrückt, auf Wunsch auch {{shift}} (zum Beispiel <code>{{example}}</code>).",
+    "Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.": "Neu-Anordnen aktiv. Ziehen oder {{modifier}}+Pfeiltasten zum Sortieren. Esc zum Beenden.",
+    "Fan only": "Nur Ventilator",
+    "Remove tile": "Kachel entfernen",
+    "Remove {{name}} from {{page}}": "{{name}} von {{page}} entfernen"
   }
 }

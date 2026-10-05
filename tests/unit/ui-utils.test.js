@@ -2288,6 +2288,43 @@ describe('UI Utilities', () => {
       }
     });
 
+    // A tile lit in an accent near the alarm's red or the warning's amber looked like a tile that
+    // needs attention, so the stylesheet gives it a lighter wash with such an accent.
+    it('flags an accent near the red or the amber of a tile that needs attention', () => {
+      const warm = () => document.body.dataset.accentWarm === 'true';
+      const flagged = uiUtils
+        .getAccentThemes()
+        .filter((theme) => {
+          uiUtils.applyAccentTheme(theme.id);
+          return warm();
+        })
+        .map((theme) => theme.id);
+      expect(flagged).toEqual(['rose', 'coral', 'amber']);
+
+      const holidays = SEASONAL_HOLIDAYS.filter((holiday) => {
+        uiUtils.applyAccentThemeFromColor(holiday.colors.accent);
+        return warm();
+      }).map((holiday) => holiday.id);
+      expect(holidays).toEqual([
+        'new-year',
+        'lunar-new-year',
+        'halloween',
+        'thanksgiving',
+        'christmas',
+      ]);
+
+      // A grey has no hue, whatever its channels say, and a seasonal accent is flagged as well.
+      uiUtils.applyAccentThemeFromColor('#8a7f7c');
+      expect(warm()).toBe(false);
+      uiUtils.applyAccentTheme('emerald');
+      expect(warm()).toBe(false);
+      uiUtils.setSeasonalColors({ accent: '#ef4444', background: '#15803d' });
+      expect(warm()).toBe(true);
+      uiUtils.setSeasonalColors(null);
+      uiUtils.applyAccentTheme('original');
+      expect(warm()).toBe(false);
+    });
+
     it('sets a text colour for both themes, and a ring colour, on the root', () => {
       uiUtils.applyAccentTheme('indigo');
       const style = document.documentElement.style;

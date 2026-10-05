@@ -197,7 +197,7 @@ describe('English display changes from the shared state names', () => {
     );
     expect(
       utils.getEntityDisplayState({ entity_id: 'climate.office', state: 'heat', attributes: {} })
-    ).toBe('Heating');
+    ).toBe('Heat');
     expect(utils.getEntityDisplayState({ entity_id: 'vacuum.robot', state: 'docked' })).toBe(
       'Docked'
     );

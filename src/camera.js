@@ -8,7 +8,7 @@ import {
 } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { closeDialog, openDialog, releaseFocusTrap, showToast } from './ui-utils.js';
-import { formatClockDateTime, formatClockTime } from './format.js';
+import { formatClockTime } from './format.js';
 import { t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
@@ -64,13 +64,9 @@ let cameraPreviewSequence = 0;
 let cameraPreviewLifecycleInstalled = false;
 let activeExpandedCameraPreview = null;
 
-/** "Updated 11:22 AM" today, or with the date once the frame is older than today. */
-function getCameraUpdatedLabel(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const sameDay = date.toDateString() === new Date().toDateString();
-  const time = sameDay ? formatClockTime(date) : formatClockDateTime(date);
-  return t('Updated {{time}}', { time });
+/** "Updated 11:22 AM": when the picture on screen was taken, which is when it arrived. */
+function getCameraUpdatedLabel() {
+  return t('Updated {{time}}', { time: formatClockTime(new Date()) });
 }
 
 function normalizeCameraPreviewRefresh(value) {
@@ -118,40 +114,49 @@ function armCameraPreviewLoadTimeout(
   }, timeoutMs);
 }
 
-function clearCameraLiveWatchdog(record) {
-  if (!record?.liveWatchdogId) return;
-  clearInterval(record.liveWatchdogId);
-  record.liveWatchdogId = null;
-}
-
-// Watches a stream that is already on screen. A stalled playlist or a dead socket raises no fatal
-// error, so nothing else would notice that the picture stopped changing: the tile would keep
-// saying "Live now" over an old frame. The video's own clock is the evidence: it advances while
-// frames arrive, and stands still when they do not.
-function startCameraLiveWatchdog(record, requestId) {
-  clearCameraLiveWatchdog(record);
-  const video = record?.video;
-  if (!video) return;
+// Watches a stream that is already on screen, in a tile or in the viewer. A stalled playlist or a
+// dead socket raises no fatal error, so nothing else would notice that the picture stopped
+// changing: it would keep saying "Live now" over an old frame. The video's own clock is the
+// evidence: it advances while frames arrive, and stands still when they do not. A video that is
+// paused is as still as a stalled stream, and nothing offers a control to pause it with: it is
+// paused because autoplay was refused or the stream ended, and counting it as progress left a
+// frozen frame saying "Live now" for good. A hidden window never gets here: hiding stops the
+// stream, and this watch with it. The watch ends once the stream is no longer the current one, or
+// after it calls onStall; the function it returns ends it sooner.
+function watchVideoProgress(video, { isCurrent, onStall }) {
   let lastTime = video.currentTime;
   let lastProgressAt = Date.now();
-  record.liveWatchdogId = setInterval(() => {
-    if (record.disposed || record.requestId !== requestId) {
-      clearCameraLiveWatchdog(record);
+  const watchId = setInterval(() => {
+    if (!isCurrent()) {
+      clearInterval(watchId);
       return;
     }
-    // A video that is paused is as still as a stalled stream, and the tile has no control to
-    // pause it with. It is paused because autoplay was refused or the stream ended, and counting
-    // it as progress left a frozen frame saying "Live now" for good. A hidden window never gets
-    // here: pausing the preview stops this watchdog first.
     if (video.currentTime !== lastTime) {
       lastTime = video.currentTime;
       lastProgressAt = Date.now();
       return;
     }
-    if (Date.now() - lastProgressAt >= CAMERA_LIVE_STALL_MS) {
-      failCameraLivePreview(record, requestId, 'stream-stalled');
-    }
+    if (Date.now() - lastProgressAt < CAMERA_LIVE_STALL_MS) return;
+    clearInterval(watchId);
+    onStall();
   }, CAMERA_LIVE_WATCHDOG_POLL_MS);
+  return () => clearInterval(watchId);
+}
+
+function clearCameraLiveWatchdog(record) {
+  if (!record?.stopLiveWatchdog) return;
+  record.stopLiveWatchdog();
+  record.stopLiveWatchdog = null;
+}
+
+function startCameraLiveWatchdog(record, requestId) {
+  clearCameraLiveWatchdog(record);
+  const video = record?.video;
+  if (!video) return;
+  record.stopLiveWatchdog = watchVideoProgress(video, {
+    isCurrent: () => !record.disposed && record.requestId === requestId,
+    onStall: () => failCameraLivePreview(record, requestId, 'stream-stalled'),
+  });
 }
 
 function getCameraPreviewBadgeLabel(record) {
@@ -926,7 +931,7 @@ function mountCameraPreview(tile, entityId, refreshValue) {
     lastLoadedAt: 0,
     liveFailureCount: 0,
     liveRetryAt: 0,
-    liveWatchdogId: null,
+    stopLiveWatchdog: null,
     loadTimeoutId: null,
     loading: false,
     previewMode,
@@ -1364,7 +1369,7 @@ async function openCamera(cameraId, options = {}) {
           <div class="camera-toolbar">
             <p class="camera-info">
               <span class="camera-info-state">${escapeHtml(getLocalizedStateName(camera.state))}</span>
-              <span class="camera-info-updated" title="${escapeHtmlAttribute(t('Last updated: {{time}}', { time: formatClockDateTime(camera.last_updated, { dateStyle: 'medium', timeStyle: 'medium' }) }))}">${escapeHtml(getCameraUpdatedLabel(camera.last_updated))}</span>
+              <span class="camera-info-updated"></span>
             </p>
             <div class="camera-mode-buttons">
               <button type="button" class="media-mute-toggle camera-mute-toggle active" id="mute-btn" aria-pressed="true" hidden>${escapeHtml(t('Mute'))}</button>
@@ -1388,10 +1393,21 @@ async function openCamera(cameraId, options = {}) {
     const updatedEl = modal.querySelector('.camera-info-updated');
     const loadingEl = modal.querySelector('#camera-loading');
     const messageEl = modal.querySelector('#camera-viewer-message');
+    // The line under the picture says when the picture on screen was taken, or that it is live.
+    // With no picture on screen it says nothing: the camera's own last update, or "Live now" over a
+    // stream that has ended, claimed a picture the viewer could not show.
+    const showFrameTime = (live = false) => {
+      if (!updatedEl) return;
+      updatedEl.textContent = live ? t('Live now') : getCameraUpdatedLabel();
+    };
+    const clearFrameTime = () => {
+      if (updatedEl) updatedEl.textContent = '';
+    };
     // A failed frame shows a calm message in the viewer instead of a broken-image icon.
     const showFrameMessage = (show) => {
       if (messageEl) messageEl.hidden = !show;
       if (img) img.classList.toggle('camera-img-failed', show);
+      if (show) clearFrameTime();
     };
     const closeBtn = modal.querySelector('.close-btn');
     let isLive = false;
@@ -1402,6 +1418,8 @@ async function openCamera(cameraId, options = {}) {
     // would not be allowed to autoplay with sound anyway.
     let soundOn = false;
     let stallTimer = null;
+    // Stops watching a stream that is playing for a picture that has stood still (see showStream).
+    let stopStreamWatch = () => {};
     // Live was running when the window was hidden, so it starts again when the window comes back.
     let resumeLiveWhenVisible = false;
     let detachVideoListeners = () => {};
@@ -1437,16 +1455,10 @@ async function openCamera(cameraId, options = {}) {
       if (muteBtn) muteBtn.hidden = !show;
     };
 
-    // The time under the picture is when it was taken, not when the camera last changed state.
-    const showFrameTime = (live = false) => {
-      if (!updatedEl) return;
-      updatedEl.textContent = live ? t('Live now') : getCameraUpdatedLabel(new Date());
-      updatedEl.removeAttribute('title');
-    };
-
     const stopLive = ({ keepFrame = false } = {}) => {
       streamGeneration += 1;
       clearStallTimer();
+      stopStreamWatch();
       detachVideoListeners();
       showLoading(false);
       // Every new snapshot or live attempt starts from a clean frame; its own handlers decide.
@@ -1476,6 +1488,7 @@ async function openCamera(cameraId, options = {}) {
           img.onload = null;
           img.onerror = null;
           img.removeAttribute('src');
+          clearFrameTime();
         }
         img.style.display = 'block';
       }
@@ -1526,6 +1539,7 @@ async function openCamera(cameraId, options = {}) {
     const useMjpegStream = (generation) => {
       detachVideoListeners();
       clearStallTimer();
+      stopStreamWatch();
       const video = modal.querySelector('video.camera-video');
       if (video) {
         try {
@@ -1618,6 +1632,20 @@ async function openCamera(cameraId, options = {}) {
           showLoading(false);
           showFrameMessage(false);
           showFrameTime(true);
+          // The first frame is not the last word: a playlist that stops advancing later raises no
+          // fatal error, and the viewer would keep "Live now" under a frozen picture. A stream that
+          // has stood still for the stall limit is given up on, as one that never started is.
+          stopStreamWatch = watchVideoProgress(video, {
+            isCurrent: () => !closed && generation === streamGeneration,
+            onStall: () => {
+              console.warn(`Camera viewer live stream stalled (${cameraId}); using MJPEG`);
+              // The frozen picture goes, and the spinner says what is happening until the MJPEG
+              // stream's first picture arrives.
+              showLoading(true, t('Reconnecting live stream...'));
+              clearFrameTime();
+              abandonHls();
+            },
+          });
         };
         let activeHls = null;
         const abandonHls = () => {

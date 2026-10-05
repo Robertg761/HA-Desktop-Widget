@@ -272,6 +272,10 @@
   transition: opacity var(--transition-base);
 }
 
+/* The alert dialog's errors make its body scroll in the default window. Its fields keep their width
+   when they do because every dialog body holds its scrollbar's room and gives it back in its end
+   padding (.modal-body in styles.css), in forced colours too, where the scrollbar is wider. */
+
 .alert-advanced-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -296,6 +300,13 @@
 /* Two fields side by side line up at the bottom when one label wraps to a second line. */
 .alert-advanced-options > label {
   grid-template-rows: 1fr auto;
+}
+
+/* The duration and the cooldown share their rows (label, field, notes), so the two fields stay level
+   however each label wraps and whichever of them shows an error under its help. */
+.alert-advanced-options > label:has(#alert-duration, #alert-cooldown) {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
 }
 
 .alert-advanced-options label:has(#alert-condition),
@@ -332,6 +343,34 @@
 
 .alert-advanced-options label .alert-field-help:empty {
   display: none;
+}
+
+/* A field's help and its error, one under the other in the field's cell. A threshold with no unit or
+   reading to show has nothing here until it has an error. */
+.alert-advanced-options .alert-field-notes {
+  display: grid;
+  gap: 8px;
+}
+
+.alert-advanced-options .alert-field-notes:has(> .alert-field-help:empty:only-child) {
+  display: none;
+}
+
+.alert-advanced-options .field-error {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* An error about a pair (quiet hours' start and end) or a group (the target state) runs under all
+   of it, as close to it as a help line. */
+.alert-advanced-options > .field-error {
+  grid-column: 1 / -1;
+  margin-top: -8px;
+}
+
+/* The field an error is about stays red while it has focus, too. */
+.alert-advanced-options .form-control[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 /* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a

@@ -184,6 +184,24 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(page, 'margin-inline')).toBe('auto');
     });
 
+    it('keeps the alert dialog fields the same width when an error makes its body scroll', () => {
+      render(
+        '',
+        '<div id="alert-config-modal" class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+      );
+      const body = document.querySelector('.modal-body');
+      // The rule every dialog body has: the 9px gutter is the end margin, at the inset a short
+      // window gives a dialog body too, and the 12px one in forced colours, where the scrollbar is
+      // wider.
+      expect(resolvedValue(body, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(body, 'padding-inline-end')).toBe('calc(1rem - 9px)');
+      expect(resolvedValue(body, 'padding-inline-end', SHORT)).toBe('calc(0.75rem - 9px)');
+      expect(resolvedValue(body, 'scrollbar-gutter', { forcedColors: true })).toBe('stable');
+      expect(resolvedValue(body, 'padding-inline-end', { forcedColors: true })).toBe(
+        'calc(1rem - 12px)'
+      );
+    });
+
     it('lays hotkey rows out in two tiers with a clear button that keeps its place', () => {
       render(
         '',
@@ -301,16 +319,46 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
-    it('sizes the seek column to its times, and gives the bar more in a wide window', () => {
-      render('', '<div class="media-tile-content"></div>');
+    // Never narrower than its times, so h:mm:ss fits; above that the bar takes what the title
+    // leaves, since a column sized to its times alone left a 36px stub of a bar in the default
+    // window. The title takes what it needs up to 37% of the row, so a long one keeps about 140px.
+    it('keeps the seek column at least as wide as its times, and gives the bar the rest of the row', () => {
+      render(
+        '',
+        `<div class="media-tile-content"><button class="media-tile-info"></button>
+          <div class="media-tile-seek" data-empty="false"></div></div>`
+      );
       const content = document.querySelector('.media-tile-content');
       expect(resolvedValue(content, 'grid-template-columns', DEFAULT)).toBe(
-        'minmax(0, 1fr) fit-content(140px) auto'
+        'fit-content(37%) minmax(min-content, 1fr) auto'
       );
       expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
       expect(
         resolvedValue(content, 'grid-template-columns', { viewport: { width: 900, height: 700 } })
       ).toBe('minmax(0, 1fr) minmax(min-content, 200px) auto');
+      // A title cut off by its ellipsis never holds the column open at its full length.
+      expect(resolvedValue(document.querySelector('.media-tile-info'), 'min-width')).toBe('0');
+    });
+
+    // A stream, a TV input or an idle player has no length: its seek row is hidden, and the share
+    // of the row beside it only cut the station's or the programme's name shorter.
+    it('gives a hidden seek row only the width of its times, at every one-row width', () => {
+      render(
+        '',
+        `<div class="media-tile-content"><button class="media-tile-info"></button>
+          <div class="media-tile-seek" data-empty="true"></div></div>`
+      );
+      const content = document.querySelector('.media-tile-content');
+      for (const viewport of [DEFAULT.viewport, { width: 900, height: 700 }]) {
+        expect(resolvedValue(content, 'grid-template-columns', { viewport })).toBe(
+          'minmax(0, 1fr) min-content auto'
+        );
+      }
+      // The narrow layouts put the row on a line of its own, as before.
+      expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
+      expect(
+        resolvedValue(content, 'grid-template-columns', { viewport: { width: 400, height: 600 } })
+      ).toBe('minmax(0, 1fr) auto');
     });
 
     it('draws the seek times at their own width', () => {
@@ -372,6 +420,44 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(pill, 'display', { viewport: { width: 400, height: 600 } })).toBe(
         'none'
       );
+    });
+
+    it('shrinks the Command and Page pills to a glyph in a narrow window, where they mark the row', () => {
+      // A command row has its entity's icon, so without the pill "Arm Home alarm away" looked like
+      // the alarm itself; kept as a word, it cut the names off where the commands differ.
+      render(
+        '',
+        `<button class="command-palette-result"><span class="command-palette-result-domain is-row-kind"
+          ><span class="command-palette-result-kind-icon"></span
+          ><span class="command-palette-result-kind-label">Command</span></span></button>`
+      );
+      const pill = document.querySelector('.command-palette-result-domain');
+      const glyph = document.querySelector('.command-palette-result-kind-icon');
+      const label = document.querySelector('.command-palette-result-kind-label');
+      for (const narrow of [NARROW, { viewport: { width: 400, height: 600 } }]) {
+        expect(resolvedValue(pill, 'display', narrow)).toBe('grid');
+        expect(resolvedValue(pill, 'flex', narrow)).toBe('none');
+        expect(resolvedValue(glyph, 'display', narrow)).toBe('grid');
+        // Out of sight, not out of the row's accessible name.
+        expect(resolvedValue(label, 'display', narrow)).toBeNull();
+        expect(resolvedValue(label, 'clip-path', narrow)).toBe('inset(50%)');
+        expect(resolvedValue(label, 'position', narrow)).toBe('absolute');
+      }
+      // The word, without the glyph, at the default size.
+      expect(resolvedValue(glyph, 'display', DEFAULT)).toBe('none');
+      expect(resolvedValue(label, 'clip-path', DEFAULT)).toBeNull();
+    });
+
+    it('keeps the palette rows the same width whether or not the list scrolls', () => {
+      render('', '<div class="command-palette-results"></div>');
+      const results = document.querySelector('.command-palette-results');
+      // The gutter is reserved, and it is the end margin: the start margin matches it.
+      expect(resolvedValue(results, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(results, 'padding')).toBe('6px 0');
+      expect(resolvedValue(results, 'padding-inline-start')).toBe('9px');
+      // The system's own scrollbar in forced colours is wider than the 9px gutter.
+      expect(resolvedValue(results, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
+      expect(resolvedValue(results, 'padding-inline', { forcedColors: true })).toBe('6px');
     });
 
     it('keeps the climate target on one line, under the current reading when it must', () => {

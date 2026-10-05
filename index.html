@@ -2055,12 +2055,16 @@
                     <label for="global-hotkeys-enabled" data-i18n="Entity hotkeys"
                       >Entity hotkeys</label
                     >
+                    <!-- The key names are this platform's (renderer.js applyPlatformKeyNames):
+                         Shift alone does not make a hotkey, and the Meta key is Super, Win or Cmd. -->
                     <p
+                      id="entity-hotkeys-help"
                       class="form-help"
-                      data-i18n-html="Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>)."
+                      data-i18n-html="Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>)."
+                      data-i18n-vars='{"ctrl": "Ctrl", "alt": "Alt", "meta": "Super", "shift": "Shift", "example": "Ctrl+Shift+A"}'
                     >
-                      Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win,
-                      Command, Super (for example <code>Ctrl+Shift+A</code>).
+                      Toggle or control entities from anywhere. Hold Ctrl, Alt or Super with the
+                      key, and Shift too if you like (for example <code>Ctrl+Shift+A</code>).
                     </p>
                     <p
                       id="entity-hotkey-immediate-note"
