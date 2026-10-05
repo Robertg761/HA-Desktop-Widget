@@ -301,18 +301,25 @@ describe('shared layout rules for narrow windows and long labels', () => {
       );
     });
 
-    // Never narrower than its times, so h:mm:ss fits; above that it shares the row with the title,
-    // since a column sized to its times alone left a 36px stub of a bar in the default window.
-    it('keeps the seek column at least as wide as its times, and gives the bar a share of the row', () => {
-      render('', '<div class="media-tile-content"></div>');
+    // Never narrower than its times, so h:mm:ss fits; above that the bar takes what the title
+    // leaves, since a column sized to its times alone left a 36px stub of a bar in the default
+    // window. The title takes what it needs up to 37% of the row, so a long one keeps about 140px.
+    it('keeps the seek column at least as wide as its times, and gives the bar the rest of the row', () => {
+      render(
+        '',
+        `<div class="media-tile-content"><button class="media-tile-info"></button>
+          <div class="media-tile-seek" data-empty="false"></div></div>`
+      );
       const content = document.querySelector('.media-tile-content');
       expect(resolvedValue(content, 'grid-template-columns', DEFAULT)).toBe(
-        'minmax(0, 1fr) minmax(min-content, 0.9fr) auto'
+        'fit-content(37%) minmax(min-content, 1fr) auto'
       );
       expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
       expect(
         resolvedValue(content, 'grid-template-columns', { viewport: { width: 900, height: 700 } })
       ).toBe('minmax(0, 1fr) minmax(min-content, 200px) auto');
+      // A title cut off by its ellipsis never holds the column open at its full length.
+      expect(resolvedValue(document.querySelector('.media-tile-info'), 'min-width')).toBe('0');
     });
 
     // A stream, a TV input or an idle player has no length: its seek row is hidden, and the share
