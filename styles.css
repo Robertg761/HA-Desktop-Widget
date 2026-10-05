@@ -2479,10 +2479,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
    little bigger (the balanced layout, up to the roomy 260x190) spends its extra room on a fourth
    mode or speed, the slider's labels and the climate's current reading, so it keeps the same
    spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
-   keep those. */
+   keep those, and so does a media pin, which is balanced only from 285px wide (narrower, it is
+   tight) and has no row that grows. The :where() keeps these rules' weight. */
 .desktop-pin-panel-control:is(
   [data-layout='compact'],
-  [data-layout='balanced'],
+  [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
   [data-dense-variant='tight']
 ),
 .desktop-pin-light-control[data-layout='compact'] {
@@ -2495,7 +2496,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-panel-control:is(
     [data-layout='compact'],
-    [data-layout='balanced'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
     [data-dense-variant='tight']
   )
   .desktop-pin-panel-topline {
@@ -2504,7 +2505,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-panel-control:is(
     [data-layout='compact'],
-    [data-layout='balanced'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
     [data-dense-variant='tight']
   )
   :is(.desktop-pin-panel-meter, .desktop-pin-cover-frame) {
@@ -2515,7 +2516,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
    like "Désactivé" in a third of 150px. */
 .desktop-pin-panel-control:is(
     [data-layout='compact'],
-    [data-layout='balanced'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
     [data-dense-variant='tight']
   )
   .desktop-pin-panel-button {
@@ -2528,7 +2529,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-panel-control:is(
     [data-layout='compact'],
-    [data-layout='balanced'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
     [data-dense-variant='tight']
   )
   .desktop-pin-panel-actions {

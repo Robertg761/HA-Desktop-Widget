@@ -1387,6 +1387,30 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('flex');
     });
 
+    it('leaves a balanced media pin its roomier spacing and buttons, since no row of it grows', () => {
+      // A media pin is balanced only from 285px wide, and nothing of it ran off the tile there.
+      render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="standard"'));
+      const options = { viewport: { width: 300, height: 170 } };
+      const button = document.querySelector('.desktop-pin-panel-button');
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-panel-pad',
+          options
+        )
+      ).toBe('12px');
+      expect(resolvedValue(button, 'text-transform', options)).toBe('uppercase');
+      // The tight media pin, narrower, keeps the default pin's.
+      render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="tight"'));
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-button'),
+          'text-transform',
+          options
+        )
+      ).toBe('none');
+    });
+
     it.each(['compact', 'balanced', 'roomy'])(
       'keeps the case of a weather reading in a %s pin ("km/h", never "KM/H")',
       (layout) => {
