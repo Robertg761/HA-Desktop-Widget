@@ -83,6 +83,11 @@ const mockUiUtils = {
       .map((entry) => ({
         ...entry,
         color: normalizeHex(entry.color),
+        // A colour nobody named is named when it is read, in the language of the day, as the real
+        // localizeTheme does.
+        name:
+          entry.name ||
+          require('../../src/i18n.js').t('Custom {{color}}', { color: normalizeHex(entry.color) }),
         description: 'Saved custom color',
         rgb: hexToRgbString(entry.color),
         isCustom: true,
@@ -3772,15 +3777,33 @@ describe('Settings + Config Integration', () => {
         );
       });
 
-      test('does not change the name itself, which the rename field shows and compares', async () => {
+      test('shows the name in the rename field as the summary line does, and stores it without the marks', async () => {
         i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
-        await openWithCustomAccent('#AB34CD مخصص');
+        await openWithCustomAccent('Ocean #AB34CD');
 
         const option = document.querySelector('.color-theme-option[data-theme="custom-ab34cd"]');
         expect(option.getAttribute('aria-label')).toContain('\u2066#AB34CD\u2069');
-        expect(document.getElementById('custom-color-name-input').value).not.toMatch(
-          /[\u2066\u2069]/
+        // In the field as well, the '#' would land at the far end of the code: "Ocean AB34CD#".
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Ocean \u2066#AB34CD\u2069');
+
+        field.value = 'Sea \u2066#AB34CD\u2069';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('Sea #AB34CD');
+      });
+
+      test('reads an unchanged field as no edit, so Save does not ask about it', async () => {
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent('');
+
+        expect(document.getElementById('custom-color-name-input').value).toBe(
+          '\u2066#AB34CD\u2069 مخصص'
         );
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
       });
 
       test('leaves a name the person typed alone', async () => {
@@ -4064,14 +4087,53 @@ describe('Settings + Config Integration', () => {
       saveCustomBtn.click();
       await settings.saveSettings();
 
-      // Assert
+      // Assert: stored without a name, which is given when the colour is shown, in the language of
+      // the day; a stored "Custom #112233" would stay English after a change to German.
       expect(state.CONFIG.ui.customColors).toHaveLength(1);
       expect(state.CONFIG.ui.customColors[0]).toEqual(
         expect.objectContaining({
           color: '#112233',
-          name: 'Custom #112233',
+          name: '',
         })
       );
+      expect(document.getElementById('custom-color-name-input').value).toBe('Custom #112233');
+    });
+
+    test('names a saved colour in the language of the day, also one saved by an older version', async () => {
+      const i18n = require('../../src/i18n.js');
+      state.CONFIG.ui.customColors = [
+        // A name the colour got when it was saved, in English and in German.
+        { id: 'custom-112233', name: 'Custom #112233', color: '#112233' },
+        { id: 'custom-445566', name: 'Eigene Farbe #445566', color: '#445566' },
+        { id: 'custom-778899', name: 'Ocean', color: '#778899' },
+      ];
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+      });
+      try {
+        await settings.openSettings();
+        await settings.saveSettings();
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+
+      expect(state.CONFIG.ui.customColors.map((entry) => entry.name)).toEqual(['', '', 'Ocean']);
+    });
+
+    test('keeps the default name when it is typed back', async () => {
+      state.CONFIG.ui.customColors = [{ id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD' }];
+      state.CONFIG.ui.accent = 'custom-ab34cd';
+      await settings.openSettings();
+      const field = document.getElementById('custom-color-name-input');
+      const rename = document.getElementById('rename-custom-color-btn');
+
+      field.value = 'Custom #AB34CD';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      rename.click();
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.customColors[0].name).toBe('');
+      expect(field.value).toBe('Custom #AB34CD');
     });
 
     test('should prompt for unsaved custom color draft and save when confirmed', async () => {

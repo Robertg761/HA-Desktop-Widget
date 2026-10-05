@@ -652,6 +652,21 @@ function buildCustomColorId(seed = '') {
   return `${CUSTOM_THEME_ID_PREFIX}${cleanedSeed || 'color'}-${suffix}`;
 }
 
+// A saved colour nobody named is stored without a name and shown as "Custom #AB34CD" in the language
+// of the day (see localizeTheme in ui-utils). Before, that default was stored in whatever language
+// the app was in when the colour was saved, and stayed in it; such a name, in English or in the
+// current language, is read as no name and leaves the next save without one.
+function isDefaultCustomColorName(name, color) {
+  const text = typeof name === 'string' ? name.trim() : '';
+  return !text || text === `Custom ${color}` || text === t('Custom {{color}}', { color });
+}
+
+// The rename field shows a name the way the summary line does, with its hex code isolated (see
+// getThemeDisplayName); what it holds is read back without those marks.
+function readCustomColorNameField(input) {
+  return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
+}
+
 function normalizeCustomColorList(customColors) {
   if (!Array.isArray(customColors)) return [];
 
@@ -675,10 +690,7 @@ function normalizeCustomColorList(customColors) {
         : new Date().toISOString();
     const updatedAt =
       typeof entry.updatedAt === 'string' && entry.updatedAt.trim() ? entry.updatedAt : createdAt;
-    const name =
-      typeof entry.name === 'string' && entry.name.trim()
-        ? entry.name.trim()
-        : t('Custom {{color}}', { color });
+    const name = isDefaultCustomColorName(entry.name, color) ? '' : entry.name.trim();
 
     seenIds.add(id);
     seenColors.add(color);
@@ -1121,9 +1133,9 @@ function persistCustomColorsImmediately() {
 }
 
 // Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
-// A hex code in one ("Custom #AB34CD", the name a color gets when it is saved) is isolated for
-// display, since in an Arabic sentence its '#' would otherwise land beside the wrong end of it. The
-// name itself is left as typed, because the rename field and the comparison with it use that.
+// A hex code in one ("Custom #AB34CD", the name a color is shown with until it is renamed) is
+// isolated for display, since in an Arabic sentence its '#' would otherwise land beside the wrong
+// end of it. The stored name never holds the marks: the rename field drops them when it is read.
 function getThemeDisplayName(theme) {
   if (!theme) return '';
   if (!theme.isCustom) return t(theme.name || '');
@@ -1262,8 +1274,10 @@ function updateCustomThemeManagementUI(theme = null) {
     return;
   }
 
-  if (nameInput && activeCustomManagementThemeId !== selectedTheme.id) {
-    nameInput.value = selectedTheme.name || '';
+  // A name nobody is editing follows the colour and the language, so a default name shown before a
+  // language change is not left behind to be compared with, or saved as, the new one.
+  if (nameInput && (activeCustomManagementThemeId !== selectedTheme.id || !isCustomEditorActive)) {
+    nameInput.value = getThemeDisplayName(selectedTheme);
   }
   activeCustomManagementThemeId = selectedTheme.id;
 }
@@ -1311,7 +1325,8 @@ function saveCustomColorFromEditor() {
   const timestamp = new Date().toISOString();
   const customColor = {
     id: buildCustomColorId(color.slice(1)),
-    name: t('Custom {{color}}', { color }),
+    // Named when it is shown, in the language of the day; see isDefaultCustomColorName.
+    name: '',
     color,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -1334,9 +1349,9 @@ function renameSelectedCustomColor() {
   const { nameInput } = getCustomColorEditorElements();
   if (!nameInput) return;
 
-  const nextName = (nameInput.value || '').trim();
+  const nextName = readCustomColorNameField(nameInput);
   if (!nextName) {
-    nameInput.value = selectedTheme.name || '';
+    nameInput.value = getThemeDisplayName(selectedTheme);
     return;
   }
 
@@ -1345,7 +1360,8 @@ function renameSelectedCustomColor() {
     if (entry.id !== selectedTheme.id) return entry;
     return {
       ...entry,
-      name: nextName,
+      // The default name typed back stays the default, in whatever language comes next.
+      name: isDefaultCustomColorName(nextName, entry.color) ? '' : nextName,
       updatedAt: new Date().toISOString(),
     };
   });
@@ -1364,7 +1380,7 @@ async function removeSelectedCustomColor() {
   // background using it falls back to the default, so a stray click should not do it.
   const confirmed = await showConfirm(
     t('Remove Custom Color'),
-    t('Remove "{{name}}" from your custom colors?', { name: selectedTheme.name }),
+    t('Remove "{{name}}" from your custom colors?', { name: getThemeDisplayName(selectedTheme) }),
     { confirmText: t('Remove'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -1533,7 +1549,7 @@ function hasPendingCustomNameEdit() {
   const { nameInput } = getCustomColorEditorElements();
   if (!nameInput) return false;
 
-  const pendingName = (nameInput.value || '').trim();
+  const pendingName = readCustomColorNameField(nameInput);
   const currentName = (selectedTheme.name || '').trim();
   return !!pendingName && pendingName !== currentName;
 }

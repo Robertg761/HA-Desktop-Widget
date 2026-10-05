@@ -17209,6 +17209,14 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   unicode-bidi: plaintext;
 }
 
+/* A custom colour's name is the user's own text in any script, or the default one ("#AB34CD مخصص")
+   with its hex code isolated. It reads in the direction of its text, as the summary line above it
+   does, and starts at the reading edge like the fields around it. */
+[dir='rtl'] #custom-color-name-input {
+  unicode-bidi: plaintext;
+  text-align: right;
+}
+
 /* A turning arrow points the way the page reads. The undo of the dashboard history is the only
    directional glyph drawn; media transport keeps its direction (above). It is the icon that turns,
    not the button, whose hover and press moves are transforms of their own. */

@@ -213,6 +213,19 @@ describe('right-to-left and script-aware typography', () => {
       );
     });
 
+    it('reads a custom colour name in the direction of its own text, from the reading edge', () => {
+      // The default name is "#AB34CD مخصص" with the code isolated, a typed one is in any script.
+      render('<input id="custom-color-name-input" value="Ocean (blue)">', {
+        dir: 'rtl',
+        lang: 'ar',
+      });
+      const field = document.querySelector('input');
+      expect(resolvedValue(field, 'unicode-bidi')).toBe('plaintext');
+      expect(resolvedValue(field, 'text-align')).toBe('right');
+      render('<input id="custom-color-name-input" value="Ocean (blue)">');
+      expect(resolvedValue(document.querySelector('input'), 'unicode-bidi')).toBeNull();
+    });
+
     it('keeps the hotkey fields centred, as they were', () => {
       render('<input class="hotkey-input">', { dir: 'rtl', lang: 'ar' });
       expect(resolvedValue(document.querySelector('input'), 'text-align')).toBe('center');
