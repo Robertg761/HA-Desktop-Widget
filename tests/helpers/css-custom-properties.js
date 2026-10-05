@@ -47,14 +47,28 @@ function listScripts(root, entry) {
     .sort();
 }
 
-/** Record the reads and definitions in a piece of CSS-like text (a stylesheet or index.html). */
-function scanText(text, file, scan) {
+/**
+ * Record the reads and definitions in a piece of CSS-like text (a stylesheet or index.html), or in
+ * a string from a script (`script`).
+ */
+function scanText(text, file, scan, { script = false } = {}) {
   for (const match of text.matchAll(VAR_READ)) {
     scan.reads.push({ file, name: match[1], prefix: !!match[2], fallback: !!match[3] });
   }
   const withoutReads = text.replace(/var\(\s*--[\w-]+/g, 'var(');
   for (const match of withoutReads.matchAll(NAME)) {
-    (match[2] ? scan.prefixes : scan.definitions).add(match[1]);
+    if (match[2]) {
+      scan.prefixes.add(match[1]);
+      continue;
+    }
+    scan.definitions.add(match[1]);
+    // Where a definition is, for the unread check. In markup and stylesheets only a declaration
+    // (`--x:`) is one; prose such as "run ha-desktop-widget --toggle" in index.html is not.
+    const declared = script || /^\s*:/.test(withoutReads.slice(match.index + match[0].length));
+    if (scan.definedIn && declared) {
+      if (!scan.definedIn.has(match[1])) scan.definedIn.set(match[1], new Set());
+      scan.definedIn.get(match[1]).add(file);
+    }
   }
 }
 
@@ -75,19 +89,20 @@ function scanScript(source, file, scan) {
     plugins: ['optionalChaining', 'nullishCoalescingOperator'],
   });
   walk(ast, (node) => {
-    if (node.type === 'StringLiteral') scanText(node.value, file, scan);
+    if (node.type === 'StringLiteral') scanText(node.value, file, scan, { script: true });
     if (node.type === 'TemplateLiteral') {
       scanText(
         node.quasis.map((quasi) => quasi.value.cooked ?? '').join(INTERPOLATION),
         file,
-        scan
+        scan,
+        { script: true }
       );
     }
   });
 }
 
 function scanCustomProperties(root = ROOT) {
-  const scan = { definitions: new Set(), prefixes: new Set(), reads: [] };
+  const scan = { definitions: new Set(), definedIn: new Map(), prefixes: new Set(), reads: [] };
   for (const file of STYLE_FILES) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
     // Comments often name the very property they explain; they define nothing.
@@ -129,4 +144,25 @@ function countUndefinedReads(scan) {
   return Object.fromEntries([...counts.keys()].sort().map((key) => [key, counts.get(key)]));
 }
 
-module.exports = { countUndefinedReads, scanCustomProperties, scanScript, scanText };
+/**
+ * The custom properties a stylesheet or the renderer defines but nothing reads, sorted. A name
+ * read through an interpolated var() (var(--chart-series-${n})) counts as read. Names only the
+ * main process's CommonJS modules quote are left out: those are command-line flags.
+ */
+function listUnreadDefinitions(scan) {
+  return [...scan.definitions]
+    .filter((name) => [...(scan.definedIn?.get(name) || [])].some((file) => !/\.cjs$/.test(file)))
+    .filter(
+      (name) =>
+        !scan.reads.some((read) => (read.prefix ? name.startsWith(read.name) : read.name === name))
+    )
+    .sort();
+}
+
+module.exports = {
+  countUndefinedReads,
+  listUnreadDefinitions,
+  scanCustomProperties,
+  scanScript,
+  scanText,
+};

@@ -114,14 +114,14 @@ describe('downloadable locale-pack manifest', () => {
       'Controls for {{name}}',
       'All entities',
       'And {{count}} more devices',
-      'Choose rooms and devices',
+      'Choose rooms and entities',
       'Connecting to Home Assistant...',
-      'My devices',
+      'My entities',
       'Page preview: {{count}} devices',
       'Rooms are unavailable. Choose from your entities instead.',
       'No rooms are set up in Home Assistant yet. Choose from your entities instead.',
       'Skip for now',
-      'Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.',
+      'Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.',
     ];
     const packDir = path.resolve(__dirname, '../../locale-packs');
     const manifest = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));

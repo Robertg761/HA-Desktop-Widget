@@ -1222,6 +1222,28 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
     });
 
+    test('clearing the popup hotkey says why it failed and leaves the hotkey shown', async () => {
+      state.CONFIG.popupHotkey = 'Ctrl+Shift+F12';
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+      mockElectronAPI.unregisterPopupHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to save popup hotkey removal: disk full',
+      });
+
+      document.getElementById('popup-hotkey-clear-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Failed to save popup hotkey removal: disk full',
+        'error'
+      );
+      expect(state.CONFIG.popupHotkey).toBe('Ctrl+Shift+F12');
+      expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
+    });
+
     test('a platform without a global shortcut service shows a read-only card that says so', async () => {
       mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
 
@@ -2309,6 +2331,50 @@ describe('Settings + Config Integration', () => {
         expect(
           document.getElementById('language-fallback-summary').classList.contains('hidden')
         ).toBe(false);
+      });
+
+      describe('on Auto, for a system language the app has as a pack', () => {
+        const arabicPack = (installed) => ({
+          ...frenchPack(installed),
+          locale: 'ar',
+          displayName: 'العربية',
+          englishName: 'Arabic',
+        });
+        const openOnAuto = async (detectedLocale, packs) => {
+          state.CONFIG.ui.language = 'auto';
+          setLocaleBootstrap({
+            languageSetting: 'auto',
+            detectedLocale,
+            requestedLocale: detectedLocale,
+            activeLocale: 'en',
+            usingEnglishFallback: detectedLocale !== 'en',
+            messages: {},
+          });
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce(packs);
+          await openWithLocaleHooks();
+          return document.getElementById('language-fallback-summary');
+        };
+        afterEach(() => {
+          setLocaleBootstrap({ languageSetting: 'auto', usingEnglishFallback: false });
+        });
+
+        test('says English is standing in until its pack is downloaded', async () => {
+          const line = await openOnAuto('ar-EG', [arabicPack(false), frenchPack(false)]);
+
+          expect(line.classList.contains('hidden')).toBe(false);
+          // In the interface's language, like "System language detected: Arabic" above it.
+          expect(line.textContent).toBe(
+            'Using English until the Arabic language pack is downloaded.'
+          );
+        });
+
+        test.each([
+          ['an English system', 'en-US', [arabicPack(false)]],
+          ['a language with no pack', 'ja-JP', [arabicPack(false)]],
+        ])('says nothing of the kind for %s', async (_name, detected, packs) => {
+          const line = await openOnAuto(detected, packs);
+          expect(line.classList.contains('hidden')).toBe(true);
+        });
       });
 
       test('removing a language that is not in use leaves the interface alone', async () => {
@@ -4636,9 +4702,9 @@ describe('Settings + Config Integration', () => {
 
   describe('the keyring notice', () => {
     const notice = () => document.getElementById('secure-storage-notice');
-    const openWithIntegration = async (info) => {
+    const openWithIntegration = async (info, hooks) => {
       window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(info);
-      await settings.openSettings();
+      await settings.openSettings(hooks);
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
 
@@ -4665,6 +4731,59 @@ describe('Settings + Config Integration', () => {
       settings.closeSettings();
       await openWithIntegration({ platform: 'linux', secureStorageAvailable: true });
       expect(notice().classList.contains('hidden')).toBe(true);
+    });
+
+    describe('beside a token that has to be entered again', () => {
+      const noKeyring = { platform: 'linux', secureStorageAvailable: false };
+      const status = () => document.getElementById('ha-oauth-status');
+      let connection;
+      const hooks = { initUpdateUI: jest.fn(), getConnectionState: () => connection };
+      const needsToken = (tokenReason, reason) => ({
+        status: 'disconnected',
+        reason,
+        needsToken: true,
+        tokenReason,
+      });
+
+      test.each([
+        [
+          'encryption_unavailable',
+          'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.',
+        ],
+        [
+          'not_persisted',
+          'No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.',
+        ],
+      ])(
+        'says the missing keyring once, in the line above the field (%s)',
+        async (tokenReason, reason) => {
+          connection = needsToken(tokenReason, reason);
+          await openWithIntegration(noKeyring, hooks);
+
+          expect(status().textContent).toBe(reason);
+          expect(notice().classList.contains('hidden')).toBe(true);
+        }
+      );
+
+      test('keeps the notice when the token was lost for another reason', async () => {
+        // The token line says this computer cannot decrypt it; only the notice says a new one
+        // will not be remembered either.
+        connection = needsToken('decryption_failed', 'This computer cannot decrypt the token.');
+        await openWithIntegration(noKeyring, hooks);
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
+
+      test('brings the notice back once a token is entered and the keyring is still missing', async () => {
+        connection = needsToken('not_persisted', 'The access token was not saved.');
+        await openWithIntegration(noKeyring, hooks);
+        expect(notice().classList.contains('hidden')).toBe(true);
+
+        connection = { status: 'connected', reason: '' };
+        settings.refreshHomeAssistantAuthStatus();
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
     });
   });
 
@@ -6890,37 +7009,137 @@ describe('Settings + Config Integration', () => {
       duration.value = '90000';
       expect(press(duration).defaultPrevented).toBe(true);
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
+      expect(document.getElementById('alert-duration-error').textContent).toBe(
+        'Enter a whole number of seconds from 0 to 86400.'
       );
 
-      mockUiUtils.showToast.mockClear();
+      duration.value = '60';
+      duration.dispatchEvent(new Event('input', { bubbles: true }));
       expect(press(document.getElementById('alert-quiet-enabled')).defaultPrevented).toBe(false);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.getElementById('alert-duration-error')).toBeNull();
 
-      // Opening again must not stack a second listener.
+      // Opening again must not stack a second listener: one Enter saves once.
       settings.openAlertConfigModal('sensor.office_temperature');
-      document.getElementById('alert-duration').value = '90000';
       press(document.getElementById('alert-duration'));
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
       expect(modal.getAttribute('role')).toBe('dialog');
     });
 
-    test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
-      settings.openAlertConfigModal('sensor.office_temperature');
-      const duration = document.getElementById('alert-duration');
-      duration.value = '90000';
+    describe('a value that cannot be saved', () => {
+      const error = (id) => document.getElementById(`${id}-error`);
+      const chooseCondition = (value) => {
+        const condition = document.getElementById('alert-condition');
+        condition.value = value;
+        condition.dispatchEvent(new Event('change', { bubbles: true }));
+      };
 
-      await settings.saveAlert();
+      test('is said under its field, which is marked invalid and focused, not in a toast', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const duration = document.getElementById('alert-duration');
+        duration.value = '90000';
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
-      );
-      expect(document.activeElement).toBe(duration);
-      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        await settings.saveAlert();
+
+        expect(error('alert-duration').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(duration.getAttribute('aria-invalid')).toBe('true');
+        expect(duration.getAttribute('aria-describedby')).toBe(
+          'alert-duration-help alert-duration-error'
+        );
+        // In the field's own notes, under its help, so it stays in the field's grid cell.
+        expect(error('alert-duration').previousElementSibling.id).toBe('alert-duration-help');
+        expect(document.activeElement).toBe(duration);
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+        // Editing the value answers it.
+        duration.value = '120';
+        duration.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(error('alert-duration')).toBeNull();
+        expect(duration.hasAttribute('aria-invalid')).toBe(false);
+      });
+
+      test('is flagged with every other wrong field at once, and the first takes the focus', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('above');
+        document.getElementById('alert-threshold').value = '';
+        document.getElementById('alert-cooldown').value = '1.5';
+
+        await settings.saveAlert();
+
+        expect(error('alert-threshold').textContent).toBe('Enter a valid numeric threshold.');
+        expect(error('alert-cooldown').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(error('alert-duration')).toBeNull();
+        expect(document.activeElement).toBe(document.getElementById('alert-threshold'));
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      });
+
+      test('asks for a target state under the state field', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('specific-state');
+        const target = document.getElementById('target-state-input');
+        target.value = '  ';
+
+        await settings.saveAlert();
+
+        expect(error('target-state-input').textContent).toBe('Enter a target state.');
+        expect(document.activeElement).toBe(target);
+
+        // The field leaves with its condition, and takes its error with it.
+        chooseCondition('state-change');
+        expect(error('target-state-input')).toBeNull();
+      });
+
+      test('for quiet hours runs under the start and the end, and goes when either changes', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const start = document.getElementById('alert-quiet-start');
+        const end = document.getElementById('alert-quiet-end');
+        end.value = start.value;
+
+        await settings.saveAlert();
+
+        const message = error('alert-quiet-end');
+        expect(message.textContent).toBe('Choose different start and end times for quiet hours.');
+        expect(message.previousElementSibling).toBe(end.closest('label'));
+        expect(message.parentElement.id).toBe('alert-advanced-options');
+        expect(document.activeElement).toBe(end);
+
+        start.value = '23:00';
+        start.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).toBeNull();
+      });
+
+      test('is gone when quiet hours are switched off, and when the dialog opens again', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const end = document.getElementById('alert-quiet-end');
+        end.value = document.getElementById('alert-quiet-start').value;
+        document.getElementById('alert-duration').value = '-1';
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).not.toBeNull();
+
+        quietEnabled.checked = false;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+        expect(error('alert-duration')).not.toBeNull();
+
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(error('alert-duration')).toBeNull();
+        expect(document.getElementById('alert-duration').hasAttribute('aria-invalid')).toBe(false);
+      });
     });
   });
 
@@ -7368,6 +7587,17 @@ describe('Settings + Config Integration', () => {
         }
       });
 
+      test('leaves the bell on an alert row to the stylesheet, so it keeps its side in Arabic', () => {
+        document.querySelector('.add-alert-btn').click();
+
+        const button = '.entity-selector-btn[data-entity-id="switch.kitchen"]';
+        const row = document.querySelector(`#alert-entity-picker-list ${button}`).parentElement;
+        const badge = row.querySelector('.alert-badge');
+        // An inline left margin doubled the logical one in right-to-left text, and a fixed 14px
+        // ignored the text size.
+        expect(badge.getAttribute('style')).toBeNull();
+      });
+
       test('starts the picker on its search field, not on Close', async () => {
         document.querySelector('.add-alert-btn').click();
         await tick();
@@ -7705,7 +7935,9 @@ describe('Settings + Config Integration', () => {
           await settings.saveAlert();
 
           expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith('Enter a target state.', 'error');
+          expect(document.getElementById('target-state-input-error').textContent).toBe(
+            'Enter a target state.'
+          );
         });
       });
 
@@ -8334,6 +8566,49 @@ describe('Settings + Config Integration', () => {
         expect(status.textContent).toBe(
           'Browser authorization is recommended. The legacy token option remains available below.'
         );
+      });
+
+      describe('whose saved token this computer cannot read', () => {
+        const reason =
+          'This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.';
+        const recovery = () => ({
+          initUpdateUI: jest.fn(),
+          getConnectionState: () => ({ status: 'disconnected', reason, needsToken: true }),
+        });
+
+        test('says why beside the open token field, and puts the cursor in it', async () => {
+          await settings.openSettings(recovery());
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          const status = document.getElementById('ha-oauth-status');
+          expect(status.dataset.status).toBe('error');
+          expect(status.textContent).toBe(reason);
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+          // The status line says it; a toast on opening used to say it a third time.
+          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        });
+
+        test('is brought to General with the token field when Settings was left on another page', async () => {
+          await settings.openSettings(recovery());
+          const generalTab = document.createElement('button');
+          generalTab.className = 'tab-link';
+          generalTab.dataset.tab = 'general';
+          const tabs = document.createElement('div');
+          tabs.className = 'modal-tabs';
+          tabs.appendChild(generalTab);
+          document.getElementById('settings-modal').appendChild(tabs);
+          const openedTab = jest.fn();
+          generalTab.addEventListener('click', openedTab);
+          document.getElementById('legacy-ha-token-settings').open = false;
+          document.body.focus();
+
+          settings.revealHomeAssistantToken();
+
+          expect(openedTab).toHaveBeenCalled();
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+        });
       });
 
       test('follows the connection while Settings is open', async () => {

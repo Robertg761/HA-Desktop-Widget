@@ -4,6 +4,7 @@ const vm = require('vm');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
 const profileSyncCore = require('../../profile-sync-core.js');
 const { REWRITE_TRANSACTION_INVALID } = require('../../src/profile-sync-rewrite-transaction.cjs');
+const { liveEntityHotkeys } = require('../../src/entity-hotkeys.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -62,6 +63,7 @@ describe('main-process translations', () => {
     const runtime = loadMainRuntime('de', {
       PORTAL_ENTITY_SHORTCUT_PREFIX: 'entity:',
       PORTAL_POPUP_SHORTCUT_ID: 'popup',
+      liveEntityHotkeys,
     });
     runtime.config = shortcutConfig;
     vm.runInContext(

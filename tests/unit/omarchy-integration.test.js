@@ -119,6 +119,26 @@ test.each([
     `bind = ${fields}, global, ${APP_ID}:popup-toggle`
   );
 });
+// The recorder writes numpad keys and Print Screen as Electron names them (num0, numadd,
+// PrintScreen); Hyprland only loads a bind whose key is an XKB keysym.
+test.each([
+  ['Ctrl+Alt+num0', 'CTRL + ALT + KP_0', 'CTRL ALT, KP_0'],
+  ['Ctrl+Alt+num7', 'CTRL + ALT + KP_7', 'CTRL ALT, KP_7'],
+  ['Ctrl+Alt+numadd', 'CTRL + ALT + KP_Add', 'CTRL ALT, KP_Add'],
+  ['Ctrl+Alt+numsub', 'CTRL + ALT + KP_Subtract', 'CTRL ALT, KP_Subtract'],
+  ['Ctrl+Alt+nummult', 'CTRL + ALT + KP_Multiply', 'CTRL ALT, KP_Multiply'],
+  ['Ctrl+Alt+numdiv', 'CTRL + ALT + KP_Divide', 'CTRL ALT, KP_Divide'],
+  ['Ctrl+Alt+numdec', 'CTRL + ALT + KP_Decimal', 'CTRL ALT, KP_Decimal'],
+  ['Ctrl+Alt+PrintScreen', 'CTRL + ALT + Print', 'CTRL ALT, Print'],
+  ['Ctrl+Alt+-', 'CTRL + ALT + minus', 'CTRL ALT, minus'],
+])('binds %s on Hyprland by its keysym', (accelerator, keys, fields) => {
+  expect(hyprlandBinding(accelerator, 'popup-toggle')).toBe(
+    `hl.bind("${keys}", hl.dsp.global("${APP_ID}:popup-toggle"))`
+  );
+  expect(hyprlandBinding(accelerator, 'popup-toggle', APP_ID, 'hyprlang')).toBe(
+    `bind = ${fields}, global, ${APP_ID}:popup-toggle`
+  );
+});
 test.each(['Control+H\nbind = , X, exec, bad', 'Control+$key', 'Control+H#comment'])(
   'refuses unsafe legacy key fields: %s',
   (accelerator) => {
@@ -452,6 +472,20 @@ describe('an AppImage on a system that blocks the Chromium sandbox', () => {
     expect(writeLauncher({ sandboxDisabled: true, restriction: undefined })).not.toContain(
       '--no-sandbox'
     );
+  });
+
+  // The launcher only keeps the flag once the AppImage has started. Before that, a double-clicked
+  // AppImage exits without a window, and the README and the download page are all a user has.
+  test('is explained, with a link to the guide, where a user installing it looks', () => {
+    const repo = path.resolve(__dirname, '../..');
+    const read = (file) => fs.readFileSync(path.join(repo, file), 'utf8');
+    expect(fs.existsSync(path.join(repo, 'docs', 'linux-appimage.md'))).toBe(true);
+
+    // Download & Install, and Troubleshooting.
+    expect(read('README.md').match(/\]\(docs\/linux-appimage\.md\)/g)).toHaveLength(2);
+    const guide =
+      'https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-appimage.md';
+    expect(read('website/download.html')).toContain(`href="${guide}"`);
   });
 
   describe('with a launcher that is already there', () => {

@@ -8,8 +8,12 @@ const {
   resetMockElectronAPI,
   triggerMockEvent,
 } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer desktop pin waiting escape hatch', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   let mockElectronAPI;
   let mockLogger;
   let mockUi;
@@ -174,6 +178,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
   const loadRenderer = async ({ bootstrapOverrides = {} } = {}) => {
     jest.resetModules();
+    lifetime.start();
     setDesktopPinDom();
 
     resetMockElectronAPI();
@@ -285,9 +290,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     await flushAsync();
   };
 
+  const cleanup = () => lifetime.stop();
+
+  warmUpRenderer(loadRenderer, cleanup);
   beforeEach(() => {
     jest.clearAllMocks();
   });
+  afterEach(cleanup);
 
   it('gives the pin the Home Assistant unit system from the bootstrap and from later updates', async () => {
     await loadRenderer({ bootstrapOverrides: { unitSystem: { temperature: '°F' } } });
@@ -393,7 +402,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
       hasSnapshot: false,
-      connectionIssue: 'Please configure your Home Assistant token in Settings (gear icon).',
+      // A pin has no Settings button; it sends the person to the widget.
+      connectionIssue: 'No access token is saved. Open the widget to enter one.',
     });
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
   });

@@ -215,6 +215,25 @@ describe('acceleratorToPortalTrigger', () => {
   test('deduplicates modifiers', () => {
     expect(acceleratorToPortalTrigger('Ctrl+Control+X')).toBe('CTRL+x');
   });
+
+  // The recorder writes punctuation as the character and the numpad as Electron names it; a portal
+  // reads keysyms, as Hyprland's binds do.
+  test.each([
+    ['Ctrl+Alt+-', 'CTRL+ALT+minus'],
+    ['Ctrl+Alt+/', 'CTRL+ALT+slash'],
+    ['Ctrl+Alt+\\', 'CTRL+ALT+backslash'],
+    ['Ctrl+Alt+num0', 'CTRL+ALT+KP_0'],
+    ['Ctrl+Alt+num9', 'CTRL+ALT+KP_9'],
+    ['Ctrl+Alt+numadd', 'CTRL+ALT+KP_Add'],
+    ['Ctrl+Alt+numsub', 'CTRL+ALT+KP_Subtract'],
+    ['Ctrl+Alt+nummult', 'CTRL+ALT+KP_Multiply'],
+    ['Ctrl+Alt+numdiv', 'CTRL+ALT+KP_Divide'],
+    ['Ctrl+Alt+numdec', 'CTRL+ALT+KP_Decimal'],
+    ['Ctrl+Alt+PrintScreen', 'CTRL+ALT+Print'],
+    ['Ctrl+Alt+1', 'CTRL+ALT+1'],
+  ])('names the key of %s by its keysym: %s', (accelerator, expected) => {
+    expect(acceleratorToPortalTrigger(accelerator)).toBe(expected);
+  });
 });
 
 describe('createPortalGlobalShortcutsController', () => {

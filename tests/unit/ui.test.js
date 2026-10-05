@@ -11,7 +11,7 @@ const {
   getMockConfig,
 } = require('../mocks/electron.js');
 const desktopPinStyles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const { blurFocusedControlsOnDisable } = require('../helpers/chromium-focus.js');
 global.TextEncoder = global.TextEncoder || nodeUtil.TextEncoder;
 global.TextDecoder = global.TextDecoder || nodeUtil.TextDecoder;
 const { getRendererHost, setRendererHost } = require('@hadw/renderer/host.js');
@@ -241,6 +241,22 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     const flush = async () => {
       for (let i = 0; i < 20; i += 1) await Promise.resolve();
     };
+    // The search narrows the list a moment after typing pauses (150 ms), on the test's clock.
+    const SEARCH_DELAY_MS = 150;
+    const typeSearch = (text) => {
+      const search = document.querySelector('.room-device-search');
+      search.value = text;
+      search.dispatchEvent(new Event('input'));
+    };
+    const searchFor = (text) => {
+      jest.useFakeTimers();
+      try {
+        typeSearch(text);
+        jest.advanceTimersByTime(SEARCH_DELAY_MS);
+      } finally {
+        jest.useRealTimers();
+      }
+    };
     const entities = [
       { entity_id: 'light.desk', state: 'on', attributes: { friendly_name: 'Desk lamp' } },
       {
@@ -442,7 +458,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       ui.showAddPageModal({ starter: true });
       await flush();
-      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      expect(document.querySelector('#add-page-name').value).toBe('My entities');
       // It opens on what a first page is made of; the sensor and the button wait behind a switch.
       expect(
         [...document.querySelectorAll('.room-entity-list input')].map((input) => input.value)
@@ -486,26 +502,19 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(preview.querySelector('[role="status"]')).toBe(count);
       expect(removed).not.toContain(count);
       expect(count.textContent).toBe('Page preview: 2 entities');
-      const search = document.querySelector('.room-device-search');
-      search.value = 'desk';
-      search.dispatchEvent(new Event('input'));
-      expect(sensor.parentElement.hidden).toBe(true);
-      // The pick list styles its rows as flex; the hidden attribute must still win.
-      document.head.innerHTML = '';
-      loadAppStylesheets(document);
-      expect(resolvedValue(sensor.parentElement, 'display')).toBe('none');
-      expect(
-        resolvedValue(document.querySelector('input[value="light.desk"]').parentElement, 'display')
-      ).toBe('flex');
+      searchFor('desk');
+      // The search draws the rows that match; a tick on one it leaves out still counts.
+      expect(document.querySelector('input[value="sensor.temperature"]')).toBeNull();
+      expect(document.querySelector('input[value="light.desk"]').checked).toBe(true);
+      expect(count.textContent).toBe('Page preview: 2 entities');
       document.querySelector('#add-page-save-btn').click();
       await flush();
       expect(state.CONFIG.customTabs.find((page) => page.id === 'existing').entityIds).toEqual([
         'light.kept',
       ]);
-      expect(state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds).toEqual([
-        'light.desk',
-        'sensor.temperature',
-      ]);
+      expect(state.CONFIG.customTabs.find((page) => page.name === 'My entities').entityIds).toEqual(
+        ['light.desk', 'sensor.temperature']
+      );
     });
     const registryResponses = (overrides = {}) =>
       mockRequest.mockImplementation(({ type }) =>
@@ -582,14 +591,11 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flush();
       const status = document.querySelector('.room-dashboard [role="status"]');
       const hint = status.textContent;
-      const search = document.querySelector('.room-device-search');
 
-      search.value = 'nothing like this';
-      search.dispatchEvent(new Event('input'));
+      searchFor('nothing like this');
       expect(status.textContent).toBe('No matching entities found.');
 
-      search.value = 'sto';
-      search.dispatchEvent(new Event('input'));
+      searchFor('sto');
       expect(status.textContent).toBe(hint);
     });
 
@@ -653,11 +659,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           (input) => input.value
         )
       ).toEqual(['light.desk']);
-      const search = document.querySelector('.room-device-search');
-      expect(search.hidden).toBe(false);
-      search.value = 'temp';
-      search.dispatchEvent(new Event('input'));
-      expect(document.querySelector('input[value="light.desk"]').parentElement.hidden).toBe(true);
+      expect(document.querySelector('.room-device-search').hidden).toBe(false);
+      searchFor('temp');
+      expect(document.querySelector('input[value="light.desk"]')).toBeNull();
+      expect(document.querySelector('input[value="sensor.temperature"]')).not.toBeNull();
     });
 
     it('explains refused room access without offering a retry that cannot work', async () => {
@@ -763,7 +768,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flush();
 
       expect(document.querySelector('#add-page-room').value).toBe('');
-      expect(document.querySelector('#add-page-name').value).toBe('My devices');
+      // One noun with the list it names: the page is of entities.
+      expect(document.querySelector('#add-page-name').value).toBe('My entities');
     });
 
     it('excludes hidden and disabled devices from All entities and its defaults', async () => {
@@ -834,35 +840,121 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockRequest).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
-    it('caps the preview for large selections while preserving every selected device', async () => {
+    describe('in a home with a thousand entities', () => {
       const many = Array.from({ length: 1000 }, (_, index) => ({
-        entity_id: `light.device_${index}`,
+        entity_id: `light.device_${String(index).padStart(4, '0')}`,
         state: 'off',
         attributes: {},
       }));
-      mockRequest.mockImplementation(({ type }) =>
-        Promise.resolve(
-          type === 'get_states' ? { success: true, result: many } : { success: false }
-        )
-      );
-      ui.showAddPageModal({ starter: true });
-      await flush();
-      const checkboxes = [...document.querySelectorAll('.room-entity-list input')];
-      expect(checkboxes).toHaveLength(1000);
-      checkboxes.forEach((input) => {
-        input.checked = true;
+      const rows = () => document.querySelectorAll('.room-entity-list input');
+      beforeEach(() => {
+        mockRequest.mockImplementation(({ type }) =>
+          Promise.resolve(
+            type === 'get_states' ? { success: true, result: many } : { success: false }
+          )
+        );
       });
-      checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-      expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
-      expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
-        'And 992 more entities'
-      );
-      document.querySelector('#add-page-save-btn').click();
-      await flush();
-      expect(
-        state.CONFIG.customTabs.find((page) => page.name === 'My devices').entityIds
-      ).toHaveLength(1000);
+
+      it('draws the first hundred and says how many there are, and keeps every tick', async () => {
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        expect(rows()).toHaveLength(100);
+        expect(document.querySelector('.room-list-note').textContent).toBe(
+          'Showing the first 100 of 1,000 entities. Type to narrow them.'
+        );
+        rows().forEach((input) => {
+          if (!input.checked) input.click();
+        });
+        // A row past the hundred is ticked from a search, and its tick stays once it is cleared.
+        searchFor('device_0999');
+        expect(rows()).toHaveLength(1);
+        expect(document.querySelector('.room-list-note').textContent).toBe('');
+        rows()[0].click();
+        searchFor('');
+
+        expect(document.querySelectorAll('.room-preview-tile')).toHaveLength(8);
+        expect(document.querySelector('.room-dashboard-preview').textContent).toContain(
+          'And 93 more entities'
+        );
+        document.querySelector('#add-page-save-btn').click();
+        await flush();
+        const saved = state.CONFIG.customTabs.find((page) => page.name === 'My entities');
+        expect(saved.entityIds).toHaveLength(101);
+        expect(saved.entityIds).toContain('light.device_0999');
+      });
+
+      it('narrows the list once typing pauses, not on every key', async () => {
+        ui.showAddPageModal({ starter: true });
+        await flush();
+
+        jest.useFakeTimers();
+        try {
+          // Each key starts the wait again, so keys closer together than it narrow nothing.
+          for (const text of ['d', 'de', 'dev', 'device_000']) {
+            typeSearch(text);
+            jest.advanceTimersByTime(SEARCH_DELAY_MS - 1);
+          }
+          expect(rows()).toHaveLength(100);
+
+          jest.advanceTimersByTime(1);
+          expect(rows()).toHaveLength(10);
+        } finally {
+          jest.useRealTimers();
+        }
+      });
     });
+    // Load rooms disables itself while it waits, which in Chromium drops the keyboard's focus to
+    // <body>; the next Tab then started again at the top of the dialog.
+    describe('keeping the keyboard in place while rooms load', () => {
+      let restoreDisable;
+      beforeEach(() => {
+        restoreDisable = blurFocusedControlsOnDisable();
+        // Not connected when the dialog opens, so it waits for the button to be pressed.
+        require('../../src/websocket.js').isConnected.mockReturnValue(false);
+      });
+      afterEach(() => restoreDisable());
+
+      const pressLoadRooms = async () => {
+        ui.showAddPageModal();
+        const loadRooms = document.querySelector('.room-dashboard button');
+        loadRooms.focus();
+        await loadRooms.onclick();
+        return loadRooms;
+      };
+
+      it('puts focus back on the button when it comes back as Retry', async () => {
+        mockRequest.mockRejectedValue(new Error('Disconnected'));
+
+        const loadRooms = await pressLoadRooms();
+
+        expect(loadRooms.textContent).toBe('Retry');
+        expect(document.activeElement).toBe(loadRooms);
+      });
+
+      it('moves focus to the room picker it filled once the rooms are in', async () => {
+        registryResponses();
+
+        const loadRooms = await pressLoadRooms();
+
+        expect(loadRooms.hidden).toBe(true);
+        expect(document.activeElement).toBe(document.querySelector('#add-page-room'));
+      });
+
+      it('leaves focus alone when the person has moved on while the rooms loaded', async () => {
+        registryResponses();
+        ui.showAddPageModal();
+        const loadRooms = document.querySelector('.room-dashboard button');
+        loadRooms.focus();
+        const loading = loadRooms.onclick();
+        const name = document.querySelector('#add-page-name');
+        name.focus();
+        await loading;
+
+        expect(document.activeElement).toBe(name);
+      });
+    });
+
     it('offers retry when device states are not ready', async () => {
       mockRequest.mockRejectedValueOnce(new Error('not connected'));
       ui.showAddPageModal({ starter: true });
@@ -1137,6 +1229,61 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await expect(ui.restoreDashboard(entries[0].layout)).rejects.toThrow('Disk full');
       expect(state.CONFIG.customTabs).toEqual(current.customTabs);
       expect(readDashboardHistory(current)).toEqual(entries);
+    });
+
+    it('gives the layout a restore or an Undo replaces a restore point, however soon after an edit', async () => {
+      const { rememberDashboard, readRestorePoints } = require('../../src/dashboard-history.js');
+      // Edits less than 30 s apart share a restore point. Only Date is faked.
+      jest.useFakeTimers({
+        now: new Date('2030-01-01T10:00:00Z'),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'queueMicrotask',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'requestIdleCallback',
+          'cancelIdleCallback',
+          'performance',
+          'hrtime',
+        ],
+      });
+      try {
+        // An earlier test's last edit still waits to become a restore point. Let it settle, as
+        // closing the app does, before starting from an empty list.
+        window.dispatchEvent(new Event('pagehide'));
+        localStorage.clear();
+        const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+        const pages = () =>
+          readRestorePoints(state.CONFIG).map((point) =>
+            point.layout.customTabs.map((tab) => tab.id).join('+')
+          );
+        mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+          ...state.CONFIG,
+          ...patch,
+        }));
+        const original = { ...state.CONFIG, customTabs: tabs('one'), activeTabId: 'one' };
+        const edited = { ...original, customTabs: tabs('one', 'two') };
+        rememberDashboard(original, edited);
+        state.setConfig(edited);
+
+        jest.setSystemTime(Date.now() + 5000);
+        await ui.restoreDashboard({ customTabs: tabs('three') });
+        expect(pages()).toEqual(['one+two', 'one']);
+
+        jest.setSystemTime(Date.now() + 5000);
+        await ui.restoreDashboard({ customTabs: tabs('one', 'two') }, { undo: true });
+        expect(pages()).toEqual(['three', 'one+two', 'one']);
+        expect(readRestorePoints(state.CONFIG)[0].undone).toBe(true);
+      } finally {
+        localStorage.clear();
+        jest.useRealTimers();
+      }
     });
 
     it('restores dashboard fields while preserving local authorization and hotkeys', async () => {
@@ -3898,6 +4045,28 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it.each([
+      ['darwin', 'Option'],
+      ['win32', 'Alt'],
+      ['linux', 'Alt'],
+    ])('names the reorder key as a %s keyboard prints it', (platform, key) => {
+      const previousPlatform = window.electronAPI.platform;
+      window.electronAPI.platform = platform;
+      try {
+        ui.renderActiveTab();
+        ui.toggleReorganizeMode();
+
+        expect(uiUtils.showToast).toHaveBeenCalledWith(
+          `Reorganize mode on. Drag or press ${key}+arrow keys to reorder. Esc to finish.`,
+          'info',
+          4500,
+          { passive: true }
+        );
+      } finally {
+        window.electronAPI.platform = previousPlatform;
+      }
+    });
+
     it('saves the camera snapshot cadence from Tile Settings', async () => {
       const config = state.CONFIG;
       config.favoriteEntities = ['camera.front_door'];
@@ -6359,6 +6528,128 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control.dataset.state).toBe('off');
     });
 
+    it('fills an on/off lamp pin with its state, since it has no brightness to show', () => {
+      const porch = {
+        entity_id: 'light.porch',
+        state: 'on',
+        attributes: { friendly_name: 'Porch light', supported_color_modes: ['onoff'] },
+      };
+      state.setStates({ [porch.entity_id]: porch });
+      ui.renderDesktopPinnedTile(porch.entity_id, porch);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      // The body is not left empty: the state is its meter, and the caption under the name, which
+      // the default pin hides, is not the only place it is written.
+      expect(
+        control.querySelector('.desktop-pin-light-state .desktop-pin-light-state-value')
+          ?.textContent
+      ).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-status')).toBeNull();
+
+      const off = { ...porch, state: 'off' };
+      state.setStates({ [porch.entity_id]: off });
+      ui.renderDesktopPinnedTile(porch.entity_id, off);
+      expect(document.querySelector('#desktop-pin-content .desktop-pin-light-control')).toBe(
+        control
+      );
+      expect(control.querySelector('.desktop-pin-light-state-value').textContent).toBe('Off');
+      expect(control.dataset.state).toBe('off');
+    });
+
+    it('says whether a dimmable lamp is on under its name, not the level its meter shows', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control.querySelector('.desktop-pin-light-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('80%');
+      expect(control.querySelector('.desktop-pin-light-state')).toBeNull();
+    });
+
+    it('marks the preset chip that matches the lamp brightness and the fan speed', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 191 },
+        },
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+        },
+      });
+      const marked = (selector) =>
+        [...document.querySelectorAll(selector)].map((chip) => [
+          chip.textContent.trim(),
+          chip.dataset.active,
+          chip.getAttribute('aria-pressed'),
+        ]);
+
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+      expect(marked('.desktop-pin-light-preset')).toEqual([
+        ['25%', 'false', 'false'],
+        ['50%', 'false', 'false'],
+        ['75%', 'true', 'true'],
+        ['100%', 'false', 'false'],
+      ]);
+
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset')).toEqual([
+        ['Off', 'false', 'false'],
+        ['Mid', 'true', 'true'],
+        ['High', 'false', 'false'],
+      ]);
+
+      // A fan that is off is at the Off chip, whatever speed it last ran at.
+      state.setStates({
+        'fan.office': {
+          entity_id: 'fan.office',
+          state: 'off',
+          attributes: { friendly_name: 'Office fan', percentage: 0, supported_features: 1 },
+        },
+      });
+      ui.renderDesktopPinnedTile('fan.office', state.STATES['fan.office']);
+      expect(marked('.desktop-pin-fan-preset').map(([label, active]) => [label, active])).toEqual([
+        ['Off', 'true'],
+        ['Mid', 'false'],
+        ['High', 'false'],
+      ]);
+    });
+
+    it('marks no speed on a fan that runs at a speed Home Assistant does not report', () => {
+      // A fan running in a preset mode reports no percentage. It is on, so its level is not Off.
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Office fan',
+          percentage: null,
+          preset_mode: 'auto',
+          supported_features: 1,
+        },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      ui.renderDesktopPinnedTile(fan.entity_id, fan);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const chips = [...control.querySelectorAll('.desktop-pin-fan-preset')];
+      expect(chips.map((chip) => chip.textContent.trim())).toEqual(['Off', 'Mid', 'High']);
+      expect(chips.map((chip) => chip.dataset.active)).toEqual(['false', 'false', 'false']);
+      expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual([
+        'false',
+        'false',
+        'false',
+      ]);
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('On');
+    });
+
     it('does not switch a light off when the click lands beside the brightness track', () => {
       state.setStates({
         'light.desk': {
@@ -6596,6 +6887,205 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     });
 
+    it('draws a weather pin with the current condition, or the icon the user chose', () => {
+      const weather = { ...sampleStates['weather.home'], state: 'cloudy' };
+      state.setStates({ 'weather.home': weather });
+      ui.renderDesktopPinnedTile('weather.home', weather);
+
+      const glyph = () =>
+        document.querySelector('.desktop-pin-weather-control .desktop-pin-panel-glyph');
+      // The weather domain's own icon is a sun behind a cloud, which was wrong on a cloudy day.
+      expect(glyph().dataset.weatherCondition).toBe('cloudy');
+      expect(glyph().querySelector('[data-icon="cloud-sun"]')).toBeNull();
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(true);
+
+      const night = { ...weather, state: 'clear-night' };
+      state.setStates({ 'weather.home': night });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().dataset.weatherCondition).toBe('clear-night');
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(false);
+      expect(glyph().classList.contains('weather-icon-clear-night')).toBe(true);
+
+      state.setConfig({ ...state.CONFIG, customEntityIcons: { 'weather.home': '☔' } });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().textContent).toBe('☔');
+      expect(glyph().dataset.weatherCondition).toBeUndefined();
+      expect(glyph().classList.contains('weather-icon')).toBe(false);
+    });
+
+    it('lights a lock pin only by its state, never its Unlock verb, and says the state once', () => {
+      const lock = {
+        entity_id: 'lock.back_door',
+        state: 'locked',
+        attributes: { friendly_name: 'Back door' },
+      };
+      state.setStates({ [lock.entity_id]: lock });
+      ui.renderDesktopPinnedTile(lock.entity_id, lock);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-toggle-control');
+      const action = control.querySelector('.desktop-pin-toggle-action');
+      expect(action.textContent.trim()).toBe('Unlock');
+      // The selected look on "Unlock" read as if the door were unlocked.
+      expect(action.dataset.active).toBe('false');
+      expect(control.querySelector('.desktop-pin-panel-meter').textContent.trim()).toBe('Locked');
+      expect(control.querySelector('.desktop-pin-panel-status')).toBeNull();
+
+      const unlocked = { ...lock, state: 'unlocked' };
+      state.setStates({ [lock.entity_id]: unlocked });
+      ui.renderDesktopPinnedTile(lock.entity_id, unlocked);
+      expect(action.textContent.trim()).toBe('Lock');
+      expect(action.dataset.active).toBe('false');
+    });
+
+    it('switches a switch pin with the power icon, which names the state, not a third "Off"', () => {
+      const plug = {
+        entity_id: 'switch.coffee_maker',
+        state: 'on',
+        attributes: { friendly_name: 'Coffee maker' },
+      };
+      state.setStates({ [plug.entity_id]: plug });
+      ui.renderDesktopPinnedTile(plug.entity_id, plug);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-toggle-control');
+      const action = control.querySelector('.desktop-pin-toggle-action');
+      expect(action.querySelector('svg[data-icon="power"]')).toBeTruthy();
+      expect(action.textContent.trim()).toBe('');
+      expect([action.getAttribute('aria-label'), action.title, action.dataset.active]).toEqual([
+        'On',
+        'On',
+        'true',
+      ]);
+      expect(control.querySelector('.desktop-pin-panel-status')).toBeNull();
+      expect(control.textContent.match(/\bOn\b/g)).toEqual(['On']);
+
+      action.click();
+      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
+        entity_id: 'switch.coffee_maker',
+      });
+    });
+
+    it.each([
+      ['weather', sampleStates['weather.home']],
+      ['numeric', sampleStates['input_number.night_brightness']],
+      ['enum', sampleStates['input_select.bedtime_scene']],
+      ['vacuum', sampleStates['vacuum.roomba']],
+      ['presence', sampleStates['person.robert']],
+      [
+        'fan',
+        {
+          entity_id: 'fan.office',
+          state: 'on',
+          attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+        },
+      ],
+      ['climate', sampleStates['climate.bedroom_air_conditioner']],
+    ])(
+      'leaves the %s pin header to the name at every size, since the body prints the value',
+      (_family, entity) => {
+        state.setStates({ [entity.entity_id]: entity });
+        for (const [width, height] of [
+          [168, 148],
+          [200, 170],
+          [280, 200],
+        ]) {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(entity.entity_id, entity);
+          expect({
+            width,
+            header: document.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi'),
+          }).toEqual({ width, header: null });
+        }
+      }
+    );
+
+    it('shows a heat/cool range in the header of a pin bigger than the default, not in boxes', () => {
+      const range = {
+        entity_id: 'climate.hall',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Hall',
+          current_temperature: 21,
+          target_temp_low: 19,
+          target_temp_high: 24,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat_cool'],
+          supported_features: 2,
+        },
+      };
+      state.setStates({ [range.entity_id]: range });
+      const render = (width, height) => {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(range.entity_id, range);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-climate-control');
+        return {
+          layout: control.dataset.layout,
+          header: control.querySelector('.desktop-pin-climate-kpi')?.textContent ?? null,
+          boxes: control.querySelectorAll('.desktop-pin-panel-stat').length,
+          current: control.querySelector('.desktop-pin-climate-inline-copy')?.textContent ?? null,
+          sliders: control.querySelectorAll('[data-climate-range]').length,
+        };
+      };
+
+      // The default pin leaves the range to its sliders: beside it the name had a few letters.
+      expect(render(168, 148)).toEqual({
+        layout: 'compact',
+        header: null,
+        boxes: 0,
+        current: 'Now 21°C',
+        sliders: 2,
+      });
+      // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
+      for (const [width, height, layout] of [
+        [200, 170, 'balanced'],
+        [280, 200, 'roomy'],
+      ]) {
+        expect(render(width, height)).toEqual({
+          layout,
+          header: expect.stringMatching(/^19.*24/),
+          boxes: 0,
+          current: 'Now 21°C',
+          sliders: 2,
+        });
+      }
+    });
+
+    it('says whether a fan runs under its name, not the speed its meter shows', () => {
+      const fan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+      };
+      state.setStates({ [fan.entity_id]: fan });
+      for (const [width, height] of [
+        [168, 148],
+        [200, 170],
+      ]) {
+        setDesktopPinViewport(width, height);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(fan.entity_id, fan);
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+        expect([
+          control.querySelector('.desktop-pin-panel-status').textContent,
+          control.querySelector('.desktop-pin-fan-value').textContent,
+        ]).toEqual(['On', '66%']);
+      }
+
+      // Dragging the slider keeps the line to whether it runs.
+      jest.useFakeTimers();
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+      const slider = control.querySelector('.desktop-pin-fan-slider');
+      slider.value = '33';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(control.querySelector('.desktop-pin-panel-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-fan-value').textContent).toBe('33%');
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+      jest.advanceTimersByTime(1000);
+      jest.useRealTimers();
+    });
+
     it('renders compact climate controls and sends hvac mode changes', () => {
       state.setStates({
         'climate.thermostat': {
@@ -6628,6 +7118,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         entity_id: 'climate.thermostat',
         hvac_mode: 'cool',
       });
+    });
+
+    it('names a heat/cool mode and an auto mode apart, in the words the dialog uses', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          state: 'heat_cool',
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            hvac_modes: ['heat_cool', 'auto'],
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const titles = Object.fromEntries(
+        [...document.querySelectorAll('.desktop-pin-climate-mode')].map((button) => [
+          button.dataset.action,
+          button.title,
+        ])
+      );
+      expect(titles).toEqual({ heat_cool: 'Heat/Cool', auto: 'Auto' });
     });
 
     it('collapses climate desktop pins into the Stage 4 tight variant near the minimum size', () => {
@@ -6917,6 +7430,47 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ).toBeNull();
     });
 
+    it.each([
+      ['climate', 'climate.thermostat', '.desktop-pin-climate-mode'],
+      ['fan', 'fan.office', '.desktop-pin-fan-preset'],
+    ])(
+      'keeps a compact %s pin to three buttons until the balanced layout has room for four',
+      (_family, entityId, buttonSelector) => {
+        state.setStates({
+          'climate.thermostat': {
+            ...sampleStates['climate.thermostat'],
+            attributes: {
+              ...sampleStates['climate.thermostat'].attributes,
+              hvac_modes: ['off', 'heat', 'cool', 'auto'],
+            },
+          },
+          'fan.office': {
+            entity_id: 'fan.office',
+            state: 'on',
+            attributes: { friendly_name: 'Office fan', percentage: 66, supported_features: 1 },
+          },
+        });
+        const render = (width, height) => {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(entityId, state.STATES[entityId]);
+          const control = document.querySelector('#desktop-pin-content .desktop-pin-control');
+          return [
+            control.dataset.layout,
+            control.dataset.denseVariant,
+            control.querySelectorAll(buttonSelector).length,
+          ];
+        };
+
+        // A little past the default size the fourth button came back, and German cut its row to
+        // "Kü...", "Hei...". Wide but short, the default pin's three fit as well.
+        expect(render(180, 156)).toEqual(['compact', 'tight', 3]);
+        expect(render(190, 160)).toEqual(['compact', 'tight', 3]);
+        expect(render(300, 155)).toEqual(['compact', 'tight', 3]);
+        expect(render(195, 160)).toEqual(['balanced', 'standard', 4]);
+      }
+    );
+
     it('replaces dense desktop pin markup when the viewport crosses the Stage 4 tight threshold', () => {
       setDesktopPinViewport(195, 160);
       state.setStates({
@@ -7057,30 +7611,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           attributes: { friendly_name: 'Morning Routine' },
         },
         expectedLabel: 'Trigger',
+        expectedState: 'On',
         expectedService: 'trigger',
       },
       {
         entityId: 'button.refresh_router',
         entity: sampleStates['button.refresh_router'],
         expectedLabel: 'Press',
+        expectedState: 'Ready',
         expectedService: 'press',
       },
       {
         entityId: 'input_button.tv_rewind',
         entity: sampleStates['input_button.tv_rewind'],
         expectedLabel: 'Press',
+        expectedState: 'Ready',
         expectedService: 'press',
       },
     ])(
       'renders $entityId desktop action tiles and triggers the primary service',
-      ({ entityId, entity, expectedLabel, expectedService }) => {
+      ({ entityId, entity, expectedLabel, expectedState, expectedService }) => {
         state.setStates({ [entityId]: entity });
 
         ui.renderDesktopPinnedTile(entityId, state.STATES[entityId], { hasSnapshot: true });
 
         const control = document.querySelector('#desktop-pin-content .desktop-pin-action-control');
         expect(control).toBeTruthy();
-        expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(expectedLabel);
+        // The meter says the entity's state; only the button names the action.
+        expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe(expectedState);
+        expect(control?.querySelector('.desktop-pin-action-primary')?.textContent.trim()).toBe(
+          expectedLabel
+        );
+        expect(
+          control?.querySelector('.desktop-pin-panel-topline .desktop-pin-panel-kpi')
+        ).toBeNull();
 
         control.querySelector('.desktop-pin-action-primary').click();
 
@@ -7534,12 +8098,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         },
         selector: '.desktop-pin-toggle-control',
         assertUpdated: (control) => {
+          const action = control?.querySelector('.desktop-pin-toggle-action');
           expect(control?.dataset.state).toBe('off');
-          expect(control?.querySelector('.desktop-pin-panel-status')?.textContent).toBe('Off');
-          expect(control?.querySelector('.desktop-pin-toggle-action')?.textContent).toBe('Off');
-          expect(
-            control?.querySelector('.desktop-pin-toggle-action')?.hasAttribute('aria-pressed')
-          ).toBe(false);
+          expect(control?.querySelector('.desktop-pin-panel-meter')?.textContent.trim()).toBe(
+            'Off'
+          );
+          // The power icon names the state in its label, as the light and fan pins' does.
+          expect(action?.getAttribute('aria-label')).toBe('Off');
+          expect(action?.dataset.active).toBe('false');
+          expect(action?.hasAttribute('aria-pressed')).toBe(false);
         },
       },
       {
@@ -7641,7 +8208,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           expect(control?.querySelector('.desktop-pin-panel-name')?.textContent).toBe(
             'Restart Router'
           );
-          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Press');
+          expect(control?.querySelector('.desktop-pin-panel-value')?.textContent).toBe('Ready');
         },
       },
       {
@@ -8531,6 +9098,80 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       ]);
     });
 
+    it('keeps one restore point for pages deleted in a row, and an Undo step for each', async () => {
+      const { readDashboardHistory, readRestorePoints } = require('../../src/dashboard-history.js');
+      const { toStoredPages } = require('../../src/page-names.cjs');
+      // Edits less than 30 s apart share a restore point. Only Date is faked.
+      jest.useFakeTimers({
+        now: new Date('2030-01-01T10:00:00Z'),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'queueMicrotask',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'requestIdleCallback',
+          'cancelIdleCallback',
+          'performance',
+          'hrtime',
+        ],
+      });
+      try {
+        // An earlier test's last edit still waits to become a restore point. Let it settle, as
+        // closing the app does, before starting from an empty list.
+        window.dispatchEvent(new Event('pagehide'));
+        localStorage.clear();
+        // As the main process does, the save comes back with an unnamed page stored unnamed.
+        window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+          homeAssistant: {},
+          ...state.CONFIG,
+          ...patch,
+          ...(patch.customTabs ? { customTabs: toStoredPages(patch.customTabs) } : {}),
+        }));
+        setPages([
+          { id: 'default', name: 'All', nameIsDefault: true, entityIds: [] },
+          { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+          { id: 'office', name: 'Office', entityIds: [] },
+        ]);
+        ui.toggleReorganizeMode();
+        const deletePage = async (id, seconds) => {
+          jest.setSystemTime(Date.now() + seconds * 1000);
+          // Only the page on screen has a Delete button; going to it changes no layout.
+          await ui.switchQuickAccessPage(id);
+          uiUtils.showConfirm.mockResolvedValueOnce(true);
+          tabBar.querySelector(`.quick-access-tab[data-tab="${id}"] .qa-tab-delete`).click();
+          for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        };
+        const ids = (entries) =>
+          entries.map((entry) => entry.layout.customTabs.map((page) => page.id).join('+'));
+
+        await deletePage('office', 0);
+        await deletePage('bedroom', 5);
+        expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['default', 'kitchen']);
+        expect(ids(readDashboardHistory(state.CONFIG))).toEqual([
+          'default+kitchen+bedroom',
+          'default+kitchen+bedroom+office',
+        ]);
+        expect(ids(readRestorePoints(state.CONFIG))).toEqual(['default+kitchen+bedroom+office']);
+
+        await deletePage('kitchen', 30);
+        expect(ids(readRestorePoints(state.CONFIG))).toEqual([
+          'default+kitchen',
+          'default+kitchen+bedroom+office',
+        ]);
+      } finally {
+        localStorage.clear();
+        jest.useRealTimers();
+      }
+    });
+
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {
       setPages([{ id: 'default', name: 'All', entityIds: [] }]);
       ui.toggleReorganizeMode();
@@ -8825,7 +9466,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '<div id="toast-container"><div class="toast error">Could not save</div></div>'
       );
       const container = document.getElementById('toast-container');
-      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom edge.
+      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom
+      // edge, and the toast where the stack rests, 20px above it, over the footer.
       const isFooter = (element) => element.classList.contains('modal-footer');
       const clientRects = jest
         .spyOn(Element.prototype, 'getClientRects')
@@ -8835,7 +9477,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const boundingRect = jest
         .spyOn(Element.prototype, 'getBoundingClientRect')
         .mockImplementation(function () {
-          const top = isFooter(this) ? window.innerHeight - 60 : 0;
+          let top = 0;
+          if (isFooter(this)) top = window.innerHeight - 60;
+          else if (this === container) top = window.innerHeight - 60;
           return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40 };
         });
 
@@ -9782,7 +10426,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const edit = tile('light.b').querySelector('.rename-btn');
         const remove = tile('light.b').querySelector('.remove-btn');
         expect(edit.getAttribute('aria-label')).toBe('Edit settings for Lamp B');
-        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Quick Access');
+        // The tile goes from the page it is on, as the dialog the button opens says, not from
+        // every page.
+        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Home');
+        expect(remove.title).toBe('Remove tile');
         expect(
           tile('light.b').querySelector('.desktop-pin-quick-toggle').getAttribute('aria-label')
         ).toBe('Pin Lamp B to desktop');

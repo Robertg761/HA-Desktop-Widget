@@ -336,7 +336,7 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       render(
         '',
         `<button class="btn btn-primary" id="save">Save</button>
-        <button class="btn btn-secondary" id="cancel">Cancel</button>`
+        <button class="btn btn-secondary btn-neutral" id="cancel">Cancel</button>`
       );
       expect(resolvedValue(document.getElementById('save'), 'border', FORCED)).toBe(
         '2px solid Highlight'
@@ -389,6 +389,30 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       const rule = forcedRule('::-webkit-scrollbar-thumb');
       expect(rule).toContain('background: ButtonText');
       expect(rule).toContain('border: 3px solid Canvas');
+    });
+
+    // The scrollbar is wider here, and a dialog body keeps its room whether it scrolls or not, so
+    // giving back the 9px one left the right margin 3px wider than the left in every dialog.
+    it('gives a dialog body back as much end padding as its wider scrollbar takes', () => {
+      render(
+        '',
+        '<div class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+      );
+      const body = document.querySelector('.modal-body');
+      const inset = resolvedValue(body, '--modal-body-inset', FORCED);
+      const scrollbar = resolvedValue(body, '--modal-scrollbar-size', FORCED);
+
+      expect(scrollbar).toBe('12px');
+      expect(resolvedValue(body, 'padding-inline-end', FORCED)).toBe(
+        `calc(${inset} - ${scrollbar})`
+      );
+      const bar = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .filter((rule) => rule.media?.mediaText.includes('forced-colors'))
+        .flatMap((rule) => [...rule.cssRules])
+        .find((rule) => rule.selectorText === '.modal-body::-webkit-scrollbar');
+      expect(bar?.style.width).toBe('var(--modal-scrollbar-size)');
+      expect(bar?.style.height).toBe('var(--modal-scrollbar-size)');
     });
   });
 
@@ -491,7 +515,10 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
     );
 
     it('tells the primary action from the others by a Highlight edge', () => {
-      render(READABLE, `${PRIMARY}<button class="btn btn-secondary" id="cancel">Cancel</button>`);
+      render(
+        READABLE,
+        `${PRIMARY}<button class="btn btn-secondary btn-neutral" id="cancel">Cancel</button>`
+      );
       const [primary, secondary] = document.querySelectorAll('button');
       expect(resolvedColour(primary, 'border-color', FORCED)).toBe('Highlight');
       expect(resolvedColour(secondary, 'border-color', FORCED)).not.toBe('Highlight');

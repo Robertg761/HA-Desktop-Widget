@@ -39,7 +39,7 @@ import {
   recordKeyEvent,
 } from './hotkeys.js';
 import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
-import { syncSlidingIndicator } from './motion.js';
+import { prefersReducedMotion, syncSlidingIndicator } from './motion.js';
 import {
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthReauthReason,
@@ -2888,7 +2888,7 @@ function renderCustomEntityIconRows() {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'btn btn-secondary btn-reset btn-sm';
+    resetBtn.className = 'btn btn-secondary btn-neutral btn-sm';
     resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;
@@ -4654,6 +4654,20 @@ function getLanguagePackDisplayName(pack = {}) {
   );
 }
 
+// The pack for the system's language when Auto is showing English for want of it.
+function findSystemLanguagePackToDownload() {
+  const { usingEnglishFallback, detectedLocale } = getLocaleState();
+  if (!usingEnglishFallback) return null;
+  const language = String(detectedLocale || '')
+    .split('-')[0]
+    .toLowerCase();
+  return (
+    localePackListCache.find(
+      (pack) => !pack.installed && String(pack.locale || '').toLowerCase() === language
+    ) || null
+  );
+}
+
 // The card says only what the select does not: how to get more languages while some are still to
 // download, which language Auto means, and when English is standing in for a pack not installed yet.
 function updateLanguageSummaryText() {
@@ -4681,10 +4695,19 @@ function updateLanguageSummaryText() {
     });
   }
   if (fallbackSummary) {
+    // Auto stands in English for a system language whose pack is still to download; the line under
+    // "System language detected" says so, or the two lines would contradict each other.
+    const systemPack = selectedLocale === 'auto' ? findSystemLanguagePackToDownload() : null;
     const needsPack =
-      !BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en';
+      !!systemPack ||
+      (!BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en');
     fallbackSummary.classList.toggle('hidden', !needsPack);
-    fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
+    // Named in the interface's language, as the "System language detected" line above it is.
+    fallbackSummary.textContent = systemPack
+      ? t('Using English until the {{language}} language pack is downloaded.', {
+          language: getLanguageDisplayName(systemPack.locale, systemPack.englishName),
+        })
+      : t('Using English until the selected language pack is installed.');
   }
 }
 
@@ -4909,14 +4932,6 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
 // motion and high contrast instead of being saved as a fixed choice.
 let seasonalEnabledTouched = false;
 
-function prefersReducedMotionNow() {
-  try {
-    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read the Seasonal Themes controls on top of the saved `ui.seasonal`.
  * @returns {object|null} The next `ui.seasonal`, or null when the controls are missing.
@@ -4981,7 +4996,7 @@ function syncSeasonalControls(ui) {
   if (!enabledInput) return;
   const settings = normalizeSeasonalSettings(ui.seasonal);
   const enabled = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   if (!seasonalEnabledTouched && settings.enabled === null) enabledInput.checked = enabled;
@@ -5066,7 +5081,7 @@ function bindSeasonalSettingsUi(ui) {
   const show = document.getElementById('seasonal-show');
   if (!enabled) return;
   enabled.checked = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   // Touching a seasonal control shows the holiday's colours again after a colour pick hid them.
@@ -5472,21 +5487,9 @@ async function openSettings(uiHooks) {
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
-      // Don't display default token - show empty field instead to prompt user to enter real token
+      // Don't display default token - show empty field instead to prompt user to enter real token.
+      // A token that has to be entered again is explained in the status line above the field.
       haToken.value = tokenValue === 'YOUR_LONG_LIVED_ACCESS_TOKEN' ? '' : tokenValue;
-
-      // Show warning if token was reset due to decryption failure
-      if (state.CONFIG.tokenResetReason) {
-        let warningMessage = t('Your access token needs to be re-entered.');
-        if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
-          warningMessage = t(
-            'Your access token needs to be re-entered. Encryption is not available on this system.'
-          );
-        } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
-          warningMessage = t('Your access token needs to be re-entered. Token decryption failed.');
-        }
-        uiHooks?.showToast?.(warningMessage, 'warning', 10000);
-      }
     }
     void refreshSecureStorageNotice();
     bindHomeAssistantOAuthUi();
@@ -5713,12 +5716,13 @@ async function openSettings(uiHooks) {
 
     // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
     // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
-    // click that misses a control must not throw away a form this large. The one exception is the
-    // red connection panel's "Open Settings" with a rejected token: the token field is what to fix,
-    // and it is open on screen, so the cursor goes there.
+    // click that misses a control must not throw away a form this large. The one exception is a
+    // token to fix, rejected or no longer readable: the field is open on screen, so the cursor goes
+    // there.
+    const liveConnection = getLiveConnectionState();
     const tokenRejected =
       state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
-      getLiveConnectionState().status === 'auth-failed';
+      (liveConnection.status === 'auth-failed' || !!liveConnection.needsToken);
     openDialog(modal, {
       initialFocus: () => {
         const token = document.getElementById('ha-token');
@@ -5915,6 +5919,8 @@ function getHomeAssistantAuthState(homeAssistant) {
     homeAssistant.oauthLastErrorCode || '',
     connection.status || '',
     connection.reason || '',
+    !!connection.needsToken,
+    connection.tokenReason || '',
   ]);
 }
 
@@ -5961,6 +5967,7 @@ function updateHomeAssistantAuthUi() {
   const oauthNote = document.getElementById('legacy-ha-token-oauth-note');
 
   updateHomeAssistantConnectButton();
+  updateSecureStorageNotice();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -5981,6 +5988,10 @@ function updateHomeAssistantAuthUi() {
           t('Authentication failed. Check your long-lived access token in Settings.'),
         'error'
       );
+      if (legacySettings) legacySettings.open = true;
+    } else if (connection.needsToken) {
+      // The saved token could not be read: the main window's reason, and the field to enter it in.
+      setHomeAssistantOAuthStatus(connection.reason, 'error');
       if (legacySettings) legacySettings.open = true;
     } else if (connection.status === 'disconnected' && connection.reason) {
       setHomeAssistantOAuthStatus(connection.reason, 'error');
@@ -7056,8 +7067,6 @@ function populateAlertEntityPicker() {
         badge.className = 'alert-badge';
         setLineIconContent(badge, 'bell');
         badge.title = t('Alert configured');
-        badge.style.marginLeft = '8px';
-        badge.style.fontSize = '14px';
         item.querySelector('.entity-item-main').appendChild(badge);
       }
 
@@ -7132,8 +7141,8 @@ let currentAlertEntity = null;
 
 // What the three numbers of the alert dialog mean, under each: the unit and current reading of the
 // threshold (filled when the dialog opens), and what 0 does for the duration and the cooldown. The
-// help sits in the field's label so it takes the field's grid cell; the input is named by the label's
-// own text and described by the help.
+// help sits in the field's label so it takes the field's grid cell, in a notes box that also takes
+// the field's error under it; the input is named by the label's own text and described by the help.
 function addAlertFieldHelp(group) {
   [
     ['alert-threshold', ''],
@@ -7149,7 +7158,10 @@ function addAlertFieldHelp(group) {
     help.id = `${fieldId}-help`;
     help.className = 'form-help alert-field-help';
     if (helpKey) help.dataset.alertLabelKey = helpKey;
-    label.append(help);
+    const notes = document.createElement('span');
+    notes.className = 'alert-field-notes';
+    notes.append(help);
+    label.append(notes);
     input.setAttribute('aria-labelledby', labelText.id);
     input.setAttribute('aria-describedby', help.id);
   });
@@ -7313,6 +7325,8 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
+    // The dialog is reused, so an error left from the last alert would sit on this one's fields.
+    clearFieldErrors(modal);
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -7342,9 +7356,11 @@ function openAlertConfigModal(entityId) {
       stateChangeRadio.checked = condition.value === 'state-change';
       specificStateRadio.checked = condition.value === 'specific-state';
       specificStateGroup.style.display = specificStateRadio.checked ? 'block' : 'none';
-      modal.querySelector('#alert-threshold').parentElement.hidden = !['above', 'below'].includes(
-        condition.value
-      );
+      const thresholdField = modal.querySelector('#alert-threshold');
+      thresholdField.parentElement.hidden = !['above', 'below'].includes(condition.value);
+      // A field that leaves with its condition takes its error with it.
+      if (!specificStateRadio.checked) clearFieldError(targetStateInput);
+      if (thresholdField.parentElement.hidden) clearFieldError(thresholdField);
       // Only a State Change rule tells about an entity going offline unasked. A rule for the state
       // "unavailable" is that request itself, and a threshold rule ignores a missing reading.
       modal.querySelector('.alert-switch-row').hidden = condition.value !== 'state-change';
@@ -7355,8 +7371,12 @@ function openAlertConfigModal(entityId) {
       ['#alert-quiet-start', '#alert-quiet-end'].forEach((id) => {
         modal.querySelector(id).disabled = !quietEnabled.checked;
       });
+      if (!quietEnabled.checked) clearFieldError(modal.querySelector('#alert-quiet-end'));
     };
     quietEnabled.onchange = syncQuietHours;
+    // Changing either end of quiet hours can answer the error, which sits on the end.
+    modal.querySelector('#alert-quiet-start').onchange = () =>
+      clearFieldError(modal.querySelector('#alert-quiet-end'));
     const entity = state.STATES[entityId];
     if (title)
       title.textContent = t('Configure alert – {{name}}', {
@@ -7412,19 +7432,18 @@ async function saveAlert() {
     const condition = modal.querySelector('#alert-condition')?.value;
     alertConfig.onNumericThreshold = ['above', 'below'].includes(condition);
     alertConfig.comparison = condition === 'below' ? 'below' : 'above';
+    // Every field that is wrong says so under itself, and the first takes the focus. A toast was
+    // gone in seconds, belonged to no field and covered the quiet hours at the bottom of the dialog.
+    const problems = [];
+    if (alertConfig.onSpecificState && !alertConfig.targetState) {
+      problems.push([targetStateInput, t('Enter a target state.')]);
+    }
     const threshold = modal.querySelector('#alert-threshold');
     if (
       alertConfig.onNumericThreshold &&
       (!threshold.value.trim() || !Number.isFinite(Number(threshold.value)))
     ) {
-      showToast(t('Enter a valid numeric threshold.'), 'error');
-      threshold.focus();
-      return;
-    }
-    if (alertConfig.onSpecificState && !alertConfig.targetState) {
-      showToast(t('Enter a target state.'), 'error');
-      targetStateInput.focus();
-      return;
+      problems.push([threshold, t('Enter a valid numeric threshold.')]);
     }
     alertConfig.threshold = alertConfig.onNumericThreshold ? Number(threshold.value) : null;
     for (const [field, id] of [
@@ -7433,21 +7452,19 @@ async function saveAlert() {
     ]) {
       const input = modal.querySelector(`#${id}`);
       const seconds = input.value.trim() === '' ? 0 : Number(input.value);
-      // Same toast-and-focus feedback as the other fields instead of a native validation bubble.
       if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86400) {
-        showToast(t('Enter a whole number of seconds from 0 to 86400.'), 'error');
-        input.focus();
-        return;
+        problems.push([input, t('Enter a whole number of seconds from 0 to 86400.')]);
       }
       alertConfig[field] = seconds;
     }
     if (alertConfig.onStateChange) {
       alertConfig.notifyOnUnavailable = modal.querySelector('#alert-notify-unavailable').checked;
     }
+    const quietEnd = modal.querySelector('#alert-quiet-end');
     alertConfig.quietHours = {
       enabled: modal.querySelector('#alert-quiet-enabled').checked,
       start: modal.querySelector('#alert-quiet-start').value,
-      end: modal.querySelector('#alert-quiet-end').value,
+      end: quietEnd.value,
     };
     if (
       alertConfig.quietHours.enabled &&
@@ -7455,7 +7472,18 @@ async function saveAlert() {
         !alertConfig.quietHours.end ||
         alertConfig.quietHours.start === alertConfig.quietHours.end)
     ) {
-      showToast(t('Choose different start and end times for quiet hours.'), 'error');
+      problems.push([quietEnd, t('Choose different start and end times for quiet hours.')]);
+    }
+    if (problems.length) {
+      clearFieldErrors(modal);
+      problems.forEach(([field, message], index) =>
+        showFieldError(field, message, {
+          focus: index === 0,
+          // Under the field's help, in its own cell. Quiet hours' error is about the start and the
+          // end together and runs under both; the target state's goes under its group.
+          anchor: modal.querySelector(`#${field.id}-help`) || field.closest('label'),
+        })
+      );
       return;
     }
     const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
@@ -7911,7 +7939,7 @@ async function initializePopupHotkey() {
       if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
       try {
         const result = await window.electronAPI.unregisterPopupHotkey();
-        if (result.success) {
+        if (result?.success) {
           input.value = '';
           input.placeholder = t('Not set');
           clearBtn.style.display = 'none';
@@ -7921,6 +7949,9 @@ async function initializePopupHotkey() {
           if (result.warning) {
             showToast(result.warning, 'warning', 4000);
           }
+        } else {
+          // Main kept the hotkey (its removal could not be saved), so the field still shows it.
+          showToast(result?.error || t('Failed to clear popup hotkey'), 'error');
         }
       } catch (error) {
         log.error('Failed to clear popup hotkey:', error);
@@ -8128,6 +8159,18 @@ function showProfileSyncFieldError(field, message) {
   });
 }
 
+/** Shows General with the access token field open and focused: where a lost token is entered. */
+function revealHomeAssistantToken() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="general"]')?.click();
+  const legacySettings = document.getElementById('legacy-ha-token-settings');
+  if (legacySettings) legacySettings.open = true;
+  const token = document.getElementById('ha-token');
+  if (!token || token.disabled) return;
+  // From the top of the Home Assistant group, so the line saying why is in view above the field.
+  (token.closest('.settings-group') || token).scrollIntoView?.({ block: 'start' });
+  token.focus({ preventScroll: true });
+}
+
 /** Shows the Advanced page with the update status in view: where a tray check reports. */
 function revealUpdateStatus() {
   document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
@@ -8171,6 +8214,7 @@ export {
   profileSyncNeedsAttention,
   waitForLanguagePackRefresh,
   refreshHomeAssistantAuthStatus,
+  revealHomeAssistantToken,
 };
 
 // Hyprland blurs the widget only while its own blur is on, and Omarchy ships with it off. Say so
@@ -8224,14 +8268,17 @@ function renderDesktopBlur(status) {
   };
 }
 
+// Whether this Linux session has no unlocked keyring, as last read from main.
+let secureStorageUnavailable = false;
+// The reasons a token has to be entered again that come down to having no unlocked keyring.
+const KEYRING_TOKEN_REASONS = new Set(['encryption_unavailable', 'not_persisted']);
+
 /**
  * Says so in General while this Linux session has no unlocked keyring. The toast that reports
  * it is gone within seconds, and the condition stays: the token and the sync passphrase
  * cannot be remembered until a keyring is running.
  */
 async function refreshSecureStorageNotice() {
-  const notice = document.getElementById('secure-storage-notice');
-  if (!notice) return;
   let unavailable = false;
   try {
     const info = await window.electronAPI?.getDesktopIntegration?.();
@@ -8239,7 +8286,18 @@ async function refreshSecureStorageNotice() {
   } catch (error) {
     log.warn('Failed to read the secure storage status:', error);
   }
-  notice.classList.toggle('hidden', !unavailable);
+  secureStorageUnavailable = unavailable;
+  updateSecureStorageNotice();
+}
+
+// While the token has to be entered again for want of a keyring, the line above the field already
+// says so and what to do; the notice under it would say the same again in another colour.
+function updateSecureStorageNotice() {
+  const notice = document.getElementById('secure-storage-notice');
+  if (!notice) return;
+  const connection = getLiveConnectionState();
+  const saidAbove = !!connection.needsToken && KEYRING_TOKEN_REASONS.has(connection.tokenReason);
+  notice.classList.toggle('hidden', !secureStorageUnavailable || saidAbove);
 }
 
 /** The name to show for the shortcut the desktop last delivered, whose id is an internal one. */

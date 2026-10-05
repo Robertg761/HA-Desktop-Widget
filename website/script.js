@@ -496,23 +496,17 @@ document.querySelectorAll('.swatch').forEach((b) =>
 const savedAccent = store.get('accent', null);
 if (savedAccent) applyAccent(savedAccent);
 
-/* Weather: the app's own engine (src/weather-effects.js, copied verbatim),
-   running behind the frosted windows. Off by default; the visitor turns it on. */
+/* Weather: the app's own engine (src/weather-effects.js, copied unchanged; a test keeps the two
+   files equal), running behind the frosted windows. Off by default; the visitor turns it on. */
 class StageWeather extends WeatherEffectsManager {
   startAnimation() {
     if (document.hidden || !stageVisible || this.prefersReducedMotion()) return;
     super.startAnimation();
   }
 
-  resizeCanvas() {
-    if (!this.canvas) return;
-    this.canvas.width = stage.clientWidth;
-    this.canvas.height = stage.clientHeight;
-    if (this.sun) {
-      this.sun.x = this.canvas.width * 0.15;
-      this.sun.y = this.canvas.height * 0.15;
-    }
-    if (this.activeEffect && this.prefersReducedMotion()) this.renderStaticFrame();
+  // The app's canvas covers its window; this one covers the stage.
+  measureCanvas() {
+    return { width: stage.clientWidth, height: stage.clientHeight };
   }
 }
 const fx = new StageWeather('weather-canvas');

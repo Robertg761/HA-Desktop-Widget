@@ -810,8 +810,8 @@ describe('main-process wiring safeguards', () => {
 
   it('fails closed for token saves when encryption is unavailable', () => {
     expect(mainSource).toContain('delete configToSave.homeAssistant.token');
-    expect(mainSource).toContain('configToSave.tokenResetReason = reason');
-    expect(mainSource).toContain('config.tokenResetReason = reason');
+    // The file says the token was not saved; see main-token-reset-reason.test.js.
+    expect(mainSource).toContain("configToSave.tokenResetReason = 'not_persisted'");
     expect(mainSource).toContain(
       'omitting token from saved config so it is not written in plaintext'
     );

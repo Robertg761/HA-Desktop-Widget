@@ -19,7 +19,7 @@ import {
 } from './i18n.js';
 import stateNameTables from './ha-state-names.cjs';
 
-const { STATE_NAMES, BINARY_STATE_NAMES } = stateNameTables;
+const { HVAC_MODE_NAMES, STATE_NAMES, BINARY_STATE_NAMES } = stateNameTables;
 
 const NO_BREAK_SPACE = '\u00a0';
 
@@ -437,7 +437,7 @@ export function formatBinarySensorState(rawState, deviceClass = '') {
   return rawState === 'on' ? t('Detected') : t('Clear');
 }
 
-export { STATE_NAMES, BINARY_STATE_NAMES };
+export { HVAC_MODE_NAMES, STATE_NAMES, BINARY_STATE_NAMES };
 
 // --- Relative times, timestamps and durations ------------------------------------------------
 
