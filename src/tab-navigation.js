@@ -177,9 +177,12 @@ function bindTabTooltips(tablist, tabSelector, host = tablist.closest('.modal-co
   tablist.addEventListener('pointerout', (event) => {
     if (event.target.closest?.(tabSelector)) hide();
   });
+  // The label is for someone moving through the rail with the keyboard. Focus that comes from
+  // outside the dialog is the dialog opening on the current page, whose tab it would name while
+  // that page is on screen, over the start of the search field; a click focuses without a ring.
   tablist.addEventListener('focusin', (event) => {
     const tab = event.target.closest?.(tabSelector);
-    if (tab) show(tab);
+    if (tab && host.contains(event.relatedTarget) && tab.matches(':focus-visible')) show(tab);
   });
   tablist.addEventListener('focusout', hide);
   // Choosing a page makes its title the label; scrolling the rail moves the tab away from it.

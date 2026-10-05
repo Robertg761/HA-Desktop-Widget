@@ -1414,6 +1414,11 @@ const scenes = [
         `document.activeElement?.matches('#settings-modal .tab-link.active')`,
         'focus on the current Settings page, not on Close'
       );
+      // The page it opens on is on screen; naming its tab covered the start of the search field.
+      await ctx.expect(
+        `!document.querySelector('.tab-tooltip.visible')`,
+        'no page label over the search field'
+      );
     },
   },
   {
