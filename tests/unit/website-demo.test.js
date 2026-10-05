@@ -13,6 +13,7 @@ describe('website demo weather transitions', () => {
   let hidden;
   let motionChange;
   let motionQuery;
+  let context;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -30,14 +31,16 @@ describe('website demo weather transitions', () => {
         <button data-fx="rainy"></button>
       </div></div>`;
     jest.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
-    jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    context = {
       clearRect: jest.fn(),
       createRadialGradient: () => ({ addColorStop: jest.fn() }),
       fillRect: jest.fn(),
       beginPath: jest.fn(),
       arc: jest.fn(),
       fill: jest.fn(),
-    });
+      setTransform: jest.fn(),
+    };
+    jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context);
     let frame = 0;
     const source = fs.readFileSync(path.join(__dirname, '../../website/script.js'), 'utf8');
     const weather = source.slice(
@@ -57,7 +60,12 @@ describe('website demo weather transitions', () => {
       .replace('export class WeatherEffectsManager', 'class WeatherEffectsManager');
     demo = vm.createContext({
       document,
-      window: { addEventListener: jest.fn(), matchMedia: () => motionQuery },
+      window: {
+        addEventListener: jest.fn(),
+        // The engine also watches the screen's pixel ratio, which no test here changes that way.
+        matchMedia: (query) =>
+          query.includes('reduced-motion') ? motionQuery : { addEventListener: jest.fn() },
+      },
       performance,
       Date,
       setTimeout,
@@ -172,6 +180,30 @@ describe('website demo weather transitions', () => {
     expect(demo.store.set).toHaveBeenCalledWith('pins', { 'light.desk': { x: 672, y: 396 } });
     expect(vm.runInContext('fx.canvas.width', demo)).toBe(800);
     expect(vm.runInContext('fx.canvas.height', demo)).toBe(500);
+  });
+
+  // The copy used to set the canvas to the stage's CSS size, so rain and snow were drawn at 1x
+  // and blurred on a HiDPI screen, while the app drew them crisp.
+  it('draws the weather at the resolution of the screen, as the app does', () => {
+    const canvas = document.getElementById('weather-canvas');
+    expect([canvas.width, canvas.height]).toEqual([1200, 600]);
+
+    vm.runInContext('window.devicePixelRatio = 2; fx.resizeCanvas()', demo);
+
+    expect([canvas.width, canvas.height]).toEqual([2400, 1200]);
+    expect(context.setTransform).toHaveBeenLastCalledWith(2, 0, 0, 2, 0, 0);
+    // The scenes still work in the stage's own size.
+    expect(vm.runInContext('[fx.width, fx.height]', demo)).toEqual([1200, 600]);
+  });
+});
+
+// The demo offers the app's weather as the real thing. A copy that drifted missed the app's
+// high-density drawing and its light-theme colours for six weeks.
+describe('website weather engine', () => {
+  it('is the file the app runs, unchanged', () => {
+    const read = (file) =>
+      fs.readFileSync(path.join(__dirname, '../..', file), 'utf8').replace(/\r\n/g, '\n');
+    expect(read('website/weather-effects.js')).toBe(read('src/weather-effects.js'));
   });
 });
 
