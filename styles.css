@@ -2417,9 +2417,16 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* The default 168x148 pin is the baseline every family is drawn for: the compact layout, and the
    tight variant that smaller media pins share. Spacing, the meter and the buttons are cut down to
-   what fits a 146px-tall tile above its rounded bottom edge, in every language; larger pins have
-   room and keep the roomier base values. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight']),
+   what fits a 146px-tall tile above its rounded bottom edge, in every language. A pin dragged a
+   little bigger (the balanced layout, up to the roomy 260x190) spends its extra room on a fourth
+   mode or speed, the slider's labels and the climate's current reading, so it keeps the same
+   spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
+   keep those. */
+.desktop-pin-panel-control:is(
+  [data-layout='compact'],
+  [data-layout='balanced'],
+  [data-dense-variant='tight']
+),
 .desktop-pin-light-control[data-layout='compact'] {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
@@ -2428,19 +2435,31 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-glyph-size: 24px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced'],
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-topline {
   gap: 6px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced'],
+    [data-dense-variant='tight']
+  )
   :is(.desktop-pin-panel-meter, .desktop-pin-cover-frame) {
   padding: 6px 8px;
 }
 
 /* Sentence case, tight tracking and little padding: capitals and wide tracking cannot hold a word
    like "Désactivé" in a third of 150px. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced'],
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-button {
   min-height: 24px;
   padding: 4px 3px;
@@ -2449,7 +2468,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   text-transform: none;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced'],
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-actions {
   gap: 4px;
 }
@@ -2503,23 +2526,22 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   margin-top: -2px;
 }
 
-/* Three modes, verbs or speeds share a 150px row. They take their label's width where equal thirds
-   cannot hold it ("Schließen", "Désactivé") and fall back to an ellipsis, with a title. */
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+/* Three modes, verbs or speeds share a 150px row, and a slightly bigger pin fits four into 184px.
+   They take their label's width where equal shares cannot hold it ("Schließen", "Désactivé",
+   "Kühlen") and fall back to an ellipsis, with a title. */
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-actions {
   display: flex;
   gap: 3px;
 }
 
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-button {
   flex: 1 1 auto;
   min-width: 0;

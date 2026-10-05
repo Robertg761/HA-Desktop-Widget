@@ -301,6 +301,45 @@ const pinScene = (name, entityId, extra = {}) => ({
   ...extra,
 });
 
+// Gives an open pin new bounds, as dragging its corner does. Bounds can only change in edit mode;
+// the pin redraws for its new size.
+async function resizePin(ctx, entityId, size) {
+  await ctx.ev(`(async () => {
+    await window.electronAPI.setDesktopPinEditMode(true);
+    await window.electronAPI.updateDesktopPinBounds(${JSON.stringify(entityId)}, ${JSON.stringify(size)});
+    await window.electronAPI.setDesktopPinEditMode(false);
+  })()`);
+  await ctx.sleep(900);
+}
+
+// Every button of a pin lies inside its window, and none has its label cut short.
+const PIN_BUTTONS_FIT = `(() => {
+  const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
+  const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  return (
+    buttons.length > 0 &&
+    buttons.every((button) => {
+      const box = button.getBoundingClientRect();
+      return box.bottom <= innerHeight && box.right <= innerWidth;
+    }) &&
+    labels.every((label) => label.scrollWidth <= label.clientWidth)
+  );
+})()`;
+
+// A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
+// their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
+const resizedPinScene = (family, entityId, size) =>
+  pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      await resizePin(ctx, entityId, size);
+      if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
+        throw new Error('Layout check failed: a pin button is cut off or its label shortened');
+      }
+      return { capture: pin };
+    },
+  });
+
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
 // A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
@@ -1943,14 +1982,7 @@ const scenes = [
     config: pinsPage,
     setup: async (ctx) => {
       const pin = await ctx.openPin('light.desk_lamp');
-      if (size) {
-        await ctx.ev(`(async () => {
-          await window.electronAPI.setDesktopPinEditMode(true);
-          await window.electronAPI.updateDesktopPinBounds('light.desk_lamp', ${JSON.stringify(size)});
-          await window.electronAPI.setDesktopPinEditMode(false);
-        })()`);
-        await ctx.sleep(900);
-      }
+      if (size) await resizePin(ctx, 'light.desk_lamp', size);
       await pin.evaluate(`(() => {
         document.body.classList.add('desktop-pin-edit-mode', 'desktop-pin-compositor-placement');
         document.getElementById('desktop-pin-content')?.setAttribute('data-edit-hint', 'Drag or resize');
@@ -1988,6 +2020,14 @@ const scenes = [
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
   pinScene('pin-timer', 'timer.laundry'),
+  // Pins dragged a little bigger, between the default and the roomy 260x190: the four modes or
+  // speeds come back and must still fit their row, and the weather's units keep their case.
+  resizedPinScene('climate', 'climate.bedroom', { width: 200, height: 170 }),
+  resizedPinScene('fan', 'fan.office', { width: 200, height: 170 }),
+  resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
+  resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
+  resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),

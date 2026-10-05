@@ -1369,6 +1369,43 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pins larger than the default and in their other states', () => {
+    const panel = (family, layout, attributes = '') =>
+      `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+        <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
+          data-layout="${layout}" ${attributes}>
+          <div class="desktop-pin-panel-shell"><div class="desktop-pin-panel-body">
+            <div class="desktop-pin-weather-stats"><div class="desktop-pin-panel-stat">
+              <div class="desktop-pin-panel-stat-label">12 km/h</div></div></div>
+            <div class="desktop-pin-panel-actions">
+              <button class="desktop-pin-panel-button"><span class="desktop-pin-panel-button-label">Cool</span></button>
+            </div>
+          </div></div>
+        </div></div></div>`;
+
+    // 195x160 up to 259x189 is the balanced layout. It brings back a fourth mode or speed, so its
+    // buttons need the default pin's sentence case and spacing; capitals ran them to "C...".
+    it.each([
+      ['climate', { width: 200, height: 170 }],
+      ['fan', { width: 240, height: 180 }],
+      ['cover', { width: 259, height: 189 }],
+    ])('keeps a balanced %s pin to the default pin spacing and buttons', (family, viewport) => {
+      render('desktop-pin-mode', panel(family, 'balanced'));
+      const options = { viewport };
+      const control = document.querySelector('.desktop-pin-panel-control');
+      const button = document.querySelector('.desktop-pin-panel-button');
+      expect(resolvedValue(control, '--desktop-pin-panel-pad', options)).toBe('8px');
+      expect(resolvedValue(control, '--desktop-pin-panel-gap', options)).toBe('6px');
+      expect(resolvedValue(button, 'text-transform', options)).toBe('none');
+      expect(resolvedValue(button, 'min-height', options)).toBe('24px');
+      expect(resolvedValue(button, 'letter-spacing', options)).toBe('0');
+      // The row gives a long label ("Kühlen") the room a short one ("Aus") leaves.
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display', options)
+      ).toBe('flex');
+    });
+  });
+
   describe('desktop pin text', () => {
     const TEXT_CLASSES = [
       'desktop-pin-panel-name',
