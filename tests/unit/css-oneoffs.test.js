@@ -673,7 +673,7 @@ describe('stylesheet one-offs', () => {
       const px = (value) => parseFloat(value) * (String(value).endsWith('rem') ? 16 : 1);
 
       // A 44x36 well with Chromium's square, bevelled swatch in it stood beside six 28px circles.
-      it('sets the custom colour in a well as tall as the swatches, filled by the colour', () => {
+      it('sets the custom colour in a 32px well, a little larger than the swatches, filled by the colour', () => {
         const { picker } = row();
         expect(resolvedValue(picker, 'width')).toBe('32px');
         expect(resolvedValue(picker, 'height')).toBe('32px');

@@ -5513,8 +5513,10 @@ body.theme-light:not(.high-contrast)
 }
 
 .light-color-picker {
-  /* A well for the custom colour, as tall as the swatches beside it. It keeps its size, so a
-     narrow dialog shrinks the swatches instead of squeezing it to a sliver. */
+  /* A 32px well for the custom colour, a little larger than the 28px swatches beside it: its
+     border and padding take 4px a side, which leaves a 24px colour, the size of the smallest
+     swatch. It keeps its size, so a narrow dialog shrinks the swatches instead of squeezing it to
+     a sliver. */
   flex: 0 0 32px;
   width: 32px;
   height: 32px;
