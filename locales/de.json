@@ -1259,7 +1259,6 @@
   "Both computers changed {{sections}}, so the newer change was kept and the other was backed up.": "Beide Computer haben {{sections}} geändert. Die neuere Änderung wurde behalten, die andere gesichert.",
   "Waiting for your choice below.": "Wartet auf deine Auswahl unten.",
   "Profile sync complete.": "Profilsynchronisierung abgeschlossen.",
-  "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die gespeicherte Home Assistant-Autorisierung nicht gelesen werden. Entsperre den Schlüsselbund und starte das Widget dann neu.",
   "System keyring is locked": "Systemschlüsselbund ist gesperrt",
   "Restart Widget": "Widget neu starten",
   "Add to Omarchy Bar": "Zur Omarchy-Leiste hinzufügen",
@@ -1639,5 +1638,6 @@
   "My entities": "Meine Entitäten",
   "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Deine Verbindung ist gespeichert. Sieh dir die Vorschau eines Raums an oder wähle Entitäten aus, um deine erste Seite zu erstellen. Du kannst dies auch später über das leere Dashboard tun.",
   "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "Das gespeicherte Home Assistant-Token kann erst gelesen werden, wenn der Systemschlüsselbund entsperrt ist. Entsperre ihn und starte das Widget dann neu.",
-  "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die Autorisierung nicht gespeichert werden. Entsperre den Schlüsselbund und starte das Widget dann neu."
+  "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die Autorisierung nicht gespeichert werden. Entsperre den Schlüsselbund und starte das Widget dann neu.",
+  "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "Die gespeicherte Home Assistant-Autorisierung kann erst gelesen werden, wenn der Systemschlüsselbund entsperrt ist. Entsperre ihn und starte das Widget dann neu."
 }

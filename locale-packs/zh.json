@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -2014,6 +2014,7 @@
     "My entities": "我的实体",
     "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "连接已保存。预览房间或选择实体来创建第一个页面。也可以稍后从空白仪表板进行设置。",
     "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "在解锁系统密钥环之前，无法读取已保存的 Home Assistant 令牌。请解锁密钥环，然后重新启动小组件。",
-    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法保存授权。请解锁密钥环，然后重新启动小组件。"
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "系统密钥环已锁定或未运行，因此无法保存授权。请解锁密钥环，然后重新启动小组件。",
+    "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "在解锁系统密钥环之前，无法读取已保存的 Home Assistant 授权。请解锁密钥环，然后重新启动小组件。"
   }
 }

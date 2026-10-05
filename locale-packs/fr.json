@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2014,6 +2014,7 @@
     "My entities": "Mes entités",
     "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Votre connexion est enregistrée. Prévisualisez une pièce ou choisissez des entités pour créer votre première page. Vous pourrez aussi le faire plus tard depuis le tableau de bord vide.",
     "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "Le jeton Home Assistant enregistré ne peut pas être lu tant que le trousseau de clés du système n'est pas déverrouillé. Déverrouillez-le, puis redémarrez le widget.",
-    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, l'autorisation ne peut donc pas être enregistrée. Déverrouillez le trousseau, puis redémarrez le widget."
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, l'autorisation ne peut donc pas être enregistrée. Déverrouillez le trousseau, puis redémarrez le widget.",
+    "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "L'autorisation Home Assistant enregistrée ne peut pas être lue tant que le trousseau de clés du système n'est pas déverrouillé. Déverrouillez-le, puis redémarrez le widget."
   }
 }

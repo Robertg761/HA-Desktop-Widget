@@ -235,6 +235,24 @@ describe('the connection panel on the dashboard', () => {
       oauthAuthorizationId: undefined,
     });
 
+  describe('an authorization the locked keyring keeps from being read', () => {
+    it('goes on from its title instead of saying it again', async () => {
+      await harness.load({
+        config: {
+          ...revokedConfig(),
+          homeAssistant: {
+            ...revokedConfig().homeAssistant,
+            oauthLastErrorCode: 'OAUTH_KEYRING_UNAVAILABLE',
+          },
+        },
+      });
+
+      expect(title()).toBe('System keyring is locked');
+      expect(copy()).toContain('authorization cannot be read until the system keyring is unlocked');
+      expect(copy()).not.toMatch(/keyring is locked/i);
+    });
+  });
+
   describe('reconnecting a revoked authorization', () => {
     it('waits for the answer in the browser, with the waiting bar', async () => {
       await harness.load({

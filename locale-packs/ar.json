@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2014,6 +2014,7 @@
     "My entities": "كياناتي",
     "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "تم حفظ اتصالك. عاين غرفة أو اختر كيانات لإنشاء صفحتك الأولى. يمكنك أيضاً القيام بذلك لاحقاً من لوحة التحكم الفارغة.",
     "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "لا يمكن قراءة رمز Home Assistant المحفوظ حتى يُفتح قفل سلسلة مفاتيح النظام. افتح قفلها، ثم أعد تشغيل الأداة.",
-    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن حفظ التفويض. افتح قفل سلسلة المفاتيح، ثم أعد تشغيل الأداة."
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن حفظ التفويض. افتح قفل سلسلة المفاتيح، ثم أعد تشغيل الأداة.",
+    "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "لا يمكن قراءة تفويض Home Assistant المحفوظ حتى يُفتح قفل سلسلة مفاتيح النظام. افتح قفلها، ثم أعد تشغيل الأداة."
   }
 }
