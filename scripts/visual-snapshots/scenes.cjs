@@ -482,6 +482,16 @@ const SWATCH_ROWS_EVEN = `(() => {
   const counts = [...rows.values()];
   return counts.every((count) => count === counts[0]);
 })()`;
+// The light pop-up's rows run the same width: a slider capped for the narrower pop-up it once was
+// stopped short of the presets under it on both sides.
+const LIGHT_ROWS_SHARE_EDGES = `(() => {
+  const slider = document.querySelector('.brightness-modal .brightness-slider');
+  const presets = document.querySelector('.brightness-modal .brightness-presets');
+  if (!slider || !presets) return false;
+  const a = slider.getBoundingClientRect();
+  const b = presets.getBoundingClientRect();
+  return Math.abs(a.left - b.left) <= 1 && Math.abs(a.right - b.right) <= 1;
+})()`;
 // An unavailable pop-up shows its note and what is still there to read or use: no block in its body
 // stands empty, with only its padding between the note and the footer.
 const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
@@ -926,7 +936,14 @@ async function openRestoreDashboard(ctx) {
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark', setup: expectTilesLaidOut },
-  { name: 'popup-brightness', setup: openBrightness },
+  {
+    name: 'popup-brightness',
+    setup: async (ctx) => {
+      await openBrightness(ctx);
+      await ctx.waitForSelector('.brightness-modal .brightness-presets');
+      await ctx.expect(LIGHT_ROWS_SHARE_EDGES, 'the brightness slider as wide as the presets');
+    },
+  },
   { name: 'popup-climate', setup: openClimate },
   { name: 'edit-mode', setup: toggleEditMode },
   { name: 'settings', setup: (ctx) => openSettingsTab(ctx, 'general') },
@@ -2660,3 +2677,6 @@ const scenes = [
 ];
 
 module.exports = { scenes };
+
+// TMP-B6
+if (process.env.B6_TMP_SCENES) scenes.push(...require(process.env.B6_TMP_SCENES));
