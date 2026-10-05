@@ -148,6 +148,11 @@ Planned for a future release:
 > `gnome-keyring`, or another Secret Service, and restart the widget. The `.deb` recommends
 > `gnome-keyring`, and the Arch package lists it as optional.
 
+> **AppImage on Ubuntu 24.04:** Ubuntu 23.10 and later block the sandbox the AppImage needs, so
+> a double-clicked AppImage closes without opening a window. Install the `.deb` instead, or start
+> the AppImage once from a terminal with `--no-sandbox`. See
+> [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).
+
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Use the exact address you normally open in your browser, such as `http://homeassistant.local`, a legacy `http://your-ha-ip:8123` address, or `https://your-ha-domain.com`
@@ -484,6 +489,10 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 - **Restart**: Close and reopen the app if entities aren't updating
 - **Reconnect**: Go to Settings and click **Reconnect with Home Assistant**
 - **Check Logs**: Use **Settings > Advanced > Show log file** to show the log file in your file manager (its path is copied if no file manager opens)
+
+### Linux
+
+- **The AppImage closes without a window**: On Ubuntu 23.10 and later, install the `.deb`, or start the AppImage from a terminal with `--no-sandbox`. See [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).
 
 ## Contributing
 

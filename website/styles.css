@@ -1153,6 +1153,8 @@ kbd {
   border: 1px solid rgba(var(--accent-rgb), 0.3);
 }
 .install-steps b { color: var(--text); font-weight: 600; }
+.install-steps a { color: var(--accent); text-underline-offset: 3px; }
+.install-steps code { white-space: nowrap; }
 .install-foot { margin: 16px 0 0; font-size: 13px; color: var(--faint); text-align: center; }
 .install-foot a { color: var(--muted); }
 .no-detect { max-width: 440px; margin: 32px auto 0; color: var(--muted); }

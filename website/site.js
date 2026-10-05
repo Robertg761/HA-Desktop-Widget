@@ -25,6 +25,9 @@ const SMARTSCREEN = 'If Windows shows a SmartScreen warning, click <b>More info<
 const GATEKEEPER = 'The first time, <b>Control-click</b> the app and choose <b>Open</b>. If macOS still blocks it, open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b>. The build isn’t notarized yet.';
 /* Signing in is stored in the system keyring, and a minimal desktop (i3, Sway, Hyprland) may not run one. */
 const KEYRING = 'Remembering your sign-in needs a running keyring, such as <b>GNOME Keyring</b> or <b>KWallet</b>. Most desktops have one; on a minimal setup, install and start one first.';
+/* Ubuntu 23.10 and later stop an AppImage from starting Chromium's sandbox, so a double-clicked one
+   exits without a window. The guide in docs/ has the ways around it. */
+const APPIMAGE_SANDBOX = 'On Ubuntu 24.04 and later it closes without opening a window. Use the .deb instead, or <a href="https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-appimage.md" target="_blank" rel="noopener">start it once with <code>--no-sandbox</code></a>.';
 const INSTALL_STEPS = {
   'win-setup': ['Run the installer from your Downloads folder.', SMARTSCREEN, CONNECT],
   'win-portable': ['Put the .exe wherever you like and double-click it. Nothing gets installed.', SMARTSCREEN, CONNECT],
@@ -33,6 +36,7 @@ const INSTALL_STEPS = {
   'linux-appimage': [
     'Right-click the AppImage, open <b>Properties</b> and allow it to run as a program.',
     'Double-click it to start. It keeps itself up to date.',
+    APPIMAGE_SANDBOX,
     KEYRING,
     CONNECT,
   ],

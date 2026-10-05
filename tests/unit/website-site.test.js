@@ -221,6 +221,17 @@ describe('the download page', () => {
     expect(document.getElementById('install-steps').textContent).toMatch(/keyring/i);
   });
 
+  // A double-clicked AppImage exits without a window on Ubuntu 24.04, and these steps replace the
+  // page's own for every Linux visitor, so they are where the way around it has to be.
+  it('tells Ubuntu users what to do when the AppImage will not start', async () => {
+    await loadPage(DOWNLOAD, { answers: answersFor({ stable }) });
+    const steps = document.getElementById('install-steps');
+    expect(steps.textContent).toMatch(/Ubuntu 24\.04.*\.deb.*--no-sandbox/);
+    expect(steps.querySelector('a').href).toBe(
+      'https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-appimage.md'
+    );
+  });
+
   it('points the download button at the release page while GitHub cannot be reached', async () => {
     await loadPage(DOWNLOAD);
     expect(document.getElementById('rec-primary').href).toBe(
