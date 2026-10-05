@@ -1222,6 +1222,28 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
     });
 
+    test('clearing the popup hotkey says why it failed and leaves the hotkey shown', async () => {
+      state.CONFIG.popupHotkey = 'Ctrl+Shift+F12';
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+      mockElectronAPI.unregisterPopupHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to save popup hotkey removal: disk full',
+      });
+
+      document.getElementById('popup-hotkey-clear-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Failed to save popup hotkey removal: disk full',
+        'error'
+      );
+      expect(state.CONFIG.popupHotkey).toBe('Ctrl+Shift+F12');
+      expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
+    });
+
     test('a platform without a global shortcut service shows a read-only card that says so', async () => {
       mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
 

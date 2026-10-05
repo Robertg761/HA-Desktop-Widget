@@ -7903,7 +7903,7 @@ async function initializePopupHotkey() {
       if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
       try {
         const result = await window.electronAPI.unregisterPopupHotkey();
-        if (result.success) {
+        if (result?.success) {
           input.value = '';
           input.placeholder = t('Not set');
           clearBtn.style.display = 'none';
@@ -7913,6 +7913,9 @@ async function initializePopupHotkey() {
           if (result.warning) {
             showToast(result.warning, 'warning', 4000);
           }
+        } else {
+          // Main kept the hotkey (its removal could not be saved), so the field still shows it.
+          showToast(result?.error || t('Failed to clear popup hotkey'), 'error');
         }
       } catch (error) {
         log.error('Failed to clear popup hotkey:', error);
