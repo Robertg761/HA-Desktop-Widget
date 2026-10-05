@@ -1318,8 +1318,13 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
 
 // Whether Chromium draws the windows on the CPU (no GPU, or one its blocklist turns off). The
 // renderer then holds the seasonal art still, which would otherwise keep a core busy all month.
-// Asked each time: a GPU process that gives up moves a running app onto software rendering.
+// Asked each time: a GPU process that gives up moves a running app onto software rendering. Until
+// Chromium's first GPU report (gpu-info-update, under a second after start) every machine reads as
+// software, GPU or not, so the answer is no until then: otherwise every GPU machine would start
+// with the art still and set it moving a second later.
+let gpuInfoReported = false;
 function rendersInSoftware() {
+  if (!gpuInfoReported) return false;
   try {
     return isSoftwareRendering(app.getGPUFeatureStatus());
   } catch {
@@ -13479,10 +13484,12 @@ app
     app.exit(1);
   });
 
-// The window learns whether it is drawn on the CPU from its config, so a change (the GPU process
-// giving up and Chromium falling back to software) is sent when Chromium reports it.
-let lastSoftwareRendering = null;
+// The window learns whether it is drawn on the CPU from its config, so a change is sent when
+// Chromium reports it: its first report on a machine without a working GPU, or the GPU process
+// giving up later. Every config before the first report said no, so a GPU machine sends nothing.
+let lastSoftwareRendering = false;
 app.on('gpu-info-update', () => {
+  gpuInfoReported = true;
   const softwareRendering = rendersInSoftware();
   if (softwareRendering === lastSoftwareRendering) return;
   lastSoftwareRendering = softwareRendering;
