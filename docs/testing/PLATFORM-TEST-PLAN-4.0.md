@@ -24,12 +24,12 @@ Do the shared checks first. Later checks assume the Quick Access tiles from "Set
 
 Run these first, in this order. They cover the problems most likely to affect the most people.
 
-| Your machine | Checks                                                                                                                                                                                                      |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8                                                                                                                             |
-| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8                                                                                                                            |
-| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6                                                                                                                                       |
-| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway, niri or river); on stock GNOME, GNOME-2 first |
+| Your machine | Checks                                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows 11   | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, WIN11-1, WIN11-2, WIN11-5, WIN11-6, WIN11-8, WIN11-12                                                                                                                          |
+| Windows 10   | ALL-1, ALL-3, ALL-4, ALL-5, WIN10-1, WIN11-1, WIN11-3, WIN11-5, WIN11-6, WIN11-8, WIN11-12                                                                                                                         |
+| macOS        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, MAC-1, MAC-2, MAC-3, MAC-5, MAC-6, MAC-10                                                                                                                                      |
+| Linux        | ALL-1, ALL-3, ALL-4, ALL-5, ALL-14, LNX-1, LNX-2, LNX-3, LNX-6, LNX-9, then the first two checks in the section for your desktop (GNOME, KDE Plasma, Hyprland, Sway, niri or river); on stock GNOME, GNOME-2 first |
 
 On a GNOME without a tray extension, run GNOME-2 before anything else in this list. ALL-4 needs a tray icon, so run it only after you install an extension, or skip it (see "Check for a tray icon").
 
@@ -488,6 +488,22 @@ Capture: A zoomed screenshot of the taskbar in each combination.
 
 Ref: RO3-24, MP-83
 
+### WIN11-12 Installed build: language, edit menu and hotkey
+
+Run this on the Setup or Portable build from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
+
+1. In Windows Settings > Time & language > Language & region, add Español (México) under Preferred languages and move it to the top. Quit the app from the tray and start it again. If the next step still names your old language, sign out and back in.
+2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
+4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front.
+5. Do steps 1 to 3 again with Chinese (Traditional, Taiwan) at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+
+Expected: The app starts with its window and tray icon. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+
+Capture: A screenshot of the language line and of the right-click menu in each language. If the hotkey does nothing, the log lines that mention uiohook-napi.
+
+Ref: MP-78
+
 ## Windows 10 (WIN10)
 
 Windows 10 22H2 (build 19045) is the last version. Windows 11 21H2 and sessions without acrylic (remote desktop, some virtual machines) behave the same way, so run this section there too.
@@ -507,7 +523,7 @@ Ref: RO3-02
 
 ### WIN10-2 Other checks on Windows 10
 
-Run these on Windows 10 too: WIN11-1 (names, shortcuts and icon), WIN11-3 (window edge; ordinary Windows 10 windows have square corners, so the question is whether the widget has a visible edge), WIN11-5 (tray icon at each scale), WIN11-6 (start at login), WIN11-8 (hotkey recorder), WIN11-9 (folder picker) and WIN11-10 (notifications). Also run ALL-13 (icons): Windows 10's emoji font is older than Windows 11's. For high contrast, see A11Y-1; Windows 10 has its own settings page for it.
+Run these on Windows 10 too: WIN11-12 (installed build, language and hotkey), WIN11-1 (names, shortcuts and icon), WIN11-3 (window edge; ordinary Windows 10 windows have square corners, so the question is whether the widget has a visible edge), WIN11-5 (tray icon at each scale), WIN11-6 (start at login), WIN11-8 (hotkey recorder), WIN11-9 (folder picker) and WIN11-10 (notifications). Also run ALL-13 (icons): Windows 10's emoji font is older than Windows 11's. For high contrast, see A11Y-1; Windows 10 has its own settings page for it.
 
 Ref: SM2-39
 
@@ -623,6 +639,22 @@ Capture: A screenshot of the dialog.
 
 Ref: MP-73
 
+### MAC-10 Installed build: language, edit menu and hotkey
+
+Run this on the `.dmg` or `.zip` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default). If you have an Intel Mac and an Apple silicon Mac, run it on both, because each loads its own copy of the hotkey library.
+
+1. In System Settings > General > Language & Region, add Español (México) under Preferred Languages and drag it to the top. Quit the app from the menu-bar item and open it again.
+2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
+4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
+5. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+
+Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+
+Capture: A screenshot of the language line and of the right-click menu in each language, and which kind of Mac you used. If the hotkey does nothing, the log lines that mention uiohook-napi.
+
+Ref: MP-78
+
 ## Linux, every desktop (LNX)
 
 Run these on any Linux desktop, then the section for your desktop. By default the app runs through XWayland on a Wayland session, which keeps its saved position and always-on-top behavior. See [Linux Wayland window behavior](../linux-wayland-notes.md). Note whether you run through XWayland, natively on Wayland (`HA_WIDGET_LINUX_NATIVE_WAYLAND=1`) or on X11.
@@ -722,6 +754,22 @@ Expected: With default settings the window looks as designed, not gray and muddy
 Capture: Screenshots of both, and the window manager.
 
 Ref: MP-29
+
+### LNX-9 Installed build: language, edit menu and hotkey
+
+Run this on the AppImage or the `.deb` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
+
+1. Quit the app. Start it from a terminal with Mexican Spanish as the system language: `LANGUAGE=es_MX LANG=es_MX.UTF-8 ./"HA Desktop Widget-<version>-linux-x64.AppImage" --user-data-dir=$HOME/hadw-test`, or `LANGUAGE=es_MX LANG=es_MX.UTF-8 home-assistant-widget --user-data-dir=$HOME/hadw-test` for the `.deb`.
+2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
+4. Settings > Hotkeys > Popup hotkey: set a hotkey, then press it while another app is in front. On Wayland, approve the shortcut when your desktop asks.
+5. Quit, and do steps 1 to 3 again with `LANGUAGE=zh_TW LANG=zh_TW.UTF-8` and the Chinese pack.
+
+Expected: The app starts with its window, and its tray icon if your desktop has a tray. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With `zh_TW` the line names Chinese (Taiwan), and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. The hotkey brings the widget to the front. On Linux it goes through the desktop's shortcut service or X11, not uiohook, so the log has "Using Electron globalShortcut for Linux popup hotkeys" and no line about uiohook-napi.
+
+Capture: A screenshot of the language line and of the right-click menu in each language, and your session type. If the hotkey does nothing, the log lines about hotkeys.
+
+Ref: MP-78
 
 ## GNOME, Wayland and X11
 

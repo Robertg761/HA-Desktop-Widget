@@ -1,5 +1,4 @@
-# electron-builder configuration (moved out of package.json's "build" key so the
-# dbus-next exclusion list below can be defined once and shared via a YAML anchor).
+# electron-builder configuration, formerly the "build" key of package.json.
 productName: HA Desktop Widget
 # Keep in sync with the top-level "appId" in package.json: src/windows-startup.cjs and
 # src/linux-startup.cjs read it at runtime to name the Windows Run-key value and the
@@ -9,6 +8,19 @@ directories:
   buildResources: build
   output: dist
 afterPack: scripts/after-pack-mac-adhoc-sign.cjs
+# The app's own files are this allowlist. linux, mac and win each have a `files` list as well, for
+# what only that platform drops. electron-builder reads the two lists one way for the app's own
+# files and another way for node_modules:
+# - For the app's files, once it has loaded this file, the top-level list is a file set of its own
+#   and the platform list another, and neither adds to the other. A set made only of exclusions
+#   packs everything but them, the whole repository with its tests, docs, website and vendored
+#   sources. So every platform list also names package.json, which ships anyway, and this
+#   allowlist still bounds the rest.
+# - For node_modules, it takes the exclusions of both lists and applies them together. An
+#   exclusion here therefore removes a package from every platform, which is why the dbus-next
+#   list, which Linux needs, sits under mac and win.
+# tests/unit/electron-builder-config.test.js loads the configuration the way electron-builder does
+# and fails if a platform packs a file it does not name.
 files:
   - index.html
   # Self-hosted Inter / Plus Jakarta Sans woff2 subsets referenced by the
@@ -30,9 +42,98 @@ files:
   - build/trayTemplate.png
   - build/trayTemplate@2x.png
   - package.json
+  # usocket is dbus-next's optional native add-on for passing file descriptors. The app never uses
+  # it: every dbus-next connection in src/ (portal-global-shortcuts, portal-color-scheme,
+  # kwin-window-raise, linux-tray-host) gets its address from getNetSessionBusAddress(), which
+  # makes dbus-next open an ordinary net socket instead. Excluding the package alone
+  # left everything it pulls in, about 6 MB in the asar: node-gyp, tar, undici, nan, nopt and their
+  # helpers. Those are the packages package-lock.json reaches only through usocket, and nothing
+  # that ships requires them; tests/unit/electron-builder-config.test.js recomputes the list from
+  # the lock file and fails if it drifts, e.g. when an upgrade of electron-updater starts needing
+  # one. electron-builder hoists the production tree before it filters, so a package that
+  # package-lock.json nests under node-gyp or tar (undici, which, isexe, env-paths, yallist) is
+  # matched at node_modules/<name>, and each is listed by that name. semver is the one exception:
+  # node-gyp's copy is hoisted to the top while electron-updater keeps its own beside it, so a
+  # pattern for the name could one day remove the copy electron-updater needs. Its 58 files stay.
   - '!node_modules/usocket/**/*'
+  - '!node_modules/node-gyp/**/*'
+  - '!node_modules/nan/**/*'
+  - '!node_modules/bindings/**/*'
+  - '!node_modules/file-uri-to-path/**/*'
+  - '!node_modules/tar/**/*'
+  - '!node_modules/@isaacs/fs-minipass/**/*'
+  - '!node_modules/chownr/**/*'
+  - '!node_modules/minipass/**/*'
+  - '!node_modules/minizlib/**/*'
+  - '!node_modules/exponential-backoff/**/*'
+  - '!node_modules/fdir/**/*'
+  - '!node_modules/picomatch/**/*'
+  - '!node_modules/tinyglobby/**/*'
+  - '!node_modules/nopt/**/*'
+  - '!node_modules/abbrev/**/*'
+  - '!node_modules/proc-log/**/*'
+  - '!node_modules/undici/**/*'
+  - '!node_modules/which/**/*'
+  - '!node_modules/isexe/**/*'
+  - '!node_modules/env-paths/**/*'
+  - '!node_modules/yallist/**/*'
+  # The Material Design Icons font. index.html links @mdi/font's own stylesheet, whose @font-face
+  # offers the font as .eot, .woff2, .woff and .ttf, in that order. Chromium skips the .eot, a
+  # format only Internet Explorer reads, and loads the first one it can, the .woff2, so the other
+  # three (3.2 MB) are never opened. The scss sources and the css source maps are for building a
+  # stylesheet of one's own. tests/unit/electron-builder-config.test.js checks that the stylesheet
+  # still offers the woff2 first and that nothing that ships points at a file dropped here.
+  - '!node_modules/@mdi/font/fonts/*.eot'
+  - '!node_modules/@mdi/font/fonts/*.ttf'
+  - '!node_modules/@mdi/font/fonts/*.woff'
+  - '!node_modules/@mdi/font/scss/**/*'
+  - '!node_modules/@mdi/font/css/*.map'
+  # uiohook-napi, the keyboard hook behind the popup hotkey on Windows and macOS. Its loader,
+  # node-gyp-build, takes build/Release/uiohook_napi.node when electron-builder's rebuild step
+  # compiled one on the build machine, and prebuilds/<platform>-<arch>/uiohook-napi.node when it
+  # did not. The C sources and binding.gyp are only for that compile, which runs in node_modules
+  # before anything is packed. The prebuilds for other systems are dropped per platform below.
+  - '!node_modules/uiohook-napi/binding.gyp'
+  - '!node_modules/uiohook-napi/libuiohook/**/*'
+  - '!node_modules/uiohook-napi/src/**/*'
 asar: true
 compression: normal
+# Chromium keeps the text of its own built-in interface in one locale .pak file per language: what
+# it draws for a page by itself, such as the bubble that says why a form field's value is not
+# allowed (the alarm code and helper value dialogs show it), the date picker and the media controls.
+# Electron ships all 55 paks, about 46 MB per install. The menus a right-click opens in a text
+# field, spelling suggestions included, do not come from them: src/application-menu.cjs builds those
+# from the app's own catalogs, so they follow the language the app shows. These are the paks that
+# match the app's seven languages (APP_LANGUAGES in src/i18n-main.cjs: en, de, es, fr, ar, hi, zh),
+# including the regional paks Chromium sends those languages to. Checked against Electron 43 on
+# Linux by setting LANG and reading app.getLocale():
+#   es-419  every Latin American Spanish system (es-MX, es-AR, es-US, ...); es-ES gets es
+#   zh-TW   zh-HK, zh-MO and Traditional Chinese; zh-CN covers zh-SG and Simplified Chinese
+#   en-GB   en-AU, en-CA, en-IN, en-NZ and en-ZA; en-US is every other English, and the fallback
+#           for a system language with no pak, which Chromium cannot start without
+# de-AT, de-CH, fr-CA, fr-BE, ar-EG and hi-IN need nothing extra: they resolve to de, fr, ar and
+# hi. A system language with no pak here (pt-BR, ja) gets Chromium's built-in text in English, the
+# language the app falls back to for its own text. Chromium then also reports en-US as
+# app.getLocale() and the renderer's navigator.language, and on Windows and Linux it would start
+# the spell checker in English, so main.js sets the dictionary from the system's languages
+# (pickSpellCheckerLanguage in src/i18n-main.cjs). Which language the app itself shows does not
+# depend on these files either: detectSystemLocale in src/i18n-main.cjs reads the operating system.
+# On macOS the same choice also removes the app's other .lproj folders, which set the language of
+# the system's own dialogs (see `mac`). electron-builder keeps a pak whose name is an entry or the
+# part of one before its dash, so "es-419" would keep es.pak by itself; both are listed so the
+# intent reads plainly. Windows and Linux use this list. macOS has its own under `mac`, because it
+# names the same choice with underscores.
+electronLanguages:
+  - en-US
+  - en-GB
+  - de
+  - es
+  - es-419
+  - fr
+  - ar
+  - hi
+  - zh-CN
+  - zh-TW
 publish:
   - provider: github
     owner: Robertg761
@@ -50,18 +151,75 @@ mac:
     # runtime, after the Dock has already drawn (and bounced) the icon at every launch.
     LSUIElement: true
   x64ArchFiles: '**/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node'
+  # The same languages as the top-level electronLanguages, as macOS names them: the Electron
+  # framework keeps a locale.pak in a folder per language ("es_419.lproj", "en_GB.lproj"), and
+  # electron-builder matches an entry against that folder name, so the dashes above would not match.
+  # The list also trims the .lproj folders in the app's own Contents/Resources. Those tell macOS
+  # which languages the app has, and it shows its own dialogs and panels (open and save, the
+  # message boxes) in the first of the user's languages found there, so a pt-BR Mac gets them in
+  # English, like the rest of the app.
+  # Each language also has _FEMININE, _MASCULINE and _NEUTER folders, holding paks of 18 bytes in
+  # every language kept here. They cost nothing, and Chromium may look for them next to its
+  # language's folder, so they stay.
+  electronLanguages:
+    - en
+    - en_FEMININE
+    - en_MASCULINE
+    - en_NEUTER
+    - en_GB
+    - en_GB_FEMININE
+    - en_GB_MASCULINE
+    - en_GB_NEUTER
+    - de
+    - de_FEMININE
+    - de_MASCULINE
+    - de_NEUTER
+    - es
+    - es_FEMININE
+    - es_MASCULINE
+    - es_NEUTER
+    - es_419
+    - es_419_FEMININE
+    - es_419_MASCULINE
+    - es_419_NEUTER
+    - fr
+    - fr_FEMININE
+    - fr_MASCULINE
+    - fr_NEUTER
+    - ar
+    - ar_FEMININE
+    - ar_MASCULINE
+    - ar_NEUTER
+    - hi
+    - hi_FEMININE
+    - hi_MASCULINE
+    - hi_NEUTER
+    - zh_CN
+    - zh_CN_FEMININE
+    - zh_CN_MASCULINE
+    - zh_CN_NEUTER
+    - zh_TW
+    - zh_TW_FEMININE
+    - zh_TW_MASCULINE
+    - zh_TW_NEUTER
   # dbus-next and its exclusive transitive dependency subtree (per package-lock.json:
   # event-stream and its stream helpers, xml2js/xmlbuilder, long, jsbi, hexy,
   # @nornagon/put). It is only required lazily by src/portal-global-shortcuts.cjs on
-  # Linux Wayland, so mac/win packages strip it (win reuses this list via the YAML
-  # alias below). Do NOT hoist these into the top-level `files` list: top-level and
-  # per-platform lists are additive, so that would strip dbus-next from Linux builds
-  # too and break portal global shortcuts at runtime. When upgrading dbus-next,
-  # re-derive this list from package-lock.json. The alias makes mac.files and
-  # win.files one shared array instance; do not reuse the anchor under top-level
-  # files/extraFiles/extraResources — app-builder-lib normalizes those in place,
-  # which would corrupt the shared list for the platform sections.
-  files: &dbusNextExcludes
+  # Linux Wayland, so mac/win packages strip it. win.files repeats the list, because YAML
+  # cannot join two lists and the two differ in their uiohook-napi lines;
+  # tests/unit/electron-builder-config.test.js keeps the copies equal. Do NOT hoist these
+  # into the top-level `files` list: for node_modules, electron-builder applies the
+  # exclusions of the top-level list and the platform's list together, so that would strip
+  # dbus-next from Linux builds too and break portal global shortcuts at runtime. When
+  # upgrading dbus-next, re-derive this list from package-lock.json.
+  #
+  # Then the uiohook-napi prebuilds of the other systems. Every package keeps the x64 and arm64
+  # builds of its own system and no other, which also drops linux-loong64. The macOS app is
+  # universal and needs both darwin builds; x64ArchFiles above has the merge take them as they are.
+  # package.json is here because, for the app's own files, this list is a file set of its own
+  # and one made only of exclusions would pack the whole repository (see the top-level `files`).
+  files:
+    - package.json
     - '!node_modules/dbus-next/**/*'
     - '!node_modules/event-stream/**/*'
     - '!node_modules/hexy/**/*'
@@ -77,9 +235,32 @@ mac:
     - '!node_modules/pause-stream/**/*'
     - '!node_modules/split/**/*'
     - '!node_modules/stream-combiner/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/win32-*/**/*'
 win:
   icon: build/icon.ico
-  files: *dbusNextExcludes
+  # package.json and the dbus-next list of mac.files, then the uiohook-napi prebuilds of the other
+  # systems. The release is x64 only (target below), and Windows on Arm runs it under emulation
+  # with the win32-x64 build; win32-arm64 is for an arm64 package.
+  files:
+    - package.json
+    - '!node_modules/dbus-next/**/*'
+    - '!node_modules/event-stream/**/*'
+    - '!node_modules/hexy/**/*'
+    - '!node_modules/jsbi/**/*'
+    - '!node_modules/long/**/*'
+    - '!node_modules/@nornagon/put/**/*'
+    - '!node_modules/xml2js/**/*'
+    - '!node_modules/xmlbuilder/**/*'
+    - '!node_modules/through/**/*'
+    - '!node_modules/duplexer/**/*'
+    - '!node_modules/from/**/*'
+    - '!node_modules/map-stream/**/*'
+    - '!node_modules/pause-stream/**/*'
+    - '!node_modules/split/**/*'
+    - '!node_modules/stream-combiner/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/darwin-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-*/**/*'
   target:
     - target: nsis
       arch: [x64]
@@ -119,6 +300,16 @@ linux:
     # "Add to Omarchy Bar" item (src/omarchy-bar.cjs).
     - from: omarchy-plugin
       to: omarchy-plugin
+  # package.json (see the top-level `files`), then the uiohook-napi prebuilds of the other systems
+  # and linux-loong64. main.js does not load uiohook on Linux, where the popup hotkey goes through
+  # globalShortcut or the desktop portal (src/linux-popup-hotkey.cjs,
+  # src/portal-global-shortcuts.cjs), so the two Linux builds that stay, 70 KB each, only keep the
+  # package whole should that change.
+  files:
+    - package.json
+    - '!node_modules/uiohook-napi/prebuilds/darwin-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/win32-*/**/*'
+    - '!node_modules/uiohook-napi/prebuilds/linux-loong64/**/*'
   # Match Electron's runtime app id, the installed launcher, and the app's
   # existing XDG autostart file so desktop environments associate its windows.
   syncDesktopName: true

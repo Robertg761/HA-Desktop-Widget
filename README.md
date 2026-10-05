@@ -338,9 +338,27 @@ changelog has one; otherwise GitHub generates its notes from merged pull request
 the previous published prerelease in the same version series (or the latest stable release for the
 first beta).
 
-The website in `website/` deploys when it reaches `main`, before a release is tagged, so every
-line on it has to read correctly on both sides of the release. After a website change lands, run
-`node scripts/check-website-deploy.cjs` to compare the deployed pages with the files in `website/`.
+The website in `website/` is not deployed by GitHub: a change merged to `main` goes live only when
+someone publishes it with the Vercel CLI, usually before a release is tagged, so every line on it
+has to read correctly on both sides of the release. Publish exactly what `main` holds, not a local
+folder that may be stale or have uncommitted edits:
+
+```bash
+(
+  set -euo pipefail # any failed step, a fetch included, stops before the deploy
+  git fetch origin
+  rm -rf /tmp/ha-site # one command a line: set -e ignores a failure on the left of &&
+  mkdir -p /tmp/ha-site
+  git archive origin/main website | tar -x -C /tmp/ha-site # exactly what main holds
+  cp -r website/.vercel /tmp/ha-site/website/              # the link `vercel link` made
+  cd /tmp/ha-site/website
+  vercel deploy --prod
+)
+```
+
+Then run the Website deploy check workflow, which checks out `main` and compares every live page,
+asset and response header with it. (`node scripts/check-website-deploy.cjs` does the same against
+your own checkout, so it only proves anything on a clean, up-to-date `main`.)
 
 ### Configuration
 

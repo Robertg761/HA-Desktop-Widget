@@ -9,19 +9,15 @@ describe('the connection panel on the dashboard', () => {
   const title = () => document.querySelector('.widget-state-title')?.textContent;
   const copy = () => document.querySelector('.widget-state-copy')?.textContent;
 
-  afterEach(() => harness.cleanup());
+  // The first load of renderer.js is the slow one: it is when Jest transforms the file, which
+  // under coverage on a busy runner with a cold cache can take longer than the 5 s a test gets.
+  // Load it once here, with room, so no test pays for it.
+  beforeAll(async () => {
+    await harness.load({ config: harness.tokenConfig() });
+    harness.cleanup();
+  }, 60000);
 
-  // The "Retrying..." moment is 700 ms of real time; wait for what follows it, not for a fixed time.
-  const until = async (done, timeoutMs = 3000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (!done() && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    return !!done();
-  };
-  const retryOver = () =>
-    !document.querySelector('.widget-state-copy + .widget-state-details .connection-progress') &&
-    !harness.findButton('Retrying...');
+  afterEach(() => harness.cleanup());
 
   const failAttempt = (error = new Error('Could not establish WebSocket connection')) => {
     harness.websocket.emit('error', error);
@@ -126,9 +122,19 @@ describe('the connection panel on the dashboard', () => {
 
   describe('Retry', () => {
     const retry = () => harness.findButton('Retry') || harness.findButton('Retrying...');
+    // These tests run on Jest's clock once the renderer is up. That holds the clock still between
+    // the two clicks on "Retrying...", and lets a test step past that 700 ms moment without ever
+    // reaching the reconnect each failed attempt schedules a second or more later, which on a slow
+    // machine would otherwise start another attempt in the middle of the test.
+    const loadOnJestClock = async () => {
+      await harness.load({ config: harness.tokenConfig() });
+      jest.useFakeTimers();
+    };
+    const RETRY_FEEDBACK_MS = 700;
+    const endRetryMoment = () => jest.advanceTimersByTime(RETRY_FEEDBACK_MS);
 
     it('says it is retrying, even when the port refuses at once, and then says the retry failed', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       expect(retry().textContent).toBe('Retry');
       expect(document.querySelector('.widget-state-note')).toBeNull();
@@ -150,7 +156,7 @@ describe('the connection panel on the dashboard', () => {
       button.click();
       expect(harness.websocket.connect.mock.calls.length).toBe(connectsBefore + 1);
 
-      await until(retryOver);
+      endRetryMoment();
 
       expect(title()).toBe('Home Assistant is disconnected');
       expect(harness.findButton('Retry').getAttribute('aria-disabled')).toBeNull();
@@ -160,7 +166,7 @@ describe('the connection panel on the dashboard', () => {
     });
 
     it('keeps the keyboard on the Retry button through its label changes', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       const button = retry();
       button.focus();
@@ -170,18 +176,19 @@ describe('the connection panel on the dashboard', () => {
       failAttempt();
       expect(document.activeElement.textContent).toBe('Retrying...');
 
-      await until(retryOver);
+      endRetryMoment();
       expect(document.activeElement.textContent).toBe('Retry');
     });
 
     it('announces how the retry went, once', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await until(retryOver);
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      endRetryMoment();
+      // The live region is emptied first and filled 50 ms later.
+      jest.advanceTimersByTime(50);
 
       expect(document.getElementById('widget-state-live').textContent).toMatch(
         /^Still can't reach Home Assistant/
@@ -189,12 +196,12 @@ describe('the connection panel on the dashboard', () => {
     });
 
     it('forgets the failed retry once the connection is back', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await until(retryOver);
+      endRetryMoment();
       expect(document.querySelector('.widget-state-note')).not.toBeNull();
 
       let requestId = 10;
@@ -205,7 +212,7 @@ describe('the connection panel on the dashboard', () => {
       });
       harness.websocket.emit('message', { type: 'auth_ok' });
       harness.websocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
-      await harness.flushAsync();
+      await jest.advanceTimersByTimeAsync(0);
       // Connected, with nothing on the page yet: the connection panel is gone.
       expect(title()).toBe('No Quick Access entities yet');
 
@@ -214,27 +221,25 @@ describe('the connection panel on the dashboard', () => {
     });
   });
 
+  // The config main sends once a refresh is refused: the token is the placeholder again and the
+  // authorization is gone, so there is nothing to connect with until the user signs in again.
+  const revokedConfig = () =>
+    harness.oauthConfig({
+      token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+      oauthStatus: 'reauth_required',
+      oauthAuthorizationId: undefined,
+    });
+
   describe('reconnecting a revoked authorization', () => {
     it('waits for the answer in the browser, with the waiting bar', async () => {
       await harness.load({
-        config: harness.oauthConfig({
-          token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
-          oauthStatus: 'reauth_required',
-          oauthAuthorizationId: undefined,
-        }),
+        config: revokedConfig(),
         configureApi(api) {
           api.startHomeAssistantOAuth.mockReturnValue(new Promise(() => {}));
         },
       });
 
-      // The panel is drawn once the first connection state is known, a little after init is done.
-      // A busy machine (CI on Windows ARM, a full test run) can take several seconds to get there.
-      const drawn = await until(() => harness.findButton('Reconnect with Home Assistant'), 15000);
-      if (!drawn) {
-        throw new Error(
-          `The Reconnect button never appeared; the panel says: ${document.getElementById('widget-state-panel')?.textContent}`
-        );
-      }
+      // init() draws the panel before it tells main the renderer is ready, which load() waits for.
       harness.findButton('Reconnect with Home Assistant').click();
       await harness.flushAsync();
 
@@ -242,6 +247,56 @@ describe('the connection panel on the dashboard', () => {
       const panel = document.getElementById('widget-state-panel');
       expect(panel.querySelector('.connection-progress')).not.toBeNull();
       expect(panel.getAttribute('aria-busy')).toBe('true');
-    }, 30000);
+    });
+  });
+
+  // Every test boots its own renderer into the same window. One left running after its test would
+  // keep drawing into the next test's page from its own config.
+  describe('the renderer of an earlier test', () => {
+    // Each of these boots two renderers, so it gets the time two one-renderer tests would have.
+    const TWO_RENDERERS_TIMEOUT_MS = 10000;
+
+    it(
+      'does not reconnect, and redraw the panel, once its test is over',
+      async () => {
+        // Its last attempt fails, which schedules the next one 50 ms later.
+        const random = jest.spyOn(Math, 'random').mockReturnValue(0);
+        await harness.load({
+          config: harness.tokenConfig(),
+          constants: { BASE_RECONNECT_DELAY_MS: 50, MAX_RECONNECT_DELAY_MS: 50 },
+        });
+        failAttempt();
+        random.mockRestore();
+        const earlierWebsocket = harness.websocket;
+        const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+        harness.cleanup();
+
+        await harness.load({ config: revokedConfig() });
+        // Timers run in the order they are due, so the earlier renderer's timer has had its turn by now.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+        expect(harness.panelText()).not.toContain('Connecting to Home Assistant...');
+        expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+      },
+      TWO_RENDERERS_TIMEOUT_MS
+    );
+
+    it(
+      'does not answer the network coming back once its test is over',
+      async () => {
+        await harness.load({ config: harness.tokenConfig() });
+        const earlierWebsocket = harness.websocket;
+        const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+        harness.cleanup();
+
+        await harness.load({ config: revokedConfig() });
+        window.dispatchEvent(new Event('online'));
+
+        expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+        expect(harness.findButton('Reconnect with Home Assistant')).toBeTruthy();
+      },
+      TWO_RENDERERS_TIMEOUT_MS
+    );
   });
 });
