@@ -1706,10 +1706,10 @@ async function handlePendingCustomEditorChangesBeforeSave() {
   // do in every dialog: the draft survives and Settings stays open, instead of the draft being thrown
   // away and the whole form saved and closed behind the user's back.
   const choice = await showConfirm(
-    t('Unsaved Custom Color Changes'),
+    t('Unsaved custom color changes'),
     t('You have unsaved custom color edits. Save them before applying settings?'),
     {
-      confirmText: t('Save and Continue'),
+      confirmText: t('Save and continue'),
       alternateText: t('Discard color edits'),
       cancelText: t('Keep editing'),
       confirmClass: 'btn-primary',
@@ -2657,10 +2657,10 @@ function renderPrimaryCardsEntityRows() {
     const isCardTwo = selections[1] === entity.entity_id;
 
     const cardOneLabel = utils.escapeHtml(
-      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
+      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set card {{index}}', { index: 1 })
     );
     const cardTwoLabel = utils.escapeHtml(
-      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
+      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set card {{index}}', { index: 2 })
     );
     const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
     const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
@@ -4800,7 +4800,7 @@ function bindProfileSyncSettingsUi() {
   if (clearPassphrase) {
     clearPassphrase.onclick = async () => {
       const confirmed = await showConfirm(
-        t('Clear Saved Passphrase'),
+        t('Clear saved passphrase'),
         t(
           'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.'
         ),
@@ -7706,7 +7706,7 @@ async function removeAlert(entityId) {
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
     const confirmed = await showConfirm(
-      t('Remove Alert'),
+      t('Remove alert'),
       t('Remove alert for "{{name}}"?', { name: entityName }),
       {
         confirmText: t('Remove'),
@@ -7752,7 +7752,7 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
       });
 
     const options = [
-      new Option(t('None (Hide Media Tile)'), ''),
+      new Option(t('None (hide media tile)'), ''),
       ...mediaPlayers.map(
         (entity) => new Option(utils.getEntityDisplayName(entity), entity.entity_id)
       ),

@@ -1214,7 +1214,7 @@ async function deleteQuickAccessPage(tabId) {
   if (!tab) return;
 
   const confirmed = await uiUtils.showConfirm(
-    t('Delete Page'),
+    t('Delete page'),
     // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
     // page that shows them.
     t('Delete "{{name}}" and its tiles?', { name: tab.name }),
@@ -2310,7 +2310,7 @@ function addButtonsToElement(item) {
       const renameBtn = document.createElement('button');
       renameBtn.className = 'rename-btn';
       setChipIcon(renameBtn, 'pencil', 14);
-      renameBtn.title = t('Edit Tile Settings');
+      renameBtn.title = t('Edit tile settings');
       renameBtn.setAttribute('draggable', 'false');
       renameBtn.addEventListener(
         'mousedown',
@@ -2539,7 +2539,7 @@ function showRenameModal(entityId) {
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="tile-settings-title">${utils.escapeHtml(t('Tile Settings'))}</h2>
+          <h2 id="tile-settings-title">${utils.escapeHtml(t('Tile settings'))}</h2>
           <button class="close-btn" aria-label="${escapeHtmlAttribute(t('Close'))}">×</button>
         </div>
         <div class="modal-body">
@@ -2553,7 +2553,7 @@ function showRenameModal(entityId) {
           ${trayControlMarkup}
         </div>
         <div class="modal-footer">
-          <button id="reset-rename-btn" class="btn btn-secondary btn-reset">${utils.escapeHtml(t('Reset to Default'))}</button>
+          <button id="reset-rename-btn" class="btn btn-secondary btn-reset">${utils.escapeHtml(t('Reset to default'))}</button>
           <button id="cancel-rename-btn" class="btn btn-secondary">${utils.escapeHtml(t('Cancel'))}</button>
           <button id="save-rename-btn" class="btn btn-primary">${utils.escapeHtml(t('Save'))}</button>
         </div>
@@ -14589,7 +14589,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="brightness-cancel">${utils.escapeHtml(t('Close'))}</button>
-          <button class="btn btn-primary" id="turn-off-btn">${utils.escapeHtml(t('Turn Off'))}</button>
+          <button class="btn btn-primary" id="turn-off-btn">${utils.escapeHtml(t('Turn off'))}</button>
         </div>
       </div>
     `;
@@ -14670,7 +14670,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     const updateTurnButton = () => {
       if (!canSetBrightness && valueLarge) valueLarge.textContent = lightIsOn ? t('On') : t('Off');
       if (turnOffBtn) {
-        turnOffBtn.textContent = lightIsOn ? t('Turn Off') : t('Turn On');
+        turnOffBtn.textContent = lightIsOn ? t('Turn off') : t('Turn on');
       }
     };
     updateTurnButton();
@@ -15643,7 +15643,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
           ${
             capabilities.canSetPercentage
               ? ''
-              : `<button class="btn btn-primary" id="fan-power">${utils.escapeHtml(isOn ? t('Turn Off') : t('Turn On'))}</button>`
+              : `<button class="btn btn-primary" id="fan-power">${utils.escapeHtml(isOn ? t('Turn off') : t('Turn on'))}</button>`
           }
         </div>
       </div>
@@ -15783,7 +15783,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
     };
     const syncFanControls = (nextEntity) => {
       if (powerBtn) {
-        powerBtn.textContent = nextEntity.state === 'on' ? t('Turn Off') : t('Turn On');
+        powerBtn.textContent = nextEntity.state === 'on' ? t('Turn off') : t('Turn on');
       }
       missedLiveUpdate = fanCommandsInFlight > 0;
       if (missedLiveUpdate || speedDebounceTimer) return;

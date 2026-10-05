@@ -552,10 +552,10 @@ describe('tile and device dialog polish', () => {
       state.setEntityState(light('off'));
       expect(document.querySelector('#brightness-value-large').textContent).toBe('0%');
       expect(document.querySelector('#brightness-slider').value).toBe('0');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn On');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn on');
       state.setEntityState(light('on', { brightness: 64 }));
       expect(document.querySelector('#brightness-value-large').textContent).toBe('25%');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn off');
     });
 
     it('does not overwrite a held slider or a pending brightness change', async () => {
@@ -601,7 +601,7 @@ describe('tile and device dialog polish', () => {
       call.resolve({ success: true });
       await jest.advanceTimersByTimeAsync(0);
       expect(document.querySelector('#brightness-value-large').textContent).toBe('50%');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn off');
     });
 
     it('turns back on at the brightness last chosen in the dialog', async () => {

@@ -606,7 +606,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       findButton('Connect').click();
       await flushAsync();
 
-      findButton('Full Settings').click();
+      findButton('Full settings').click();
       await flushAsync();
 
       expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalledTimes(1);

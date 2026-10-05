@@ -1418,5 +1418,133 @@
   "Custom icons saved. Icons apply to entities already shown in your tabs/tiles.": {
     "retiredIn": "4.0.0",
     "reason": "The popup hotkey has one name on the Hotkeys page, and pages are not tabs (re-audit R-117)."
+  },
+  "Window & Behavior": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Language & Localization": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Window Effects": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Seasonal Themes": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Primary Cards": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Media Tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Custom Entity Icons": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Global Popup Trigger": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Desktop Notifications": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Application Updates": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Profile Syncing": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Diagnostics & Troubleshooting": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Support Development": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Save Custom Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Configure Weather": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Persistent Notifications": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "None (Hide Media Tile)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Cancel Setup": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Clear Saved Passphrase": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Confirm Action": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Tile Settings": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Edit Tile Settings": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Reset to Default": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Turn Off": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Turn On": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Delete Page": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Unsaved Custom Color Changes": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Save and Continue": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Set Card {{index}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Remove Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Full Settings": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Add Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
   }
 }

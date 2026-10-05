@@ -2837,7 +2837,7 @@ describe('Settings + Config Integration', () => {
     });
   });
 
-  describe('Custom Entity Icons', () => {
+  describe('Custom entity icons', () => {
     test('should apply icon changes as draft state until main Save', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
@@ -4235,10 +4235,10 @@ describe('Settings + Config Integration', () => {
 
       // Assert: three ways out, and the safe one (save the colour) is where focus starts
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        expect.stringContaining('Unsaved Custom Color Changes'),
+        expect.stringContaining('Unsaved custom color changes'),
         expect.stringContaining('unsaved custom color edits'),
         expect.objectContaining({
-          confirmText: 'Save and Continue',
+          confirmText: 'Save and continue',
           alternateText: 'Discard color edits',
           cancelText: 'Keep editing',
           confirmFirst: true,
@@ -6623,7 +6623,7 @@ describe('Settings + Config Integration', () => {
         await flush();
 
         expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-          'Clear Saved Passphrase',
+          'Clear saved passphrase',
           'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.',
           expect.anything()
         );
@@ -8641,7 +8641,7 @@ describe('Settings + Config Integration', () => {
   describe('Settings translations', () => {
     const i18n = require('../../src/i18n.js');
     const GERMAN = {
-      'Set Card {{index}}': 'Karte {{index}} setzen',
+      'Set card {{index}}': 'Karte {{index}} setzen',
       'Card {{index}} ✓': 'Karte {{index}} ✓',
       'Weather (default)': 'Wetter (Standard)',
       'Time (default)': 'Uhrzeit (Standard)',
@@ -8651,7 +8651,7 @@ describe('Settings + Config Integration', () => {
       '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
       'All custom icons cleared. Click Save to persist changes.':
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
-      'Remove Alert': 'Warnung entfernen',
+      'Remove alert': 'Warnung entfernen',
       'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
       Remove: 'Entfernen',
       'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
@@ -8725,7 +8725,7 @@ describe('Settings + Config Integration', () => {
       i18n.setLocaleBootstrap({
         activeLocale: 'de',
         messages: {
-          'None (Hide Media Tile)': 'Keine (Medienkachel ausblenden)',
+          'None (hide media tile)': 'Keine (Medienkachel ausblenden)',
           'Unavailable: {{entityId}}': 'Nicht verfügbar: {{entityId}}',
         },
       });

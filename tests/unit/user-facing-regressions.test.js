@@ -313,7 +313,7 @@ describe('User-facing audit regressions', () => {
     expect(mockCallService.mock.calls).toEqual([
       ['light', 'turn_off', { entity_id: 'light.audit' }],
     ]);
-    expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn On');
+    expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn on');
   });
 
   it('keeps the light off when an earlier brightness request rejects late', async () => {
@@ -334,7 +334,7 @@ describe('User-facing audit regressions', () => {
     rejectEarlier(new Error('Earlier brightness failed'));
     await jest.advanceTimersByTimeAsync(0);
     expect(document.querySelector('#brightness-value-large').textContent).toBe('0%');
-    expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn On');
+    expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn on');
   });
 
   it('offers only on/off controls for a binary light and sends no brightness', async () => {

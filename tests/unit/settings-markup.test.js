@@ -10,6 +10,9 @@ const path = require('path');
 const { linkSettingsHelpText, setDescribedByLine } = require('../../src/settings-help-links.js');
 
 const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+const english = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
+);
 
 describe('index.html', () => {
   beforeEach(() => {
@@ -32,6 +35,32 @@ describe('index.html', () => {
       expect(section.contains(byId('hotkey-entity-search'))).toBe(true);
       expect(section.contains(byId('hotkeys-list'))).toBe(true);
       expect(section.contains(byId('global-hotkeys-enabled'))).toBe(false);
+    });
+  });
+
+  describe('sentence case', () => {
+    // Names that keep their capitals inside a sentence-case label.
+    const PROPER_NAMES = /Home Assistant|Quick Access|HA Desktop Widget|GitHub|Hyprland|Omarchy/g;
+    const titleCased = (text) =>
+      text
+        .replace(PROPER_NAMES, '')
+        .split(/\s+/)
+        .slice(1)
+        .some((word) => /^[A-Z][a-z]/.test(word));
+
+    test('the Settings group captions, dialog titles and Settings buttons are written in it', () => {
+      // "Window & Behavior" and "Add Alert" sat beside "Date & time" and "Add alert" buttons, and the
+      // captions show in every search result.
+      const labels = [
+        ...document.querySelectorAll(
+          '.settings-group-caption, .modal-header h2, #settings-modal button.btn'
+        ),
+      ]
+        // The English the key shows ("Action: Clear" reads "Clear").
+        .map((node) => english[node.getAttribute('data-i18n')] || node.textContent.trim())
+        .filter(Boolean);
+      expect(labels.length).toBeGreaterThan(40);
+      expect(labels.filter(titleCased)).toEqual([]);
     });
   });
 
@@ -154,7 +183,7 @@ describe('index.html', () => {
     test('the media tile help names the media tile, like the caption above it', () => {
       expect(
         byId('primary-media-player').closest('.settings-group').querySelector('h4').textContent
-      ).toBe('Media Tile');
+      ).toBe('Media tile');
       expect(
         byId('primary-media-player').closest('.form-group').querySelector('.form-help').textContent
       ).not.toMatch(/media bar/);

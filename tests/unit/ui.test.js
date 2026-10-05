@@ -4313,7 +4313,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(modal.getAttribute('role')).toBe('dialog');
         expect(modal.getAttribute('aria-modal')).toBe('true');
         expect(document.getElementById(modal.getAttribute('aria-labelledby')).textContent).toBe(
-          'Tile Settings'
+          'Tile settings'
         );
         // Typing replaces the name instead of landing in front of it.
         expect(document.activeElement).toBe(input);
@@ -8463,7 +8463,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await Promise.resolve();
 
       expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
-        'Delete Page',
+        'Delete page',
         'Delete "Bedroom" and its tiles?',
         expect.objectContaining({ confirmText: 'Delete' })
       );

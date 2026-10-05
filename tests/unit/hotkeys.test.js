@@ -331,7 +331,7 @@ describe('hotkeys module', () => {
         activeLocale: 'de',
         messages: {
           Toggle: 'Umschalten',
-          'Turn On': 'Einschalten',
+          'Turn on': 'Einschalten',
           'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
         },
       });

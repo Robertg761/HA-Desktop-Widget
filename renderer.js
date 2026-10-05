@@ -1561,7 +1561,7 @@ function renderWizardStep() {
   }
 
   syncWizardBackButton();
-  firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full Settings');
+  firstRunWizard.skipButton.textContent = stepIndex === 3 ? t('Skip for now') : t('Full settings');
   if (firstRunWizard.nextButton) {
     firstRunWizard.nextButton.textContent =
       stepIndex === 3 ? t('Choose rooms and devices') : stepIndex === 2 ? t('Connect') : t('Next');
@@ -1708,7 +1708,7 @@ function ensureFirstRunWizard() {
   actions.className = 'first-run-actions';
 
   const skipButton = createActionButton(
-    t('Full Settings'),
+    t('Full settings'),
     'btn btn-secondary',
     skipWizardToSettings
   );

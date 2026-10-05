@@ -19,7 +19,7 @@ const readPack = (locale) => readJson('locale-packs', `${locale}.json`).messages
 const currentEntries = (messages) => Object.entries(messages).filter(([key]) => key in english);
 
 describe('English wording', () => {
-  // The interface is spelled the American way ("Window & Behavior", "COLORS"). The English text is
+  // The interface is spelled the American way ("Window & behavior", "COLORS"). The English text is
   // the translation key, so a British spelling that slips in is a second spelling of the same word.
   const BRITISH =
     /\b(colou?r\w*|behaviou?r\w*|favourit\w*|centre\w*|grey|licence|catalogue|cancell(?:ed|ing))\b/i;

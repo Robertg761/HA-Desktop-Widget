@@ -303,7 +303,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       const modal = document.getElementById('settings-modal');
 
       for (let visit = 0; visit < 2; visit += 1) {
-        await clickButton('Full Settings');
+        await clickButton('Full settings');
         expect(wizard.classList.contains('hidden')).toBe(true);
         expect(modal.classList.contains('hidden')).toBe(false);
         document.getElementById(closeId).click();
@@ -527,7 +527,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
     await reachAuthorizationStep('http://draft.local:8123');
     const stepLabel = document.querySelector('.first-run-step-label').textContent;
-    await clickButton('Full Settings');
+    await clickButton('Full settings');
     const modal = document.getElementById('settings-modal');
     mockSettings.closeSettings.mockImplementation(() => modal.classList.add('modal-closing'));
 
@@ -551,7 +551,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Next');
     enterInput('#first-run-ha-url', 'http://draft.local:8123');
     const stepLabel = document.querySelector('.first-run-step-label').textContent;
-    await clickButton('Full Settings');
+    await clickButton('Full settings');
 
     triggerMockEvent('configUpdated', {
       ...unconfiguredConfig(),
@@ -688,7 +688,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     'does not revive onboarding after a connection is saved and Settings closes through %s',
     async (closeId) => {
       await loadRenderer({ bodyHtml: settingsNavigationHtml() });
-      await clickButton('Full Settings');
+      await clickButton('Full settings');
       mockState.setConfig(oauthConfig());
       document.getElementById(closeId).click();
       await flushAsync();
@@ -704,7 +704,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
   it('closes the window from the title bar even during a Settings detour, without quitting', async () => {
     await loadRenderer({ bodyHtml: settingsNavigationHtml() });
-    await clickButton('Full Settings');
+    await clickButton('Full settings');
     document.getElementById('close-btn').click();
     expect(mockElectronAPI.closeWindow).toHaveBeenCalledTimes(1);
     expect(mockElectronAPI.quitApp).not.toHaveBeenCalled();

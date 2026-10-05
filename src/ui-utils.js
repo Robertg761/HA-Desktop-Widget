@@ -2405,7 +2405,7 @@ function showConfirm(title, message, options = {}) {
       }
 
       // Set content
-      titleEl.textContent = title || t('Confirm Action');
+      titleEl.textContent = title || t('Confirm action');
       if (message && typeof message === 'object' && typeof message.nodeType === 'number') {
         messageEl.replaceChildren(message);
       } else {

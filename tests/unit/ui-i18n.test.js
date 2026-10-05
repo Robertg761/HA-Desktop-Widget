@@ -170,7 +170,7 @@ describe('ui.js translations and number formatting', () => {
     useGerman({
       Brightness: 'Helligkeit',
       Close: 'Schließen',
-      'Turn Off': 'Ausschalten',
+      'Turn off': 'Ausschalten',
       'Color Temperature': 'Farbtemperatur',
       'Color temperature: Warm': 'Warm DE',
     });

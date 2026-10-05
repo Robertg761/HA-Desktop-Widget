@@ -99,15 +99,15 @@ function getActionOptionsForDomain(domain) {
   const options = {
     light: [
       { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn On') },
-      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'turn_on', label: t('Turn on') },
+      { value: 'turn_off', label: t('Turn off') },
       { value: 'brightness_up', label: t('Brightness Up') },
       { value: 'brightness_down', label: t('Brightness Down') },
     ],
     switch: [
       { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn On') },
-      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'turn_on', label: t('Turn on') },
+      { value: 'turn_off', label: t('Turn off') },
     ],
     scene: [{ value: 'turn_on', label: t('Activate') }],
     script: [{ value: 'turn_on', label: t('Run') }],
@@ -121,13 +121,13 @@ function getActionOptionsForDomain(domain) {
     input_button: [{ value: 'press', label: t('Press') }],
     input_boolean: [
       { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn On') },
-      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'turn_on', label: t('Turn on') },
+      { value: 'turn_off', label: t('Turn off') },
     ],
     fan: [
       { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn On') },
-      { value: 'turn_off', label: t('Turn Off') },
+      { value: 'turn_on', label: t('Turn on') },
+      { value: 'turn_off', label: t('Turn off') },
       { value: 'increase_speed', label: t('Increase Speed') },
       { value: 'decrease_speed', label: t('Decrease Speed') },
     ],

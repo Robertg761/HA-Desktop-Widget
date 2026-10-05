@@ -55,7 +55,7 @@ describe('settings search', () => {
     const label = section.querySelector('label');
     // "Search entities" is also on the top cards; the group says which result is this one.
     search(label.textContent.trim())
-      .find((button) => button.lastChild.textContent.endsWith('Custom Entity Icons'))
+      .find((button) => button.lastChild.textContent.endsWith('Custom entity icons'))
       .click();
     expect(toggle.onclick).toHaveBeenCalledTimes(1);
     expect(section.classList.contains('collapsed')).toBe(false);
@@ -66,16 +66,16 @@ describe('settings search', () => {
     // "theme" listed every row under Seasonal Themes, a holiday each, because the caption had the
     // word; Mode came along for the Theme caption.
     const results = search('theme');
-    expect(titles(results)).toEqual(['Theme', 'Seasonal Themes', 'Appearance']);
+    expect(titles(results)).toEqual(['Theme', 'Seasonal themes', 'Appearance']);
     expect(results[1].lastChild.textContent).toBe('Appearance');
   });
 
   test('a group result opens its page on the group, ringing the whole group', () => {
     search('theme')
-      .find((button) => button.firstChild.textContent === 'Seasonal Themes')
+      .find((button) => button.firstChild.textContent === 'Seasonal themes')
       .click();
     const caption = [...modal.querySelectorAll('.settings-group-caption')].find(
-      (node) => node.textContent.trim() === 'Seasonal Themes'
+      (node) => node.textContent.trim() === 'Seasonal themes'
     );
     const group = caption.closest('.settings-group');
     expect(document.getElementById('personalization-tab').classList.contains('active')).toBe(true);
@@ -482,7 +482,7 @@ describe('settings search', () => {
     });
 
     test('says which group a result is in, beside its page', () => {
-      expect(search('Christmas')[0].lastChild.textContent).toBe('Appearance › Seasonal Themes');
+      expect(search('Christmas')[0].lastChild.textContent).toBe('Appearance › Seasonal themes');
     });
 
     test('does not offer a button that cannot be pressed', () => {
