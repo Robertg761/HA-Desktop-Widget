@@ -685,12 +685,14 @@ async function searchPaletteForNothing(ctx) {
 }
 
 // An alert whose entity Home Assistant does not list, beside one it does.
+// The id is long and has nowhere to break, as Home Assistant's own ids often are, so the row has to
+// break it rather than push its buttons out of the card.
 const alertsWithMissingEntity = {
   entityAlerts: {
     enabled: true,
     alerts: {
       ...alertsConfig.entityAlerts.alerts,
-      'light.removed_lamp': {
+      'sensor.living_room_north_wall_temperature_sensor_behind_tv': {
         onStateChange: false,
         onSpecificState: true,
         onNumericThreshold: false,
@@ -704,6 +706,19 @@ const alertsWithMissingEntity = {
     },
   },
 };
+
+// Every alert's Edit and Remove lie inside its row, which is as wide as the card.
+const ALERT_BUTTONS_IN_ROW = `(() => {
+  const rows = [...document.querySelectorAll('#inline-alerts-list .alert-item')];
+  return rows.length > 0 && rows.every((row) => {
+    const box = row.getBoundingClientRect();
+    const buttons = [...row.querySelectorAll('.alert-actions button')];
+    return buttons.length === 2 && buttons.every((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+    });
+  });
+})()`;
 
 // The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
 async function showToasts(ctx) {
@@ -1135,11 +1150,14 @@ const scenes = [
     config: alertsConfig,
     setup: (ctx) => openSettingsTab(ctx, 'alerts'),
   },
-  // An alert for an entity that is gone keeps its row, under its id.
+  // An alert for an entity that is gone keeps its row, under its id, with Edit and Remove in reach.
   {
     name: 'settings-alerts-missing-entity',
     config: alertsWithMissingEntity,
-    setup: (ctx) => openSettingsTab(ctx, 'alerts'),
+    setup: async (ctx) => {
+      await openSettingsTab(ctx, 'alerts');
+      await ctx.expect(ALERT_BUTTONS_IN_ROW, 'every alert row keeps Edit and Remove inside it');
+    },
   },
   // A hotkey search that finds nothing says so, instead of leaving an empty line.
   {

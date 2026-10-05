@@ -11509,14 +11509,25 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   text-align: center;
 }
 
+/* Nothing in an alert row was allowed to shrink below its longest word, and a missing entity shows
+   its raw id, which has nowhere to break: sensor.living_room_north_wall_temperature_sensor pushed
+   Edit and Remove out of the card, on the very row that most needs Remove. The name breaks
+   anywhere instead, and the buttons drop under it when it would be left less than 12rem, as a
+   hotkey row's controls do. */
+.alert-item {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .alert-details {
   flex: 1;
+  min-width: 0;
 }
 
 .alert-name {
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 2px;
+  overflow-wrap: anywhere;
 }
 
 /* The chips beside an alert's name are one shape. An inline-block keeps a chip whole when the row
@@ -11548,14 +11559,17 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 .alert-actions {
   display: flex;
+  flex: none;
   gap: 8px;
+  margin-inline-start: auto;
 }
 
 .alert-item-info {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .add-alert-btn {
