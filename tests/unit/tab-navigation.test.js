@@ -183,7 +183,9 @@ describe('bindTabTooltips', () => {
 
   beforeEach(() => {
     document.body.innerHTML = `
+      <button id="opener">Settings</button>
       <div class="modal-content" id="host">
+        <input id="search" />
         <div role="tablist" aria-orientation="vertical" id="rail">
           <button role="tab" class="tab-link" id="t1"><span class="tab-link-label"> General </span></button>
           <button role="tab" class="tab-link" id="t2"><span class="tab-link-label">Appearance</span></button>
@@ -207,16 +209,30 @@ describe('bindTabTooltips', () => {
     expect(bubble().classList.contains('visible')).toBe(false);
   });
 
+  // Tabbing from the search field into the rail, as a keyboard user does.
+  const tabInto = (id) => {
+    document.getElementById('search').focus();
+    document.getElementById(id).focus();
+  };
+
   it('shows the label on keyboard focus too, and trims the text', () => {
-    document.getElementById('t1').dispatchEvent(new Event('focusin', { bubbles: true }));
+    tabInto('t1');
     expect(bubble().textContent).toBe('General');
     rail.dispatchEvent(new Event('focusout'));
     expect(bubble().classList.contains('visible')).toBe(false);
   });
 
+  it('does not name the tab the dialog focuses as it opens', () => {
+    // The page is on screen already, and the label covered the start of the search field.
+    document.getElementById('opener').focus();
+    document.getElementById('t1').focus();
+    expect(document.activeElement.id).toBe('t1');
+    expect(bubble()?.classList.contains('visible') ?? false).toBe(false);
+  });
+
   it('hides when a page is chosen or the rail scrolls, since the tab has moved off its label', () => {
     for (const eventName of ['click', 'scroll']) {
-      document.getElementById('t1').dispatchEvent(new Event('focusin', { bubbles: true }));
+      tabInto('t1');
       expect(bubble().classList.contains('visible')).toBe(true);
       rail.dispatchEvent(new Event(eventName));
       expect(bubble().classList.contains('visible')).toBe(false);

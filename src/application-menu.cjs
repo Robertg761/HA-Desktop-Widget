@@ -6,17 +6,43 @@ const { platform: runtimePlatform } = require('node:process');
 // So a packaged build keeps the Edit menu (copy and paste have to work), the Window menu (its
 // Ctrl+W and Cmd+W close the window, which hides the widget like the title-bar X and Alt+F4) and,
 // on macOS, the app menu the system expects; the View menu is for development builds.
-function createApplicationMenuTemplate(platform = runtimePlatform, { isDev = false } = {}) {
+function createApplicationMenuTemplate(
+  platform = runtimePlatform,
+  { isDev = false, onMinimize = null } = {}
+) {
   return [
     ...(platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'editMenu' },
     ...(isDev ? [{ role: 'viewMenu' }] : []),
-    { role: 'windowMenu' },
+    platform === 'darwin' ? createMacWindowMenu(onMinimize) : { role: 'windowMenu' },
   ];
 }
 
+// macOS's own Window menu has neither of the two keys that matter here. Its Minimize (Cmd+M)
+// miniaturizes the window, which a 'minimize' listener cannot cancel on macOS, so the widget went
+// to the Dock and was then hidden, which can leave a tile there; and it has no Close, so Cmd+W did
+// nothing at all. Here Cmd+M hides the widget the way the title bar's minimize button does, and
+// Cmd+W closes the window, which hides it like the title-bar X. LSUIElement keeps the menu bar
+// itself out of sight, so only the keys are ever used.
+function createMacWindowMenu(onMinimize) {
+  return {
+    role: 'windowMenu',
+    submenu: [
+      {
+        label: 'Minimize',
+        accelerator: 'Command+M',
+        click: (_menuItem, browserWindow) => onMinimize?.(browserWindow),
+      },
+      { role: 'close' },
+      { type: 'separator' },
+      { role: 'front' },
+    ],
+  };
+}
+
 // Electron fills role labels with fixed English text, so the visible labels are set here.
-// The menu is built each time it opens, so a language change applies to the next one.
+// The menu is built each time it opens, so a language change applies to the next one. It has no
+// spelling items: spell-check is off on purpose (see src/spell-checker.cjs).
 function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
   return [
     { role: 'undo', label: t('Undo'), enabled: !!editFlags.canUndo },
@@ -28,26 +54,6 @@ function createEditableContextMenuTemplate(editFlags = {}, t = (text) => text) {
     { role: 'delete', label: t('Delete'), enabled: !!editFlags.canDelete },
     { type: 'separator' },
     { role: 'selectAll', label: t('Select All'), enabled: !!editFlags.canSelectAll },
-  ];
-}
-
-// What a right-click on a misspelled word adds above the edit actions: the dictionary's
-// suggestions, then a way to teach it the word. Fields that hold addresses, ids and paths turn
-// spell checking off, so this shows up where prose is written.
-function createSpellingContextMenuItems(params = {}, webContents, t = (text) => text) {
-  const word = params.misspelledWord;
-  if (!word) return [];
-  const suggestions = (params.dictionarySuggestions || []).map((suggestion) => ({
-    label: suggestion,
-    click: () => webContents.replaceMisspelling(suggestion),
-  }));
-  return [
-    ...suggestions,
-    {
-      label: t('Add to dictionary'),
-      click: () => webContents.session?.addWordToSpellCheckerDictionary?.(word),
-    },
-    { type: 'separator' },
   ];
 }
 
@@ -84,10 +90,7 @@ function attachEditHandlers(targetWindow, Menu, platform = runtimePlatform, opti
     if (!params.isEditable && !hasSelection) return;
     event?.preventDefault?.();
     const template = params.isEditable
-      ? [
-          ...createSpellingContextMenuItems(params, webContents, options.translate),
-          ...createEditableContextMenuTemplate(params.editFlags, options.translate),
-        ]
+      ? createEditableContextMenuTemplate(params.editFlags, options.translate)
       : createSelectionContextMenuTemplate(params.editFlags, options.translate);
     const menu = Menu.buildFromTemplate(template);
     const resumeAutoHide = options.suspendAutoHide?.();
@@ -108,7 +111,6 @@ module.exports = {
   createApplicationMenuTemplate,
   createEditableContextMenuTemplate,
   createSelectionContextMenuTemplate,
-  createSpellingContextMenuItems,
   installApplicationMenu,
   isPasteAcceleratorInput,
 };

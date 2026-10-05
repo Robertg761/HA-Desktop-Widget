@@ -166,8 +166,6 @@ html {
   --window-bg-alpha: 1;
   --bg-elevated: rgba(24, 28, 37, 0.9);
   --bg-primary: rgba(13, 16, 22, 0.95);
-  --bg-secondary: rgba(24, 28, 37, 0.9);
-  --bg-tertiary: rgba(30, 35, 45, 0.85);
 
   /* Text Colors */
   --text-color: #f0f0f0;
@@ -223,7 +221,6 @@ html {
   --success-text: var(--success);
   --warning-text: var(--warning);
   --error-text: #ff8a80;
-  --danger-text: var(--error-text);
   /* The two states of the connection: the dot in the header and the one in the diagnostics dialog. */
   --connection-ok: #4ade80;
   --connection-bad: var(--error);
@@ -264,6 +261,15 @@ html {
   --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
   --dash-tile-wash: 24%;
   --dash-tile-wash-hover: 30%;
+  /* With an accent near the amber or the red of a tile that needs attention, a lit tile takes about
+     half the wash (see the attention rules). */
+  --dash-tile-wash-warm: 12%;
+  --dash-tile-wash-warm-hover: 15%;
+  /* A tile that needs attention is washed in its status colour as strongly as a lit tile is in the
+     accent. Its state line is that colour lifted toward the text colour: the alarm's pale red is
+     3.8:1 on its own wash, and the lifted one keeps 4.5:1. */
+  --dash-attention-wash: 24%;
+  --dash-attention-ink: 70%;
 
   /* How much black the panel behind the tiles gets at full window opacity, so the
      tiles stand out from it (see the panel veil beside the solid panel rule). */
@@ -401,9 +407,10 @@ html {
      DIALOG WIDTH
      ============================================ */
 
-  /* A dialog that shows a thing's details or a short form (entity details, the media player, Add
-     page, diagnostics, Support). Most of them were 420 to 460px in the default 500px window,
-     depending on which cap their own rule lost to. */
+  /* A dialog that shows a thing's details or a short form (entity details, the media player, the
+     light, fan, cover and climate pop-ups, Add page, diagnostics, Support). They were 360 to 460px
+     in the default 500px window, depending on which cap their own rule lost to, so opening one
+     tile after another jumped between widths. */
   --dialog-width: min(450px, 90vw);
 
   /* ============================================
@@ -413,12 +420,7 @@ html {
   /* Anything painted at window scale stacks here. Values below 100 are left as
      raw integers on purpose: those are local stacking order inside a single
      component, not app-wide layering. */
-  --z-base: 1;
-  --z-dropdown: 1000;
-  --z-sticky: 1100;
-  --z-fixed: 1200;
   --z-modal-backdrop: 1300;
-  --z-modal: 1400;
   --z-popover: 1500;
   --z-tooltip: 1600;
   /* Full-window blocking overlays: the connection/loading overlay and the
@@ -477,8 +479,6 @@ body {
   --window-bg-rgb: 250, 250, 250;
   --bg-elevated: rgba(255, 255, 255, 0.9);
   --bg-primary: rgba(245, 245, 250, 0.95);
-  --bg-secondary: rgba(255, 255, 255, 0.9);
-  --bg-tertiary: rgba(240, 240, 245, 0.85);
 
   /* Surfaces */
   --surface-1: rgba(250, 250, 255, 0.8);
@@ -512,7 +512,6 @@ body {
   --success-text: #1f6b2a;
   --warning-text: #8a5300;
   --error-text: #b71c1c;
-  --danger-text: #b71c1c;
   /* The pastel dot colours are 1.7:1 and 2.2:1 on the light header; these are past 3:1 there. */
   --connection-ok: #15803d;
   --connection-bad: var(--error-text);
@@ -553,6 +552,10 @@ body {
   --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
   --dash-tile-wash: 18%;
   --dash-tile-wash-hover: 24%;
+  --dash-tile-wash-warm: 9%;
+  --dash-tile-wash-warm-hover: 12%;
+  --dash-attention-wash: 18%;
+  --dash-attention-ink: 100%;
   --panel-veil: 0.09;
 
   /* Glass Effects */
@@ -600,8 +603,6 @@ body.frosted-glass {
   --bg-color: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.45));
   --bg-elevated: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
   --bg-primary: rgba(var(--frosted-bg-rgb, 20, 20, 25), var(--frosted-bg-alpha, 0.5));
-  --bg-secondary: rgba(var(--frosted-elevated-rgb, 30, 30, 35), var(--frosted-elevated-alpha, 0.5));
-  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 40, 40, 45), var(--frosted-bg-alpha, 0.45));
 
   --surface-1: rgba(var(--frosted-surface-rgb, 25, 25, 30), var(--frosted-surface-alpha, 0.45));
   --surface-2: rgba(var(--frosted-elevated-rgb, 35, 35, 40), var(--frosted-elevated-alpha, 0.5));
@@ -655,11 +656,6 @@ body.theme-light.frosted-glass {
     var(--frosted-elevated-alpha, 0.55)
   );
   --bg-primary: rgba(var(--frosted-bg-rgb, 245, 245, 250), var(--frosted-bg-alpha, 0.55));
-  --bg-secondary: rgba(
-    var(--frosted-elevated-rgb, 255, 255, 255),
-    var(--frosted-elevated-alpha, 0.6)
-  );
-  --bg-tertiary: rgba(var(--frosted-tertiary-rgb, 240, 240, 245), var(--frosted-bg-alpha, 0.5));
 
   --surface-1: rgba(var(--frosted-surface-rgb, 250, 250, 255), var(--frosted-surface-alpha, 0.5));
   --surface-2: rgba(
@@ -843,10 +839,6 @@ body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-cont
   background-image: var(--panel-veil-layer) !important;
 }
 
-html.desktop-pin-mode,
-html.desktop-pin-mode body {
-  background: transparent !important;
-}
 /* Minimal header */
 .widget-header {
   display: flex;
@@ -1001,6 +993,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
   pointer-events: none;
 }
 
+/* Where the desktop decides where the tile sits (see the notice below), a drag is not kept, so the
+   hint says only what still works. The notice that says why fits a pin 240px wide or more; this
+   one fits the default pin. */
+body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
+  .desktop-pin-content::after {
+  content: attr(data-resize-hint);
+}
+
 @media (max-width: 120px), (max-height: 90px) {
   body.desktop-pin-mode.desktop-pin-edit-mode .desktop-pin-content::after {
     display: none;
@@ -1134,6 +1134,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --desktop-pin-panel-pad: 12px;
   --desktop-pin-panel-gap: 10px;
+  --desktop-pin-panel-meter-radius: 14px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -1492,12 +1493,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   border-radius: var(--radius-lg);
   min-height: 28px;
   min-width: 0;
-  padding-inline: 2px;
+  /* No padding or tracking: a chip is a quarter of a 152px row, about 35px, and "100%" with them
+     ran into the outline the Readable preset and forced colours draw. */
+  padding-inline: 0;
   line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition:
@@ -1662,6 +1665,30 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-brightness {
   gap: 10px;
+}
+
+/* A lamp that only switches on and off (a relay, a smart plug) has no brightness to show, so its
+   state fills the body, lit with the lamp's glow while it is on. A click on it switches the lamp,
+   as a click anywhere else on the tile does. */
+.desktop-pin-light-control[data-can-set-brightness='false'] .desktop-pin-light-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.desktop-pin-light-state {
+  --desktop-pin-progress: var(--desktop-pin-light-level, 0);
+}
+
+.desktop-pin-light-state-value {
+  font-family: var(--desktop-pin-display-font);
+  font-size: clamp(20px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
+}
+
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-state-value {
+  color: rgba(var(--desktop-pin-ink-rgb), 0.6);
 }
 
 .desktop-pin-panel-control {
@@ -1961,6 +1988,18 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   filter: drop-shadow(0 0 6px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
 }
 
+/* A weather pin draws its condition with the weather card's glyph and classes, which carry the
+   colours; the glyph keeps the size of the box it is drawn in. */
+.desktop-pin-panel-glyph.weather-icon {
+  width: var(--desktop-pin-glyph-size, 28px);
+  height: var(--desktop-pin-glyph-size, 28px);
+}
+
+.desktop-pin-panel-glyph .weather-glyph {
+  width: 75%;
+  height: 75%;
+}
+
 /* At hero size the stroke is scaled down so the icon stays a line drawing. */
 .desktop-pin-scene-emoji .entity-line-icon {
   stroke-width: 1.25;
@@ -2085,8 +2124,10 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   font-family: var(--desktop-pin-ui-font);
   font-size: var(--font-size-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  /* Sentence case with light tracking at every size, as the default-size pins draw it. Capitals with
+     wide tracking were left to every pin larger than that, so a media pin said PLAY beside pins
+     that say Play. */
+  letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -2111,9 +2152,19 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   white-space: nowrap;
 }
 
-/* The active mode, speed or state differs by more than a faint tint: a brighter label and edge. */
+/* A switch pin's button is the power icon alone, drawn at the size of the light and fan pins'
+   power icon rather than at the label's 10px. */
+.desktop-pin-toggle-action .desktop-pin-panel-button-icon {
+  display: grid;
+  font-size: var(--font-size-base);
+}
+
+/* The active mode, speed, level or state differs by more than a faint tint: a brighter label and
+   edge. */
 .desktop-pin-panel-button[data-active='true'],
-.desktop-pin-panel-button[data-active='true']:hover {
+.desktop-pin-panel-button[data-active='true']:hover,
+.desktop-pin-light-preset[data-active='true'],
+.desktop-pin-light-preset[data-active='true']:hover {
   background: rgba(var(--desktop-pin-tint-rgb), 0.2);
   border-color: rgba(var(--desktop-pin-tint-rgb), 0.6);
   color: rgba(var(--desktop-pin-ink-rgb), 1);
@@ -2367,8 +2418,21 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-tint-rgb: 176, 222, 120;
 }
 
+/* A thermostat's tint says what it is doing: warm while it heats, and the blue and teal that the
+   climate states get further down while it cools or runs on auto. Off, drying or only moving air,
+   it is neutral, as is an automation that is switched off. */
+.desktop-pin-climate-control[data-state='cool'] {
+  --desktop-pin-tint-rgb: 3, 169, 244;
+}
+
+.desktop-pin-climate-control:is([data-state='heat_cool'], [data-state='auto']) {
+  --desktop-pin-tint-rgb: 0, 150, 136;
+}
+
 .desktop-pin-toggle-control[data-state='off'],
 .desktop-pin-fan-control[data-state='off'],
+.desktop-pin-climate-control:is([data-state='off'], [data-state='dry'], [data-state='fan_only']),
+.desktop-pin-action-control[data-state='off'],
 .desktop-pin-vacuum-control[data-state='docked'],
 .desktop-pin-camera-control[data-state='idle'] {
   --desktop-pin-tint-rgb: 130, 150, 176;
@@ -2387,7 +2451,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-weather-focus,
 .desktop-pin-presence-focus {
   font-weight: 800;
-  letter-spacing: 0.1em;
 }
 
 .desktop-pin-weather-stats .desktop-pin-panel-stat,
@@ -2417,9 +2480,17 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* The default 168x148 pin is the baseline every family is drawn for: the compact layout, and the
    tight variant that smaller media pins share. Spacing, the meter and the buttons are cut down to
-   what fits a 146px-tall tile above its rounded bottom edge, in every language; larger pins have
-   room and keep the roomier base values. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight']),
+   what fits a 146px-tall tile above its rounded bottom edge, in every language. A pin dragged a
+   little bigger (the balanced layout, up to the roomy 260x190) spends its extra room on a fourth
+   mode or speed, the slider's labels and the climate's current reading, so it keeps the same
+   spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
+   keep those, and so does a media pin, which is balanced only from 285px wide (narrower, it is
+   tight) and has no row that grows. The :where() keeps these rules' weight. */
+.desktop-pin-panel-control:is(
+  [data-layout='compact'],
+  [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+  [data-dense-variant='tight']
+),
 .desktop-pin-light-control[data-layout='compact'] {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
@@ -2428,28 +2499,41 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-glyph-size: 24px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-topline {
   gap: 6px;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   :is(.desktop-pin-panel-meter, .desktop-pin-cover-frame) {
   padding: 6px 8px;
 }
 
-/* Sentence case, tight tracking and little padding: capitals and wide tracking cannot hold a word
-   like "Désactivé" in a third of 150px. */
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+/* Little padding: a word like "Désactivé" has to fit in a third of 150px. */
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-button {
   min-height: 24px;
   padding: 4px 3px;
   border-radius: var(--radius-md);
-  letter-spacing: 0.02em;
-  text-transform: none;
 }
 
-.desktop-pin-panel-control:is([data-layout='compact'], [data-dense-variant='tight'])
+.desktop-pin-panel-control:is(
+    [data-layout='compact'],
+    [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
+    [data-dense-variant='tight']
+  )
   .desktop-pin-panel-actions {
   gap: 4px;
 }
@@ -2465,20 +2549,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 4px 10px;
 }
 
-/* The header's value and the meter's would both print the same reading, and the room goes to the
-   name instead. */
-.desktop-pin-panel-control:is(
-    .desktop-pin-weather-control,
-    .desktop-pin-numeric-control,
-    .desktop-pin-enum-control,
-    .desktop-pin-vacuum-control,
-    .desktop-pin-presence-control
-  )[data-layout='compact']
-  .desktop-pin-panel-topline
-  .desktop-pin-panel-kpi {
-  display: none;
-}
-
 .desktop-pin-weather-control[data-layout='compact']
   .desktop-pin-weather-stats
   .desktop-pin-panel-stat {
@@ -2486,7 +2556,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 3px 4px;
 }
 
-.desktop-pin-weather-control[data-layout='compact'] .desktop-pin-panel-stat-label {
+/* The stats are readings, not captions, so they keep their case at every size: a unit is
+   case-sensitive (km/h, hPa), and a resized pin should not rewrite its text. */
+.desktop-pin-weather-stats .desktop-pin-panel-stat-label {
   overflow: hidden;
   letter-spacing: 0;
   text-align: center;
@@ -2503,23 +2575,22 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   margin-top: -2px;
 }
 
-/* Three modes, verbs or speeds share a 150px row. They take their label's width where equal thirds
-   cannot hold it ("Schließen", "Désactivé") and fall back to an ellipsis, with a title. */
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+/* Three modes, verbs or speeds share a 150px row, and a slightly bigger pin fits four into 184px.
+   They take their label's width where equal shares cannot hold it ("Schließen", "Désactivé",
+   "Kühlen") and fall back to an ellipsis, with a title. */
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-actions {
   display: flex;
   gap: 3px;
 }
 
-:is(
-    .desktop-pin-cover-control,
-    .desktop-pin-climate-control,
-    .desktop-pin-fan-control
-  )[data-dense-variant='tight']
+:is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
+    [data-dense-variant='tight'],
+    [data-layout='balanced']
+  )
   .desktop-pin-panel-button {
   flex: 1 1 auto;
   min-width: 0;
@@ -2726,8 +2797,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-panel-control[data-layout='micro'] .desktop-pin-panel-button {
   min-height: 22px;
   padding: 2px 5px;
-  letter-spacing: 0.02em;
-  text-transform: none;
   border-radius: var(--radius-md);
 }
 
@@ -2956,6 +3025,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-resize-handle {
   --desktop-pin-resize-handle-size: clamp(14px, min(18vw, 18vh), 24px);
+  /* How far inside the window's edges the mark sits. A full 24px handle's mark is 2px in, which
+     puts its arc on the centre of the window's 24px rounded corner: the ring runs 2-5px inside the
+     corner, clear of the 8px around the pin's buttons. A smaller handle's arc cannot share that
+     centre, so its mark steps in further to stay inside the corner. */
+  --desktop-pin-resize-mark-inset: calc(2px + (24px - var(--desktop-pin-resize-handle-size)) / 2);
   display: none;
   position: absolute;
   width: var(--desktop-pin-resize-handle-size);
@@ -2972,18 +3046,19 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-resize-handle::before {
   content: '';
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1)),
-    rgba(var(--accent-rgb), 0.8);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 4px 10px rgba(0, 0, 0, 0.3);
+  /* The border is part of the size, so the ring spans exactly from the inset to the hit box's
+     inner corner, whatever its width. */
+  box-sizing: border-box;
+  width: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
+  height: calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset));
+  border: 0 solid rgba(var(--accent-rgb), 0.95);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
   pointer-events: none;
 }
 
+/* Each mark is a quarter ring that follows the window's rounded corner just inside it, across the
+   handle's whole hit box. A triangle filling the box was clipped by the 24px corner to a thin
+   crescent along its edge. */
 .desktop-pin-resize-handle-top-left {
   top: 0;
   left: 0;
@@ -2991,7 +3066,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-left::before {
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  top: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-top-right {
@@ -3001,7 +3080,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-top-right::before {
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  top: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-left {
@@ -3011,7 +3094,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-left::before {
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  bottom: var(--desktop-pin-resize-mark-inset);
+  left: var(--desktop-pin-resize-mark-inset);
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 100%;
 }
 
 .desktop-pin-resize-handle-bottom-right {
@@ -3021,7 +3108,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-resize-handle-bottom-right::before {
-  clip-path: polygon(100% 0, 0 100%, 100% 100%);
+  bottom: var(--desktop-pin-resize-mark-inset);
+  right: var(--desktop-pin-resize-mark-inset);
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 100%;
 }
 
 .drag-area {
@@ -3205,6 +3296,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .control-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
+  opacity: 1;
+}
+
+/* On the Linux tint the light theme's panel is a mid grey wherever the wallpaper behind it is dark,
+   and the dimmed secondary ink of the window controls came out at 2.4:1 on it at the default
+   opacity. They take the full text colour there, as the title beside them does. The solid light
+   panel of the other platforms keeps the quieter controls. */
+body.theme-light.software-glass .header-controls .control-btn:not(.notification-bell-btn) {
+  color: var(--text-primary);
   opacity: 1;
 }
 
@@ -3448,10 +3548,12 @@ body.first-run-active .widget-content > * {
 
 .media-tile-content {
   display: grid;
-  /* The seek column is as wide as its two times and a bar between them, so a film or a podcast
-     (h:mm:ss) gets the room it needs and an ordinary track (m:ss) leaves that room to the title.
-     At 72-110px the long times ran into the bar and the previous button. */
-  grid-template-columns: minmax(0, 1fr) fit-content(140px) auto;
+  /* The seek column never narrows past its two times and the shortest bar between them, so a film
+     or a podcast (h:mm:ss) gets the room it needs: at 72-110px the long times ran into the bar and
+     the previous button. The title takes what it needs up to 37% of the row, about 140px in the
+     window the app opens at, and the bar takes the rest, so it has room to show where the track is
+     (sized to its times alone, it was a 36px stub there) and a short title leaves its slack to it. */
+  grid-template-columns: fit-content(37%) minmax(min-content, 1fr) auto;
   align-items: center;
   gap: 4px 8px;
   min-width: 0;
@@ -3463,6 +3565,16 @@ body.first-run-active .widget-content > * {
 @media (min-width: 640px) {
   .media-tile-content {
     grid-template-columns: minmax(0, 1fr) minmax(min-content, 200px) auto;
+  }
+}
+
+/* A radio stream, a TV input or an idle player has no length, and its seek row is hidden. The
+   column keeps the width of its hidden times so the controls stay put, but no share of the row:
+   beside an empty column that share only cut the station's or the programme's name shorter. The
+   narrow layouts below put the row on a line of its own. */
+@media (min-width: 421px) {
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) {
+    grid-template-columns: minmax(0, 1fr) min-content auto;
   }
 }
 
@@ -4708,57 +4820,60 @@ body.first-run-active .widget-content > * {
 
 /* The palette above is drawn for a dark card: pale cloud, pale rays and a white halo come out at
    1.0 to 1.6:1 on the light one. The light theme gets the same hues stepped down to 3:1 and up on
-   the near-white card (and the dialog behind the weather picker). The Readable preset is dark
-   whatever theme is chosen, so it keeps the palette above. */
-body.theme-light:not(.high-contrast) .weather-icon {
+   the near-white card (and the dialog behind the weather picker). The Readable preset and the
+   desktop pins are dark whatever theme is chosen, so they keep the palette above. */
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon {
   --weather-primary: #c07800;
   --weather-secondary: #2b86a8;
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #dbe6f2;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #e6eef7;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-fog {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-fog {
   --weather-primary: #4f93ad;
   --weather-secondary: #2b86a8;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-clear-night {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-clear-night {
   --weather-primary: #5a78c8;
   --weather-secondary: #8a6fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-exceptional {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-exceptional {
   --weather-primary: #c07800;
   --weather-secondary: #c8423f;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-ray, .weather-glyph-bolt) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-ray, .weather-glyph-bolt) {
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-precip {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-precip {
   stroke: #1f8fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-hail {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-hail {
   fill: #2f8fc4;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-wind, .weather-glyph-fog) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-wind, .weather-glyph-fog) {
   stroke: #4f93ad;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-alert {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-alert {
   fill: #c8423f;
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph {
   filter: drop-shadow(0 1px 2px rgba(20, 30, 50, 0.3));
 }
 
@@ -5103,6 +5218,14 @@ body.theme-light:not(.high-contrast)
   align-items: flex-start;
 }
 
+/* The Settings entity lists keep a scroller of their own, as a page of 50 rows would make Settings
+   very long. Its 400px cap is relative to the window as well: at 150% text the window is 400px tall,
+   and a 400px list inside the scrolling page showed one row with two scrollbars, the page's and
+   the list's, to take turns with. Capped at 55% of the window, the whole box fits in the page. */
+:is(#primary-cards-list, #custom-entity-icons-list) {
+  max-height: min(400px, 55vh);
+}
+
 #custom-entity-icons-list.custom-entity-icons-list-expanded {
   max-height: none;
   overflow: visible;
@@ -5268,8 +5391,8 @@ body.theme-light:not(.high-contrast)
 
 /* Brightness Slider Modal Styles */
 .brightness-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -5363,7 +5486,6 @@ body.theme-light:not(.high-contrast)
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  max-width: 280px;
   height: 8px;
   background: linear-gradient(to right, var(--surface-1) 0%, var(--accent) 50%, #ffd700 100%);
   border-radius: var(--radius-sm);
@@ -5508,13 +5630,18 @@ body.theme-light:not(.high-contrast)
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  /* The swatches beside the picker change their layout with the room this row has. */
+  container-type: inline-size;
 }
 
 .light-color-picker {
-  /* It keeps its size, so a narrow dialog wraps the swatches instead of squeezing it to a sliver. */
-  flex: 0 0 44px;
-  width: 44px;
-  height: 36px;
+  /* A 32px well for the custom colour, a little larger than the 28px swatches beside it: its
+     border and padding take 4px a side, which leaves a 24px colour, the size of the smallest
+     swatch. It keeps its size, so a narrow dialog shrinks the swatches instead of squeezing it to
+     a sliver. */
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -5522,18 +5649,41 @@ body.theme-light:not(.high-contrast)
   padding: 3px;
 }
 
+/* Chromium draws the colour as a square with a grey bevel and its own inset inside the well. The
+   colour fills the well instead, rounded to its corners, as in the Settings colour picker. */
+.light-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.light-color-picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-md) - 4px);
+}
+
+/* Six in a row, which shrink (to 24px) before any of them wraps: an auto-fit grid left the last
+   swatch alone on a second row in a narrow dialog. */
 .light-color-swatches {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(28px, 1fr));
+  grid-template-columns: repeat(6, minmax(24px, 1fr));
   gap: 0.4rem;
   flex: 1;
   min-width: 0;
 }
 
+/* Too narrow for six even at 24px (a narrow window with large text): two rows of three. The
+   threshold is the picker, the gap and six 24px swatches with their gaps. */
+@container (width < 220px) {
+  .light-color-swatches {
+    grid-template-columns: repeat(3, minmax(24px, 1fr));
+  }
+}
+
 .light-color-swatch {
-  /* A circle: a grid cell stretches the swatch to the column's width, which made it an oval. */
-  width: 28px;
-  height: 28px;
+  /* A circle as wide as its column allows, up to 28px: a grid cell stretched the swatch to the
+     column's width, which made it an oval. */
+  width: min(28px, 100%);
+  height: auto;
+  aspect-ratio: 1;
   justify-self: center;
   border: 2px solid var(--border-color);
   border-radius: 50%;
@@ -5585,8 +5735,8 @@ body.theme-light:not(.high-contrast)
 
 /* Climate Control Modal */
 .climate-modal .modal-content {
-  max-width: 400px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -5856,8 +6006,8 @@ body.theme-light:not(.high-contrast)
 
 /* Fan Control Modal */
 .fan-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -6006,8 +6156,8 @@ body.theme-light:not(.high-contrast)
 
 /* Cover Control Modal */
 .cover-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -6254,8 +6404,9 @@ body.theme-light:not(.high-contrast)
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
    Effects): the resting pane plus a wash of the accent, an accent icon with a soft halo,
-   and a brighter state line. Read-only tiles never carry data-active, so they never glow. */
-body.active-tile-glow #quick-controls .control-item[data-active='true'] {
+   and a brighter state line. Read-only tiles never carry data-active, so they never glow, and a
+   tile that needs attention (below) is never drawn as an "on" tile, whatever the accent. */
+body.active-tile-glow #quick-controls .control-item[data-active='true']:not([data-attention]) {
   background-color: color-mix(
     in srgb,
     rgb(var(--accent-rgb)) var(--dash-tile-wash),
@@ -6264,7 +6415,9 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] {
   border-color: rgba(var(--accent-rgb), 0.42);
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention]):hover {
   background-color: color-mix(
     in srgb,
     rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
@@ -6273,12 +6426,18 @@ body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-icon {
   color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-state {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-state {
   color: color-mix(in srgb, var(--text-primary) 82%, transparent);
 }
 
@@ -6286,89 +6445,90 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] .control
    dimmer than the idle icons beside it. It draws the lit icon in the text colour, with the halo. */
 body.active-tile-glow[data-accent-neutral]
   #quick-controls
-  .control-item[data-active='true']
+  .control-item[data-active='true']:not([data-attention])
   .control-icon {
   color: var(--text-primary);
 }
 
 /* Light theme: the icon takes the same solved accent text (3:1 and up on the tinted tile), with a
    softer halo, since a glow around a dark glyph on a pale tile reads as a smudge. */
-body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+body.theme-light.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-icon {
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
-/* Security states that have to catch the eye, with the accent glow on or off: an alarm that went
-   off (red), a lock that is jammed or a door that is unlocked (amber). The icon and the state line
-   take the status colour and the edge a tint of it; there is no wash, so the tile stays a plain
-   pane. The glow rules above are matched in weight so the status colour wins over the accent. */
+/* An accent near the amber or the red of the tiles below (a holiday's orange, red or gold, or the
+   Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked door
+   and an armed alarm more strongly than one that went off, since the accent is more saturated than
+   the status colours, which are pale enough to be read as text. With such an accent a lit tile takes
+   about half the wash, so the tiles that need attention stay the most colourful on the page. */
+body[data-accent-warm] {
+  --dash-tile-wash: var(--dash-tile-wash-warm);
+  --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
+}
+
+/* Security states that have to catch the eye: an alarm that went off (red), a lock that is jammed
+   or a door that is unlocked (amber). They used to be lit like an "on" tile in their own colour,
+   and a holiday's orange or red, or the Amber accent, lit an armed alarm or a lamp the same way, so
+   an armed alarm read as one that went off. They have a look no accent gives, with the glow on or
+   off: a wash and an edge two pixels wide in the status colour, the icon and the state line in it,
+   and a badge with an exclamation mark on the icon, which says it without the colour. The accent
+   rules above and the solid-panel and Readable ones below leave these tiles out. While such a tile
+   is dragged in Reorganize, its drop slot is the dashed accent slot every tile leaves (see
+   .sortable-ghost), so the wash and the edge leave the slot out. */
 #quick-controls .control-item[data-attention] {
   --attention-color: var(--warning-text);
+  --attention-wash: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-attention-wash),
+    transparent
+  );
 }
 
 #quick-controls .control-item[data-attention='danger'] {
   --attention-color: var(--error-text);
 }
 
-#quick-controls .control-item[data-attention],
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
-  border-color: color-mix(in srgb, var(--attention-color) 55%, var(--tile-border));
+#quick-controls .control-item[data-attention]:not(.sortable-ghost) {
+  border-color: var(--attention-color);
+  /* A layer over the tile's own fill, so it sits on the glass, the solid panels and the Readable
+     preset's grey alike. */
+  background-image: linear-gradient(var(--attention-wash), var(--attention-wash));
 }
 
-#quick-controls .control-item[data-attention]:hover,
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
-  border-color: color-mix(in srgb, var(--attention-color) 75%, var(--tile-border-hover));
+/* The edge's second pixel. It steps aside for the focus ring, which takes the outline. */
+#quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
+  outline: 1px solid var(--attention-color);
+  outline-offset: -2px;
 }
 
-#quick-controls .control-item[data-attention] .control-icon,
-body.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']
-  .control-icon {
+#quick-controls .control-item[data-attention] > .control-icon {
+  position: relative;
   color: var(--attention-color);
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--attention-color) 45%, transparent));
 }
 
-#quick-controls .control-item[data-attention] .control-state,
-body.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']
-  .control-state {
-  color: var(--attention-color);
+#quick-controls .control-item[data-attention] .control-state {
+  color: color-mix(in srgb, var(--attention-color) var(--dash-attention-ink), var(--text-primary));
 }
 
-/* With the glow on, these tiles are lit like any other, but in their own colour: an amber icon on a
-   blue wash read as two things at once. */
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
-  background-color: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash),
-    var(--tile-bg)
-  );
-}
-
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash-hover),
-    var(--tile-bg-hover)
-  );
-}
-
-/* The solid panels paint the wash as a layer over their own fill (see opaque-panels below). */
-body.opaque-panels.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true'] {
-  --active-tile-wash: color-mix(in srgb, var(--attention-color) var(--dash-tile-wash), transparent);
-}
-
-body.opaque-panels.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']:hover {
-  --active-tile-wash: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash-hover),
-    transparent
-  );
+/* The badge: a disc in the status colour with the exclamation mark cut out of it, so the mark is
+   the tile's own wash, at the top corner of the glyph on the end side. It is sized in em, so it
+   follows the icon in compact density and with larger text, and mirrors in a right-to-left
+   language. */
+#quick-controls .control-item[data-attention] > .control-icon::after {
+  content: '';
+  position: absolute;
+  top: -0.26em;
+  inset-inline-start: calc(50% + 0.32em);
+  width: 0.62em;
+  height: 0.62em;
+  background: var(--attention-color);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0Zm-.8 2.4a.8.8 0 0 1 1.6 0v4a.8.8 0 0 1-1.6 0ZM6 8.2a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  pointer-events: none;
 }
 
 #quick-controls .control-item[data-unavailable='true'] {
@@ -6702,12 +6862,33 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   display: none;
 }
 
+/* Without a picture the camera icon is the tile's icon, a plain glyph like its neighbours', in the
+   band between the label in the corner and the caption at the foot. Centred over the whole tile in
+   the circle it has on the dark stage, it sat on the end of the name. The caption under it is
+   centred too, as their name and state are: a centred glyph over a caption at the start edge made
+   the tile look unfinished beside them. Over a picture the caption keeps to the start edge. */
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-fallback {
+  place-items: start center;
+  padding-top: var(--camera-tile-icon-top, 32px);
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  :is(.camera-tile-copy, .camera-tile-preview-status) {
+  text-align: center;
+}
+
 #quick-controls
   .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   .camera-tile-fallback
   .control-icon {
-  border-color: var(--tile-border);
-  background: var(--tile-bg);
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
   box-shadow: none;
 }
 
@@ -6786,6 +6967,18 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-copy {
 
 body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-status {
   font-size: var(--font-size-2xs);
+}
+
+/* Where the icon of a tile with no picture starts: under the label in the corner, and in compact
+   density in the shorter band between it and the caption. While editing, the buttons take the
+   label's place and run lower, in either density (the body in that selector outranks the compact
+   one). */
+body.density-compact #quick-controls .camera-preview-tile {
+  --camera-tile-icon-top: 25px;
+}
+
+body #quick-controls.reorganize-mode .camera-preview-tile {
+  --camera-tile-icon-top: 36px;
 }
 
 .camera-expanded-preview {
@@ -7155,15 +7348,23 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   color: var(--text-dim);
 }
 
+/* The trend line is the tile's only picture of change, so it is a graphic that has to reach 3:1.
+   Drawn as the raw accent at about half strength it came out at 1.5 to 2.2:1 on the dark tile
+   (Indigo and Rose all but vanished), so it takes the accent solved for a 3:1 ring on that tile.
+   The light theme draws it in its own solved colour (below). */
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
   position: absolute;
   left: 4px;
   right: 4px;
   bottom: 0;
   height: 22px;
-  color: rgba(var(--accent-rgb), 0.72);
-  opacity: 0.64;
+  color: var(--accent-ring-dark, var(--accent));
   pointer-events: none;
+}
+
+/* The Readable preset's accent is its own, and the solved colour is the user's. */
+body.high-contrast #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline {
+  color: var(--accent);
 }
 
 #quick-controls .control-item.sensor-numeric-entity .control-sensor-sparkline-svg {
@@ -7181,8 +7382,8 @@ body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-s
   stroke-width: 1.5px;
 }
 
-/* The dark tile's faint accent line is about 1.3:1 on the near-white one, so the light theme draws
-   the sparkline and the gauge in the solved accent text. */
+/* The dark theme's pale accent colours are about 1.3:1 on the near-white tile, so the light theme
+   draws the sparkline and the gauge in the solved accent text. */
 body.theme-light:not(.high-contrast)
   #quick-controls
   .control-item.sensor-numeric-entity
@@ -7972,9 +8173,15 @@ body.theme-light:not(.high-contrast)
 
 .modal-body {
   /* Named so what sticks to the body's edges (the to-do add field) can take the padding back by the
-     same amount at every window height. */
+     same amount at every window height. A dialog that wants other padding sets the inset. */
   --modal-body-inset: var(--space-5);
+  --modal-scrollbar-size: 9px;
   padding: var(--modal-body-inset);
+  /* The scrollbar's room is kept whether the body scrolls or not, and the end padding gives it
+     back, so both sides stay the inset. Without it a body that scrolled was a scrollbar wider on
+     the right, and its content moved sideways when a filter made it start or stop scrolling. */
+  padding-inline-end: calc(var(--modal-body-inset) - var(--modal-scrollbar-size));
+  scrollbar-gutter: stable;
   overflow-y: auto;
   position: relative;
 }
@@ -7993,8 +8200,8 @@ body.theme-light:not(.high-contrast)
 }
 
 .modal-body::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: var(--modal-scrollbar-size);
+  height: var(--modal-scrollbar-size);
 }
 
 .modal-body::-webkit-scrollbar-track {
@@ -8261,8 +8468,12 @@ body.theme-light:not(.high-contrast)
   position: sticky;
   top: calc(-1 * var(--modal-body-inset));
   z-index: 1;
-  margin: calc(-1 * var(--modal-body-inset)) calc(-1 * var(--modal-body-inset)) 0;
+  margin: calc(-1 * var(--modal-body-inset)) 0 0;
+  /* At the end it reaches the scrollbar's room, which the body's end padding leaves out. */
+  margin-inline: calc(-1 * var(--modal-body-inset))
+    calc(var(--modal-scrollbar-size) - var(--modal-body-inset));
   padding: var(--modal-body-inset) var(--modal-body-inset) 14px;
+  padding-inline-end: calc(var(--modal-body-inset) - var(--modal-scrollbar-size));
   container-type: scroll-state;
 }
 
@@ -8339,11 +8550,13 @@ body.theme-light:not(.high-contrast)
   cursor: pointer;
 }
 
+/* A ticked box is the solved accent, which keeps 3:1 on the light panel where the raw accent of a
+   pale preset did not. */
 .todo-item-row input[type='checkbox'] {
   width: 18px;
   height: 18px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -9110,13 +9323,13 @@ body.theme-light:not(.high-contrast)
   box-shadow: none;
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset) {
+.btn-secondary:not(.btn-neutral) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: all var(--transition-base);
 }
 
-.btn-secondary:not([id*='cancel']):not([id*='close']):not(.btn-reset):active {
+.btn-secondary:not(.btn-neutral):active {
   transform: scale(0.98);
 }
 
@@ -9128,19 +9341,17 @@ body.theme-light:not(.high-contrast)
   transition: all var(--transition-base);
 }
 
-/* Neutral actions keep lower emphasis even with accent-forward button styling */
-.btn-secondary[id*='cancel'],
-.btn-secondary[id*='close'],
-.btn-secondary.btn-reset {
+/* Neutral actions (Cancel, Close, Reset) keep lower emphasis beside the accent-forward secondary
+   recipe. A class says which they are: matching ids that contain "cancel" or "close" left every
+   Cancel built without such an id (the alarm code's, the hotkey recorder's) in accent blue. */
+.btn-secondary.btn-neutral {
   background: transparent;
   color: var(--text-secondary);
   border-color: var(--border-color);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.btn-secondary[id*='cancel']:hover,
-.btn-secondary[id*='close']:hover,
-.btn-secondary.btn-reset:hover {
+.btn-secondary.btn-neutral:hover {
   background: var(--glass-surface);
   color: var(--text-primary);
   border-color: var(--border-hover);
@@ -9394,6 +9605,35 @@ body.theme-light:not(.high-contrast)
   line-height: 1.5;
 }
 
+/* In a short window (the smallest is 360px) the card's own padding and the space around it left
+   the welcome step scrolling inside the card, its buttons cut off at the bottom. */
+@media (max-height: 480px) {
+  .first-run-onboarding {
+    padding: var(--space-3);
+  }
+
+  .first-run-panel {
+    padding: var(--space-4);
+  }
+}
+
+/* The welcome step's offer of the system's language: one line and its Download button. */
+#first-run-language-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+#first-run-language-offer[hidden] {
+  display: none;
+}
+
+#first-run-language-offer > p {
+  flex: 1 1 12em;
+  margin: 0;
+}
+
 /* On Hyprland the wizard adds shortcut help: two paragraphs, two buttons and a result line. */
 #first-run-desktop-help {
   display: flex;
@@ -9520,14 +9760,18 @@ body.theme-light:not(.high-contrast)
 }
 
 /* The accent tint of .btn-secondary washes out on the red error panel and reads as disabled, so
-   the panel's second action is the neutral button the dialogs use for Cancel. */
-.widget-state-actions .btn-secondary {
+   the panel's second action is the neutral button the dialogs use for Cancel. It stays solid when
+   the button is marked .btn-neutral (the Cancel shown while browser authorization waits): the
+   dialogs' transparent neutral reads as disabled on the red panel just the same. */
+.widget-state-actions .btn-secondary,
+.widget-state-actions .btn-secondary.btn-neutral {
   background: var(--tile-bg);
   border-color: var(--tile-border-hover);
   color: var(--text-primary);
 }
 
-.widget-state-actions .btn-secondary:hover {
+.widget-state-actions .btn-secondary:hover,
+.widget-state-actions .btn-secondary.btn-neutral:hover {
   background: var(--tile-bg-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
@@ -9733,8 +9977,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   overflow-wrap: anywhere;
 }
 
-/* For the pointer: errors and warnings stay until dismissed, so they say how. The toast itself is
-   the keyboard's one stop (Enter, Space or Escape closes it). */
+/* Errors and warnings stay until dismissed, so they say how. The button is also the keyboard's stop
+   on the toast, and takes the page's focus ring. */
 .toast-close {
   display: inline-flex;
   align-items: center;
@@ -10042,7 +10286,7 @@ body {
 
 .confirm-modal-content .modal-body {
   /* The header and footer pad by --space-5, so the message starts where the title does. */
-  padding: var(--space-5);
+  --modal-body-inset: var(--space-5);
 }
 
 #confirm-message {
@@ -10945,10 +11189,12 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   overflow: hidden;
 }
 
+/* The solved accent, as on the media tile's seek bar: the raw accent of the default blue, Aqua or
+   Amber is about 2.2:1 on the light dialog's near-white track. */
 .media-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--accent);
+  background: var(--accent-text);
   transition: width var(--duration-base) linear;
 }
 
@@ -11246,8 +11492,10 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   letter-spacing: 0.5px;
 }
 
-/* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
-#popup-hotkey-input::placeholder {
+/* The saved hotkey and the "Not set" hint are placeholders, as is an entity row's "None"; read them
+   as text, not as code. In the code face "None" was spaced out, and in Arabic, Hindi and Chinese
+   it fell to a mismatched fallback font. */
+:is(#popup-hotkey-input, .hotkey-input)::placeholder {
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   letter-spacing: 0;
@@ -11290,8 +11538,9 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
      own scroller inside the Settings page, as do the primary cards and custom icons lists; the
      wheel passes on to the page at either end. The alert rows are a handful the user added and
      scroll with the page. Rows are two lines tall now; 40vh of the default window showed less
-     than three. */
-  max-height: max(40vh, 20rem);
+     than three. At 150% text, where the window is 400px tall, the 20rem floor was most of the
+     page, so the list stops at 60% of the window. */
+  max-height: min(max(40vh, 20rem), 60vh);
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--border-color);
@@ -11344,6 +11593,17 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   overflow-wrap: anywhere;
 }
 
+/* Why a saved hotkey cannot fire, under its name: Home Assistant no longer lists the entity, or a
+   hotkey cannot act on it. Its field is dimmed as disabled, and only the clear button is live. */
+.hotkey-item .hotkey-item-note {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: -8px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
 /* The hotkey takes what the action and the clear button leave, and the action drops under it when
    the row is too narrow for both (150% text, a small window). The clear button keeps its place
    when there is nothing to clear, so setting or recording a hotkey moves nothing, and every row
@@ -11391,17 +11651,18 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   background-position: left 8px center;
 }
 
+/* The same line X as the other close and remove buttons, in a square as tall and as round as the
+   32px field and select beside it. The icon is drawn at 1em. */
 .btn-clear-hotkey {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border: 1px solid var(--tile-border-hover);
   background: transparent;
   color: var(--text-dim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--font-size-md);
-  font-weight: bold;
   transition: all var(--transition-base);
   display: flex;
   align-items: center;
@@ -11426,6 +11687,19 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   padding: var(--space-6) var(--space-5);
   text-align: center;
   color: var(--text-primary);
+}
+
+/* The card is a column whose rows stretch, so Cancel ran the full width with "Press Esc to cancel."
+   sitting flush on it, read as its label, and the note was as large as the prompt. The note is a
+   small dim line under the preview, and Cancel is a button of the usual size with room above it. */
+.hotkey-capture-modal .modal-content small {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.hotkey-capture-modal .hotkey-capture-cancel {
+  align-self: center;
+  margin-top: var(--space-4);
 }
 
 /* The full-screen overlay takes focus while recording; a ring around the window would only distract. */
@@ -11509,14 +11783,25 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   text-align: center;
 }
 
+/* Nothing in an alert row was allowed to shrink below its longest word, and a missing entity shows
+   its raw id, which has nowhere to break: sensor.living_room_north_wall_temperature_sensor pushed
+   Edit and Remove out of the card, on the very row that most needs Remove. The name breaks
+   anywhere instead, and the buttons drop under it when it would be left less than 12rem, as a
+   hotkey row's controls do. */
+.alert-item {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .alert-details {
   flex: 1;
+  min-width: 0;
 }
 
 .alert-name {
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 2px;
+  overflow-wrap: anywhere;
 }
 
 /* The chips beside an alert's name are one shape. An inline-block keeps a chip whole when the row
@@ -11548,14 +11833,17 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 .alert-actions {
   display: flex;
+  flex: none;
   gap: 8px;
+  margin-inline-start: auto;
 }
 
 .alert-item-info {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .add-alert-btn {
@@ -11604,6 +11892,11 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   color: var(--warning-text);
 }
 
+/* An inline field error (field-errors.js) reads red in every dialog, not only in Settings. */
+.form-error {
+  color: var(--error-text);
+}
+
 .form-help code {
   background: var(--surface-2);
   /* No vertical padding, so the chip does not raise the line, and a hair of side padding, so the
@@ -11615,6 +11908,14 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--accent-text);
+}
+
+/* The command to bind for a desktop layer can be an AppImage's whole path. It breaks anywhere rather
+   than run out of the card, and reads left to right inside an Arabic sentence. */
+#layer-toggle-note code {
+  overflow-wrap: anywhere;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 /* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
@@ -11802,14 +12103,32 @@ body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
   -webkit-backdrop-filter: none !important;
 }
 
+/* Settings draws three blurs of its own, at 56px behind it, 48px on its panel and 20px on the
+   Save pill, and they are !important on ID selectors, which the rule above does not outrank. The
+   panel and the pill sit inside the dialog's own backdrop, so in performance mode they lose theirs
+   like every other dialog's: on Linux, and on Windows without acrylic, which uses the same class.
+   Only the backdrop differs. On Linux the panel is 96% opaque, so the backdrop behind it takes the
+   8px every dialog has. Windows without acrylic keeps its 56px there: its panel is 82% opaque, the
+   dashboard behind it shows through, and a GPU draws the blur. */
+body.linux-performance-mode #settings-modal :is(.modal-content, .modal-footer) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-platform='linux'].linux-performance-mode #settings-modal {
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
 /* The glow that pulses on the playing button repaints a filter every frame; without a GPU that is
-   software work for one small button. It keeps the glow, still. */
+   software work for one small button. It keeps the glow, still. The media dialog's filled play
+   button never glows (its own rule turns the pulse off), so it keeps its plain circle. */
 body.linux-performance-mode .play-pause-btn.playing,
 body.linux-performance-mode .media-player-entity[data-media-playing='true'] .play-pause-btn {
   animation: none;
 }
 
-body.linux-performance-mode .play-pause-btn.playing:not(:hover),
+body.linux-performance-mode .play-pause-btn.playing:not(:hover, .media-detail-play-btn),
 body.linux-performance-mode
   .media-player-entity[data-media-playing='true']
   .play-pause-btn:not(:hover) {
@@ -11819,9 +12138,16 @@ body.linux-performance-mode
 /* Linux performance mode strips backdrop blur from everything but modals, and what the palette, a
    toast, a menu or a tooltip floats over then shows through their 96% opaque panel: the text of the
    tile beneath doubles up faintly behind the rows. Without a blur to hide it they take the solid
-   panel colour. (Settings and the other dialogs keep their blur and their 96% panel.) */
+   panel colour. That includes the label of a Settings page beside the rail, which floats over the
+   page's own text. (Settings and the other dialogs keep their blur and their 96% panel.) */
 body.linux-performance-mode
-  :is(.command-palette-panel, .toast, .connection-status-tooltip, .theme-tooltip-flyout) {
+  :is(
+    .command-palette-panel,
+    .toast,
+    .connection-status-tooltip,
+    .theme-tooltip-flyout,
+    .tab-tooltip
+  ) {
   --dialog-bg: var(--dialog-bg-solid);
 }
 
@@ -11923,10 +12249,12 @@ label.disabled {
   content: none;
 }
 
-/* Improve error message visibility. A toast is a recipe of its own (its error and warning kinds
-   mark the edge); this box has the same specificity and came later, so it won every property and
-   left a translucent red wash that the content under the toast showed through. */
-[role='alert']:not(.toast) {
+/* A list that failed to load says so in a box, with its Retry under it (the to-do items). The box
+   is asked for by class. Keyed to role="alert", it also boxed everything else announced that way,
+   which comes and goes with focus and state: a field error raised while the field has focus, the
+   Support amount, the Add page name, a failed connection test. Those are red text under what they
+   are about, so the same message looked two ways. */
+.entity-detail-error {
   color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
@@ -12014,11 +12342,25 @@ label.disabled {
   flex: none;
 }
 
+/* The scrollbar gutter is always reserved, so the rows keep their width when the list grows long
+   enough to scroll instead of narrowing under the typing. The 9px gutter is the end margin and the
+   start margin matches it, the way .widget-content gives its gutter back. */
 .command-palette-results {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 6px;
+  padding: 6px 0;
+  padding-inline-start: 9px;
+  scrollbar-gutter: stable;
+}
+
+/* Forced colours draws the system's own, wider scrollbar, so the list holds a gutter only while a
+   scrollbar shows, as .widget-content does there. */
+@media (forced-colors: active) {
+  .command-palette-results {
+    padding-inline: 6px;
+    scrollbar-gutter: auto;
+  }
 }
 
 .command-palette-result {
@@ -12185,11 +12527,42 @@ label.disabled {
   }
 }
 
-/* The row's icon already says what kind of thing it is, so a narrow window gives the name the
-   room the type pill took. */
+/* The glyph a Command or Page pill shrinks to in a narrow window (below). */
+.command-palette-result-kind-icon {
+  display: none;
+}
+
+/* A narrow window gives the name the room an entity's type pill took, since the entity's icon says
+   much the same. A command or a page keeps a mark: a command row has its entity's icon, and only
+   the pill tells "Arm Home alarm away" from the alarm itself. The pill keeps its outline around a
+   glyph, play for a command and a window for a page, and its word stays for screen readers and in
+   its tooltip, so the name keeps the room. Kept as a word, the pill cut every "Arm Home alarm"
+   command off where the commands differ. */
 @media (width <= 400px) {
-  .command-palette-result-domain {
+  .command-palette-result-domain:not(.is-row-kind) {
     display: none;
+  }
+
+  /* As tall as the word pill was. */
+  .command-palette-result-domain.is-row-kind {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 2px;
+    font-size: var(--font-size-base);
+  }
+
+  .command-palette-result-kind-icon {
+    display: grid;
+  }
+
+  .command-palette-result-kind-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -12279,9 +12652,15 @@ label.disabled {
   margin: 0;
 }
 
+/* The keyboard ring goes round the whole option, rounded like every other ring in the app. Drawn on
+   the radio it was a square box round a round control, and it ran into the "One-time" label. */
 .donate-frequency-option input[type='radio']:focus-visible {
+  outline: none;
+}
+
+.donate-frequency-option:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 .donate-amount-grid {
@@ -12321,7 +12700,7 @@ label.disabled {
 /* A rejected amount is said under the field, in red, until it is changed. */
 .donate-amount-error {
   margin: var(--space-2) 0 0;
-  color: var(--error);
+  color: var(--error-text);
 }
 
 #donate-custom-amount[aria-invalid='true'] {
@@ -12374,11 +12753,8 @@ body.high-contrast {
   --success-text: #a5d6a7 !important;
   --warning-text: #ffcc80 !important;
   --error-text: #ff9e99 !important;
-  --danger-text: #ff9e99 !important;
   --bg-color: #141414 !important;
   --bg-primary: #141414 !important;
-  --bg-secondary: #202020 !important;
-  --bg-tertiary: #282828 !important;
   --bg-elevated: #202020 !important;
   --card-bg: #202020 !important;
   --surface-1: #141414 !important;
@@ -12415,7 +12791,9 @@ body.high-contrast {
   color-scheme: dark !important;
 }
 
-body.opaque-panels,
+/* A pin's body is the transparent window around its rounded shell, which this paints instead, so
+   the preset gives the pin no square plate behind its corners. */
+body.opaque-panels:not(.desktop-pin-mode),
 body.opaque-panels
   :is(
     .widget-header,
@@ -12443,13 +12821,19 @@ body.theme-light.opaque-panels:not(.high-contrast)
   background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
-/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile
-   and the tint of a running or paused timer. Each is painted back as a layer over that fill: only
-   the background image is set, so the opaque colour underneath (the panel's, or the lifted tile's)
-   stays. */
-body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true'] {
+/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile,
+   the wash of a tile that needs attention and the tint of a running or paused timer. Each is
+   painted back as a layer over that fill: only the background image is set, so the opaque colour
+   underneath (the panel's, or the lifted tile's) stays. */
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention]) {
   --active-tile-wash: color-mix(in srgb, rgb(var(--accent-rgb)) var(--dash-tile-wash), transparent);
   background-image: linear-gradient(var(--active-tile-wash), var(--active-tile-wash)) !important;
+}
+
+body.opaque-panels #quick-controls .control-item[data-attention]:not(.sortable-ghost) {
+  background-image: linear-gradient(var(--attention-wash), var(--attention-wash)) !important;
 }
 
 body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
@@ -12479,12 +12863,13 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
    one that keeps edit mode from drawing a second box around it. So they stay out while forced
    colours are active, and the rules for forced colours at the end of this file decide. */
 @media (forced-colors: none) {
-  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers and
-     tabs are text-like buttons: a fill would draw a bar across the panel, and their own hover,
-     active and focus styles stay visible without it. A colour swatch is its fill. */
+  /* Ranges are handled below; :where keeps this rule's specificity unchanged. Section headers,
+     tabs and the media card's track are text-like buttons: a fill would draw a bar across the
+     panel (behind the track's title, an unpadded slab), and their own hover, active and focus
+     styles stay visible without it. A colour swatch is its fill. */
   body.high-contrast
     :is(button, input, select, textarea):not(
-      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch)
+      :where([type='range'], .section-toggle, .tab-link, .light-color-swatch, .media-tile-info)
     ) {
     color: #fff !important;
     background: #202020 !important;
@@ -12524,7 +12909,13 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
   body.high-contrast .theme-option.selected,
   body.high-contrast .donate-amount-chip.selected,
-  body.high-contrast :is(.desktop-pin-panel-button, .desktop-pin-power)[data-active='true'] {
+  body.high-contrast #profile-sync-passphrase-reveal[aria-pressed='true'],
+  body.high-contrast
+    :is(
+      .desktop-pin-panel-button,
+      .desktop-pin-light-preset,
+      .desktop-pin-power
+    )[data-active='true'] {
     border-color: var(--accent) !important;
     box-shadow: inset 0 0 0 2px var(--accent);
   }
@@ -12541,7 +12932,8 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
         .tile-primary-button,
         .section-toggle,
         .tab-link,
-        .light-color-swatch
+        .light-color-swatch,
+        .media-tile-info
       )
     ) {
     background: #333 !important;
@@ -12574,14 +12966,24 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
      took this rule's -2px offset and sat on top of the edge, hiding it. */
   body.active-tile-glow.high-contrast
     #quick-controls
-    .control-item[data-active='true']:not(:focus-visible) {
+    .control-item[data-active='true']:not([data-attention], :focus-visible) {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
 
-  body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
+  body.active-tile-glow.high-contrast
+    #quick-controls
+    .control-item[data-active='true']:not([data-attention]) {
     background-color: rgba(var(--accent-rgb), 0.26);
     border-color: var(--accent);
+  }
+
+  /* A tile that needs attention keeps its own colour here as well, at the same weight: its edge was
+     the accent's, the same as an armed alarm's. */
+  body.high-contrast
+    #quick-controls
+    .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
+    outline-width: 2px;
   }
 
   body.high-contrast
@@ -12638,6 +13040,13 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
 body.high-contrast :focus-visible {
   outline: 3px solid #fff !important;
   outline-offset: 2px;
+}
+
+/* Except a pop-up's heading, which takes focus when the pop-up opens so a screen reader starts there.
+   It is not a control and draws no ring (see the dialog header), and the preset's ring above is
+   !important, so it boxed the title of every pop-up like a field. */
+body.high-contrast .modal-header :is(h1, h2, h3)[tabindex='-1']:focus-visible {
+  outline: none !important;
 }
 
 /* The always-visible Controls action: a small sliders button tucked into the tile's
@@ -12992,18 +13401,14 @@ body.software-glass.frosted-glass .modal-content {
   color: var(--accent-text-hover);
 }
 
-.btn-secondary[id*='cancel'],
-.btn-secondary[id*='close'],
-.btn-secondary.btn-reset {
+.btn-secondary.btn-neutral {
   background: transparent;
   border-color: var(--tile-border-hover);
   color: var(--text-secondary);
   box-shadow: none;
 }
 
-.btn-secondary[id*='cancel']:hover,
-.btn-secondary[id*='close']:hover,
-.btn-secondary.btn-reset:hover {
+.btn-secondary.btn-neutral:hover {
   background: var(--tile-bg-hover);
   color: var(--text-primary);
   box-shadow: none;
@@ -13994,6 +14399,9 @@ body.theme-light #settings-modal .modal-footer {
 
 .settings-group {
   margin-bottom: 22px;
+  /* Scrolled to the top of the page ("Enter token" brings the token's group up), a group keeps the
+     page's top padding above its caption instead of meeting the edge. */
+  scroll-margin-block-start: 18px;
 }
 
 /* The page title, its description and the group captions start where the cards and the search field
@@ -14081,6 +14489,15 @@ textarea::selection {
   border-top: 1px solid var(--tile-border);
 }
 
+/* A field's error belongs to its field's row. Placed after the row, it was a row of its own: 24px
+   below the field with a hairline between them, and it read as another setting. It sits just under
+   the field instead, and the next row's hairline falls under the error. */
+#settings-modal .settings-group-body > p.form-error.field-error {
+  margin-top: -6px;
+  padding-top: 0;
+  border-top: none;
+}
+
 /* --- Rows --- */
 
 #settings-modal .form-group {
@@ -14127,6 +14544,32 @@ textarea::selection {
   margin-top: 0;
 }
 
+/* While results stand in for the page, the field and the count of matches stay at the top of it, so
+   a long list can be narrowed without scrolling back up. The box is a band across the whole page
+   under the header, closed by the same hairline: it reaches over the page's padding (18px, and 9px
+   beside the scrollbar) to the scroller's edges, and pads the field back to where it was, in the
+   page's centred column. It is the dialog's own colour, solid so no result shows through it (a
+   see-through band left the results as ghost text inside the field). The panel colour in the
+   column alone was a lighter slab floating in the page, plainest over Windows acrylic and macOS
+   vibrancy; as a band across the page it reads as a bar under the header. Browsing a page scrolls
+   it away as before. A result reached with the arrow keys stops below it. */
+#settings-modal.settings-searching .settings-search-box {
+  position: sticky;
+  top: -18px;
+  z-index: 1;
+  max-width: none;
+  margin-block: -18px 0;
+  margin-inline: -18px -9px;
+  padding-block: 18px 16px;
+  padding-inline: max(18px, 18px + (100% - 680px) / 2) max(9px, 9px + (100% - 680px) / 2);
+  border-bottom: 1px solid var(--tile-border);
+  background: rgb(var(--settings-modal-bg-rgb));
+}
+
+#settings-modal.settings-searching .modal-body {
+  scroll-padding-block-start: 6.5rem;
+}
+
 .setting-row {
   display: flex;
   flex-wrap: wrap;
@@ -14143,13 +14586,17 @@ textarea::selection {
   min-width: min(9rem, 100%);
 }
 
-/* Every row select is one width, so their left edges line up down a page (Time format, Date
-   format, Sync app, scope and interval) instead of each starting where its own text ends. The
-   width fits the longest English option; a longer value ends in an ellipsis rather than running
-   under the chevron, and a narrow row wraps the select under its label as before. */
+/* Every row select is at least one width, so their left edges line up down a page (Time format,
+   Date format, Sync app, scope and interval) instead of each starting where its own text ends; the
+   width fits the longest English option. A select whose choices are longer, as the sync scope and
+   sync app are in German, French and Spanish, grows to fit them and so drops under its label, where
+   it has the whole row: at a fixed width it cut the value it showed to "Tous les paramètres
+   synchr...". Only a value longer than the row ends in an ellipsis, rather than running under the
+   chevron. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
-  width: 13.5rem;
+  width: auto;
+  min-width: min(13.5rem, 100%);
   max-width: 100%;
   text-overflow: ellipsis;
   padding-block: 7px;
@@ -14751,11 +15198,33 @@ body.theme-light
   display: none;
 }
 
-/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. */
+/* The passphrase gets the line; its Show button sits beside it and wraps under it when narrow. The
+   field gives way down to 200px, so the button keeps its place beside it at the default size now that
+   it carries an eye. */
 #settings-modal .profile-sync-passphrase-row > input {
-  flex: 1 1 220px;
+  flex: 1 1 200px;
   min-width: 0;
   margin: 0;
+}
+
+/* Show passphrase is a toggle whose label stays put (aria-pressed says which way it is set), so
+   its state has to show. Its eye is crossed out while the passphrase is hidden and open while it
+   shows, and pressed it takes a deeper accent fill with a full accent edge, the way a selected chip
+   is drawn. Unpressed and pressed were pixel for pixel the same, with the passphrase in plain text
+   beside a button that still offered to show it; an accent ring inside the edge then read as a
+   second focus ring beside the focused field. */
+#profile-sync-passphrase-reveal[aria-pressed='true'] .passphrase-reveal-icon-hidden,
+#profile-sync-passphrase-reveal:not([aria-pressed='true']) .passphrase-reveal-icon-shown {
+  display: none;
+}
+
+#profile-sync-passphrase-reveal > svg {
+  flex: none;
+}
+
+#profile-sync-passphrase-reveal[aria-pressed='true'] {
+  background: rgba(var(--accent-rgb), 0.3);
+  border-color: var(--accent);
 }
 
 #settings-modal .profile-sync-passphrase-confirm {
@@ -14962,20 +15431,24 @@ body:not(.high-contrast) #quick-controls .media-player-entity:not([data-unavaila
   background-color: var(--tile-bg);
 }
 
-/* An unavailable tile stays dashed and dimmed. On glass it gets a pane of its own so its dimmed
-   labels keep their contrast over a bright wallpaper; on the solid dark panel it stays clear. */
+/* An unavailable tile, and the repair tile of an entity that is gone, stay dashed and dimmed. On
+   glass and on the light panel they get a pane of the window's own colour, so their dimmed labels
+   keep their contrast over a bright wallpaper; on the solid dark panel they stay clear. The pane is
+   nearly opaque: a dialog's scrim blurs what is behind it and lays the blur over it, and where that
+   was half see-through (a clear repair tile, the light tile at 70%) the sharp text underneath showed
+   through, so that one tile looked as if it sat on top of the dialog. A repair tile's hover keeps
+   its own fill. */
 body.frosted-glass:not(.theme-light, .high-contrast)
   #quick-controls
-  .control-item[data-unavailable='true'] {
+  :is(.control-item[data-unavailable='true'], .control-item.unavailable-entity:not(:hover)),
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  :is(.control-item[data-unavailable='true'], .control-item.unavailable-entity:not(:hover)) {
   background: color-mix(
     in srgb,
     rgba(var(--window-bg-rgb), 0.9) var(--dash-tile-keep),
     transparent
   );
-}
-
-body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavailable='true'] {
-  background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
 /* A near-white tile barely changes when its fill goes from 88% to 96% white, so on the light panel
@@ -15190,14 +15663,21 @@ body.density-compact #quick-controls {
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: auto;
   min-height: var(--qa-tile-height);
-  /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the
-     icon above and the state below were cut off equally. */
+}
+
+/* A tile too full for its height loses its bottom edge, not both ends: with plain centring the icon
+   above and the state below were cut off equally. A camera tile with a preview keeps its caption at
+   the foot, where the picture's scrim is: centred, the name slid up under the camera icon. */
+#quick-controls
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile) {
   justify-content: safe center;
 }
 
 /* While editing, the buttons take the top of every tile and the content sits below them, which
-   leaves no slack for a floor: the tiles keep the fixed row height they always had, and the name
-   sits where it did, a few pixels closer to the icon. */
+   leaves no slack for a floor: the tiles keep the fixed row height they always had, so their content
+   never makes a row taller, and the name sits where it did, a few pixels closer to the icon. A row
+   that a taller media tile has made deeper still takes them to its foot, as it does outside edit
+   mode: the extra height only adds room under the state line. */
 #quick-controls.reorganize-mode {
   --qa-tile-info-offset: 0px;
 }
@@ -15205,6 +15685,7 @@ body.density-compact #quick-controls {
 #quick-controls.reorganize-mode
   .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: var(--qa-tile-height);
+  min-height: 100%;
 }
 
 /* Icon, name and state hang from the top. Centring the name block in what is left under the icon
@@ -15699,6 +16180,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   display: none;
 }
 
+/* A pop-up whose only controls were those (a fan or a light that only turns on and off, a cover
+   that cannot be moved from here) has nothing left in its content block, whose padding stood as
+   75px of empty space between the note and the footer. */
+.modal.entity-unavailable
+  :is(.brightness-content, .fan-content, .cover-content):not(:has(input, button, select)) {
+  display: none;
+}
+
 .modal.entity-unavailable :is(.modal-body, .modal-footer) :is(input, button):disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -15846,7 +16335,6 @@ body.desktop-pin-mode.theme-light {
   --success-text: var(--success);
   --warning-text: var(--warning);
   --error-text: #ff8a80;
-  --danger-text: #ff8a80;
   --accent-text: var(--accent-text-dark, var(--accent));
   --accent-text-hover: var(--accent-text-dark-hover, var(--accent-hover));
   --desktop-pin-ink-rgb: 255, 255, 255;
@@ -15892,8 +16380,8 @@ body.desktop-pin-mode
   padding: 6px 8px;
 }
 
-/* A small climate pin shows its target as one row ("TARGET 22°C") and drops the header copy of
-   the same number, so the mode buttons fit above the rounded bottom edge. */
+/* A small climate pin shows its target as one row ("TARGET 22°C"), so the mode buttons fit above
+   the rounded bottom edge. */
 body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-stat {
@@ -15907,12 +16395,6 @@ body.desktop-pin-mode
   .desktop-pin-panel-control[data-dense-variant='tight']
   .desktop-pin-climate-target-value {
   width: auto;
-}
-
-body.desktop-pin-mode
-  .desktop-pin-panel-control[data-dense-variant='tight']
-  .desktop-pin-climate-kpi {
-  display: none;
 }
 
 /* A toast raised in a pin (a failed command) has 168px to sit in, so it shrinks to the window
@@ -16517,37 +16999,43 @@ body[data-season='thanksgiving'] .control-item {
   --season-sit-size: 20px;
 }
 
+/* The holiday art moves only where motion is welcome and a GPU draws it. Without one, each of these
+   repaints its piece of the window on the CPU for as long as the holiday lasts, so a software-rendered
+   window keeps it still, as it does the scene behind (see src/seasonal-effects.js). */
 @media (prefers-reduced-motion: no-preference) {
-  body[data-season='halloween'] .status-card:not(.weather-card, .primary-light-card)::after {
+  body:not(.software-rendering)[data-season='halloween']
+    .status-card:not(.weather-card, .primary-light-card)::after {
     animation: season-spider-dangle 6s var(--ease-in-out) infinite;
   }
 
-  body[data-season='halloween'] .control-item:nth-child(3n + 2):not(.activating)::after,
-  body[data-season='halloween'] .weather-card:not(.primary-light-card)::after,
-  body[data-season='halloween'] .drag-area::after {
+  body:not(.software-rendering)[data-season='halloween']
+    .control-item:nth-child(3n + 2):not(.activating)::after,
+  body:not(.software-rendering)[data-season='halloween']
+    .weather-card:not(.primary-light-card)::after,
+  body:not(.software-rendering)[data-season='halloween'] .drag-area::after {
     animation: season-candle-flicker 2.8s linear infinite;
   }
 
-  body[data-season='halloween'] .modal-content::after {
+  body:not(.software-rendering)[data-season='halloween'] .modal-content::after {
     animation: season-float 4s var(--ease-in-out) infinite alternate;
   }
 
-  body[data-season='valentines'] .drag-area::after {
+  body:not(.software-rendering)[data-season='valentines'] .drag-area::after {
     animation: season-heartbeat 1.6s var(--ease-in-out) infinite;
   }
 
-  body[data-season='lunar-new-year'] .control-item::before,
-  body[data-season='lunar-new-year'] .status-card::before,
-  body[data-season='lunar-new-year'] .modal-content::before {
+  body:not(.software-rendering)[data-season='lunar-new-year'] .control-item::before,
+  body:not(.software-rendering)[data-season='lunar-new-year'] .status-card::before,
+  body:not(.software-rendering)[data-season='lunar-new-year'] .modal-content::before {
     animation: season-lantern-sway 3.5s var(--ease-in-out) infinite alternate;
   }
 
-  body[data-season] .widget-header::after {
+  body:not(.software-rendering)[data-season] .widget-header::after {
     animation: season-garland-sway 4s var(--ease-in-out) infinite alternate;
   }
 
   /* After the rule above, which it would otherwise lose to: the lights twinkle as they sway. */
-  body[data-season='christmas'] .widget-header::after {
+  body:not(.software-rendering)[data-season='christmas'] .widget-header::after {
     animation:
       season-lights-twinkle 2.4s var(--ease-in-out) infinite alternate,
       season-garland-sway 4s var(--ease-in-out) infinite alternate;
@@ -16762,8 +17250,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
-     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. */
+     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. A tile
+     that needs attention is outlined the same way and keeps its badge, drawn in the text colour. */
   #quick-controls .control-item[data-active='true'],
+  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost),
   .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
@@ -16774,7 +17264,9 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .media-mute-toggle.active,
   .entity-item.selected,
   .donate-amount-chip.selected,
+  #profile-sync-passphrase-reveal[aria-pressed='true'],
   .desktop-pin-panel-button[data-active='true'],
+  .desktop-pin-light-preset[data-active='true'],
   .desktop-pin-power[data-active='true'] {
     outline: 2px solid Highlight;
     outline-offset: -2px;
@@ -16783,6 +17275,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .timer-entity[data-state='paused'] {
     outline: 2px dashed Highlight;
     outline-offset: -2px;
+  }
+
+  #quick-controls .control-item[data-attention] > .control-icon::after {
+    forced-color-adjust: none;
+    background: CanvasText;
   }
 
   /* In edit mode the active page's wrapper owns the highlight. The link inside it would ring as
@@ -17013,10 +17510,19 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* A custom scrollbar thumb is a background, which is the Canvas colour here. */
-  ::-webkit-scrollbar,
-  .modal-body::-webkit-scrollbar {
+  ::-webkit-scrollbar {
     width: 12px;
     height: 12px;
+  }
+
+  /* A dialog body gives back the gutter it holds, so its scrollbar's width lives in one place. */
+  .modal-body {
+    --modal-scrollbar-size: 12px;
+  }
+
+  .modal-body::-webkit-scrollbar {
+    width: var(--modal-scrollbar-size);
+    height: var(--modal-scrollbar-size);
   }
 
   ::-webkit-scrollbar-thumb,
@@ -17049,7 +17555,9 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
    left-to-right text. In a right-to-left page the bidi algorithm would move the minus sign and the
    unit to the wrong side, so these elements take their direction from their own text instead:
    "15,6 °C" reads left to right, a translated "مفتوح 50%" still reads right to left, and a long
-   English name is cut at its end. */
+   English name is cut at its end. A notification's message is Markdown, drawn as paragraphs, list
+   items and quotes; unicode-bidi is not inherited, so each of those blocks is listed itself, or
+   "2 issues need attention:" would read ":issues need attention 2" under an Arabic interface. */
 [dir='rtl']
   :is(
     .weather-temp,
@@ -17088,6 +17596,9 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
     .quick-access-tab-label,
     .persistent-notification-title,
     .persistent-notification-message,
+    .persistent-notification-message p,
+    .persistent-notification-message li,
+    .persistent-notification-message blockquote,
     .toast-message,
     .modal-header h2,
     .todo-item-summary,
@@ -17122,17 +17633,39 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   text-align: right;
 }
 
-/* A name that is cut after two lines (the hotkey rows' and the pins') cannot be aligned with
-   text-align: Chromium draws the ellipsis after the aligned text, outside the box, whenever the
-   last line is short, and the name looks cut for no reason. It is as wide as its text instead,
-   which sits the box, and so the name, at the reading edge. The hotkey row's name gives up its
-   full-row basis; the controls under it keep theirs, so they still wrap below it. */
+/* A notification's lists and quotes take the direction of their own text (dir="auto", see
+   notification-markdown.js), so an English list keeps its bullets, and a quote its bar, at the
+   start of its lines. Aligned to the right like the paragraphs around them, their English lines
+   would sit away from their own bullets; instead each is as wide as its text and sits at the
+   reading edge. */
+[dir='rtl'] .persistent-notification-message :is(ul, ol, blockquote) {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  text-align: start;
+}
+
+/* Code reads left to right in any language. Right-aligned, a YAML snippet's lines lose their
+   indentation to a ragged edge. */
+[dir='rtl'] .persistent-notification-message pre {
+  direction: ltr;
+  text-align: left;
+}
+
+/* A name that is cut after a few lines (the hotkey rows', the pins' and the media dialog's track
+   and artist) cannot be aligned with text-align: Chromium draws the ellipsis after the aligned
+   text, outside the box, whenever the last line is short, and the name looks cut for no reason. It
+   is as wide as its text instead, which sits the box, and so the name, at the reading edge. The
+   hotkey row's name gives up its full-row basis; the controls under it keep theirs, so they still
+   wrap below it. */
 [dir='rtl']
   :is(
     .desktop-pin-light-name,
     .desktop-pin-panel-name,
     .desktop-pin-media-title,
-    .desktop-pin-media-artist
+    .desktop-pin-media-artist,
+    .media-detail-title,
+    .media-detail-artist
   ) {
   width: fit-content;
   max-width: 100%;
@@ -17198,6 +17731,14 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 [dir='rtl'] :is(#popup-hotkey-input, .hotkey-input),
 [dir='rtl'] :is(#popup-hotkey-input, .hotkey-input)::placeholder {
   unicode-bidi: plaintext;
+}
+
+/* A custom colour's name is the user's own text in any script, or the default one ("#AB34CD مخصص")
+   with its hex code isolated. It reads in the direction of its text, as the summary line above it
+   does, and starts at the reading edge like the fields around it. */
+[dir='rtl'] #custom-color-name-input {
+  unicode-bidi: plaintext;
+  text-align: right;
 }
 
 /* A turning arrow points the way the page reads. The undo of the dashboard history is the only

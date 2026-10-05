@@ -139,13 +139,15 @@ describe('what floats over the window on Linux, where backdrop blur is off', () 
     '.toast',
     '.connection-status-tooltip',
     '.theme-tooltip-flyout',
+    // The label beside the Settings rail, which floats over the page's own text.
+    '.tab-tooltip',
   ];
   const dialogBackground = (selector, bodyClass) => {
     render(
       bodyClass,
       `<div class="command-palette-panel"></div><div class="toast"></div>
        <div class="connection-status-tooltip"></div><div class="theme-tooltip-flyout"></div>
-       <div class="modal"><div class="modal-content"></div></div>`
+       <div class="modal"><div class="modal-content"><div class="tab-tooltip"></div></div></div>`
     );
     const element = document.querySelector(selector);
     return {

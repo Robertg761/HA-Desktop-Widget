@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
+import { readBundledLocalePackVersions } from './scripts/bundled-locale-pack-versions.cjs';
 
 // Read package.json for version injection
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
@@ -36,6 +37,7 @@ export default defineConfig(({ mode }) => {
     define: {
       // Inject app version at build time
       __APP_VERSION__: JSON.stringify(pkg.version),
+      __BUNDLED_LOCALE_PACK_VERSIONS__: JSON.stringify(readBundledLocalePackVersions()),
     },
     resolve: {
       alias: {

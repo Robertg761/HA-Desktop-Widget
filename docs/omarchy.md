@@ -4,7 +4,7 @@ Use the Arch package for a stable `ha-desktop-widget` command and launcher entry
 
 On Hyprland the widget uses a native Wayland desktop layer. Normal windows cover it. Drag the title area to move it within its monitor, or use the tray's Move to Monitor menu. Desktop pins keep their own positions on each monitor. Pins move in desktop-pin edit mode.
 
-Always on top and Hide on focus loss are unavailable in desktop layer mode. Use the popup shortcut, a tray click, or `ha-desktop-widget --toggle` to raise the main widget above your windows. The same action, or clicking elsewhere after using the widget, lowers it back to the desktop. On Hyprland, where focus follows the mouse, the raised widget stays up while the pointer crosses other windows on its way to it, and lowers once the pointer has moved off to something else. Starting the widget with `--show` or `--toggle`, as app launchers and the Omarchy bar do, also raises it once it appears; autostart leaves it on the desktop. Pins stay on the desktop. The tray menu's Show/Hide still hides the widget completely.
+Always on top and Hide on focus loss are unavailable in desktop layer mode. Use the popup hotkey, a tray click, or `ha-desktop-widget --toggle` to raise the main widget above your windows. The same action, or clicking elsewhere after using the widget, lowers it back to the desktop. On Hyprland, where focus follows the mouse, the raised widget stays up while the pointer crosses other windows on its way to it, and lowers once the pointer has moved off to something else. Starting the widget with `--show` or `--toggle`, as app launchers and the Omarchy bar do, also raises it once it appears; autostart leaves it on the desktop. Pins stay on the desktop. The tray menu's Show/Hide still hides the widget completely.
 
 If the widget starts at login before the bar, its tray icon appears as soon as the bar does.
 
@@ -38,19 +38,19 @@ Running timers count down every second in the bar and its open panel, even while
 
 ## Shortcuts
 
-First-run setup explains desktop-layer visibility and offers a popup shortcut check. Use Set up shortcuts to open the Hotkeys settings, configure a popup shortcut, and copy its binding into Hyprland. Return to setup, press the shortcut, then choose Check popup shortcut. Setup can also continue without a shortcut.
+First-run setup explains desktop-layer visibility and offers a popup hotkey check. Use Set up hotkeys to open the Hotkeys settings, configure a popup hotkey, and copy its binding into Hyprland. Return to setup, press the hotkey, then choose Check popup hotkey. Setup can also continue without a hotkey.
 
 The widget retries when the portal is late at login and recreates shortcuts after a portal restart or session closure. Transient failures use increasing retry delays capped at 30 seconds. Cancelling or timing out shortcut approval does not reopen the dialog automatically.
 
-Set a popup or entity shortcut in Settings, then open the Hyprland shortcuts panel. `SUPER + SHIFT + H` is unbound in Omarchy's default bindings for both Omarchy 3.8 and 4, which makes it a good choice for the popup. Choose the configuration format you use: Lua for `.lua` files or Hyprlang for `.conf` files. The Copy bindings button copies the selected format. Check for conflicts with your existing bindings before adding it to your configuration. On Omarchy 4 with Hyprland 0.56, add a Lua binding to `~/.config/hypr/bindings.lua`:
+Set a popup or entity hotkey in Settings, then open the Hyprland shortcuts panel. `SUPER + SHIFT + H` is unbound in Omarchy's default bindings for both Omarchy 3.8 and 4, which makes it a good choice for the popup. Choose the configuration format you use: Lua for `.lua` files or Hyprlang for `.conf` files. The Copy bindings button copies the selected format. Check for conflicts with your existing bindings before adding it to your configuration. On Omarchy 4 with Hyprland 0.56, add a Lua binding to `~/.config/hypr/bindings.lua`:
 
 ```lua
 hl.bind("SUPER + SHIFT + H", hl.dsp.global("com.github.robertg761.hadesktopwidget:popup-toggle"))
 ```
 
-Press the shortcut and use Refresh shortcut status to check whether the widget received it. The widget does not overwrite compositor bindings. For older Hyprland releases using hyprlang, select Hyprlang to copy the equivalent `bind = SUPER SHIFT, H, global, com.github.robertg761.hadesktopwidget:popup-toggle` syntax into your sourced `.conf` file. Newer installations that retain Hyprlang configuration can select it too.
+Press the hotkey and use Refresh hotkey status to check whether the widget received it. The widget does not overwrite compositor bindings. For older Hyprland releases using hyprlang, select Hyprlang to copy the equivalent `bind = SUPER SHIFT, H, global, com.github.robertg761.hadesktopwidget:popup-toggle` syntax into your sourced `.conf` file. Newer installations that retain Hyprlang configuration can select it too.
 
-Existing configurations using `ha_desktop_widget:` keep working: the widget also registers that retired id with the portal while a launcher for it exists. Replace the prefix with `com.github.robertg761.hadesktopwidget:` when convenient. The first shortcut received through the old id writes the replacement bind to the log, and the shortcuts panel shows it after Refresh shortcut status.
+Existing configurations using `ha_desktop_widget:` keep working: the widget also registers that retired id with the portal while a launcher for it exists. Replace the prefix with `com.github.robertg761.hadesktopwidget:` when convenient. The first shortcut received through the old id writes the replacement bind to the log, and the shortcuts panel shows it after Refresh hotkey status.
 
 A launcher binding can also use `ha-desktop-widget --toggle`. `--show` and `--hide` are idempotent. Commands act on the existing instance rather than starting a duplicate.
 

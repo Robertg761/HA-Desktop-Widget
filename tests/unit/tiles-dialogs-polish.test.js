@@ -383,6 +383,29 @@ describe('tile and device dialog polish', () => {
         'Opening 30\u00a0%'
       );
     });
+
+    it('keeps the percentage after an Arabic state word in order, as a light shows it', () => {
+      // Bare, the digits after the Arabic word for Open read right to left and the sign lands in
+      // front: "%70".
+      i18n.setLocaleBootstrap({
+        activeLocale: 'ar',
+        messages: { Open: '\u0645\u0641\u062a\u0648\u062d', On: '\u062a\u0634\u063a\u064a\u0644' },
+      });
+      try {
+        renderTiles([
+          entity('cover.window', 'open', { current_position: 70, supported_features: 15 }),
+          entity('fan.ceiling', 'on', { percentage: 40, supported_features: 1 }),
+        ]);
+        expect(tile('cover.window').querySelector('.control-state').textContent).toBe(
+          '\u0645\u0641\u062a\u0648\u062d \u206670%\u2069'
+        );
+        expect(tile('fan.ceiling').querySelector('.control-state').textContent).toBe(
+          '\u062a\u0634\u063a\u064a\u0644 \u206640%\u2069'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
   });
 
   it('gives a sensor value its own text direction, so a duration in Arabic reads in order', () => {
@@ -552,10 +575,10 @@ describe('tile and device dialog polish', () => {
       state.setEntityState(light('off'));
       expect(document.querySelector('#brightness-value-large').textContent).toBe('0%');
       expect(document.querySelector('#brightness-slider').value).toBe('0');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn On');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn on');
       state.setEntityState(light('on', { brightness: 64 }));
       expect(document.querySelector('#brightness-value-large').textContent).toBe('25%');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn off');
     });
 
     it('does not overwrite a held slider or a pending brightness change', async () => {
@@ -601,7 +624,7 @@ describe('tile and device dialog polish', () => {
       call.resolve({ success: true });
       await jest.advanceTimersByTimeAsync(0);
       expect(document.querySelector('#brightness-value-large').textContent).toBe('50%');
-      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn Off');
+      expect(document.querySelector('#turn-off-btn').textContent).toBe('Turn off');
     });
 
     it('turns back on at the brightness last chosen in the dialog', async () => {

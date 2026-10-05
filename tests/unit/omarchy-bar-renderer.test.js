@@ -64,3 +64,37 @@ describe('a request from the Omarchy bar', () => {
     expect(ui.openUnavailableEntityRepair).toHaveBeenCalledTimes(0);
   });
 });
+
+describe('the tiles the widget describes for the Omarchy bar', () => {
+  function publish(tiles) {
+    const start = source.indexOf('function publishOmarchyBarTiles(');
+    const end = source.indexOf('\n}\n', start) + 3;
+    expect(start).toBeGreaterThan(-1);
+    const publishOmarchyBarTiles = jest.fn();
+    const context = {
+      IS_DESKTOP_PIN_MODE: false,
+      haStatesSnapshotReceived: true,
+      publishedOmarchyBarTiles: '',
+      state: { CONFIG: { omarchyBarEntities: Object.keys(tiles) } },
+      ui: { describeQuickAccessTile: (entityId) => tiles[entityId] },
+      lineIconMarkup: (name) => `<svg width="1em" height="1em" data-name="${name}"></svg>`,
+      window: { electronAPI: { publishOmarchyBarTiles } },
+      log: { warn: jest.fn() },
+    };
+    vm.runInNewContext(`${source.slice(start, end)}\npublishOmarchyBarTiles();`, context);
+    return publishOmarchyBarTiles.mock.calls[0][0];
+  }
+
+  // Main swaps a glyph the bar's font lacks for that line icon, and can only draw one it was sent.
+  it("sends the line icon that stands in for a glyph, beside the tiles' own line icons", () => {
+    const payload = publish({
+      'light.porch': { icon: { kind: 'mdi', glyph: '\u{F1C80}', fallback: 'lightbulb' } },
+      'fan.office': { icon: { kind: 'line', name: 'fan' } },
+    });
+
+    expect(Object.keys(payload.icons).sort()).toEqual(['fan', 'lightbulb']);
+    expect(payload.icons.lightbulb).toBe(
+      '<svg width="24" height="24" data-name="lightbulb"></svg>'
+    );
+  });
+});

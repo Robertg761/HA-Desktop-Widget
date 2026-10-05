@@ -19,7 +19,7 @@ const readPack = (locale) => readJson('locale-packs', `${locale}.json`).messages
 const currentEntries = (messages) => Object.entries(messages).filter(([key]) => key in english);
 
 describe('English wording', () => {
-  // The interface is spelled the American way ("Window & Behavior", "COLORS"). The English text is
+  // The interface is spelled the American way ("Window & behavior", "COLORS"). The English text is
   // the translation key, so a British spelling that slips in is a second spelling of the same word.
   const BRITISH =
     /\b(colou?r\w*|behaviou?r\w*|favourit\w*|centre\w*|grey|licence|catalogue|cancell(?:ed|ing))\b/i;
@@ -42,6 +42,32 @@ describe('English wording', () => {
   it('writes an ellipsis as three dots and an apostrophe straight', () => {
     expect(Object.keys(english).filter((key) => /[…’‘]/.test(key))).toEqual([]);
   });
+
+  // The two portable-update notices quote a button name that is being reworded on its own; they
+  // take curly marks with it.
+  const QUOTING_RENAMED_BUTTON = new Set(
+    Object.keys(english).filter((key) => key.includes('"Download Portable Update"'))
+  );
+
+  it('writes quotation marks curly, never straight', () => {
+    // "Remove "{{name}}" from "{{page}}"?" sat beside "No settings match “{{query}}”".
+    const offenders = Object.keys(english).filter(
+      (key) => key.includes('"') && !QUOTING_RENAMED_BUTTON.has(key)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(packLocales)(
+    'quotes with the marks of the language in %s, never straight ones',
+    (locale) => {
+      // Each pack has its own: « » in French and Spanish, «» in Arabic, „“ in German, “” in Chinese
+      // and Hindi. A straight pair was copied from the English it translated.
+      const offenders = currentEntries(readPack(locale))
+        .filter(([key, text]) => text.includes('"') && !QUOTING_RENAMED_BUTTON.has(key))
+        .map(([key]) => key.slice(0, 60));
+      expect(offenders).toEqual([]);
+    }
+  );
 
   it('keeps the names of the sync buttons in sentence case, as the buttons are written', () => {
     expect(Object.keys(english).filter((key) => /\bSync (Up|Down|Folder)\b/.test(key))).toEqual([]);
@@ -89,6 +115,43 @@ describe('German register and terms', () => {
   });
 });
 
+describe('punctuation and register of the other packs', () => {
+  // Each pack writes its marks one way. Chinese uses full-width punctuation beside its characters
+  // and addresses the reader as 你, French uses the straight apostrophe the rest of the pack uses,
+  // and Spanish names the Settings panel "Configuración" (its values are "ajustes").
+  it('writes Chinese punctuation full-width and addresses the reader as 你', () => {
+    const offenders = currentEntries(readPack('zh'))
+      .filter(
+        ([, text]) => /[\u4e00-\u9fff][,!:;?]|[,!:;?][\u4e00-\u9fff]/.test(text) || /您/.test(text)
+      )
+      .map(([key, text]) => `${key.slice(0, 60)} => ${text}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('holds French guillemets to their words with no-break spaces', () => {
+    // A plain space let a line end after « and start with ».
+    const offenders = currentEntries(readPack('fr'))
+      .filter(([, text]) => /« | »/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+
+  it('writes the French apostrophe straight', () => {
+    const offenders = currentEntries(readPack('fr'))
+      .filter(([, text]) => /[’‘]/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+
+  it('names the Spanish Settings panel Configuración', () => {
+    // macOS's own "Ajustes del Sistema" is the name of that app, not of this panel.
+    const offenders = currentEntries(readPack('es'))
+      .filter(([, text]) => /\ben Ajustes\b(?! del Sistema)/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the palette hint for locks and alarms', () => {
   const normalize = (text) =>
     String(text)
@@ -108,12 +171,12 @@ describe('the palette hint for locks and alarms', () => {
   const cases = [
     [
       'alarm',
-      'To control {{name}}, type "arm" or "disarm".',
+      'To control {{name}}, type “arm” or “disarm”.',
       [['Arm {{name}} at home', 'Arm {{name}} away', 'Arm {{name}} at night'], ['Disarm {{name}}']],
     ],
     [
       'lock',
-      'To control {{name}}, type "lock" or "unlock".',
+      'To control {{name}}, type “lock” or “unlock”.',
       [['Lock {{name}}'], ['Unlock {{name}}']],
     ],
   ];

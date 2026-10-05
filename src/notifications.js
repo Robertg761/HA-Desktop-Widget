@@ -1,7 +1,7 @@
 import websocket from './websocket.js';
 import state from './state.js';
 import { formatClockDateTime, formatRelativeTime as formatAge } from './format.js';
-import { t } from './i18n.js';
+import { formatNumber, t } from './i18n.js';
 import {
   notificationMarkdownToPlainText,
   renderNotificationMarkdown,
@@ -153,16 +153,31 @@ function openPersistentNotificationsPanel() {
   relativeTimeTimer = setInterval(refreshRelativeTimes, RELATIVE_TIME_REFRESH_MS);
 }
 
+// A button waiting on Home Assistant says so with aria-disabled rather than `disabled`, and ignores
+// presses until the answer comes. Chromium moves focus to <body> the moment a focused button is
+// disabled, so the list Home Assistant's removal rebuilds had no focus left to keep, and the next
+// Tab started again at the top of the panel. A button that keeps focus hands it on to the next
+// notification when its row goes, and still has it if the call fails.
+function isPending(button) {
+  return button?.getAttribute('aria-disabled') === 'true';
+}
+
+function setPending(button, pending) {
+  if (!button) return;
+  if (pending) button.setAttribute('aria-disabled', 'true');
+  else button.removeAttribute('aria-disabled');
+}
+
 function dismissPersistentNotification(notificationId, button) {
-  if (!notificationId) return;
-  if (button) button.disabled = true;
+  if (!notificationId || isPending(button)) return;
+  setPending(button, true);
 
   websocket
     .callService('persistent_notification', 'dismiss', {
       notification_id: notificationId,
     })
     .catch((error) => {
-      if (button) button.disabled = false;
+      setPending(button, false);
       console.error('Error dismissing persistent notification:', error);
       // The button just came back with nothing said, which looks like a click that did nothing.
       showToast(t('Could not dismiss notification'), 'error');
@@ -173,16 +188,17 @@ function dismissPersistentNotification(notificationId, button) {
 // a service for it; if this one's does not know it, each notification is dismissed on its own.
 async function dismissAllPersistentNotifications(button) {
   const ids = Array.from(activeNotifications.keys());
-  if (ids.length < 2) return;
+  if (ids.length < 2 || isPending(button)) return;
   const confirmed = await showConfirm(
     t('Dismiss all notifications?'),
     t('This clears {{count}} notifications in Home Assistant, on every device.', {
-      count: ids.length,
+      count: formatNumber(ids.length),
     }),
     { confirmText: t('Dismiss all'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
-  if (button) button.disabled = true;
+  // The question hands focus back to this button as it closes, so it must still be able to take it.
+  setPending(button, true);
   try {
     try {
       await websocket.callService('persistent_notification', 'dismiss_all', {});
@@ -198,7 +214,7 @@ async function dismissAllPersistentNotifications(button) {
     console.error('Error dismissing all persistent notifications:', error);
     showToast(t('Could not dismiss notifications'), 'error');
   } finally {
-    if (button) button.disabled = false;
+    setPending(button, false);
   }
 }
 
@@ -268,7 +284,8 @@ function renderPersistentNotifications() {
   }
 
   if (countElement) {
-    countElement.textContent = count > MAX_BELL_COUNT ? `${MAX_BELL_COUNT}+` : String(count);
+    countElement.textContent =
+      count > MAX_BELL_COUNT ? `${formatNumber(MAX_BELL_COUNT)}+` : formatNumber(count);
   }
 
   // A long backlog gets its size and one way to clear it; one or two notifications do not need either.
@@ -276,7 +293,7 @@ function renderPersistentNotifications() {
   if (toolbar) {
     toolbar.classList.toggle('hidden', count < 2);
     const summary = document.getElementById('persistent-notifications-summary');
-    if (summary) summary.textContent = t('{{count}} notifications', { count });
+    if (summary) summary.textContent = t('{{count}} notifications', { count: formatNumber(count) });
   }
 
   const list = document.getElementById('persistent-notifications-list');

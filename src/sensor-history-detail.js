@@ -103,14 +103,24 @@ function mountSensorHistoryDetail({ body, modal, entity, websocket, normalize, r
       }
       // Every figure carries its unit and the precision the headline reading uses, so the summary
       // cannot read as if only the average had a unit, or give "20.66" beside a "20.7 °C" readout.
+      // Each figure is a piece of its own that wraps as a whole, so a line never ends between
+      // "Sample average" and its value.
       const unit = entity.attributes?.unit_of_measurement;
       const precision = getSensorPrecision(entity.attributes);
       const format = (value) => isolateLtr(joinUnit(formatReadingNumber(value, precision), unit));
-      status.textContent = t('Minimum {{min}} · Maximum {{max}} · Sample average {{average}}', {
-        min: format(stats.min),
-        max: format(stats.max),
-        average: format(stats.average),
+      const figures = [
+        t('Minimum {{value}}', { value: format(stats.min) }),
+        t('Maximum {{value}}', { value: format(stats.max) }),
+        t('Sample average {{value}}', { value: format(stats.average) }),
+      ].map((text) => {
+        const figure = document.createElement('span');
+        figure.className = 'sensor-history-figure';
+        figure.textContent = text;
+        return figure;
       });
+      status.replaceChildren(
+        ...figures.flatMap((figure, index) => (index ? [' · ', figure] : [figure]))
+      );
       frame.hidden = false;
       render(frame, data.series, { start: data.start, end: data.end });
       // Minutes are precise enough for a history period; seconds only add noise.

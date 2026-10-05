@@ -331,7 +331,7 @@ describe('hotkeys module', () => {
         activeLocale: 'de',
         messages: {
           Toggle: 'Umschalten',
-          'Turn On': 'Einschalten',
+          'Turn on': 'Einschalten',
           'Action updated to: {{action}}': 'Aktion geändert: {{action}}',
         },
       });
@@ -424,6 +424,36 @@ describe('hotkeys module', () => {
       consoleError.mockRestore();
     });
 
+    it('lists the entities by name with numbers in natural order, like the other pickers', () => {
+      const container = document.createElement('div');
+      const searchInput = document.createElement('input');
+      container.id = 'hotkeys-list';
+      searchInput.id = 'hotkey-entity-search';
+      document.body.append(container, searchInput);
+      const light = (entityId, name) => ({
+        entity_id: entityId,
+        state: 'off',
+        attributes: { friendly_name: name },
+      });
+      // No saved hotkeys: the living room's would lead the list as a hotkey that cannot fire, as its
+      // light is not among these states.
+      state.CONFIG.globalHotkeys.hotkeys = {};
+      state.setStates({
+        'light.room_10': light('light.room_10', 'Room 10'),
+        'light.room_2': light('light.room_2', 'Room 2'),
+        'light.room_1': light('light.room_1', 'Room 1'),
+      });
+
+      hotkeys.renderHotkeysTab();
+
+      // A plain comparison put "Room 10" before "Room 2".
+      expect(
+        [...container.querySelectorAll('.hotkey-input')].map((input) => input.dataset.entityId)
+      ).toEqual(['light.room_1', 'light.room_2', 'light.room_10']);
+      container.remove();
+      searchInput.remove();
+    });
+
     describe('in a large home', () => {
       let container;
       let searchInput;
@@ -443,6 +473,9 @@ describe('hotkeys module', () => {
           };
         }
         state.setStates(states);
+        // The living room light holding a hotkey is not among these lamps, and a hotkey on an entity
+        // Home Assistant does not list keeps a row ahead of the pages.
+        state.CONFIG.globalHotkeys.hotkeys = {};
       });
       const rows = () => container.querySelectorAll('.hotkey-item');
       const pager = (key) => container.querySelector(`[data-primary-page="${key}"]`);
@@ -570,6 +603,7 @@ describe('hotkeys module', () => {
       const cancel = document.querySelector('.hotkey-capture-cancel');
 
       expect(cancel.textContent).toBe('Cancel');
+      expect(cancel.classList.contains('btn-neutral')).toBe(true);
       // Pressing a key could not reach it anyway: every key is the recording's.
       expect(cancel.tabIndex).toBe(-1);
       cancel.click();
@@ -1579,6 +1613,263 @@ describe('hotkeys module', () => {
     });
   });
 
+  describe('an entity a hotkey has no action for', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temp': {
+          entity_id: 'sensor.office_temp',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temp' },
+        },
+        'camera.porch': { entity_id: 'camera.porch', state: 'idle', attributes: {} },
+        'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} },
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+
+    it('is refused before the recorder opens, since main would refuse the hotkey anyway', async () => {
+      const result = await hotkeys.assignHotkeyToEntity('sensor.office_temp');
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Hotkeys cannot control this kind of entity',
+      });
+      expect(document.querySelector('.hotkey-capture-modal')).toBeNull();
+      expect(mockElectronAPI.registerHotkey).not.toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledWith(
+        'Hotkeys cannot control this kind of entity',
+        'error',
+        3000
+      );
+    });
+
+    it('has no row in the Settings list, which offers the same domains as the tile menu', () => {
+      hotkeys.renderHotkeysTab();
+
+      const rows = [...document.querySelectorAll('#hotkeys-list .hotkey-input')].map(
+        (input) => input.dataset.entityId
+      );
+      expect(rows).toEqual(['light.desk']);
+    });
+
+    describe('that an earlier version saved anyway', () => {
+      const rowOf = (entityId) =>
+        [...document.querySelectorAll('#hotkeys-list .hotkey-item')].find(
+          (row) => row.querySelector('.hotkey-input')?.dataset.entityId === entityId
+        );
+
+      beforeEach(() => {
+        state.CONFIG.globalHotkeys.hotkeys = {
+          'sensor.office_temp': 'Ctrl+Alt+T',
+          'light.gone': { hotkey: 'Ctrl+Alt+G', action: 'toggle' },
+          'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' },
+        };
+      });
+
+      it('keeps a row, first, with the hotkey and a Clear button, and says why it does nothing', () => {
+        hotkeys.renderHotkeysTab();
+
+        const ids = [...document.querySelectorAll('#hotkeys-list .hotkey-input')].map(
+          (input) => input.dataset.entityId
+        );
+        expect(ids).toEqual(['light.gone', 'sensor.office_temp', 'light.desk']);
+
+        const row = rowOf('sensor.office_temp');
+        expect(row.querySelector('.entity-name').textContent).toBe('Office temp');
+        const field = row.querySelector('.hotkey-input');
+        expect(field.value).toBe('Ctrl+Alt+T');
+        // Nothing to record or to pick: only the Clear button is live.
+        expect(field.disabled).toBe(true);
+        expect(row.querySelector('.hotkey-action-select')).toBeNull();
+        const clear = row.querySelector('.btn-clear-hotkey');
+        expect(clear.getAttribute('aria-label')).toBe('Clear hotkey for Office temp');
+        const note = document.getElementById(clear.getAttribute('aria-describedby'));
+        expect(note.textContent).toBe('Hotkeys cannot control this kind of entity');
+        expect(field.getAttribute('aria-describedby')).toBe(note.id);
+      });
+
+      it('names one Home Assistant no longer lists by its id, as unavailable', () => {
+        hotkeys.renderHotkeysTab();
+
+        const row = rowOf('light.gone');
+        expect(row.querySelector('.entity-name').textContent).toBe('light.gone');
+        expect(row.querySelector('.hotkey-item-note').textContent).toBe('Unavailable');
+        expect(row.querySelector('.hotkey-input').value).toBe('Ctrl+Alt+G');
+      });
+
+      it('is found by the search, and drops out of the list once it is cleared', async () => {
+        document.getElementById('hotkey-entity-search').value = 'office';
+        hotkeys.renderHotkeysTab();
+        expect(rowOf('sensor.office_temp')).toBeDefined();
+        expect(rowOf('light.gone')).toBeUndefined();
+
+        mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: true });
+        await expect(hotkeys.clearEntityHotkey('sensor.office_temp')).resolves.toBe(true);
+        expect(mockElectronAPI.unregisterHotkey).toHaveBeenCalledWith('sensor.office_temp');
+        expect(rowOf('sensor.office_temp')).toBeUndefined();
+      });
+
+      it('waits for Home Assistant to send its entities before calling any of them gone', () => {
+        state.setStates({});
+        hotkeys.renderHotkeysTab();
+
+        expect(document.querySelector('#hotkeys-list .hotkey-item')).toBeNull();
+        expect(document.querySelector('#hotkeys-list .hotkeys-empty').textContent).toBe(
+          'Connect to Home Assistant to assign hotkeys'
+        );
+      });
+    });
+  });
+
+  describe('a garage door, a valve, a lock, a humidifier and a siren', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = { enabled: true, hotkeys: {} };
+      state.setConfig(config);
+      state.setStates(
+        Object.fromEntries(
+          ['cover.garage', 'valve.garden', 'lock.front', 'humidifier.bedroom', 'siren.hall'].map(
+            (id) => [id, { entity_id: id, state: 'off', attributes: {} }]
+          )
+        )
+      );
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    });
+
+    it("are listed with the actions their tiles have, not a light switch's", () => {
+      hotkeys.renderHotkeysTab();
+
+      const actions = Object.fromEntries(
+        [...document.querySelectorAll('#hotkeys-list select.hotkey-action-select')].map(
+          (select) => [select.dataset.entityId, [...select.options].map((option) => option.value)]
+        )
+      );
+      // A cover, a valve and a lock have no turn_on or turn_off service; a toggle does what a
+      // click on the tile does.
+      expect(actions).toEqual({
+        'cover.garage': ['toggle'],
+        'valve.garden': ['toggle'],
+        'lock.front': ['toggle'],
+        'humidifier.bedroom': ['toggle', 'turn_on', 'turn_off'],
+        'siren.hall': ['toggle', 'turn_on', 'turn_off'],
+      });
+    });
+  });
+
+  it('draws the clear button with the line X icon, not a text ×', () => {
+    const config = getMockConfig();
+    config.globalHotkeys = {
+      enabled: true,
+      hotkeys: { 'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' } },
+    };
+    state.setConfig(config);
+    state.setStates({ 'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} } });
+    hotkeys.cleanupHotkeyEventListeners();
+    document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    hotkeys.renderHotkeysTab();
+
+    const clear = document.querySelector('.btn-clear-hotkey');
+    expect(clear.querySelector('svg.entity-line-icon[data-icon="x"]')).not.toBeNull();
+    expect(clear.textContent.trim()).toBe('');
+  });
+
+  describe('clearing a hotkey', () => {
+    beforeEach(() => {
+      const config = getMockConfig();
+      config.globalHotkeys = {
+        enabled: true,
+        hotkeys: {
+          'light.desk': { hotkey: 'Ctrl+Alt+D', action: 'toggle' },
+          'sensor.office_temp': { hotkey: 'Ctrl+Alt+T', action: 'toggle' },
+        },
+      };
+      state.setConfig(config);
+      state.setStates({
+        'light.desk': { entity_id: 'light.desk', state: 'on', attributes: {} },
+        'sensor.office_temp': {
+          entity_id: 'sensor.office_temp',
+          state: '21.4',
+          attributes: { friendly_name: 'Office temp' },
+        },
+      });
+      hotkeys.cleanupHotkeyEventListeners();
+      document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+      hotkeys.renderHotkeysTab();
+    });
+
+    it('drops it from the list once main has removed it, and passes on main’s warning', async () => {
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({
+        success: true,
+        warning: 'Another shortcut could not be activated',
+      });
+
+      await expect(hotkeys.clearEntityHotkey('light.desk')).resolves.toBe(true);
+
+      expect(mockElectronAPI.unregisterHotkey).toHaveBeenCalledWith('light.desk');
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk']).toBeUndefined();
+      expect(document.querySelector('.hotkey-input[data-entity-id="light.desk"]').value).toBe('');
+      expect(showToast).toHaveBeenCalledWith(
+        'Another shortcut could not be activated',
+        'warning',
+        4000
+      );
+    });
+
+    it('keeps the hotkey and says main’s reason when removing it fails', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Portal removal failed',
+      });
+
+      await expect(hotkeys.clearEntityHotkey('light.desk')).resolves.toBe(false);
+
+      expect(state.CONFIG.globalHotkeys.hotkeys['light.desk']).toEqual({
+        hotkey: 'Ctrl+Alt+D',
+        action: 'toggle',
+      });
+      expect(showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+      consoleError.mockRestore();
+    });
+
+    it('says the hotkey was not cleared, not that hotkeys failed to toggle, without a reason', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: false });
+
+      await hotkeys.clearEntityHotkey('light.desk');
+      mockElectronAPI.unregisterHotkey.mockRejectedValueOnce(new Error(''));
+      await hotkeys.clearEntityHotkey('light.desk');
+
+      expect(showToast.mock.calls).toEqual([
+        ['Failed to clear hotkey', 'error', 3000],
+        ['Failed to clear hotkey', 'error', 3000],
+      ]);
+      consoleError.mockRestore();
+    });
+
+    it('confirms a removal from the tile menu by name, as nothing on the tile shows it', async () => {
+      await expect(hotkeys.removeEntityHotkey('sensor.office_temp')).resolves.toBe(true);
+
+      expect(state.CONFIG.globalHotkeys.hotkeys['sensor.office_temp']).toBeUndefined();
+      expect(showToast).toHaveBeenCalledWith('Hotkey removed for Office temp', 'success', 2200);
+    });
+
+    it('says nothing more from the tile menu when the removal failed', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.unregisterHotkey.mockResolvedValueOnce({ success: false, error: 'No' });
+
+      await expect(hotkeys.removeEntityHotkey('sensor.office_temp')).resolves.toBe(false);
+
+      expect(showToast.mock.calls).toEqual([['No', 'error', 3000]]);
+      consoleError.mockRestore();
+    });
+  });
+
   describe('module exports', () => {
     it('should export all required functions', () => {
       expect(typeof hotkeys.initializeHotkeys).toBe('function');
@@ -1605,6 +1896,14 @@ describe('entity hotkey row layout', () => {
       .filter(([, selectors]) => selectors.split(',').some((part) => part.trim() === selector))
       .map(([, , body]) => body)
       .join(';');
+
+  it('sizes the clear button to the 32px field and select beside it, with no bold text glyph', () => {
+    const clear = declarationsFor('.btn-clear-hotkey');
+    expect(clear).toMatch(/width:\s*32px/);
+    expect(clear).toMatch(/height:\s*32px/);
+    expect(clear).toMatch(/border-radius:\s*var\(--radius-md\)/);
+    expect(clear).not.toMatch(/font-weight/);
+  });
 
   it('gives the hotkey field the row so translated placeholders are not clipped', () => {
     // German "Kein Tastenkürzel gesetzt" does not fit a fixed 120px field: the field takes what

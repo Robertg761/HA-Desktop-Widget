@@ -343,6 +343,27 @@ describe('package metadata', () => {
     expect(config.mac.category).toBe('public.app-category.utilities');
     expect(config.mac.extendInfo.LSUIElement).toBe(true);
   });
+
+  it("drops the camera, microphone and Bluetooth usage strings from Electron's Info.plist", () => {
+    // The keys Electron 43's own Info.plist carries, with its placeholder text.
+    const electronPlist = {
+      CFBundleName: 'Electron',
+      NSAudioCaptureUsageDescription: 'This app needs access to audio capture',
+      NSBluetoothAlwaysUsageDescription: 'This app needs access to Bluetooth',
+      NSBluetoothPeripheralUsageDescription: 'This app needs access to Bluetooth',
+      NSCameraUsageDescription: 'This app needs access to the camera',
+      NSMicrophoneUsageDescription: 'This app needs access to the microphone',
+    };
+    // What electron-builder's macPackager does with extendInfo: merge it, then delete null keys.
+    const { deepAssign } = require('builder-util-runtime');
+    const plist = deepAssign({ ...electronPlist }, config.mac.extendInfo);
+    for (const [key, value] of Object.entries(plist)) {
+      if (value === null || value === undefined) delete plist[key];
+    }
+
+    expect(Object.keys(plist).filter((key) => key.endsWith('UsageDescription'))).toEqual([]);
+    expect(plist).toMatchObject({ CFBundleName: 'Electron', LSUIElement: true });
+  });
 });
 
 describe('the Chromium locales that ship', () => {
@@ -460,7 +481,8 @@ describe('the Chromium locales that ship', () => {
     const comment = text.slice(0, text.indexOf('\nelectronLanguages:'));
     for (const pak of ['es-419', 'zh-TW', 'en-GB', 'en-US']) expect(comment).toContain(pak);
     expect(comment).toContain('detectSystemLocale');
-    expect(comment).toContain('pickSpellCheckerLanguage');
+    // The spell checker is off, not set from the paks; the comment points to where.
+    expect(comment).toContain('src/spell-checker.cjs');
   });
 });
 

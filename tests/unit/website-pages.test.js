@@ -151,6 +151,22 @@ function pngAlpha(file) {
   return { width, height, alphaAt: (x, y) => rows[y][x * 4 + 3] };
 }
 
+describe('the facts under the home page buttons', () => {
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const declarations = (selector) =>
+    css.match(
+      new RegExp(`(?:^|\\})\\s*${selector.replace(/[.()[\]]/g, '\\$&')}\\s*\\{([^}]*)\\}`)
+    )?.[1] ?? '';
+
+  // The longest fact wraps on a phone. As a flex item its text filled the row and was centred in
+  // it, while the check mark, the other flex item, stayed at the row's edge, far from the words.
+  it('keep the check mark of a fact that wraps beside its first word', () => {
+    expect(html.index).toContain('<ul class="facts"');
+    expect(declarations('.facts li')).not.toMatch(/display:\s*flex/);
+    expect(declarations('.facts li::before')).toMatch(/display:\s*inline-block/);
+  });
+});
+
 describe('the website images', () => {
   const shareImages = (page) => [
     html[page].match(/property="og:image" content="([^"]+)"/)?.[1],

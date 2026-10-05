@@ -265,6 +265,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      function isHyprland() { return false; }
      function windowsAreAlwaysTransparent() { return false; }
      function getSystemColorScheme() { return null; }
+     function rendersInSoftware() { return false; }
      function hasDeferredSecureConfigWork() { return false; }
      function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
      var config = null;

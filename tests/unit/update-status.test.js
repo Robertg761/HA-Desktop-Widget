@@ -32,6 +32,17 @@ describe('update state', () => {
       expect(state).toEqual({ status: 'downloaded', version: '4.0.1' });
     });
 
+    it('leaves out a check the app ran on its own that found nothing new', () => {
+      const ready = { status: 'idle' };
+      const failed = { status: 'error', error: 'offline' };
+
+      // Every six hours: "You are up to date!" in a status region nobody asked about, read out.
+      expect(reduceUpdateEvent(ready, { status: 'none', background: true })).toBe(ready);
+      expect(reduceUpdateEvent(failed, { status: 'none', background: true })).toBe(failed);
+      // A check someone asked for says so.
+      expect(reduceUpdateEvent(ready, { status: 'none' })).toEqual({ status: 'none' });
+    });
+
     it('leaves out the start and the failure of a check the app ran on its own', () => {
       const downloading = { status: 'downloading', version: '4.0.1', percent: 40 };
       const none = { status: 'none' };
@@ -58,9 +69,6 @@ describe('update state', () => {
           background: true,
         })
       ).toEqual({ status: 'available', version: '4.0.1' });
-      expect(reduceUpdateEvent(idle, { status: 'none', background: true })).toEqual({
-        status: 'none',
-      });
       // A failure that is not marked, such as a download failing later, is told.
       expect(reduceUpdateEvent(idle, { status: 'error', error: 'Disk full' })).toEqual({
         status: 'error',
@@ -82,14 +90,13 @@ describe('update state', () => {
       expect(
         reduceUpdateEvent(idle, {
           status: 'manual',
-          message: 'Update v4.0.1 is available.',
           version: '4.0.1',
           downloadUrl: 'https://example.test/releases',
         })
       ).toEqual({
         status: 'manual',
-        message: 'Update v4.0.1 is available.',
         version: '4.0.1',
+        prerelease: false,
         downloadUrl: 'https://example.test/releases',
       });
     });
@@ -166,9 +173,9 @@ describe('update state', () => {
       const label = (update) => describeUpdateState(update).installLabel;
 
       expect(label({ status: 'downloaded' })).toBe('Install update');
-      expect(label({ status: 'manual', downloadUrl: 'https://x.test' })).toBe('Download Update');
+      expect(label({ status: 'manual', downloadUrl: 'https://x.test' })).toBe('Download update');
       expect(label({ status: 'portable', downloadUrl: 'https://x.test' })).toBe(
-        'Download Portable Update'
+        'Download portable update'
       );
       // A release with no link has nothing to open.
       expect(label({ status: 'manual' })).toBeNull();

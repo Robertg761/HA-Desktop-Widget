@@ -3,6 +3,7 @@ import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js'
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
 import { createEmojiSupportCheck } from './emoji-support.js';
+import { getEmojiNameLanguage, loadEmojiNames } from './emoji-names.js';
 import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
 import { paginate, renderListPager } from './list-pager.js';
 import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
@@ -39,7 +40,7 @@ import {
   recordKeyEvent,
 } from './hotkeys.js';
 import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
-import { syncSlidingIndicator } from './motion.js';
+import { prefersReducedMotion, syncSlidingIndicator } from './motion.js';
 import {
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthReauthReason,
@@ -67,6 +68,7 @@ import {
   getLocaleState,
   isolateLtr,
   t,
+  translateDocument,
 } from './i18n.js';
 import {
   compareNames,
@@ -74,8 +76,11 @@ import {
   formatClockDateTime,
   formatClockTime,
   formatList,
+  formatMeasurement,
   formatPercent,
   getClockFaceTimeOptions,
+  getSensorReading,
+  parseNumericState,
 } from './format.js';
 import {
   SHOW_DURATION_MS,
@@ -95,6 +100,20 @@ import {
 } from './connection.js';
 
 const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
+
+// The pack version of a language the app carries built in (German), written in at build time; empty
+// where the build wrote none (tests, a hand-run renderer).
+function getBundledLocalePackVersion(locale) {
+  const versions =
+    typeof __BUNDLED_LOCALE_PACK_VERSIONS__ === 'object' ? __BUNDLED_LOCALE_PACK_VERSIONS__ : null;
+  return versions?.[locale] || '';
+}
+
+// A built-in language needs no download, so it is neither "Not downloaded" nor a reason to say how
+// to get languages; its downloadable pack is only an update, once it is newer than the built-in copy.
+function isBuiltinLanguagePack(pack) {
+  return !!pack?.locale && BUILTIN_LANGUAGE_OPTIONS.has(pack.locale);
+}
 
 let previewState = null;
 let previewRaf = null;
@@ -136,6 +155,9 @@ let isSyncingCustomColorEditor = false;
 let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
+// The name last written into the custom colour's rename field; a field that still holds it has not
+// been edited.
+let shownCustomColorName = '';
 let settingsUiHooks = null;
 let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
@@ -592,8 +614,19 @@ const CUSTOM_ENTITY_ICON_TERM_SYNONYMS = {
   insects: ['insect', 'animal'],
 };
 const CUSTOM_ENTITY_ICON_GROUP_ALIASES = buildCustomEntityIconGroupAliases();
+// The icons and their search words, for the language in customEntityIconChoicesLanguage. The icon
+// list itself (customEntityIconCatalog) is checked against the computer's fonts once; only the
+// words change with the language.
 let customEntityIconChoices = null;
+let customEntityIconChoicesLanguage = null;
 let customEntityIconChoicesPromise = null;
+// Set while a language's emoji names failed to load. The catalog is used without them, and the next
+// load or picker asks for them again; until then a failed chunk counted as loaded for good.
+let customEntityIconNamesMissing = false;
+// The pickers that have asked once for names that failed to load, so a failure is not retried on
+// every keystroke.
+const customEntityIconPickersAskedForNames = new WeakSet();
+let customEntityIconCatalog = null;
 let rgiEmojiDataCache = null;
 
 function normalizeHexColor(hex) {
@@ -649,6 +682,45 @@ function buildCustomColorId(seed = '') {
   return `${CUSTOM_THEME_ID_PREFIX}${cleanedSeed || 'color'}-${suffix}`;
 }
 
+// The default name versions 3.11 to 4.0 stored with a saved colour, in each language they shipped
+// (English before 3.11). Colours saved since are stored without a name, so the list never grows;
+// it is written out because the packs of the other languages are not loaded, or not installed.
+const STORED_DEFAULT_CUSTOM_COLOR_NAMES = [
+  'Custom {{color}}',
+  'Eigene Farbe {{color}}',
+  '{{color}} personalizado',
+  '{{color}} personnalisée',
+  '{{color}} مخصص',
+  'कस्टम {{color}}',
+  '自定义 {{color}}',
+];
+
+// A saved colour nobody named is stored without a name and shown as "Custom #AB34CD" in the language
+// of the day (see localizeTheme in ui-utils). Before, that default was stored in whatever language
+// the app was in when the colour was saved, and stayed in it; such a name, in any language, is read
+// as no name and leaves the next save without one.
+function isDefaultCustomColorName(name, color) {
+  const text = typeof name === 'string' ? name.trim() : '';
+  return (
+    !text ||
+    text === t('Custom {{color}}', { color }) ||
+    STORED_DEFAULT_CUSTOM_COLOR_NAMES.some(
+      (template) => text === template.replace('{{color}}', color)
+    )
+  );
+}
+
+// The rename field shows a name the way the summary line does, with its hex code isolated (see
+// getThemeDisplayName); what it holds is read back without those marks.
+function readCustomColorNameField(input) {
+  return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
+}
+
+function showCustomColorName(input, theme) {
+  input.value = theme ? getThemeDisplayName(theme) : '';
+  shownCustomColorName = readCustomColorNameField(input);
+}
+
 function normalizeCustomColorList(customColors) {
   if (!Array.isArray(customColors)) return [];
 
@@ -672,10 +744,7 @@ function normalizeCustomColorList(customColors) {
         : new Date().toISOString();
     const updatedAt =
       typeof entry.updatedAt === 'string' && entry.updatedAt.trim() ? entry.updatedAt : createdAt;
-    const name =
-      typeof entry.name === 'string' && entry.name.trim()
-        ? entry.name.trim()
-        : t('Custom {{color}}', { color });
+    const name = isDefaultCustomColorName(entry.name, color) ? '' : entry.name.trim();
 
     seenIds.add(id);
     seenColors.add(color);
@@ -773,13 +842,15 @@ function tokenizeEmojiSearchInput(value) {
     });
 }
 
-function expandEmojiSearchToken(token) {
+// A word as typed and its stem, and with `related` the words it stands for ("mice" for "mouse").
+function expandEmojiSearchToken(token, { related = true } = {}) {
   const normalized = normalizeEmojiSearchToken(token);
   if (!normalized) return [];
 
   const expanded = new Set([normalized]);
   const stemmed = stemEmojiSearchToken(normalized);
   if (stemmed) expanded.add(stemmed);
+  if (!related) return Array.from(expanded);
 
   const mapped =
     CUSTOM_ENTITY_ICON_TERM_SYNONYMS[normalized] || CUSTOM_ENTITY_ICON_TERM_SYNONYMS[stemmed] || [];
@@ -794,9 +865,9 @@ function expandEmojiSearchToken(token) {
   return Array.from(expanded);
 }
 
-function buildEmojiSearchAlternativeGroups(filterValue) {
+function buildEmojiSearchAlternativeGroups(filterValue, options) {
   return tokenizeEmojiSearchInput(filterValue)
-    .map((token) => expandEmojiSearchToken(token))
+    .map((token) => expandEmojiSearchToken(token, options))
     .filter((group) => group.length > 0);
 }
 
@@ -806,10 +877,12 @@ function isNearMatchByEditDistance(left, right) {
   if (!a || !b) return false;
 
   if (a === b) return true;
-  // A short word inside a long one ("tv" in "activity") is not a near match.
-  if (a.includes(b)) return true;
-
-  const maxDistance = a.length <= 4 || b.length <= 4 ? 1 : 2;
+  // A short word inside a long one ("tv" in "activity") is not a near match: a word found inside
+  // another is the exact search's to rank, not a spelling slip. A slip is one letter, or two in a
+  // long word, and not the first letter, which is rarely the one mistyped. Any looser and the names
+  // of four thousand emoji always hold a word close enough: "offline" found "office" and "feline".
+  if (a[0] !== b[0]) return false;
+  const maxDistance = Math.min(a.length, b.length) < 8 ? 1 : 2;
   if (Math.abs(a.length - b.length) > maxDistance) return false;
 
   const prev = new Array(b.length + 1);
@@ -875,36 +948,43 @@ function getCustomEntityIconSearchAliases(icon) {
   return Array.from(new Set([...directAliases, ...groupedAliases]));
 }
 
-function buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms) {
-  const searchTerms = new Set([String(icon || '').toLowerCase()]);
-  const stripped = stripEmojiVariationSelectors(icon);
-  if (stripped) searchTerms.add(stripped.toLowerCase());
+// Chinese and Japanese are written without spaces, so a single character is a word and a word is
+// found inside a longer one ("灯" in "电灯泡", light bulb).
+const UNSPACED_SCRIPT_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 
-  [...aliases, ...codepointTerms].forEach((term) => {
-    const rawTerm = String(term || '').toLowerCase();
+// The words an icon is found by, folded and stemmed like a query: whole names and keywords are cut
+// into words (a hyphenated one also into its parts, so "eyes" finds "heart-eyes"), and a code point
+// is a word of its own.
+function addCustomEntityIconSearchWords(searchTerms, phrases) {
+  phrases.forEach((phrase) => {
+    const rawTerm = String(phrase || '').toLowerCase();
     if (!rawTerm) return;
-    searchTerms.add(rawTerm);
-    tokenizeEmojiSearchInput(rawTerm).forEach((token) => {
-      if (token.length < 2) return;
-      searchTerms.add(token);
-      const stemmed = stemEmojiSearchToken(token);
-      if (stemmed) searchTerms.add(stemmed);
+    const tokens = tokenizeEmojiSearchInput(rawTerm);
+    tokens.forEach((token) => {
+      const parts = token.includes('-') ? [token, ...token.split('-')] : [token];
+      parts.forEach((part) => {
+        if (part.length < 2 && !UNSPACED_SCRIPT_PATTERN.test(part)) return;
+        searchTerms.add(part);
+        const stemmed = stemEmojiSearchToken(part);
+        if (stemmed) searchTerms.add(stemmed);
+      });
     });
   });
-
-  return Array.from(searchTerms);
+  return searchTerms;
 }
 
 // Skin tones, joined people and objects (family, profession), flags and their tag sequences are
 // about three quarters of the emoji list and near-duplicates of one another. They stay findable by
 // searching and by pasting, but the list a person scrolls through does not open with them.
 const ICON_VARIANT_PATTERN = /[\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}\u{E0020}-\u{E007F}]|\u200D/u;
+const SKIN_TONE_PATTERN = /[\u{1F3FB}-\u{1F3FF}]/u;
 
 function isCustomEntityIconVariant(icon) {
   return ICON_VARIANT_PATTERN.test(icon);
 }
 
-function buildCustomEntityIconChoices(rgiEmojiData) {
+// The icons in the order the picker lists them, each checked once against the computer's fonts.
+function buildCustomEntityIconCatalog(rgiEmojiData) {
   // The icons made for the home first, in the order they were written, then the rest of Unicode's
   // emoji. A sorted catalogue opened on copyright signs and keycap digits.
   const curatedIcons = new Set(CUSTOM_ENTITY_ICON_FALLBACKS);
@@ -938,42 +1018,97 @@ function buildCustomEntityIconChoices(rgiEmojiData) {
 
   // Unicode order keeps the neighbours together (faces, animals, food, travel).
   const byCodepoint = (a, b) => a.codePointAt(0) - b.codePointAt(0) || (a < b ? -1 : a > b ? 1 : 0);
-  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => {
+  return [...curatedIcons, ...[...otherIcons].sort(byCodepoint)].map((icon) => ({
+    icon,
+    variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+  }));
+}
+
+/**
+ * The catalog with what each icon is called and found by. `describers` look an icon up in CLDR's
+ * names, the interface's language first; the first one that knows the icon names it.
+ */
+function buildCustomEntityIconChoices(catalog, describers = []) {
+  return catalog.map(({ icon, variant }, order) => {
     const stripped = stripEmojiVariationSelectors(icon);
     const aliases = getCustomEntityIconSearchAliases(icon);
     const codepointTerms = getIconCodepointTerms(icon);
-    const searchTerms = buildCustomEntityIconSearchTerms(icon, aliases, codepointTerms);
-    const searchText = [icon, stripped, ...aliases, ...codepointTerms, ...searchTerms]
-      .join(' ')
-      .toLowerCase();
+    const names = describers.map((describe) => describe(icon)).filter(Boolean);
+    const searchTerms = addCustomEntityIconSearchWords(new Set(), [
+      ...aliases,
+      ...names.flatMap((entry) => entry.words),
+    ]);
+    const toneTerms = addCustomEntityIconSearchWords(
+      new Set(),
+      names.flatMap((entry) => entry.toneWords)
+    );
 
     return {
       icon,
+      stripped,
+      order,
+      label: names[0]?.name || '',
       aliases,
       codepointTerms,
-      searchTerms,
-      searchText,
-      variant: !curatedIcons.has(icon) && isCustomEntityIconVariant(icon),
+      searchTerms: Array.from(searchTerms),
+      toneTerms: Array.from(toneTerms),
+      variant,
+      toned: SKIN_TONE_PATTERN.test(icon),
     };
   });
 }
 
+// English as well as the interface's language: the words written into this file are English, and
+// so are most guides and forum posts people copy names from. Each language stands on its own, so
+// the English names still come when the German ones fail to load. `complete` says whether all did.
+async function loadCustomEntityIconDescribers(language) {
+  const languages = [...new Set([language, 'en'])];
+  const results = await Promise.allSettled(languages.map((code) => loadEmojiNames(code)));
+  const failed = results.filter((result) => result.status === 'rejected');
+  // The picker still works by the names that did load, the English words above and pasting.
+  failed.forEach((result) => log.warn('Could not load the emoji names:', result.reason));
+  return {
+    describers: results
+      .filter((result) => result.status === 'fulfilled' && result.value)
+      .map((result) => result.value),
+    complete: failed.length === 0,
+  };
+}
+
+function getCustomEntityIconNameLanguage() {
+  return getEmojiNameLanguage(getLocaleState().activeLocale) || 'en';
+}
+
+function isCustomEntityIconCatalogCurrent() {
+  return (
+    Array.isArray(customEntityIconChoices) &&
+    customEntityIconChoicesLanguage === getCustomEntityIconNameLanguage()
+  );
+}
+
 async function ensureCustomEntityIconChoicesLoaded() {
-  if (Array.isArray(customEntityIconChoices)) {
+  if (isCustomEntityIconCatalogCurrent() && !customEntityIconNamesMissing) {
     return customEntityIconChoices;
   }
   if (customEntityIconChoicesPromise) {
     return customEntityIconChoicesPromise;
   }
 
+  const language = getCustomEntityIconNameLanguage();
   customEntityIconChoicesPromise = (async () => {
     if (!rgiEmojiDataCache) {
       const rgiEmojiDataModule =
         await import('regenerate-unicode-properties/Property_of_Strings/RGI_Emoji.js');
       rgiEmojiDataCache = rgiEmojiDataModule?.default || rgiEmojiDataModule;
     }
+    if (!customEntityIconCatalog) {
+      customEntityIconCatalog = buildCustomEntityIconCatalog(rgiEmojiDataCache);
+    }
 
-    customEntityIconChoices = buildCustomEntityIconChoices(rgiEmojiDataCache);
+    const { describers, complete } = await loadCustomEntityIconDescribers(language);
+    customEntityIconChoices = buildCustomEntityIconChoices(customEntityIconCatalog, describers);
+    customEntityIconChoicesLanguage = language;
+    customEntityIconNamesMissing = !complete;
     return customEntityIconChoices;
   })();
 
@@ -982,6 +1117,75 @@ async function ensureCustomEntityIconChoicesLoaded() {
   } finally {
     customEntityIconChoicesPromise = null;
   }
+}
+
+// How well a query word matches an icon's words: 3 when it is one of them, 2 when one starts with
+// it, 1 when it is inside one. A word of fewer than four letters only counts whole unless
+// `relaxed`: "car" found "card", "carrot" and "cartwheel" and buried the cars. Inside a word only
+// counts from five letters ("Lampe" in "Taschenlampe"), or in a script written without spaces.
+function getEmojiWordMatchLevel(terms, word, relaxed) {
+  const unspaced = UNSPACED_SCRIPT_PATTERN.test(word);
+  const wholeOnly = word.length < 4 && !unspaced && !relaxed;
+  const inside = word.length >= 5 || unspaced;
+  let level = 0;
+  for (const term of terms) {
+    if (term === word) return 3;
+    if (wholeOnly) continue;
+    if (term.startsWith(word)) level = 2;
+    else if (level < 1 && inside && term.includes(word)) level = 1;
+  }
+  return level;
+}
+
+/**
+ * The sum of how well each query word (with its synonyms) matches, or 0 when one does not. A
+ * skin-tone variant has to be asked for by its tone as well as by what it shows: "thumbs up" finds
+ * one thumb rather than six, and "thumbs up dark" finds the dark one.
+ */
+function scoreCustomEntityIconChoice(choice, groups, relaxed) {
+  let score = 0;
+  let matchedWhat = false;
+  let matchedTone = false;
+  for (const group of groups) {
+    let what = 0;
+    let tone = 0;
+    for (const word of group) {
+      what = Math.max(what, getEmojiWordMatchLevel(choice.searchTerms, word, relaxed));
+      if (choice.toned)
+        tone = Math.max(tone, getEmojiWordMatchLevel(choice.toneTerms, word, relaxed));
+    }
+    if (!what && !tone) return 0;
+    matchedWhat ||= what > 0;
+    matchedTone ||= tone > 0;
+    score += Math.max(what, tone);
+  }
+  return choice.toned && !(matchedWhat && matchedTone) ? 0 : score;
+}
+
+// A code point, as written in a character table: "U+1F600", or four hex digits or more ("1f600",
+// "2764"). A word made of the letters a to f ("bed", "cafe") has no digit and is not one, and a
+// lone "1" would be part of every emoji's code point.
+const CODEPOINT_QUERY_PATTERN = /^(?:u\+[0-9a-f]+|(?=[0-9a-f]*\d)[0-9a-f]{4,})$/;
+
+function matchesCustomEntityIconText(choice, rawFilter) {
+  const pasted = stripEmojiVariationSelectors(rawFilter);
+  if (pasted && (choice.icon.includes(rawFilter) || choice.stripped.includes(pasted))) return true;
+  return (
+    CODEPOINT_QUERY_PATTERN.test(rawFilter) &&
+    choice.codepointTerms.some((term) => term.includes(rawFilter))
+  );
+}
+
+// Best match first; then the icons the picker lists before the variants; then catalog order.
+function rankCustomEntityIconMatches(matches) {
+  return matches
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        Number(a.choice.variant) - Number(b.choice.variant) ||
+        a.choice.order - b.choice.order
+    )
+    .map(({ choice }) => choice);
 }
 
 function getFilteredCustomEntityIconChoices(filterValue = '') {
@@ -993,24 +1197,37 @@ function getFilteredCustomEntityIconChoices(filterValue = '') {
     .toLowerCase();
   if (!rawFilter) return choices.filter((choice) => !choice.variant);
 
+  // A pasted emoji or a code point finds itself even though it has no letters to make a word of.
+  const textMatches = choices.filter((choice) => matchesCustomEntityIconText(choice, rawFilter));
   const alternativeGroups = buildEmojiSearchAlternativeGroups(rawFilter);
-
-  // The text as typed is checked first, so a pasted emoji finds itself even though it has no
-  // letters to make a keyword of.
-  const strictMatches = choices.filter((choice) => {
-    if (choice.searchText.includes(rawFilter)) return true;
-    return (
-      alternativeGroups.length > 0 &&
-      alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, false))
-    );
-  });
-  if (strictMatches.length) return strictMatches;
   // A query with nothing to search by matches nothing, not everything.
-  if (!alternativeGroups.length) return [];
+  if (!alternativeGroups.length) return textMatches;
 
-  // Fallback: fuzzy category search when exact tokens miss.
-  return choices.filter((choice) =>
-    alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, true))
+  const textMatched = new Set(textMatches);
+  const scoreAll = (groups, relaxed) =>
+    choices
+      .filter((choice) => !textMatched.has(choice))
+      .map((choice) => ({ choice, score: scoreCustomEntityIconChoice(choice, groups, relaxed) }))
+      .filter(({ score }) => score > 0);
+  // The words as typed first; the words they stand for only when those find nothing, since "rat"
+  // standing for "animal" listed every animal; and short words from their start only after that.
+  const typedGroups = buildEmojiSearchAlternativeGroups(rawFilter, { related: false });
+  const passes = [
+    [typedGroups, false],
+    [alternativeGroups, false],
+    [alternativeGroups, true],
+  ];
+  for (const [groups, relaxed] of passes) {
+    const wordMatches = scoreAll(groups, relaxed);
+    if (wordMatches.length) return [...textMatches, ...rankCustomEntityIconMatches(wordMatches)];
+  }
+  if (textMatches.length) return textMatches;
+
+  // Fallback: a near spelling ("televison") when nothing matches as typed.
+  return choices.filter(
+    (choice) =>
+      !choice.toned &&
+      alternativeGroups.every((group) => choiceMatchesAlternativeGroup(choice, group, true))
   );
 }
 
@@ -1118,9 +1335,9 @@ function persistCustomColorsImmediately() {
 }
 
 // Built-in theme names are English keys in ui-utils; custom color names are the user's own text.
-// A hex code in one ("Custom #AB34CD", the name a color gets when it is saved) is isolated for
-// display, since in an Arabic sentence its '#' would otherwise land beside the wrong end of it. The
-// name itself is left as typed, because the rename field and the comparison with it use that.
+// A hex code in one ("Custom #AB34CD", the name a color is shown with until it is renamed) is
+// isolated for display, since in an Arabic sentence its '#' would otherwise land beside the wrong
+// end of it. The stored name never holds the marks: the rename field drops them when it is read.
 function getThemeDisplayName(theme) {
   if (!theme) return '';
   if (!theme.isCustom) return t(theme.name || '');
@@ -1255,12 +1472,19 @@ function updateCustomThemeManagementUI(theme = null) {
 
   if (!isCustomTheme) {
     activeCustomManagementThemeId = null;
-    if (nameInput) nameInput.value = '';
+    if (nameInput) showCustomColorName(nameInput, null);
     return;
   }
 
-  if (nameInput && activeCustomManagementThemeId !== selectedTheme.id) {
-    nameInput.value = selectedTheme.name || '';
+  // An untouched name follows the colour and the language, so a default name shown before a language
+  // change is not left behind to be compared with, or saved as, the new one. A name the user typed
+  // stays until they pick another colour, even after the field loses focus: the swatches are drawn
+  // again for a theme mode or a language, and Save still has to ask about it.
+  if (nameInput) {
+    const isUntouched = readCustomColorNameField(nameInput) === shownCustomColorName;
+    if (activeCustomManagementThemeId !== selectedTheme.id || isUntouched) {
+      showCustomColorName(nameInput, selectedTheme);
+    }
   }
   activeCustomManagementThemeId = selectedTheme.id;
 }
@@ -1308,7 +1532,8 @@ function saveCustomColorFromEditor() {
   const timestamp = new Date().toISOString();
   const customColor = {
     id: buildCustomColorId(color.slice(1)),
-    name: t('Custom {{color}}', { color }),
+    // Named when it is shown, in the language of the day; see isDefaultCustomColorName.
+    name: '',
     color,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -1331,9 +1556,9 @@ function renameSelectedCustomColor() {
   const { nameInput } = getCustomColorEditorElements();
   if (!nameInput) return;
 
-  const nextName = (nameInput.value || '').trim();
+  const nextName = readCustomColorNameField(nameInput);
   if (!nextName) {
-    nameInput.value = selectedTheme.name || '';
+    showCustomColorName(nameInput, selectedTheme);
     return;
   }
 
@@ -1342,13 +1567,17 @@ function renameSelectedCustomColor() {
     if (entry.id !== selectedTheme.id) return entry;
     return {
       ...entry,
-      name: nextName,
+      // The default name typed back stays the default, in whatever language comes next.
+      name: isDefaultCustomColorName(nextName, entry.color) ? '' : nextName,
       updatedAt: new Date().toISOString(),
     };
   });
 
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
+  // The field now holds the saved name, so the swatches drawn next may show it in the language of
+  // the day.
+  shownCustomColorName = nextName;
   renderColorThemeOptions();
   showToast(t('Custom color renamed.'), 'success', 1800);
 }
@@ -1360,8 +1589,8 @@ async function removeSelectedCustomColor() {
   // Removing saves at once (Cancel in Settings cannot bring the colour back), and the accent or
   // background using it falls back to the default, so a stray click should not do it.
   const confirmed = await showConfirm(
-    t('Remove Custom Color'),
-    t('Remove "{{name}}" from your custom colors?', { name: selectedTheme.name }),
+    t('Remove custom color'),
+    t('Remove “{{name}}” from your custom colors?', { name: getThemeDisplayName(selectedTheme) }),
     { confirmText: t('Remove'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -1530,7 +1759,7 @@ function hasPendingCustomNameEdit() {
   const { nameInput } = getCustomColorEditorElements();
   if (!nameInput) return false;
 
-  const pendingName = (nameInput.value || '').trim();
+  const pendingName = readCustomColorNameField(nameInput);
   const currentName = (selectedTheme.name || '').trim();
   return !!pendingName && pendingName !== currentName;
 }
@@ -1544,10 +1773,10 @@ async function handlePendingCustomEditorChangesBeforeSave() {
   // do in every dialog: the draft survives and Settings stays open, instead of the draft being thrown
   // away and the whole form saved and closed behind the user's back.
   const choice = await showConfirm(
-    t('Unsaved Custom Color Changes'),
+    t('Unsaved custom color changes'),
     t('You have unsaved custom color edits. Save them before applying settings?'),
     {
-      confirmText: t('Save and Continue'),
+      confirmText: t('Save and continue'),
       alternateText: t('Discard color edits'),
       cancelText: t('Keep editing'),
       confirmClass: 'btn-primary',
@@ -2494,12 +2723,14 @@ function renderPrimaryCardsEntityRows() {
     const isCardOne = selections[0] === entity.entity_id;
     const isCardTwo = selections[1] === entity.entity_id;
 
-    const cardOneLabel = utils.escapeHtml(
-      isCardOne ? t('Card {{index}} ✓', { index: 1 }) : t('Set Card {{index}}', { index: 1 })
-    );
-    const cardTwoLabel = utils.escapeHtml(
-      isCardTwo ? t('Card {{index}} ✓', { index: 2 }) : t('Set Card {{index}}', { index: 2 })
-    );
+    const cardLabel = (isSet, index) =>
+      utils.escapeHtml(
+        isSet
+          ? t('Card {{index}} ✓', { index: formatNumber(index) })
+          : t('Set card {{index}}', { index: formatNumber(index) })
+      );
+    const cardOneLabel = cardLabel(isCardOne, 1);
+    const cardTwoLabel = cardLabel(isCardTwo, 2);
     const cardOneClass = isCardOne ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
     const cardTwoClass = isCardTwo ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
     const cardOneDisabled = isCardOne ? 'aria-disabled="true"' : '';
@@ -2625,10 +2856,13 @@ function updateCustomEntityIconSummary() {
   summaryEl.textContent =
     count === 1
       ? t('1 custom icon configured.')
-      : t('{{count}} custom icons configured.', { count });
+      : t('{{count}} custom icons configured.', { count: formatNumber(count) });
 }
 
+// What CLDR calls the emoji in the interface's language ("Glühbirne"), else the English words
+// written for it here, else its code point.
 function getCustomEntityIconChoiceLabel(choice) {
+  if (choice.label) return choice.label;
   if (choice.aliases.length) {
     const visibleAliases = choice.aliases.slice(0, 4).join(', ');
     return choice.aliases.length > 4 ? `${visibleAliases}, ...` : visibleAliases;
@@ -2645,7 +2879,8 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
   if (!pickerEl) return;
   const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
 
-  if (!choices.length) {
+  // Not loaded yet, or loaded with the names of the language the interface showed before.
+  if (!isCustomEntityIconCatalogCurrent()) {
     pickerEl.innerHTML = '';
     const loadingState = document.createElement('div');
     loadingState.className = 'custom-entity-icon-picker-meta';
@@ -2654,6 +2889,8 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
     ensureCustomEntityIconChoicesLoaded()
       .then(() => {
         if (!pickerEl.isConnected) return;
+        // This picker has just asked; names that did not come are asked for by the next one.
+        customEntityIconPickersAskedForNames.add(pickerEl);
         renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue);
       })
       .catch((error) => {
@@ -2666,6 +2903,22 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
         pickerEl.appendChild(errorState);
       });
     return;
+  }
+
+  // Names that failed to load are asked for again once per picker. It shows what was found without
+  // them meanwhile, and is drawn again for the words typed by then if they come.
+  if (customEntityIconNamesMissing && !customEntityIconPickersAskedForNames.has(pickerEl)) {
+    customEntityIconPickersAskedForNames.add(pickerEl);
+    ensureCustomEntityIconChoicesLoaded()
+      .then(() => {
+        if (customEntityIconNamesMissing || !pickerEl.isConnected) return;
+        renderCustomEntityIconPickerChoices(
+          pickerEl,
+          entityId,
+          getCustomEntityIconPickerQuery(entityId)
+        );
+      })
+      .catch((error) => log.warn('Could not load the emoji names:', error));
   }
 
   const filteredChoices = getFilteredCustomEntityIconChoices(filterValue);
@@ -2866,6 +3119,9 @@ function renderCustomEntityIconRows() {
     input.maxLength = 64;
     input.value = pickerQuery || pendingIcon || '';
     input.autocomplete = 'off';
+    // Icon keywords and pasted emoji, not prose: no spelling squiggles or menus on them.
+    input.spellcheck = false;
+    input.setAttribute('autocapitalize', 'off');
     input.setAttribute('aria-label', t('Custom icon for {{entityId}}', { entityId }));
     input.dataset.customIconInput = entityId;
     actions.appendChild(input);
@@ -2887,7 +3143,7 @@ function renderCustomEntityIconRows() {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'btn btn-secondary btn-reset btn-sm';
+    resetBtn.className = 'btn btn-secondary btn-neutral btn-sm';
     resetBtn.textContent = t('Reset');
     resetBtn.disabled = !hasCustomIcon;
     resetBtn.dataset.customIconReset = entityId;
@@ -3679,7 +3935,7 @@ function updateProfileSyncStatusUi(status, { syncFormState = false } = {}) {
           'The first-time conflict check did not complete. Retry it before syncing.'
         );
       }
-      if (uploadButton) uploadButton.textContent = t('Retry Conflict Check');
+      if (uploadButton) uploadButton.textContent = t('Retry conflict check');
       if (remoteButton) remoteButton.classList.add('hidden');
     } else if (status.damagedConflictSections?.length) {
       // The file's copy is unreadable, so only this computer's can be kept.
@@ -3797,7 +4053,8 @@ function setProfileSyncPassphraseRevealed(revealed) {
     const input = document.getElementById(id);
     if (input) input.type = revealed ? 'text' : 'password';
   });
-  // The label stays put: aria-pressed already tells a screen reader which way it is set.
+  // The label stays put: aria-pressed tells a screen reader which way it is set, and the
+  // stylesheet draws the pressed state.
   if (reveal) reveal.setAttribute('aria-pressed', String(revealed));
 }
 
@@ -3827,7 +4084,7 @@ function renderProfileSyncFolderWarnings(status) {
         const count = Array.isArray(status.conflictCopies) ? status.conflictCopies.length : 0;
         return t(
           'Found {{count}} conflict copy file(s) next to the sync file, which means two devices saved at once. Check the folder and delete the copies you do not need.',
-          { count }
+          { count: formatNumber(count) }
         );
       }
       return '';
@@ -3886,6 +4143,66 @@ function readProfileSyncScopeFromForm() {
     sections[sectionKey] = !!checkbox?.checked;
   });
   return normalizeProfileSyncScope({ preset, sections });
+}
+
+// A row select's value can still end in an ellipsis (a narrow window, large text, a long
+// translation). Then its title says the whole value, as the sync folder field's does, and only
+// then: on a select that shows its whole value the title was a tooltip repeating it, and screen
+// readers read it out again after the value. The value is measured in the select's own font
+// against the room between its padding, so a select on a page not shown (no room) gets none, and
+// pointing at a select measures it again as it is laid out now.
+let rowSelectTextContext = null;
+function isRowSelectValueCut(select, text) {
+  const style = getComputedStyle(select);
+  const room =
+    select.clientWidth -
+    (parseFloat(style.paddingLeft) || 0) -
+    (parseFloat(style.paddingRight) || 0);
+  if (!(room > 0)) return false;
+  rowSelectTextContext ||=
+    typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1).getContext('2d') : null;
+  if (typeof rowSelectTextContext?.measureText !== 'function') return false;
+  rowSelectTextContext.font = style.font;
+  return rowSelectTextContext.measureText(text).width > room;
+}
+
+function syncRowSelectTitle(select) {
+  if (!select?.matches?.('.setting-row > select')) return;
+  const text = select.selectedOptions?.[0]?.textContent.trim() || '';
+  if (text && isRowSelectValueCut(select, text)) select.title = text;
+  else select.removeAttribute('title');
+}
+
+function syncRowSelectTitles(root) {
+  root?.querySelectorAll('.setting-row > select').forEach(syncRowSelectTitle);
+}
+
+// The tray is the menu bar on macOS, where Hide to tray told Mac users to look for a tray. The
+// keys are swapped rather than the text, so a language change keeps the right ones.
+const HIDE_ON_BLUR_TEXT = {
+  tray: {
+    label: 'Hide to tray when focus is lost',
+    help: 'Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins stay visible.',
+  },
+  menuBar: {
+    label: 'Hide to menu bar when focus is lost',
+    help: 'Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.',
+  },
+};
+
+function renderHideOnBlurText() {
+  const text =
+    window.electronAPI?.platform === 'darwin' ? HIDE_ON_BLUR_TEXT.menuBar : HIDE_ON_BLUR_TEXT.tray;
+  const label = document.querySelector('label[for="hide-on-blur"] [data-i18n]');
+  const help = document.getElementById('hide-on-blur-help');
+  [
+    [label, text.label],
+    [help, text.help],
+  ].forEach(([node, key]) => {
+    if (!node) return;
+    node.dataset.i18n = key;
+    node.textContent = t(key);
+  });
 }
 
 /** Sets the folder field. It is cut to its width, so the whole path is its tooltip. */
@@ -4591,7 +4908,7 @@ function bindProfileSyncSettingsUi() {
   if (clearPassphrase) {
     clearPassphrase.onclick = async () => {
       const confirmed = await showConfirm(
-        t('Clear Saved Passphrase'),
+        t('Clear saved passphrase'),
         t(
           'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.'
         ),
@@ -4653,6 +4970,20 @@ function getLanguagePackDisplayName(pack = {}) {
   );
 }
 
+// The pack for the system's language when Auto is showing English for want of it.
+function findSystemLanguagePackToDownload() {
+  const { usingEnglishFallback, detectedLocale } = getLocaleState();
+  if (!usingEnglishFallback) return null;
+  const language = String(detectedLocale || '')
+    .split('-')[0]
+    .toLowerCase();
+  return (
+    localePackListCache.find(
+      (pack) => !pack.installed && String(pack.locale || '').toLowerCase() === language
+    ) || null
+  );
+}
+
 // The card says only what the select does not: how to get more languages while some are still to
 // download, which language Auto means, and when English is standing in for a pack not installed yet.
 function updateLanguageSummaryText() {
@@ -4668,7 +4999,9 @@ function updateLanguageSummaryText() {
   );
 
   // Nothing to say about downloading once every pack is installed, or while there are none to offer.
-  const hasPackToDownload = localePackListCache.some((pack) => !pack.installed);
+  const hasPackToDownload = localePackListCache.some(
+    (pack) => !pack.installed && !isBuiltinLanguagePack(pack)
+  );
   downloadHint?.classList.toggle('hidden', !hasPackToDownload);
   // The select is described by it only while it is shown: a hidden line is still read out.
   setDescribedByLine(languageSelect, downloadHint, hasPackToDownload);
@@ -4680,10 +5013,19 @@ function updateLanguageSummaryText() {
     });
   }
   if (fallbackSummary) {
+    // Auto stands in English for a system language whose pack is still to download; the line under
+    // "System language detected" says so, or the two lines would contradict each other.
+    const systemPack = selectedLocale === 'auto' ? findSystemLanguagePackToDownload() : null;
     const needsPack =
-      !BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en';
+      !!systemPack ||
+      (!BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en');
     fallbackSummary.classList.toggle('hidden', !needsPack);
-    fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
+    // Named in the interface's language, as the "System language detected" line above it is.
+    fallbackSummary.textContent = systemPack
+      ? t('Using English until the {{language}} language pack is downloaded.', {
+          language: getLanguageDisplayName(systemPack.locale, systemPack.englishName),
+        })
+      : t('Using English until the selected language pack is installed.');
   }
 }
 
@@ -4702,8 +5044,12 @@ function syncLanguageSelectOptions() {
     const option = document.createElement('option');
     option.value = pack.locale;
     option.textContent = getLanguagePackDisplayName(pack);
-    option.lang = pack.locale;
-    if (!pack.installed) {
+    // The name is in its own language, so a screen reader reads it in that voice. An option holds
+    // one language, though, and "(Not downloaded)" is in the interface's: marked as Arabic, a German
+    // suffix was read with the Arabic voice. An option with the suffix stays in the interface's.
+    if (pack.installed) {
+      option.lang = pack.locale;
+    } else {
       option.disabled = true;
       option.textContent += ` (${t('Not downloaded')})`;
     }
@@ -4765,11 +5111,20 @@ function renderLanguagePackList() {
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
-    // The same words as the selector's suffix: a language is either downloaded or it is not.
-    const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
-    const versionLabel = pack.version ? `v${pack.version}` : '';
-    const downloadedLabel = pack.downloadedAt ? ` • ${formatClockDateTime(pack.downloadedAt)}` : '';
-    meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
+    const builtIn = isBuiltinLanguagePack(pack) && !pack.installed;
+    if (builtIn) {
+      meta.textContent = t('Built in');
+    } else {
+      // The same words as the selector's suffix: a language is either downloaded or it is not.
+      const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
+      // "v1.2.64" is left-to-right text. In an Arabic line its digits would join the date after it
+      // ("2026/10/v1.2.64"), so it keeps its own order.
+      const versionLabel = pack.version ? isolateLtr(`v${pack.version}`) : '';
+      const downloadedLabel = pack.downloadedAt
+        ? ` • ${formatClockDateTime(pack.downloadedAt)}`
+        : '';
+      meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
+    }
 
     info.appendChild(name);
     info.appendChild(meta);
@@ -4777,10 +5132,15 @@ function renderLanguagePackList() {
     const actions = document.createElement('div');
     actions.className = 'language-pack-actions';
 
-    const versionAhead =
-      !!pack.updateAvailable ||
-      (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
-    if (pack.installed && versionAhead) {
+    const versionAhead = builtIn
+      ? !!getBundledLocalePackVersion(pack.locale) &&
+        compareLocalePackVersions(
+          pack.latestVersion || pack.version,
+          getBundledLocalePackVersion(pack.locale)
+        ) > 0
+      : !!pack.updateAvailable ||
+        (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
+    if ((pack.installed || builtIn) && versionAhead) {
       const updateBtn = document.createElement('button');
       updateBtn.type = 'button';
       updateBtn.className = 'btn btn-secondary btn-sm';
@@ -4789,7 +5149,7 @@ function renderLanguagePackList() {
       updateBtn.textContent = t('Update');
       updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
-    } else if (!pack.installed) {
+    } else if (!pack.installed && !builtIn) {
       const downloadBtn = document.createElement('button');
       downloadBtn.type = 'button';
       downloadBtn.className = 'btn btn-secondary btn-sm';
@@ -4908,14 +5268,6 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
 // motion and high contrast instead of being saved as a fixed choice.
 let seasonalEnabledTouched = false;
 
-function prefersReducedMotionNow() {
-  try {
-    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read the Seasonal Themes controls on top of the saved `ui.seasonal`.
  * @returns {object|null} The next `ui.seasonal`, or null when the controls are missing.
@@ -4980,7 +5332,7 @@ function syncSeasonalControls(ui) {
   if (!enabledInput) return;
   const settings = normalizeSeasonalSettings(ui.seasonal);
   const enabled = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   if (!seasonalEnabledTouched && settings.enabled === null) enabledInput.checked = enabled;
@@ -5065,7 +5417,7 @@ function bindSeasonalSettingsUi(ui) {
   const show = document.getElementById('seasonal-show');
   if (!enabled) return;
   enabled.checked = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   // Touching a seasonal control shows the holiday's colours again after a colour pick hid them.
@@ -5092,8 +5444,18 @@ function bindSeasonalSettingsUi(ui) {
   syncSeasonalControls(ui);
 }
 
+// The Text and control size choices are written as the Window opacity readout beside them is, in
+// the language's own percent format ("115 %" in German), not as the markup's fixed "115%".
+function labelUiScaleOptions() {
+  document.querySelectorAll('#ui-scale-select option').forEach((option) => {
+    const scale = Number(option.value);
+    if (Number.isFinite(scale)) option.textContent = formatPercent(Math.round(scale * 100));
+  });
+}
+
 function bindAppearanceSettingsUi() {
   const ui = state.CONFIG?.ui || {};
+  labelUiScaleOptions();
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
   const activeTileGlow = document.getElementById('active-tile-glow');
@@ -5274,6 +5636,8 @@ function relocalizeOpenSettings({ force = false } = {}) {
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
+    labelUiScaleOptions();
+    updateOpacityReadout();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderProfileSyncBackups();
     renderUpdateButtonLabels();
@@ -5305,6 +5669,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     if (document.getElementById('entity-alerts-enabled')?.checked) renderAlertsListInline();
     relabelAlertAdvancedOptions();
     relocalizePopupHotkeyText();
+    syncRowSelectTitles(document.getElementById('settings-modal'));
     void refreshDesktopIntegration().catch((error) => {
       log.error('Failed to refresh desktop integration text:', error);
     });
@@ -5449,6 +5814,8 @@ async function openSettings(uiHooks) {
       ['input', 'change'].forEach((type) =>
         modal.addEventListener(type, trackSettingsControlInteraction, true)
       );
+      modal.addEventListener('change', (event) => syncRowSelectTitle(event.target));
+      modal.addEventListener('pointerover', (event) => syncRowSelectTitle(event.target));
     }
 
     // An error from an earlier Save would otherwise greet the next visit.
@@ -5472,21 +5839,9 @@ async function openSettings(uiHooks) {
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
     if (haToken) {
       const tokenValue = state.CONFIG.homeAssistant.token || '';
-      // Don't display default token - show empty field instead to prompt user to enter real token
+      // Don't display default token - show empty field instead to prompt user to enter real token.
+      // A token that has to be entered again is explained in the status line above the field.
       haToken.value = tokenValue === 'YOUR_LONG_LIVED_ACCESS_TOKEN' ? '' : tokenValue;
-
-      // Show warning if token was reset due to decryption failure
-      if (state.CONFIG.tokenResetReason) {
-        let warningMessage = t('Your access token needs to be re-entered.');
-        if (state.CONFIG.tokenResetReason === 'encryption_unavailable') {
-          warningMessage = t(
-            'Your access token needs to be re-entered. Encryption is not available on this system.'
-          );
-        } else if (state.CONFIG.tokenResetReason === 'decryption_failed') {
-          warningMessage = t('Your access token needs to be re-entered. Token decryption failed.');
-        }
-        uiHooks?.showToast?.(warningMessage, 'warning', 10000);
-      }
     }
     void refreshSecureStorageNotice();
     bindHomeAssistantOAuthUi();
@@ -5505,6 +5860,7 @@ async function openSettings(uiHooks) {
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.hideOnBlur === true;
       hideOnBlur.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
     }
+    renderHideOnBlurText();
     syncLayerModeSwitchReasons();
     const followOmarchy = document.getElementById('follow-omarchy');
     if (followOmarchy) {
@@ -5589,6 +5945,8 @@ async function openSettings(uiHooks) {
       enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
     }
     setPendingCustomColorList(state.CONFIG.ui.customColors || []);
+    // Settings opens on the saved name, whatever the rename field held before.
+    activeCustomManagementThemeId = null;
 
     const currentAccent = getCurrentAccentTheme();
     previewAccent = currentAccent;
@@ -5716,12 +6074,14 @@ async function openSettings(uiHooks) {
 
     // Focus starts on the page the user is on, not on the header's Close button, where a stray Enter
     // or Space would discard every unsaved edit. Only Escape and the buttons close Settings: a
-    // click that misses a control must not throw away a form this large. The one exception is the
-    // red connection panel's "Open Settings" with a rejected token: the token field is what to fix,
-    // and it is open on screen, so the cursor goes there.
+    // click that misses a control must not throw away a form this large. The one exception is a
+    // token to fix, rejected or no longer readable: the field is open on screen, so the cursor goes
+    // there.
+    const liveConnection = getLiveConnectionState();
     const tokenRejected =
       state.CONFIG.homeAssistant?.authMethod !== 'oauth' &&
-      getLiveConnectionState().status === 'auth-failed';
+      (liveConnection.status === 'auth-failed' || !!liveConnection.needsToken);
+    syncRowSelectTitles(modal);
     openDialog(modal, {
       initialFocus: () => {
         const token = document.getElementById('ha-token');
@@ -5918,6 +6278,8 @@ function getHomeAssistantAuthState(homeAssistant) {
     homeAssistant.oauthLastErrorCode || '',
     connection.status || '',
     connection.reason || '',
+    !!connection.needsToken,
+    connection.tokenReason || '',
   ]);
 }
 
@@ -5964,6 +6326,7 @@ function updateHomeAssistantAuthUi() {
   const oauthNote = document.getElementById('legacy-ha-token-oauth-note');
 
   updateHomeAssistantConnectButton();
+  updateSecureStorageNotice();
   disconnectButton?.classList.toggle('hidden', !usesOAuth);
   if (tokenInput) {
     tokenInput.disabled = usesOAuth;
@@ -5978,12 +6341,16 @@ function updateHomeAssistantAuthUi() {
   if (!usesOAuth) {
     const connection = getLiveConnectionState();
     if (connection.status === 'auth-failed') {
-      // The saved token was refused: the field to fix it is under "advanced", so open that.
+      // The saved token was refused: the field to fix it is under "advanced", so open that. The
+      // connection's own message sends the reader to Settings, where this line already is.
       setHomeAssistantOAuthStatus(
-        connection.reason ||
-          t('Authentication failed. Check your long-lived access token in Settings.'),
+        t('Authentication failed. Check your long-lived access token.'),
         'error'
       );
+      if (legacySettings) legacySettings.open = true;
+    } else if (connection.needsToken) {
+      // The saved token could not be read: the main window's reason, and the field to enter it in.
+      setHomeAssistantOAuthStatus(connection.reason, 'error');
       if (legacySettings) legacySettings.open = true;
     } else if (connection.status === 'disconnected' && connection.reason) {
       setHomeAssistantOAuthStatus(connection.reason, 'error');
@@ -6439,7 +6806,7 @@ async function persistSettings() {
       showProfileSyncFieldError(
         profileSyncPassphrase,
         t('Passphrase must be at least {{count}} characters long', {
-          count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
+          count: formatNumber(PROFILE_SYNC_MIN_PASSPHRASE_LENGTH),
         })
       );
       return;
@@ -6481,8 +6848,8 @@ async function persistSettings() {
           to: nextFolder,
         }),
         {
-          confirmText: t('Copy & Switch'),
-          cancelText: t('Keep Current'),
+          confirmText: t('Copy & switch'),
+          cancelText: t('Keep current'),
           confirmClass: 'btn-primary',
         }
       );
@@ -6526,8 +6893,8 @@ async function persistSettings() {
               { folder: nextFolder }
             ),
             {
-              confirmText: t('Use That File'),
-              cancelText: t('Keep Current'),
+              confirmText: t('Use that file'),
+              cancelText: t('Keep current'),
               confirmClass: 'btn-primary',
             }
           );
@@ -6717,11 +7084,7 @@ async function persistSettings() {
     }
 
     if (customIconsEdited) {
-      showToast(
-        t('Custom icons saved. Icons apply to entities already shown in your tabs/tiles.'),
-        'success',
-        2600
-      );
+      showToast(t('Custom icons saved. They show on your pages right away.'), 'success', 2600);
     }
 
     const shouldClearSavedPassphrase =
@@ -6805,7 +7168,7 @@ async function persistSettings() {
       const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         const restartForAlwaysOnTop = await askToRestart(
-          t('Changing "Always on top" may require a restart. Restart now?')
+          t('Changing “Always on top” may require a restart. Restart now?')
         );
         // Force window to regain focus after the dialog, whatever was chosen (Windows focus bug
         // workaround)
@@ -6886,6 +7249,13 @@ function findAlertControl(entityId = '') {
   );
 }
 
+// A raw entity id has no space to wrap at, so a long one broke anywhere ("sensor.living_room_nor" /
+// "th_wall_temperature_s"). The escaped id gets a break opportunity after each dot and underscore,
+// so it wraps between its words; overflow-wrap: anywhere still breaks a part longer than the row.
+function entityIdMarkup(entityId) {
+  return utils.escapeHtml(entityId).replace(/[._]/g, '$&<wbr>');
+}
+
 function renderAlertsListInline() {
   try {
     const alertsList = document.getElementById('inline-alerts-list');
@@ -6917,9 +7287,11 @@ function renderAlertsListInline() {
 
       const alertConfig = alerts[entityId];
       // "Above 25 °C", not "Above threshold 25": the reading's unit says what the number is, and a
-      // template lets a language put the number where its grammar wants it.
-      const unit = entity?.attributes?.unit_of_measurement;
-      const thresholdText = `${formatNumber(Number(alertConfig.threshold))}${unit ? ` ${unit}` : ''}`;
+      // template lets a language put the number where its grammar wants it. The figure keeps its
+      // left-to-right order in an Arabic sentence, which would make it "C° 25".
+      const thresholdText = isolateLtr(
+        formatMeasurement(Number(alertConfig.threshold), entity?.attributes?.unit_of_measurement)
+      );
       let alertType = alertConfig.onNumericThreshold
         ? alertConfig.comparison === 'below'
           ? t('Below {{value}}', { value: thresholdText })
@@ -6935,7 +7307,7 @@ function renderAlertsListInline() {
         <div class="alert-item-info">
           <span class="alert-icon">${entity ? entityIconMarkup(entity) : lineIconMarkup('bell')}</span>
           <div class="alert-details">
-            <span class="alert-name">${utils.escapeHtml(entity ? utils.getEntityDisplayName(entity) : entityId)}</span>
+            <span class="alert-name">${entity ? utils.escapeHtml(utils.getEntityDisplayName(entity)) : entityIdMarkup(entityId)}</span>
             <span class="alert-type">${utils.escapeHtml(alertType)}</span>
             ${entity ? '' : `<span class="alert-missing">${utils.escapeHtml(t('Unavailable'))}</span>`}
           </div>
@@ -7063,8 +7435,6 @@ function populateAlertEntityPicker() {
         badge.className = 'alert-badge';
         setLineIconContent(badge, 'bell');
         badge.title = t('Alert configured');
-        badge.style.marginLeft = '8px';
-        badge.style.fontSize = '14px';
         item.querySelector('.entity-item-main').appendChild(badge);
       }
 
@@ -7139,8 +7509,8 @@ let currentAlertEntity = null;
 
 // What the three numbers of the alert dialog mean, under each: the unit and current reading of the
 // threshold (filled when the dialog opens), and what 0 does for the duration and the cooldown. The
-// help sits in the field's label so it takes the field's grid cell; the input is named by the label's
-// own text and described by the help.
+// help sits in the field's label so it takes the field's grid cell, in a notes box that also takes
+// the field's error under it; the input is named by the label's own text and described by the help.
 function addAlertFieldHelp(group) {
   [
     ['alert-threshold', ''],
@@ -7156,23 +7526,34 @@ function addAlertFieldHelp(group) {
     help.id = `${fieldId}-help`;
     help.className = 'form-help alert-field-help';
     if (helpKey) help.dataset.alertLabelKey = helpKey;
-    label.append(help);
+    const notes = document.createElement('span');
+    notes.className = 'alert-field-notes';
+    notes.append(help);
+    label.append(notes);
     input.setAttribute('aria-labelledby', labelText.id);
     input.setAttribute('aria-describedby', help.id);
   });
 }
 
 // "Currently 21.5 °C" under the threshold, so the number to type is in the unit of the reading it is
-// compared with. A sensor that has no number to show leaves it empty.
+// compared with. A sensor that has no number to show leaves it empty. The reading is written as its
+// tile writes it, except that a duration stays in the unit Home Assistant sends ("75 min", not
+// "1 hr 15 min"), because that is the unit the threshold is typed in. Both the reading and a bare
+// unit keep their left-to-right order in an Arabic sentence.
 function updateAlertThresholdHelp(modal, entity) {
   const help = modal.querySelector('#alert-threshold-help');
   if (!help) return;
-  const reading = entity ? Number.parseFloat(entity.state) : Number.NaN;
+  const number = parseNumericState(entity?.state);
   const unit = entity?.attributes?.unit_of_measurement;
-  help.textContent = Number.isFinite(reading)
-    ? t('Currently {{value}}', { value: `${formatNumber(reading)}${unit ? ` ${unit}` : ''}` })
+  const reading =
+    number === null
+      ? ''
+      : (entity.attributes?.device_class !== 'duration' && getSensorReading(entity)?.text) ||
+        formatMeasurement(number, unit);
+  help.textContent = reading
+    ? t('Currently {{value}}', { value: isolateLtr(reading) })
     : unit
-      ? t('In {{unit}}', { unit })
+      ? t('In {{unit}}', { unit: isolateLtr(unit) })
       : '';
 }
 
@@ -7320,6 +7701,8 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('.modal-body').append(group);
     }
     relabelAlertAdvancedOptions(modal);
+    // The dialog is reused, so an error left from the last alert would sit on this one's fields.
+    clearFieldErrors(modal);
     modal.querySelector('.alert-type-options').parentElement.hidden = true;
     const condition = modal.querySelector('#alert-condition');
     condition.value = alertConfig?.onNumericThreshold
@@ -7349,9 +7732,11 @@ function openAlertConfigModal(entityId) {
       stateChangeRadio.checked = condition.value === 'state-change';
       specificStateRadio.checked = condition.value === 'specific-state';
       specificStateGroup.style.display = specificStateRadio.checked ? 'block' : 'none';
-      modal.querySelector('#alert-threshold').parentElement.hidden = !['above', 'below'].includes(
-        condition.value
-      );
+      const thresholdField = modal.querySelector('#alert-threshold');
+      thresholdField.parentElement.hidden = !['above', 'below'].includes(condition.value);
+      // A field that leaves with its condition takes its error with it.
+      if (!specificStateRadio.checked) clearFieldError(targetStateInput);
+      if (thresholdField.parentElement.hidden) clearFieldError(thresholdField);
       // Only a State Change rule tells about an entity going offline unasked. A rule for the state
       // "unavailable" is that request itself, and a threshold rule ignores a missing reading.
       modal.querySelector('.alert-switch-row').hidden = condition.value !== 'state-change';
@@ -7362,8 +7747,12 @@ function openAlertConfigModal(entityId) {
       ['#alert-quiet-start', '#alert-quiet-end'].forEach((id) => {
         modal.querySelector(id).disabled = !quietEnabled.checked;
       });
+      if (!quietEnabled.checked) clearFieldError(modal.querySelector('#alert-quiet-end'));
     };
     quietEnabled.onchange = syncQuietHours;
+    // Changing either end of quiet hours can answer the error, which sits on the end.
+    modal.querySelector('#alert-quiet-start').onchange = () =>
+      clearFieldError(modal.querySelector('#alert-quiet-end'));
     const entity = state.STATES[entityId];
     if (title)
       title.textContent = t('Configure alert – {{name}}', {
@@ -7419,19 +7808,18 @@ async function saveAlert() {
     const condition = modal.querySelector('#alert-condition')?.value;
     alertConfig.onNumericThreshold = ['above', 'below'].includes(condition);
     alertConfig.comparison = condition === 'below' ? 'below' : 'above';
+    // Every field that is wrong says so under itself, and the first takes the focus. A toast was
+    // gone in seconds, belonged to no field and covered the quiet hours at the bottom of the dialog.
+    const problems = [];
+    if (alertConfig.onSpecificState && !alertConfig.targetState) {
+      problems.push([targetStateInput, t('Enter a target state.')]);
+    }
     const threshold = modal.querySelector('#alert-threshold');
     if (
       alertConfig.onNumericThreshold &&
       (!threshold.value.trim() || !Number.isFinite(Number(threshold.value)))
     ) {
-      showToast(t('Enter a valid numeric threshold.'), 'error');
-      threshold.focus();
-      return;
-    }
-    if (alertConfig.onSpecificState && !alertConfig.targetState) {
-      showToast(t('Enter a target state.'), 'error');
-      targetStateInput.focus();
-      return;
+      problems.push([threshold, t('Enter a valid numeric threshold.')]);
     }
     alertConfig.threshold = alertConfig.onNumericThreshold ? Number(threshold.value) : null;
     for (const [field, id] of [
@@ -7440,21 +7828,19 @@ async function saveAlert() {
     ]) {
       const input = modal.querySelector(`#${id}`);
       const seconds = input.value.trim() === '' ? 0 : Number(input.value);
-      // Same toast-and-focus feedback as the other fields instead of a native validation bubble.
       if (!Number.isInteger(seconds) || seconds < 0 || seconds > 86400) {
-        showToast(t('Enter a whole number of seconds from 0 to 86400.'), 'error');
-        input.focus();
-        return;
+        problems.push([input, t('Enter a whole number of seconds from 0 to 86400.')]);
       }
       alertConfig[field] = seconds;
     }
     if (alertConfig.onStateChange) {
       alertConfig.notifyOnUnavailable = modal.querySelector('#alert-notify-unavailable').checked;
     }
+    const quietEnd = modal.querySelector('#alert-quiet-end');
     alertConfig.quietHours = {
       enabled: modal.querySelector('#alert-quiet-enabled').checked,
       start: modal.querySelector('#alert-quiet-start').value,
-      end: modal.querySelector('#alert-quiet-end').value,
+      end: quietEnd.value,
     };
     if (
       alertConfig.quietHours.enabled &&
@@ -7462,7 +7848,18 @@ async function saveAlert() {
         !alertConfig.quietHours.end ||
         alertConfig.quietHours.start === alertConfig.quietHours.end)
     ) {
-      showToast(t('Choose different start and end times for quiet hours.'), 'error');
+      problems.push([quietEnd, t('Choose different start and end times for quiet hours.')]);
+    }
+    if (problems.length) {
+      clearFieldErrors(modal);
+      problems.forEach(([field, message], index) =>
+        showFieldError(field, message, {
+          focus: index === 0,
+          // Under the field's help, in its own cell. Quiet hours' error is about the start and the
+          // end together and runs under both; the target state's goes under its group.
+          anchor: modal.querySelector(`#${field.id}-help`) || field.closest('label'),
+        })
+      );
       return;
     }
     const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
@@ -7491,8 +7888,8 @@ async function removeAlert(entityId) {
     const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
 
     const confirmed = await showConfirm(
-      t('Remove Alert'),
-      t('Remove alert for "{{name}}"?', { name: entityName }),
+      t('Remove alert'),
+      t('Remove alert for “{{name}}”?', { name: entityName }),
       {
         confirmText: t('Remove'),
         confirmClass: 'btn-danger',
@@ -7537,7 +7934,7 @@ function populateMediaPlayerSelect(selected = state.CONFIG.primaryMediaPlayer ||
       });
 
     const options = [
-      new Option(t('None (Hide Media Tile)'), ''),
+      new Option(t('None (hide media tile)'), ''),
       ...mediaPlayers.map(
         (entity) => new Option(utils.getEntityDisplayName(entity), entity.entity_id)
       ),
@@ -7598,14 +7995,21 @@ function renderHotkeyImmediateNotes() {
 }
 
 // A desktop layer sits under every window, so a key to bring it forward matters on any
-// compositor; only Hyprland can list the binds, the others get the command to bind.
+// compositor; only Hyprland can list the binds, the others get the command to bind. That command
+// depends on how the widget was installed (main works it out), so the note names this one.
 function renderLayerModeGuidance() {
   const layerMode = desktopIntegrationInfo?.layerMode === true;
   const onHyprland = desktopIntegrationInfo?.hyprland === true;
   const layerNote = document.getElementById('desktop-integration-layer-note');
   if (layerNote) layerNote.hidden = !layerMode;
   const toggleNote = document.getElementById('layer-toggle-note');
-  if (toggleNote) toggleNote.hidden = !(layerMode && !onHyprland);
+  if (!toggleNote) return;
+  const command = desktopIntegrationInfo?.toggleCommand;
+  toggleNote.hidden = !(layerMode && !onHyprland && typeof command === 'string' && command);
+  if (toggleNote.hidden) return;
+  // Kept on the element, so a later language change words the note around the same command.
+  toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
+  translateDocument(toggleNote);
 }
 
 // "Frosted glass" blurs the window on Windows and macOS. On Linux Chromium cannot see what is behind
@@ -7655,7 +8059,7 @@ function renderPopupHotkeyModeText() {
     helpText.textContent = usesLinuxShortcutBackend
       ? t('Configure a global hotkey that brings the window to front when pressed.')
       : t(
-          'Configure a global hotkey that brings the window to front while held down. When released, the window returns to normal z-order.'
+          'Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.'
         );
   }
   if (platformNotice) {
@@ -7911,7 +8315,7 @@ async function initializePopupHotkey() {
       if (isCapturingPopupHotkey) stopCapturingPopupHotkey();
       try {
         const result = await window.electronAPI.unregisterPopupHotkey();
-        if (result.success) {
+        if (result?.success) {
           input.value = '';
           input.placeholder = t('Not set');
           clearBtn.style.display = 'none';
@@ -7921,6 +8325,9 @@ async function initializePopupHotkey() {
           if (result.warning) {
             showToast(result.warning, 'warning', 4000);
           }
+        } else {
+          // Main kept the hotkey (its removal could not be saved), so the field still shows it.
+          showToast(result?.error || t('Failed to clear popup hotkey'), 'error');
         }
       } catch (error) {
         log.error('Failed to clear popup hotkey:', error);
@@ -8128,6 +8535,18 @@ function showProfileSyncFieldError(field, message) {
   });
 }
 
+/** Shows General with the access token field open and focused: where a lost token is entered. */
+function revealHomeAssistantToken() {
+  document.querySelector('.modal-tabs .tab-link[data-tab="general"]')?.click();
+  const legacySettings = document.getElementById('legacy-ha-token-settings');
+  if (legacySettings) legacySettings.open = true;
+  const token = document.getElementById('ha-token');
+  if (!token || token.disabled) return;
+  // From the top of the Home Assistant group, so the line saying why is in view above the field.
+  (token.closest('.settings-group') || token).scrollIntoView?.({ block: 'start' });
+  token.focus({ preventScroll: true });
+}
+
 /** Shows the Advanced page with the update status in view: where a tray check reports. */
 function revealUpdateStatus() {
   document.querySelector('.modal-tabs .tab-link[data-tab="advanced"]')?.click();
@@ -8171,6 +8590,7 @@ export {
   profileSyncNeedsAttention,
   waitForLanguagePackRefresh,
   refreshHomeAssistantAuthStatus,
+  revealHomeAssistantToken,
 };
 
 // Hyprland blurs the widget only while its own blur is on, and Omarchy ships with it off. Say so
@@ -8224,14 +8644,17 @@ function renderDesktopBlur(status) {
   };
 }
 
+// Whether this Linux session has no unlocked keyring, as last read from main.
+let secureStorageUnavailable = false;
+// The reasons a token has to be entered again that come down to having no unlocked keyring.
+const KEYRING_TOKEN_REASONS = new Set(['encryption_unavailable', 'not_persisted']);
+
 /**
  * Says so in General while this Linux session has no unlocked keyring. The toast that reports
  * it is gone within seconds, and the condition stays: the token and the sync passphrase
  * cannot be remembered until a keyring is running.
  */
 async function refreshSecureStorageNotice() {
-  const notice = document.getElementById('secure-storage-notice');
-  if (!notice) return;
   let unavailable = false;
   try {
     const info = await window.electronAPI?.getDesktopIntegration?.();
@@ -8239,7 +8662,18 @@ async function refreshSecureStorageNotice() {
   } catch (error) {
     log.warn('Failed to read the secure storage status:', error);
   }
-  notice.classList.toggle('hidden', !unavailable);
+  secureStorageUnavailable = unavailable;
+  updateSecureStorageNotice();
+}
+
+// While the token has to be entered again for want of a keyring, the line above the field already
+// says so and what to do; the notice under it would say the same again in another colour.
+function updateSecureStorageNotice() {
+  const notice = document.getElementById('secure-storage-notice');
+  if (!notice) return;
+  const connection = getLiveConnectionState();
+  const saidAbove = !!connection.needsToken && KEYRING_TOKEN_REASONS.has(connection.tokenReason);
+  notice.classList.toggle('hidden', !secureStorageUnavailable || saidAbove);
 }
 
 /** The name to show for the shortcut the desktop last delivered, whose id is an internal one. */
@@ -8288,11 +8722,11 @@ function describeLegacyDesktopActivation(activation, appId) {
   };
   return activation.binding
     ? t(
-        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}", for example: {{binding}}',
+        'Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”, for example: {{binding}}',
         values
       )
     : t(
-        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}".',
+        'Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”.',
         values
       );
 }

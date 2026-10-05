@@ -8,6 +8,10 @@ const { getTrayIconSizeForPlatform } = require('./tray-entities.cjs');
 // menu bars, so it is drawn at the menu bar's own 22 pt and 44 px sizes and never resized.
 const TRAY_TEMPLATE_NAME = 'trayTemplate.png';
 const WINDOWS_ICON_NAME = 'icon.ico';
+// The rounded artwork the window, the launchers and the Linux packages use (see getAppIconPath in
+// src/platform.cjs). build/icon.png is the older full-bleed square, which a Linux bar showed as a
+// black tile beside the rounded icon in the dock.
+const LINUX_ICON_NAME = '512x512.png';
 const LINUX_TRAY_SCALE_FACTORS = Object.freeze([1, 2]);
 const MAX_WINDOWS_TRAY_ICON_SIZE = 48;
 
@@ -163,7 +167,7 @@ function buildRepresentations(nativeImage, source, size, scaleFactors) {
  *   template. The full-colour icon is only a fallback for a package that lacks it.
  * - Windows: one bitmap at exactly the notification area's size for the display's scaling, from
  *   the matching frame of build/icon.ico, or from the PNG artwork if the file has none.
- * - Linux: the colour icon at 1x and 2x, which is what a StatusNotifier host asks for.
+ * - Linux: the rounded colour icon at 1x and 2x, which is what a StatusNotifier host asks for.
  * @returns {Electron.NativeImage|null} Null when no icon could be loaded.
  */
 function loadTrayIcon({
@@ -198,10 +202,15 @@ function loadTrayIcon({
     if (framed) return framed;
   }
 
-  // The 847 px PNG is the master artwork; the .ico is only there if the PNG is not.
+  // The 847 px PNG is the master artwork; the .ico is only there if the PNG is not. Linux draws
+  // the rounded icon instead, and falls back to these.
   const source = loadFirstImage(
     nativeImage,
-    findIcons(['icon.png', 'icon.ico'], searchRoots, exists),
+    findIcons(
+      platform === 'linux' ? [LINUX_ICON_NAME, 'icon.png', 'icon.ico'] : ['icon.png', 'icon.ico'],
+      searchRoots,
+      exists
+    ),
     log
   );
   if (!source) return null;

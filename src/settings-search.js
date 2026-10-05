@@ -19,6 +19,10 @@ function isHidden(node, modal) {
 const STATIC_HELP =
   ':is(.form-help, .help-text):is([data-i18n], [data-i18n-html], [data-search-help])';
 const ARIA_NAMED_CONTROL = 'select[aria-label], input[aria-label], textarea[aria-label]';
+// The control a result for a row lands on: its first one.
+const FOCUSABLE_IN_ROW = ['input:not([type="hidden"])', 'select', 'button', 'textarea']
+  .map((selector) => `${selector}:not([aria-hidden="true"])`)
+  .join(', ');
 // What a setting offers as choices, which is how people look for "dark" or "24-hour".
 const OPTION_TEXT = 'option, .segmented-option';
 
@@ -73,27 +77,29 @@ function settingsSearchEntries(modal) {
         const panel = label.closest('.tab-content');
         const row = label.closest('.form-group, .settings-details, .personalization-section');
         const page = panel.querySelector('.settings-page-title')?.textContent.trim() || '';
-        const group =
-          label
-            .closest('.settings-group')
-            ?.querySelector('.settings-group-caption')
-            ?.textContent.trim() || '';
+        const groupBox = label.closest('.settings-group');
+        const groupNode = groupBox?.querySelector('.settings-group-caption');
+        const group = groupNode?.textContent.trim() || '';
         const titleNode = label.matches('label') ? label.querySelector('.setting-label') : null;
         const title = label.matches(ARIA_NAMED_CONTROL)
           ? label.getAttribute('aria-label').trim()
           : (titleNode || label).textContent.trim();
+        // A button in a row that has a name of its own is found by its own label only. The row's
+        // help is the row's: Export settings and Import settings each matched "hotkey" through
+        // "hotkeys and profile sync stay on this computer", under the row that says it.
+        const ownsRow = !(
+          label.matches('button.btn') && row?.querySelector('label, .setting-label, summary')
+        );
         // Options sharing a group must not match on each other's help, so use only their own.
         const helpNodes = titleNode
           ? label.querySelectorAll('.form-help, .help-text')
-          : row?.querySelectorAll(STATIC_HELP) || [];
+          : (ownsRow && row?.querySelectorAll(STATIC_HELP)) || [];
         const help = [...helpNodes].map((node) => node.textContent.trim()).join(' ');
         // The choices of a control (its options, or the segments of a switch group). A disclosure or
         // card row holds other settings' choices, so only a plain setting row contributes them.
-        const choiceNodes = row?.matches('.form-group') ? row.querySelectorAll(OPTION_TEXT) : [];
+        const choiceNodes =
+          ownsRow && row?.matches('.form-group') ? row.querySelectorAll(OPTION_TEXT) : [];
         const choices = [...choiceNodes].map((node) => node.textContent.trim()).join(' ');
-        const groupNode = label
-          .closest('.settings-group')
-          ?.querySelector('.settings-group-caption');
         // A control named only by aria-label carries its English name in data-i18n-aria-label.
         const titleSource = label.matches(ARIA_NAMED_CONTROL)
           ? label.getAttribute('data-i18n-aria-label') || ''
@@ -103,6 +109,10 @@ function settingsSearchEntries(modal) {
           panel,
           row,
           title,
+          page,
+          groupBox: group ? groupBox : null,
+          groupNode: group ? groupNode : null,
+          group,
           // Where it lives: the page and, when the page has several groups, the group it is in.
           subtitle: group && group !== page ? `${page} › ${group}` : page,
           fields: [
@@ -151,15 +161,49 @@ function settingsSearchPageEntries(modal) {
   );
 }
 
-// Zero when a word is nowhere in the entry; otherwise the sum of where each word was best found.
+// Zero when a word is nowhere in the entry; otherwise the sum of where each word was best found,
+// and whether the group's name is where every word was best found.
 function scoreEntry(entry, words) {
   let score = 0;
+  let onlyGroup = true;
   for (const word of words) {
     const hit = entry.fields.find(([, text]) => text.includes(word));
-    if (!hit) return 0;
+    if (!hit) return { score: 0, onlyGroup: false };
     score += hit[0];
+    onlyGroup &&= hit[0] === RANK_GROUP;
   }
-  return score;
+  return { score, onlyGroup };
+}
+
+/**
+ * The results in rank order, with the rows a query found only through their group's name folded
+ * into one result for the group. "theme" listed every row under Seasonal Themes, a holiday each,
+ * because the caption said "Themes"; it now lists the group once, which lands on its caption. A
+ * row whose own words match stays a result of its own.
+ */
+function rankResults(entries, words) {
+  const ranked = entries
+    .map((entry) => ({ entry, ...scoreEntry(entry, words) }))
+    .filter(({ score }) => score > 0)
+    // Best match first; equal scores keep the order of the pages.
+    .sort((a, b) => b.score - a.score);
+  const groups = new Set();
+  return ranked.flatMap(({ entry, onlyGroup }) => {
+    if (!onlyGroup || !entry.groupBox) return [entry];
+    if (groups.has(entry.groupBox)) return [];
+    groups.add(entry.groupBox);
+    // The caption is what the result jumps to and names, and the whole group is what lights up.
+    return [
+      {
+        ...entry,
+        label: entry.groupNode,
+        row: entry.groupBox,
+        title: entry.group,
+        subtitle: entry.page,
+        isGroup: true,
+      },
+    ];
+  });
 }
 
 // A zero-hit query leaves the whole page empty, so it says so in the page's own voice instead of a
@@ -219,12 +263,10 @@ function initializeSettingsSearch(modal) {
     // A query of only separators ("-") has nothing to look for: the page stays, as if empty.
     resetResults(words.length > 0);
     if (!words.length) return;
-    const entries = [...settingsSearchPageEntries(modal), ...settingsSearchEntries(modal)]
-      .map((entry) => ({ entry, score: scoreEntry(entry, words) }))
-      .filter(({ score }) => score > 0)
-      // Best match first; equal scores keep the order of the pages.
-      .sort((a, b) => b.score - a.score)
-      .map(({ entry }) => entry);
+    const entries = rankResults(
+      [...settingsSearchPageEntries(modal), ...settingsSearchEntries(modal)],
+      words
+    );
     if (!entries.length) {
       status.textContent = t('No matching settings');
       status.classList.add('sr-only');
@@ -272,17 +314,19 @@ function initializeSettingsSearch(modal) {
         // A custom widget such as a radiogroup points back at its label through aria-labelledby.
         const labelledWidget =
           entry.label.id && modal.querySelector(`[aria-labelledby~="${entry.label.id}"]`);
-        const target =
-          labelled?.control ||
-          (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
-          (labelledWidget &&
-            (labelledWidget.querySelector('[aria-checked="true"], [tabindex="0"]') ||
-              labelledWidget.querySelector('button, input, select, textarea'))) ||
-          (entry.label.matches('summary, button, input, select, textarea')
-            ? entry.label
-            : entry.row?.querySelector(
-                ':is(input:not([type="hidden"]), select, button, textarea):not([aria-hidden="true"])'
-              ));
+        // A group result lands on its caption, not on the group's first control: that is a button
+        // in some groups, so Enter after choosing "Primary cards" reset the cards. Tab goes on into
+        // the group from there.
+        const target = entry.isGroup
+          ? null
+          : labelled?.control ||
+            (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
+            (labelledWidget &&
+              (labelledWidget.querySelector('[aria-checked="true"], [tabindex="0"]') ||
+                labelledWidget.querySelector('button, input, select, textarea'))) ||
+            (entry.label.matches('summary, button, input, select, textarea')
+              ? entry.label
+              : entry.row?.querySelector(FOCUSABLE_IN_ROW));
         requestAnimationFrame(() => {
           entry.label.scrollIntoView?.({ block: 'center' });
           const focusTarget = target && !target.disabled ? target : entry.label;

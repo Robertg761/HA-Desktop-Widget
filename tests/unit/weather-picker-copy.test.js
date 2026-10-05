@@ -101,6 +101,17 @@ describe('the weather picker', () => {
     );
   });
 
+  it('names the chosen entity once, without repeating that it is selected', () => {
+    // "Home ✓ (selected)" under a row already badged "✓ Selected" and a label saying "current".
+    state.setStates({ 'weather.home': weather('weather.home', 'Home') });
+    state.setConfig({ ...state.CONFIG, selectedWeatherEntity: 'weather.home' });
+
+    ui.populateWeatherEntitiesList();
+
+    expect(name().textContent).toBe('Home');
+    expect(name().dataset.state).toBe('selected');
+  });
+
   it('offers Clear only while an entity is chosen, without taking it out of the tab order', () => {
     state.setStates({ 'weather.home': weather('weather.home', 'Home') });
 

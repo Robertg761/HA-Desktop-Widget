@@ -2,11 +2,15 @@
  * @jest-environment jsdom
  */
 
-const { createRendererHarness } = require('../helpers/renderer-harness');
+const { createRendererHarness, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Show log file', () => {
   const harness = createRendererHarness();
 
+  warmUpRenderer(
+    () => harness.load(),
+    () => harness.cleanup()
+  );
   afterEach(() => harness.cleanup());
 
   const loadWithButton = async (openLogs) => {
@@ -76,6 +80,10 @@ describe('Show log file', () => {
 describe('the Home Assistant notifications switch', () => {
   const harness = createRendererHarness();
 
+  warmUpRenderer(
+    () => harness.load(),
+    () => harness.cleanup()
+  );
   afterEach(() => harness.cleanup());
 
   const load = async (setResult) => {

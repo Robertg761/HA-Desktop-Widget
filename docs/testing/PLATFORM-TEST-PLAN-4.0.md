@@ -57,7 +57,7 @@ Put this at the top of your report. Use whatever tool you have; the commands are
 - Display scale of every monitor, and how many monitors you have. Windows Settings > System > Display; macOS System Settings > Displays; Linux your display settings (`hyprctl monitors` on Hyprland).
 - GPU and driver. Windows Task Manager > Performance; macOS About This Mac; Linux `lspci | grep -i vga`. Say if it is a virtual machine or a remote session.
 - OS theme (light or dark), OS language, input methods installed, and any accessibility settings that are on.
-- Package type from the table above, and the app version (Settings > Advanced > Application Updates > Version).
+- Package type from the table above, and the app version (Settings > Advanced > Application updates > Version).
 - Settings > General > Connection diagnostics > Copy report gives the app version, Home Assistant version and connection history without URLs or names. Paste it into your report. Check that its OS line matches the operating system you noted (see ALL-14).
 
 ### Use a throwaway profile
@@ -205,7 +205,7 @@ Ref: MP-34, CSSA1-25, CSSA1-19, MP-37, MP-74, MP-75, CSSB2-42
 
 Layer-mode desktops (Hyprland, Sway, niri, river) do not hide on focus loss; skip this check there.
 
-1. Settings > General > Window & Behavior: turn on Hide to tray when focus is lost. Read its help text. Save.
+1. Settings > General > Window & behavior: turn on Hide to tray when focus is lost (Hide to menu bar when focus is lost on macOS). Read its help text. Save.
 2. Pin a tile and turn on Reorganize Quick Access. Click and drag the pin.
 3. Press Escape.
 4. In Settings > General, start a new browser authorization with Connect, switch to the browser, approve, and return.
@@ -219,7 +219,7 @@ Ref: MP-09, MP-46, SM1-12
 ### ALL-7 Light theme
 
 1. Set the OS to the light theme and Settings > Appearance > Mode to Auto (or choose Light).
-2. In Settings > General (throwaway profile), try to connect with a wrong address, then the right one. Read the status text under the address field. In Settings > Advanced > Application Updates, press Check for updates and read the status line.
+2. In Settings > General (throwaway profile), try to connect with a wrong address, then the right one. Read the status text under the address field. In Settings > Advanced > Application updates, press Check for updates and read the status line.
 3. Look at the connection dot in the header connected and disconnected (turn off Wi-Fi or stop Home Assistant for the second).
 4. Open a light's controls (long-press the tile or use its Controls button). Move brightness to its minimum. Open a fan, cover and climate popup too.
 5. Settings > Appearance > Colors: choose Background color in Edit colors for, then pick a background preset other than the default. Do this once with Frosted glass background on and once off.
@@ -234,7 +234,7 @@ Ref: CSSA1-01, CSSB2-03, CSSC2-07, CSSA1-41, CSSA2-21, CSSA3-15, CSSA3-17, CSSA1
 
 ### ALL-8 Window opacity over different wallpapers
 
-1. Settings > Appearance > Window Effects. Set Window opacity to 100, then to 60. Do this with Frosted glass background on and off, in the light and the dark theme. On Linux, crossing 100 may ask you to restart the app; accept (see LNX-3).
+1. Settings > Appearance > Window effects. Set Window opacity to 100, then to 60. Do this with Frosted glass background on and off, in the light and the dark theme. On Linux, crossing 100 may ask you to restart the app; accept (see LNX-3).
 2. Put the widget over a dark wallpaper and over a bright one (a white web page behind it is enough; on a desktop layer, where windows cover the widget, use a bright wallpaper instead).
 3. Read the title, the Settings, Minimize and X buttons, the tile names, and secondary text such as the state lines.
 4. Open Settings over the dashboard and look for a faint copy of the dashboard text behind the Settings headings and labels.
@@ -251,7 +251,7 @@ Open each Settings page at the default window size. Note anything that looks wro
 
 - General: open Offline language packs and Legacy access token (advanced). The language pack names are not larger than their section heading. Every expandable row uses the same chevron. Open a dropdown such as Language: the highlight uses the accent color and matches the other dropdowns.
 - Appearance: the Holidays list reads as a titled list, and the Reset buttons look alike. With Holiday colors on, the switches, the focus ring and the Save button use one accent color.
-- Advanced > Profile Syncing with encryption on: spacing between the Sync passphrase label and its input is even, with no stray gap below. Switches sit level with their row title, or are clearly attached to long help text.
+- Advanced > Profile syncing with encryption on: spacing between the Sync passphrase label and its input is even, with no stray gap below. Switches sit level with their row title, or are clearly attached to long help text.
 - Manage Quick Access (the + button): the Add and Remove buttons line up with the same width, in English and in German.
 - Search settings: type "a" and scroll the results. The search box and result count stay visible or are easy to get back to, and Tab does not hide a result under the header.
 - Scroll a long Settings page: the scrollbar thumb is easy to see and to grab.
@@ -273,9 +273,9 @@ Needs: A touch screen for the last step, if you have one.
 1. Settings > Appearance > Colors: open Custom color and click into a color field to start editing.
 2. Read the note about the Save button.
 3. Without leaving the field, click Save at a normal speed. Then do it again as fast as you can. On a touch screen, tap Save.
-4. Edit the color again. Press Save Custom Color. Edit it once more and click outside the fields instead.
+4. Edit the color again. Press Save custom color. Edit it once more and click outside the fields instead.
 
-Expected: The note is in plain words: it says how to keep the color (Save Custom Color) and how to go back, and it does not mention a "Main Save". One normal click or tap on Save works the first time. Leaving with an unsaved draft asks what to do ("Unsaved Custom Color Changes").
+Expected: The note is in plain words: it says how to keep the color (Save custom color) and how to go back, and it does not mention a "Main Save". One normal click or tap on Save works the first time. Leaving with an unsaved draft asks what to do ("Unsaved custom color changes").
 
 Capture: The note's text and a recording of a click that did not work.
 
@@ -295,7 +295,7 @@ Ref: SM2-26
 
 ### ALL-12 Weather card and effects
 
-1. Settings > Appearance > Window Effects: turn on Frosted glass background and Subtle weather effects. Use Weather effect override to pick Sunny, Cloudy, Rainy, Snowy and Stormy in turn.
+1. Settings > Appearance > Window effects: turn on Frosted glass background and Subtle weather effects. Use Weather effect override to pick Sunny, Cloudy, Rainy, Snowy and Stormy in turn.
 2. Look at the weather card icon and the background effect for each, in the dark and the light theme. If you have a display at 125% scale or more (or a Retina Mac), use it.
 
 3. Turn on the OS setting that reduces motion (Windows: animation effects off; macOS: Reduce motion; a Linux desktop: animations off), restart the widget and pick Rainy, Snowy and Stormy again.
@@ -310,7 +310,7 @@ Ref: RO1-53, RO3-19, RO3-20, RO3-21
 
 Most useful on Windows 10, older macOS versions, and Linux without a recent emoji font.
 
-1. Settings > Dashboard > Custom Entity Icons: open Edit entity icons, and in one row press Search to open the icon grid. Look at the first screen of icons and scroll a little.
+1. Settings > Dashboard > Custom entity icons: open Edit entity icons, and in one row press Search to open the icon grid. Look at the first screen of icons and scroll a little.
 2. Choose a recent emoji (for example a family emoji or a newer Unicode emoji) for a tile and click Apply. Look at the tile and, if pinned, the pin.
 
 Expected: The first icons shown are the useful ones for a home, not punctuation or skin-tone variants of one emoji. Every icon is drawn as a picture, with no empty boxes. Emoji your system cannot draw are not offered, or are marked.
@@ -365,7 +365,7 @@ Ref: MP-53, MP-52, MP-25
 
 ### WIN11-2 Frosted glass
 
-1. Settings > Appearance > Window Effects: turn on Frosted glass background. Put the widget over a busy wallpaper and over a white window.
+1. Settings > Appearance > Window effects: turn on Frosted glass background. Put the widget over a busy wallpaper and over a white window.
 2. In Windows Settings > Personalization > Colors, turn Transparency effects off, look again, then turn it back on.
 3. Turn Frosted glass background off in the app and look again.
 4. Turn Frosted glass background on or off in the app without pressing Save. Alt+Tab to another app and back. Then Save or Cancel.
@@ -416,7 +416,7 @@ Ref: MP-26, MP-45
 
 Use your real profile; Start at login does not work in a throwaway profile.
 
-1. Settings > General > Window & Behavior: turn on Start at login and Save. Sign out and back in.
+1. Settings > General > Window & behavior: turn on Start at login and Save. Sign out and back in.
 2. While Windows starts, type in another app and watch for the widget.
 3. Look at the entry in Windows Settings > Apps > Startup.
 
@@ -455,7 +455,7 @@ Ref: SM3-05, RO2-61, MP-49
 
 ### WIN11-9 Folder picker
 
-1. Keep Always on top on. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
+1. Keep Always on top on. Settings > Advanced > Profile syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and Settings is blocked until you close it. It cannot end up hidden behind the widget.
 
@@ -493,14 +493,15 @@ Ref: RO3-24, MP-83
 Run this on the Setup or Portable build from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
 
 1. In Windows Settings > Time & language > Language & region, add Español (México) under Preferred languages and move it to the top. Quit the app from the tray and start it again. If the next step still names your old language, sign out and back in.
-2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front.
-5. Do steps 1 to 3 again with Chinese (Traditional, Taiwan) at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front.
+6. Do steps 1 to 3 again with Chinese (Traditional, Taiwan) at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
 
-Expected: The app starts with its window and tray icon. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+Expected: The app starts with its window and tray icon. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
 
-Capture: A screenshot of the language line and of the right-click menu in each language. If the hotkey does nothing, the log lines that mention uiohook-napi.
+Capture: A screenshot of the language line and of the right-click menu in each language. If a word is underlined or a menu offers spellings, a screenshot of it. If the hotkey does nothing, the log lines that mention uiohook-napi.
 
 Ref: MP-78
 
@@ -513,7 +514,7 @@ Windows 10 22H2 (build 19045) is the last version. Windows 11 21H2 and sessions 
 Windows 10 and Windows 11 21H2 cannot draw the Windows 11 blur. On them the widget is meant to draw the same solid panel that Frosted glass background off draws, not an unblurred tint.
 
 1. Use a new empty profile folder with the default settings (see "Use a throwaway profile"). Put the widget over four backgrounds and take a screenshot of each: a busy photo with the dark theme; a bright photo with the dark theme; a dark wallpaper with the dark theme; a bright photo with the light theme.
-2. Turn Frosted glass background off in Settings > Appearance > Window Effects and repeat the first one.
+2. Turn Frosted glass background off in Settings > Appearance > Window effects and repeat the first one.
 
 Expected: With the default settings, text and icons are readable over all four backgrounds, and the widget looks the same as it does with Frosted glass background off. It does not look like a faint dark tint over a sharp desktop. If readability needs Frosted glass off, that counts as a failure of the default even though the switch fixes it.
 
@@ -557,7 +558,7 @@ Ref: MP-16
 
 ### MAC-3 Reopen while hidden
 
-1. Hide the widget: press Cmd+W, or use Minimize, or turn on Hide to tray when focus is lost and click another app.
+1. Hide the widget: press Cmd+W, or use Minimize, or turn on Hide to menu bar when focus is lost and click another app.
 2. Open the app from Spotlight (Cmd+Space). Hide it again and open it from Launchpad, then from Finder.
 
 Expected: Every way of opening the app brings the hidden widget back. It does not matter whether you can see the menu-bar icon.
@@ -566,16 +567,15 @@ Capture: Which of the three ways did nothing.
 
 Ref: MP-21
 
-### MAC-4 Minimize and the app menu
+### MAC-4 Minimize, Cmd+M and Cmd+W
 
-1. Click the widget's Minimize button, then press Cmd+M. Look at the Dock and Mission Control.
-2. Bring the widget back from the menu-bar icon.
-3. Focus the widget and look at the app menu in the menu bar (the menu to the right of the Apple menu).
-4. Set Settings > General > Language to a different language from macOS (for example German on an English macOS) and look at the menu again.
+1. Click the widget's Minimize button. Look at the Dock and Mission Control, then bring the widget back from the menu-bar icon.
+2. Click the widget so it has focus and press Cmd+M. Look again, and bring it back.
+3. Click the widget and press Cmd+W. Look again, and bring it back.
 
-Expected: Minimize puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, and you can bring it back. The menu names the app "HA Desktop Widget". Its labels follow the app's language, or at least the macOS language; report which.
+Expected: Each of the three puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, the app keeps running, and the menu-bar icon brings the widget back. The app shows no menu bar of its own: it lives in the menu bar, so its menus only supply these keys.
 
-Capture: A screenshot of the Dock and Mission Control after Minimize, and of the app menu in both languages.
+Capture: A screenshot of the Dock and Mission Control after each.
 
 Ref: MP-76
 
@@ -608,7 +608,7 @@ Ref: RO2-59, SM3-05, MP-49, SM1-44, SM2-69
 
 ### MAC-7 Spaces and full-screen apps
 
-1. Turn on Always on top (Settings > General > Window & Behavior). Create a second Space and put the widget in the first.
+1. Turn on Always on top (Settings > General > Window & behavior). Create a second Space and put the widget in the first.
 2. Switch to the second Space (Ctrl+Right).
 3. Put another app in full screen and press the popup hotkey.
 
@@ -631,7 +631,7 @@ Ref: MP-75
 
 ### MAC-9 Folder picker
 
-1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose Choose folder...
+1. Settings > Advanced > Profile syncing: turn on Profile sync and choose Choose folder...
 
 Expected: The folder dialog opens in front of the widget and attached to it (as a sheet), and the widget cannot be used until it closes.
 
@@ -644,14 +644,18 @@ Ref: MP-73
 Run this on the `.dmg` or `.zip` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default). If you have an Intel Mac and an Apple silicon Mac, run it on both, because each loads its own copy of the hotkey library.
 
 1. In System Settings > General > Language & Region, add Español (México) under Preferred Languages and drag it to the top. Quit the app from the menu-bar item and open it again.
-2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
-5. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
+6. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack.
+7. Put Português (Brasil), a language the app does not have, at the top, quit and reopen the app. Open Settings > Advanced > Export settings, look at the save panel, and cancel it. When you finish, put your own language back at the top.
 
-Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
 
-Capture: A screenshot of the language line and of the right-click menu in each language, and which kind of Mac you used. If the hotkey does nothing, the log lines that mention uiohook-napi.
+With Portuguese (Brazil) the app starts and works, in English, and the save panel is in English too. That is expected: the package lists only the app's own languages to macOS, which shows its own panels and message boxes in the first of your languages on that list. 4.0 leaves the other languages' Chromium files out to keep the package small, and listing a language without its file is untested: Chromium picks its own language from the same list and may not cope with one it has no file for. So 4.0 lists only the languages it has files for.
+
+Capture: A screenshot of the language line and of the right-click menu in each language, of the save panel in Portuguese (Brazil), and which kind of Mac you used. If a word is underlined or a menu offers spellings, a screenshot of it. If the hotkey does nothing, the log lines that mention uiohook-napi.
 
 Ref: MP-78
 
@@ -661,7 +665,7 @@ Run these on any Linux desktop, then the section for your desktop. By default th
 
 ### LNX-1 Window without blur
 
-1. Settings > Appearance > Window Effects: read the help under Frosted glass background.
+1. Settings > Appearance > Window effects: read the help under Frosted glass background.
 2. Open the command palette (Ctrl+K) with the clock and tiles behind it. Trigger a toast, for example by saving Settings. Hover a tile and a color swatch to see their tooltips, and hover the comparison graph.
 3. Settings > Hotkeys > Popup hotkey > Set hotkey, and watch the dim backdrop appear.
 
@@ -676,7 +680,7 @@ Ref: SM1-11, CSSC1-17, CSSC1-18, CSSB1-17, CSSB1-34, CSSB3-18
 Run this on a machine with working GPU acceleration, and also, if you can, on a virtual machine or other software-rendered session.
 
 1. Find out how the session renders (for example `glxinfo -B | grep renderer`; "llvmpipe" means software rendering).
-2. Turn on Holiday decorations (Settings > Appearance > Seasonal Themes; pick a holiday in Holiday to show if it is not October). Leave the dashboard visible and idle for two minutes. Add up the CPU use of all the app's processes in `top`, `htop` or your system monitor.
+2. Turn on Holiday decorations (Settings > Appearance > Seasonal themes; pick a holiday in Holiday to show if it is not October). Leave the dashboard visible and idle for two minutes. Add up the CPU use of all the app's processes in `top`, `htop` or your system monitor.
 3. Turn Holiday decorations off, wait two minutes, and read it again. Then play media on the media tile and read it a third time.
 4. With decorations on, make the widget show an error or empty state (disconnect from the network) and read the text on it.
 
@@ -688,7 +692,7 @@ Ref: RO2-73, CSSB3-19, RO2-71
 
 ### LNX-3 Opacity 100 and the restart prompt
 
-1. Settings > Appearance > Window Effects: move Window opacity from below 100 to 100 and Save.
+1. Settings > Appearance > Window effects: move Window opacity from below 100 to 100 and Save.
 2. If a prompt appears, read it and choose Restart now.
 3. After the restart, look at the pins' corners and where the widget sits. Then move opacity back below 100 and Save once more.
 
@@ -700,7 +704,7 @@ Ref: MP-01, SM3-06, MP-08
 
 ### LNX-4 Show log file
 
-1. Settings > Advanced > Diagnostics & Troubleshooting: press Show log file. If you have a machine with no file manager installed (a bare tiling window manager, say), try it there too.
+1. Settings > Advanced > Diagnostics & troubleshooting: press Show log file. If you have a machine with no file manager installed (a bare tiling window manager, say), try it there too.
 
 Expected: A file manager opens on the folder with the log file, and a message gives the file's path. With no file manager, the message says none opened and that the path was copied: paste it somewhere to check. It never does nothing.
 
@@ -710,7 +714,7 @@ Ref: RO1-42
 
 ### LNX-5 Popup hotkey help
 
-1. Settings > Hotkeys: read the Global Popup Trigger text and the switches below it.
+1. Settings > Hotkeys: read the Global popup trigger text and the switches below it.
 2. Set a popup hotkey. On Wayland, approve the shortcut when your desktop asks.
 
 Expected: The text matches how your session catches keys: on X11 it does not say the desktop shortcut service is used. A row that cannot work on Linux (Hide when released) is hidden or says why it is off. Press to toggle works.
@@ -724,9 +728,11 @@ Ref: SM3-37, SM1-30
 1. Turn on Start at login in Settings > General (real profile). Open your desktop's startup list (GNOME Tweaks > Startup Applications, or KDE System Settings > Autostart).
 2. Set up an alert in Settings > Alerts (turn on Entity alerts), trigger it, and read the application name your notification daemon shows.
 
-Expected: Both say "HA Desktop Widget", not `home-assistant-widget`.
+Expected: The startup list says "HA Desktop Widget", not `home-assistant-widget`. The notification's title and text name the widget as "HA Desktop Widget".
 
-Capture: A screenshot of the list and the notification.
+Known exception, raised with the owner: a daemon that also prints the sending application's name (dunst or swaync with `%a` in their format, KDE for an app it cannot match to a launcher) shows `home-assistant-widget` there. 4.0 still sends the package name, because the keyring entry that holds the key to saved sign-ins and the tray icon's id are named after it. Write down what your daemon shows.
+
+Capture: A screenshot of the list and the notification, including the application name if your daemon prints one.
 
 Ref: MP-52
 
@@ -760,14 +766,15 @@ Ref: MP-29
 Run this on the AppImage or the `.deb` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
 
 1. Quit the app. Start it from a terminal with Mexican Spanish as the system language: `LANGUAGE=es_MX LANG=es_MX.UTF-8 ./"HA Desktop Widget-<version>-linux-x64.AppImage" --user-data-dir=$HOME/hadw-test`, or `LANGUAGE=es_MX LANG=es_MX.UTF-8 home-assistant-widget --user-data-dir=$HOME/hadw-test` for the `.deb`.
-2. Open Settings > General > Language & Localization and read the line about the system language. Under Offline language packs, download Spanish.
+2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then press it while another app is in front. On Wayland, approve the shortcut when your desktop asks.
-5. Quit, and do steps 1 to 3 again with `LANGUAGE=zh_TW LANG=zh_TW.UTF-8` and the Chinese pack.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel. In a terminal, run `ls $HOME/hadw-test/session/Dictionaries`.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then press it while another app is in front. On Wayland, approve the shortcut when your desktop asks.
+6. Quit, and do steps 1 to 3 again with `LANGUAGE=zh_TW LANG=zh_TW.UTF-8` and the Chinese pack.
 
-Expected: The app starts with its window, and its tray icon if your desktop has a tray. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With `zh_TW` the line names Chinese (Taiwan), and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. The hotkey brings the widget to the front. On Linux it goes through the desktop's shortcut service or X11, not uiohook, so the log has "Using Electron globalShortcut for Linux popup hotkeys" and no line about uiohook-napi.
+Expected: The app starts with its window, and its tray icon if your desktop has a tray. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). The `ls` lists no `.bdic` file, because the app downloads no spelling dictionary. The folder may exist and be empty; a `.bdic` file dated before this build's first start was left by an earlier version. With `zh_TW` the line names Chinese (Taiwan), and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. The hotkey brings the widget to the front. On Linux it goes through the desktop's shortcut service or X11, not uiohook, so the log has "Using Electron globalShortcut for Linux popup hotkeys" and no line about uiohook-napi.
 
-Capture: A screenshot of the language line and of the right-click menu in each language, and your session type. If the hotkey does nothing, the log lines about hotkeys.
+Capture: A screenshot of the language line and of the right-click menu in each language, and your session type. If a word is underlined or a menu offers spellings, a screenshot of it. If the `ls` lists a `.bdic` file, its name and date. If the hotkey does nothing, the log lines about hotkeys.
 
 Ref: MP-78
 
@@ -796,9 +803,9 @@ Needs: A GNOME without an AppIndicator extension.
 1. Click the widget's Minimize button. Look for a way back: the Dock, Alt+Tab, the overview, a tray icon.
 2. Start the app again with the same command you used before (the app grid starts your real profile, not the throwaway folder). Then close the widget with the X, and again with Alt+F4, and look for a way back each time.
 
-Expected: The widget does not vanish with no way back. Either it minimizes like a normal window and shows in the overview, or the app tells you once that GNOME needs an AppIndicator extension to show its tray icon. Starting the app again brings the widget back.
+Expected: The widget does not vanish with no way back. Minimize minimizes it like a normal window, and it shows in the Dock, Alt+Tab and the overview. The X and Alt+F4 hide it; the first time in a run a notification says "HA Desktop Widget is still running", to open it from the app launcher and that GNOME shows its tray icon only with an AppIndicator extension. Clicking the notification, or starting the app again, brings the widget back.
 
-Capture: What you saw after Minimize.
+Capture: What you saw after Minimize, and the notification after the X.
 
 Ref: MP-41
 
@@ -870,7 +877,7 @@ Ref: MP-16
 
 ## Ubuntu 24.04, AppImage and .deb
 
-Ubuntu 24.04 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
+Ubuntu 23.10 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
 
 ### UBU-1 AppImage start
 
@@ -914,7 +921,7 @@ Ref: MP-24, MP-52
 
 ## Hyprland and Omarchy (HYP)
 
-Read the [Omarchy guide](../omarchy.md) first. The widget runs as a desktop layer under normal windows. Raise it with the popup shortcut, a tray click or `ha-desktop-widget --toggle`. Omarchy 4 has the bar plugin; Omarchy 3 uses waybar, which cannot load it. Use the AppImage for a pre-release.
+Read the [Omarchy guide](../omarchy.md) first. The widget runs as a desktop layer under normal windows. Raise it with the popup hotkey, a tray click or `ha-desktop-widget --toggle`. Omarchy 4 has the bar plugin; Omarchy 3 uses waybar, which cannot load it. Use the AppImage for a pre-release.
 
 Some steps change your Hyprland blur setting, the Omarchy bar or the Omarchy theme. Back up `~/.config/hypr` and `~/.config/omarchy` first, and note your current blur setting.
 
@@ -923,7 +930,7 @@ Some steps change your Hyprland blur setting, the Omarchy bar or the Omarchy the
 1. Start with a new empty profile folder (see "Use a throwaway profile"). Read the welcome screen and the step about shortcuts.
 2. Zoom into the tray icon on your bar.
 
-Expected: The heading has no box around it. The two buttons Set up shortcuts and Check popup shortcut have space between them, and the security note is not the loudest text. The tray icon is crisp at your bar's scale.
+Expected: The heading has no box around it. The two buttons Set up hotkeys and Check popup hotkey have space between them, and the security note is not the loudest text. The tray icon is crisp at your bar's scale.
 
 Capture: A screenshot of the shortcuts step and the zoomed icon.
 
@@ -956,7 +963,7 @@ Ref: MP-08, SM3-06
 
 ### HYP-4 Layer-mode text in Settings
 
-1. Settings > General > Window & Behavior: look at Always on top.
+1. Settings > General > Window & behavior: look at Always on top.
 2. Settings > Hotkeys: read the intro of the Hyprland shortcuts panel.
 3. Start the widget with `HA_WIDGET_LINUX_LAYER_SHELL=0` (a floating window) and read the same panel.
 4. Optional: start it with `XDG_CURRENT_DESKTOP=custom` in the environment.
@@ -972,7 +979,7 @@ Ref: SM2-67, SM3-33, MP-81
 1. With no hotkeys set, open Settings > Hotkeys and look at the Hyprland shortcuts panel. Press Copy bindings.
 2. Set a popup hotkey. Watch the bindings box.
 3. Assign an entity hotkey to a lamp. Read the toast and the bindings box.
-4. Clear the popup hotkey. Press Refresh shortcut status.
+4. Clear the popup hotkey. Press Refresh hotkey status.
 5. Switch Configuration format between Lua (.lua) and Hyprlang (.conf). Copy a binding into your Hyprland configuration, reload it, and press the shortcut.
 6. Read "Last shortcut received" and the bindings text.
 
@@ -985,7 +992,7 @@ Ref: SM3-09, SM3-32, SM3-40, SM1-30, CSSC1-32
 ### HYP-6 Widget blur toggle
 
 1. Run `hyprctl getoption decoration:blur:enabled` and note it.
-2. Settings > Appearance > Window Effects: use the button to turn blur on for the widget (labeled Turn on blur for the widget), then press Cancel in Settings.
+2. Settings > Appearance > Window effects: use the button to turn blur on for the widget (labeled Turn on blur for the widget), then press Cancel in Settings.
 3. Run the `hyprctl` command again. Then turn it off (Turn off blur for the widget) and Save.
 
 Expected: The page says the blur change takes effect immediately, because it changes the compositor without waiting for Save, and the two buttons are worded as a pair. The button is still reachable when Frosted glass background is off, so a blur you turned on can be turned off again. It is clear that Cancel does not undo the change.
@@ -1081,7 +1088,7 @@ Ref: none
 
 ## Sway, niri and river (SWAY)
 
-Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup shortcut, bind the widget's `--toggle` command yourself. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the full path of the AppImage file for the AppImage. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
+Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup hotkey, bind the widget's `--toggle` command yourself; Settings > Hotkeys names it for your installation. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` (by its full path) for the AppImage, a link the widget points at the AppImage each time it starts. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
 
 ### SWAY-1 Pins
 
@@ -1096,10 +1103,11 @@ Ref: MP-07, CSSA1-10
 
 ### SWAY-2 Hotkeys page
 
-1. Settings > Hotkeys: read the page, in particular the Global Popup Trigger section.
+1. Settings > Hotkeys: read the page, in particular the Global popup trigger section.
 2. Press your `--toggle` key several times.
+3. AppImage only, when a newer version is out: update from Settings > Advanced, let the new version start, and press the key again.
 
-Expected: Where there is no shortcut portal, the Global Popup Trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward, including binding `--toggle`. The key raises and lowers the widget.
+Expected: Where there is no shortcut portal, the Global popup trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, `/home/<you>/.local/bin/ha-desktop-widget --toggle` for the AppImage). The key, bound to exactly that command, raises and lowers the widget, and with the AppImage it still does after the update.
 
 Capture: A screenshot of the Hotkeys page.
 
@@ -1133,7 +1141,7 @@ Ref: MP-16
 Switch the theme on in Windows 11 under Settings > Accessibility > Contrast themes (Aquatic, Desert, Dusk, Night sky) and in Windows 10 under Settings > Ease of Access > High contrast. Left Alt + Left Shift + Print Screen toggles the last theme. Run the checks with a dark theme and with a light one (Desert or White). Restart the app after switching, and switch back when you finish. On Linux, try your desktop's High Contrast setting; the app may not enter forced-colors mode there, so report whether it looks different.
 
 1. Main window: look at the connection dot connected and disconnected, the media seek bar, the weather icon, the divider between the weather and clock cards, a running timer tile, the active page tab, and a disabled button (Undo, previous or next track). Look for black or white boxes behind text.
-2. Long-press a light, fan, cover, climate and media tile. Try the sliders with the mouse. Look at the color swatches on an RGB light and move keyboard focus onto one. Look at the selected HVAC mode, fan preset and mute buttons. Compare the primary and secondary buttons (Save and Cancel, Turn Off and Close).
+2. Long-press a light, fan, cover, climate and media tile. Try the sliders with the mouse. Look at the color swatches on an RGB light and move keyboard focus onto one. Look at the selected HVAC mode, fan preset and mute buttons. Compare the primary and secondary buttons (Save and Cancel, Turn off and Close).
 3. Settings: press Tab through the text fields, selects and dropdowns on each page. On Appearance, look at the accent and background swatches and the selected one. Look at the icon of the active page in the left rail.
 
 Expected:
@@ -1275,7 +1283,7 @@ Ref: RO2-04
 
 ## Language packs and fonts (LANG)
 
-System fonts differ per OS, so run these on each system. Download a pack under Settings > General > Language & Localization > Offline language packs, then choose it in Language.
+System fonts differ per OS, so run these on each system. Download a pack under Settings > General > Language & localization > Offline language packs, then choose it in Language.
 
 ### LANG-1 Layout in other languages
 
@@ -1329,7 +1337,7 @@ Use two computers where a check says so. Use a throwaway profile and a throwaway
 
 Run on each system you have: Windows, macOS, and Linux with a working keyring (GNOME Keyring or KWallet).
 
-1. Settings > Advanced > Profile Syncing: turn on Profile sync and choose a sync folder. Wait for the first sync.
+1. Settings > Advanced > Profile syncing: turn on Profile sync and choose a sync folder. Wait for the first sync.
 2. Tick Encrypt synced profile with passphrase, enter a passphrase of at least eight characters in Sync passphrase, and Save.
 3. Open the sync file in a text editor.
 4. On a second computer, turn on Profile sync with the same folder and the same passphrase. Change a setting on either computer.
@@ -1360,9 +1368,9 @@ Ref: MP-11, RO1-34, RO3-31
 Needs: A Linux session with a keyring (GNOME Keyring or KWallet).
 
 1. Lock the login keyring (Passwords and Keys: right-click Login > Lock). You will need your login password to unlock it again. Start the widget with a legacy token.
-2. Within 20 seconds, open Settings. Try Save. Then close it and open a light's controls and try Turn Off and Close.
+2. Within 20 seconds, open Settings. Try Save. Then close it and open a light's controls and try Turn off and Close.
 
-Expected: The toasts do not cover Save, Turn Off or Close, and clicking those buttons does what they say. A toast that shows after the dialog opens does not float in the middle of the window.
+Expected: The toasts do not cover Save, Turn off or Close, and clicking those buttons does what they say. A toast that shows after the dialog opens does not float in the middle of the window.
 
 Capture: A screenshot of the toasts over the buttons.
 
@@ -1400,11 +1408,11 @@ Needs: Windows with OneDrive, or macOS with iCloud Drive. One computer is enough
 
 1. Put the sync folder inside OneDrive or iCloud Drive and turn on Profile sync.
 2. In that folder, copy `ha-widget-profile-sync.json` to a conflict name. OneDrive: `ha-widget-profile-sync-<your computer name>.json`. iCloud Drive: `ha-widget-profile-sync 2.json`.
-3. Open Settings > Advanced > Profile Syncing.
+3. Open Settings > Advanced > Profile syncing.
 
 Expected: Settings warns that a conflict copy was found.
 
-Capture: A screenshot of the Profile Syncing section.
+Capture: A screenshot of the Profile syncing section.
 
 Ref: MP-31
 
@@ -1604,7 +1612,7 @@ Update checks need a build that is older than a published one. The call for test
 ### UPD-1 Windows installer and Linux AppImage (in-app updates)
 
 1. Install the older build. Start it and wait about a minute for the automatic check. Hide the widget to the tray and use Check for Updates in the tray menu.
-2. Open Settings > Advanced > Application Updates. Press Check for updates. While an update downloads, close Settings and open it again.
+2. Open Settings > Advanced > Application updates. Press Check for updates. While an update downloads, close Settings and open it again.
 3. When it is ready, press Install update.
 4. After the restart, look at the version in Settings > Advanced and press What's new.
 5. Turn off the network and press Check for updates.
@@ -1618,13 +1626,13 @@ Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01, MP-77
 
 ### UPD-2 macOS, .deb, Arch and Windows Portable (manual updates)
 
-1. Install the older build. Settings > Advanced > Application Updates: press Check for updates.
+1. Install the older build. Settings > Advanced > Application updates: press Check for updates.
 2. Read the status line and the button that appears.
 3. Press the button. Close and reopen Settings.
 4. Use Check for Updates in the tray menu with the widget hidden.
 5. Leave the older build running for a day while a newer release exists.
 
-Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download Update, or Download Portable Update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
+Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download update, or Download portable update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
 
 Capture: Screenshots of the status line and the button.
 
@@ -1645,7 +1653,7 @@ Ref: I18N-12
 
 ### UPD-4 Beta channel
 
-1. Settings > Advanced > Application Updates: turn Receive beta updates on and press Check for updates without pressing Save. Then turn it off and check again, again without saving.
+1. Settings > Advanced > Application updates: turn Receive beta updates on and press Check for updates without pressing Save. Then turn it off and check again, again without saving.
 
 Expected: Pre-release builds are offered only when the switch is on, as the switch shows it right now; you do not have to save first.
 

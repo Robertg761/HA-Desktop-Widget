@@ -501,6 +501,28 @@ describe('the update check in main', () => {
       expect(main.sent[0][1].background).toBeUndefined();
     });
 
+    // The Updates row is a live region: a six-hourly "You are up to date!" there was read out to
+    // whoever had Settings open.
+    it('marks "nothing new" from its own check as background too, and not from a requested one', async () => {
+      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      main.run('setupAutoUpdates()');
+      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(async () => {
+        main.listeners['update-not-available']({ version: '4.0.0' });
+      });
+
+      await main.run('runScheduledUpdateCheck()');
+      expect(main.sent.at(-1)[1]).toEqual({ status: 'none', background: true });
+
+      main.autoUpdater.checkForUpdates.mockImplementation(async () => {
+        main.listeners['update-not-available']({ version: '4.0.0' });
+        return { updateInfo: { version: '4.0.0' } };
+      });
+      await main.ipcCheck();
+      expect(
+        main.sent.find(([, payload]) => payload.status === 'none' && !payload.background)
+      ).toBeTruthy();
+    });
+
     it("does not start its own check while someone's is running, and does not mark theirs", async () => {
       const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
       main.run('setupAutoUpdates()');

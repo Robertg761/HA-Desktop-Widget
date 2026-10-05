@@ -76,6 +76,7 @@ test.each([
 test('startup repairs continue after each independent operation fails', () => {
   const names = [
     'ensureAppImageDesktopEntry',
+    'ensureAppImageCommandLink',
     'repairStaleAppImageLaunchers',
     'migrateLegacyLinuxAutostartEntry',
     'syncLinuxAutostartExecutablePath',

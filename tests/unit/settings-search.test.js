@@ -55,11 +55,65 @@ describe('settings search', () => {
     const label = section.querySelector('label');
     // "Search entities" is also on the top cards; the group says which result is this one.
     search(label.textContent.trim())
-      .find((button) => button.lastChild.textContent.endsWith('Custom Entity Icons'))
+      .find((button) => button.lastChild.textContent.endsWith('Custom entity icons'))
       .click();
     expect(toggle.onclick).toHaveBeenCalledTimes(1);
     expect(section.classList.contains('collapsed')).toBe(false);
   });
+  const titles = (results) => results.map((button) => button.firstChild.textContent);
+
+  test('lists a group once for rows it found only by the group name', () => {
+    // "theme" listed every row under Seasonal Themes, a holiday each, because the caption had the
+    // word; Mode came along for the Theme caption.
+    const results = search('theme');
+    expect(titles(results)).toEqual(['Theme', 'Seasonal themes', 'Appearance']);
+    expect(results[1].lastChild.textContent).toBe('Appearance');
+  });
+
+  test('a group result opens its page on the group, ringing the whole group', () => {
+    search('theme')
+      .find((button) => button.firstChild.textContent === 'Seasonal themes')
+      .click();
+    const caption = [...modal.querySelectorAll('.settings-group-caption')].find(
+      (node) => node.textContent.trim() === 'Seasonal themes'
+    );
+    const group = caption.closest('.settings-group');
+    expect(document.getElementById('personalization-tab').classList.contains('active')).toBe(true);
+    expect(group.classList.contains('settings-search-target')).toBe(true);
+    expect(document.activeElement).toBe(caption);
+  });
+
+  test('a group result does not land on a button that does something', () => {
+    // The first control under Primary cards is its Reset button, so Enter straight after choosing
+    // the result reset the cards.
+    const result = search('primary').find(
+      (button) => button.firstChild.textContent === 'Primary cards'
+    );
+    result.click();
+    expect(document.activeElement.id).not.toBe('primary-cards-reset');
+    expect(document.activeElement.classList.contains('settings-group-caption')).toBe(true);
+  });
+
+  test('keeps a row whose own name matches, beside its group', () => {
+    // Holiday colors names colour itself; the colour editor rows only sit under Colors.
+    const found = titles(search('color'));
+    expect(found).toContain('Holiday colors');
+    expect(found).toContain('Colors');
+    expect(found).not.toContain('Hex');
+  });
+
+  test('finds a button by its own label, not by the help of the row it sits in', () => {
+    // Export settings and Import settings each matched "hotkey" through their row's sentence
+    // "hotkeys and profile sync stay on this computer", under the row that says it.
+    const found = titles(search('hotkey'));
+    expect(found).toContain('Export and import');
+    expect(found).not.toContain('Export settings');
+    expect(found).not.toContain('Import settings');
+    expect(titles(search('export'))).toEqual(
+      expect.arrayContaining(['Export and import', 'Export settings'])
+    );
+  });
+
   test('uses current translated labels and does not index credentials', () => {
     document.querySelector('label[for="ha-token"]').textContent = 'Clé secrète';
     document.getElementById('ha-token').value = 'secret-do-not-index';
@@ -356,7 +410,7 @@ describe('settings search', () => {
     expect(removeResults()).toBe(before);
   });
   test('searches help text translated as HTML or set by JavaScript, but not status lines', () => {
-    expect(search('Modifiers').length).toBeGreaterThan(0);
+    expect(search('control entities from anywhere').length).toBeGreaterThan(0);
     expect(search('brings the window to front').length).toBeGreaterThan(0);
     document.getElementById('update-status').textContent = 'Version 9.9.9 is ready';
     expect(search('9.9.9')).toHaveLength(0);
@@ -402,7 +456,8 @@ describe('settings search', () => {
         1
       );
       const hits = titles(search('readability'));
-      expect(hits).toContain('Layout density');
+      // The Readability group, whose rows (Layout density among them) it names, is one result too.
+      expect(hits).toContain('Readability');
       expect(hits).not.toContain('Mode');
     });
 
@@ -438,7 +493,7 @@ describe('settings search', () => {
     });
 
     test('says which group a result is in, beside its page', () => {
-      expect(search('Christmas')[0].lastChild.textContent).toBe('Appearance › Seasonal Themes');
+      expect(search('Christmas')[0].lastChild.textContent).toBe('Appearance › Seasonal themes');
     });
 
     test('does not offer a button that cannot be pressed', () => {

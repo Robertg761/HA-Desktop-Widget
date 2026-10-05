@@ -10,6 +10,9 @@ const path = require('path');
 const { linkSettingsHelpText, setDescribedByLine } = require('../../src/settings-help-links.js');
 
 const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+const english = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../locales/en.json'), 'utf8')
+);
 
 describe('index.html', () => {
   beforeEach(() => {
@@ -32,6 +35,78 @@ describe('index.html', () => {
       expect(section.contains(byId('hotkey-entity-search'))).toBe(true);
       expect(section.contains(byId('hotkeys-list'))).toBe(true);
       expect(section.contains(byId('global-hotkeys-enabled'))).toBe(false);
+    });
+  });
+
+  describe('sentence case', () => {
+    // Names that keep their capitals inside a sentence-case label.
+    const PROPER_NAMES = /Home Assistant|Quick Access|HA Desktop Widget|GitHub|Hyprland|Omarchy/g;
+    const titleCased = (text) =>
+      text
+        .replace(PROPER_NAMES, '')
+        .split(/\s+/)
+        .slice(1)
+        .some((word) => /^[A-Z][a-z]/.test(word));
+
+    test('the Settings group captions, dialog titles and Settings buttons are written in it', () => {
+      // "Window & Behavior" and "Add Alert" sat beside "Date & time" and "Add alert" buttons, and the
+      // captions show in every search result.
+      const labels = [
+        ...document.querySelectorAll(
+          '.settings-group-caption, .modal-header h2, #settings-modal button.btn'
+        ),
+      ]
+        // The English the key shows ("Action: Clear" reads "Clear").
+        .map((node) => english[node.getAttribute('data-i18n')] || node.textContent.trim())
+        .filter(Boolean);
+      expect(labels.length).toBeGreaterThan(40);
+      expect(labels.filter(titleCased)).toEqual([]);
+    });
+
+    // The labels Settings and its hotkey list build as they run are not in the markup: confirm
+    // titles, the profile sync buttons and the hotkey actions. A label is Title Case when every word
+    // of it starts with a capital ("Keep Current", "Brightness Up"), apart from short joining words,
+    // names and abbreviations. A sentence that names a setting or a key ("Press Enter or Space to
+    // record a hotkey") has lower-case words in it and passes.
+    const JOINING_WORDS = /^(a|an|and|at|by|for|from|in|of|on|or|the|to|with|&)$/;
+    const isTitleCaseClause = (clause) => {
+      const words = clause
+        .replace(PROPER_NAMES, ' ')
+        .split(/\s+/)
+        .filter((word) => /\p{L}/u.test(word) && !JOINING_WORDS.test(word))
+        .filter((word) => !/^\p{Lu}{2,}\b/u.test(word));
+      return words.length > 1 && words.every((word) => /^\p{Lu}/u.test(word));
+    };
+    const translatedLiterals = (file) =>
+      [
+        ...fs
+          .readFileSync(path.resolve(__dirname, '../..', file), 'utf8')
+          .matchAll(/\bt\(\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g),
+      ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
+
+    test.each(['src/settings.js', 'src/hotkeys.js'])(
+      'the labels %s builds as it runs are written in it',
+      (file) => {
+        // "Retry Conflict Check" and "Keep Current" sat beside "Sync up" and "Cancel", and the light
+        // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list.
+        const titleCase = translatedLiterals(file).filter((text) =>
+          text
+            .replace(/\{\{\w+\}\}/g, ' ')
+            .split(/[.,:;!?·•()]|\s[–—-]\s/)
+            .some(isTitleCaseClause)
+        );
+        expect(titleCase).toEqual([]);
+      }
+    );
+  });
+
+  describe('the Hotkeys page', () => {
+    test('calls the popup hotkey by that one name', () => {
+      // The Hyprland note said "popup shortcut" and its button "Refresh shortcut status", right
+      // above the setting named Popup hotkey.
+      const page = byId('hotkeys-tab');
+      expect(page.textContent).toContain('Popup hotkey');
+      expect(page.textContent).not.toMatch(/popup shortcut|shortcut status/i);
     });
   });
 
@@ -144,7 +219,7 @@ describe('index.html', () => {
     test('the media tile help names the media tile, like the caption above it', () => {
       expect(
         byId('primary-media-player').closest('.settings-group').querySelector('h4').textContent
-      ).toBe('Media Tile');
+      ).toBe('Media tile');
       expect(
         byId('primary-media-player').closest('.form-group').querySelector('.form-help').textContent
       ).not.toMatch(/media bar/);

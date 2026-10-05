@@ -2,14 +2,12 @@
  * @jest-environment jsdom
  */
 
-const EventEmitter = require('events');
-const {
-  createMockElectronAPI,
-  resetMockElectronAPI,
-  triggerMockEvent,
-} = require('../mocks/electron.js');
+const { triggerMockEvent } = require('../mocks/electron.js');
+const { createRendererHarness, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer Home Assistant connection lifecycle', () => {
+  const harness = createRendererHarness();
+  const { baseConfig, oauthConfig, tokenConfig, flushAsync, panelText, findButton } = harness;
   let mockElectronAPI;
   let mockState;
   let mockWebsocket;
@@ -17,44 +15,6 @@ describe('Renderer Home Assistant connection lifecycle', () => {
   let mockAlerts;
   let mockLog;
   let mockUi;
-
-  const baseConfig = () => ({
-    favoriteEntities: [],
-    entityAlerts: { enabled: false, alerts: {} },
-    globalHotkeys: { enabled: false, hotkeys: {} },
-    ui: { theme: 'auto', enableInteractionDebugLogs: false },
-  });
-
-  const oauthConfig = (overrides = {}) => ({
-    ...baseConfig(),
-    homeAssistant: {
-      url: 'http://ha.local:8123',
-      token: 'access-token-1',
-      authMethod: 'oauth',
-      oauthStatus: 'connected',
-      oauthAuthorizationId: 'authorization-1',
-      ...overrides,
-    },
-  });
-
-  const tokenConfig = () => ({
-    ...baseConfig(),
-    homeAssistant: { url: 'http://ha.local:8123', token: 'legacy-token', authMethod: 'token' },
-  });
-
-  const flushAsync = async () => {
-    for (let index = 0; index < 8; index += 1) {
-      await Promise.resolve();
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  };
-
-  const panelText = () => document.getElementById('widget-state-panel')?.textContent || '';
-
-  const findButton = (label) =>
-    Array.from(document.querySelectorAll('button')).find(
-      (candidate) => candidate.textContent === label
-    );
 
   const connectSuccessfully = () => {
     let requestId = 10;
@@ -69,201 +29,28 @@ describe('Renderer Home Assistant connection lifecycle', () => {
   };
 
   const loadRenderer = async ({ config = oauthConfig(), configureApi } = {}) => {
-    jest.resetModules();
-    resetMockElectronAPI();
-    document.body.innerHTML =
-      '<main class="widget-content"><div id="quick-controls"></div></main>' +
-      '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>' +
-      '<div id="widget-state-live" role="status"></div>';
-    document.body.className = '';
-    window.history.replaceState({}, '', 'http://localhost/');
-
-    mockElectronAPI = createMockElectronAPI();
-    mockElectronAPI.getConfig.mockResolvedValue(config);
-    mockElectronAPI.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
-    configureApi?.(mockElectronAPI);
-    window.electronAPI = mockElectronAPI;
-
-    mockState = {
-      CONFIG: {},
-      STATES: {},
-      setConfig(nextConfig) {
-        this.CONFIG = nextConfig;
-      },
-      setStates(nextStates) {
-        this.STATES = nextStates;
-      },
-      setEntityState(entity) {
-        this.STATES[entity.entity_id] = entity;
-      },
-      deleteEntityState(entityId) {
-        return delete this.STATES[entityId];
-      },
-      setServices: jest.fn(),
-      setAreas: jest.fn(),
-      setUnitSystem: jest.fn(),
-    };
-
-    mockWebsocket = new EventEmitter();
-    mockWebsocket.connected = false;
-    mockWebsocket.connect = jest.fn(() => {
-      mockWebsocket.connected = false;
-      mockWebsocket.ws = {};
+    await harness.load({
+      config,
+      configureApi,
+      settings: { revealUpdateStatus: jest.fn() },
+      constants: { WS_INITIAL_STATES_TIMEOUT_MS: 90000 },
     });
-    mockWebsocket.isConnected = jest.fn(() => mockWebsocket.connected);
-    mockWebsocket.request = jest.fn(() => ({ id: 1, catch: jest.fn() }));
-    mockWebsocket.callService = jest.fn();
-    mockWebsocket.close = jest.fn(() => {
-      mockWebsocket.connected = false;
-      mockWebsocket.ws = null;
-    });
-    mockWebsocket.ws = null;
-
-    mockLog = {
-      errorHandler: { startCatching: jest.fn() },
-      transports: { console: {} },
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-    };
-    jest.doMock('../../src/logger.js', () => ({ __esModule: true, default: mockLog }));
-    jest.doMock('../../src/state.js', () => ({ __esModule: true, default: mockState }));
-    jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: mockWebsocket }));
-    jest.doMock('../../src/hotkeys.js', () => ({
-      __esModule: true,
-      initializeHotkeys: jest.fn(),
-      setupHotkeyEventListeners: jest.fn(),
-      renderHotkeysTab: jest.fn(),
-      assignHotkeyToEntity: jest.fn(),
-      toggleHotkeys: jest.fn(),
-      captureHotkey: jest.fn(),
-      cleanupHotkeyEventListeners: jest.fn(),
-    }));
-    mockAlerts = {
-      __esModule: true,
-      initializeEntityAlerts: jest.fn(),
-      suspendEntityAlerts: jest.fn(),
-      resetEntityAlerts: jest.fn(),
-      checkEntityAlerts: jest.fn(),
-      toggleAlerts: jest.fn(),
-    };
-    jest.doMock('../../src/alerts.js', () => mockAlerts);
-    jest.doMock('../../src/notifications.js', () => ({
-      __esModule: true,
-      initializePersistentNotifications: jest.fn(),
-    }));
-    mockUi = {
-      initUpdateUI: jest.fn(),
-      renderActiveTab: jest.fn(),
-      ensureEntityCacheScope: jest.fn(),
-      updateMediaTile: jest.fn(),
-      renderPrimaryCards: jest.fn(),
-      toggleReorganizeMode: jest.fn(),
-      populateQuickControlsList: jest.fn(),
-      isEntityVisible: jest.fn(() => false),
-      updateEntityInUI: jest.fn(),
-      updateWeatherFromHA: jest.fn(),
-      populateWeatherEntitiesList: jest.fn(),
-      selectWeatherEntity: jest.fn(),
-      updateTimeDisplay: jest.fn(),
-      updateTimerDisplays: jest.fn(),
-      updateMediaSeekBar: jest.fn(),
-      refreshVisibleEntityCache: jest.fn(),
-      executeHotkeyAction: jest.fn(),
-      handleDesktopPinActionRequest: jest.fn(),
-      callMediaTileService: jest.fn(),
-      getTickTargets: jest.fn(() => ({ hasVisibleTimers: false })),
-      switchQuickAccessPage: jest.fn(),
-      showAddPageModal: jest.fn(),
-    };
-    jest.doMock('../../src/ui.js', () => mockUi);
-    jest.doMock('../../src/settings.js', () => ({
-      __esModule: true,
-      openSettings: jest.fn(() => {
-        document.getElementById('settings-modal')?.classList.remove('hidden');
-      }),
-      closeSettings: jest.fn(),
-      saveSettings: jest.fn(),
-      renderAlertsListInline: jest.fn(),
-      refreshHomeAssistantAuthStatus: jest.fn(),
-      revealUpdateStatus: jest.fn(),
-    }));
-    mockUiUtils = {
-      __esModule: true,
-      showLoading: jest.fn(),
-      showToast: jest.fn(() => ({ dismiss: jest.fn() })),
-      setStatus: jest.fn(),
-      initializeConnectionStatusTooltip: jest.fn(),
-      applyTheme: jest.fn(),
-      setCustomThemes: jest.fn(),
-      applyAccentTheme: jest.fn(),
-      applyBackgroundTheme: jest.fn(),
-      applyUiPreferences: jest.fn(),
-      applyWindowEffects: jest.fn(),
-      dismissToast: jest.fn(),
-      dismissToasts: jest.fn(),
-      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
-    };
-    jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
-    jest.doMock('../../src/utils.js', () => ({
-      __esModule: true,
-      reconcileConfigEntityIds: jest.fn((nextConfig) => ({ changed: false, config: nextConfig })),
-      resolveEntityId: jest.fn((entityId) => entityId),
-    }));
-    jest.doMock('../../src/i18n.js', () => ({
-      __esModule: true,
-      setLocaleBootstrap: jest.fn(),
-      t: jest.fn((key, vars = {}) =>
-        String(key).replace(/\{\{(\w+)\}\}/g, (_match, name) =>
-          Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : `{{${name}}}`
-        )
-      ),
-      translateDocument: jest.fn(),
-      formatTime: jest.fn(
-        (date) => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
-      ),
-    }));
-    jest.doMock('../../src/icons.js', () => ({
-      __esModule: true,
-      setIconContent: jest.fn(),
-      applyCloseButtonIcons: jest.fn(),
-    }));
-    jest.doMock('../../src/constants.js', () => ({
-      __esModule: true,
-      BASE_RECONNECT_DELAY_MS: 1000,
-      MAX_RECONNECT_DELAY_MS: 8000,
-      WS_INITIAL_STATES_TIMEOUT_MS: 90000,
-    }));
-
-    require('../../renderer.js');
-    window.dispatchEvent(new Event('DOMContentLoaded'));
-    await flushAsync();
+    ({
+      electronAPI: mockElectronAPI,
+      state: mockState,
+      websocket: mockWebsocket,
+      uiUtils: mockUiUtils,
+      alerts: mockAlerts,
+      log: mockLog,
+      ui: mockUi,
+    } = harness);
   };
 
-  // A renderer a test has finished with stays on the window: a timer it left running (Retry's
-  // "Retrying..." moment, say) would fire into the next test's page and draw its own, older, state
-  // there. So every timer a test starts is cleared when the test ends.
-  let timerSpy;
-  const startedTimers = new Set();
-  beforeEach(() => {
-    const startTimer = window.setTimeout;
-    timerSpy = jest.spyOn(window, 'setTimeout').mockImplementation((...args) => {
-      const id = startTimer.apply(window, args);
-      startedTimers.add(id);
-      return id;
-    });
-  });
-
-  afterEach(() => {
-    startedTimers.forEach((id) => window.clearTimeout(id));
-    startedTimers.clear();
-    timerSpy.mockRestore();
-    jest.useRealTimers();
-    jest.resetModules();
-    delete window.electronAPI;
-    document.body.innerHTML = '';
-  });
+  warmUpRenderer(loadRenderer, () => harness.cleanup());
+  // A renderer a test has finished with stays on the window: a timer or listener it left (Retry's
+  // "Retrying..." moment, the network coming back) would act on the next test's page and draw its
+  // own, older, state there. cleanup() stops everything the test's renderer started.
+  afterEach(() => harness.cleanup());
 
   describe('rejected or expired Home Assistant authorization', () => {
     const reauthConfig = () =>
@@ -294,6 +81,18 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(2);
       expect(JSON.stringify(mockUiUtils.showToast.mock.calls)).not.toMatch(/token/i);
+    });
+
+    it('closes the connection when main says the authorization is gone while connected', async () => {
+      await loadRenderer();
+      connectSuccessfully();
+      mockWebsocket.close.mockClear();
+
+      triggerMockEvent('configUpdated', reauthConfig());
+      await flushAsync();
+
+      expect(mockWebsocket.close).toHaveBeenCalled();
+      expect(panelText()).toContain('Home Assistant authorization expired');
     });
 
     it('asks to reconnect when Home Assistant revoked the authorization', async () => {
@@ -570,7 +369,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockElectronAPI.startHomeAssistantOAuth).toHaveBeenCalledWith('http://ha.local:8123');
       expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
-      expect(findButton('Choose rooms and devices')).toBeUndefined();
+      expect(findButton('Choose rooms and entities')).toBeUndefined();
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
     });
   });
@@ -606,7 +405,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       findButton('Connect').click();
       await flushAsync();
 
-      findButton('Full Settings').click();
+      findButton('Full settings').click();
       await flushAsync();
 
       expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalledTimes(1);
@@ -704,6 +503,26 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(mockLog.debug).toHaveBeenCalledWith(
         'WebSocket error (still retrying):',
         'Could not establish WebSocket connection'
+      );
+    });
+
+    it('does not say its title again under it when Home Assistant closes the connection', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+
+      // Home Assistant restarting: the socket closes with no error first.
+      mockWebsocket.emit('close', { intentional: false });
+
+      expect(document.querySelector('#widget-state-panel .widget-state-title').textContent).toBe(
+        'Home Assistant is disconnected'
+      );
+      expect(document.querySelector('#widget-state-panel .widget-state-copy').textContent).toBe(
+        'The connection was lost. Retrying automatically.'
+      );
+      // The indicator has no title of its own, so it keeps the whole sentence.
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        'Disconnected from Home Assistant. Retrying automatically.'
       );
     });
 
@@ -1039,6 +858,86 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
+  describe('a first snapshot that runs out of time', () => {
+    const snapshotTimeouts = () =>
+      mockWebsocket.request.mock.calls
+        .filter(([payload]) => payload.type === 'get_states')
+        .map(([, options]) => options.timeoutMs);
+    // The reconnect backoff in this test's constants: 1 s doubling to 8 s, with no jitter.
+    const reconnectDelays = () =>
+      timerSpy.mock.calls
+        .map(([, delay]) => delay)
+        .filter((delay) => [1000, 2000, 4000, 8000].includes(delay));
+
+    // Home Assistant accepts the login every time, then does not send its states in time.
+    const loginThenTimeOut = async () => {
+      let failSnapshot;
+      mockWebsocket.request.mockImplementation((payload) => {
+        const request = new Promise((resolve, reject) => {
+          if (payload.type === 'get_states') {
+            failSnapshot = () =>
+              reject(Object.assign(new Error('WebSocket request timeout'), { code: 'timeout' }));
+          }
+        });
+        request.id = payload.type === 'get_states' ? 10 : 11;
+        request.catch(() => {});
+        return request;
+      });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      failSnapshot();
+      await flushAsync();
+      mockWebsocket.emit('close', { intentional: false, reason: 'snapshot-timeout' });
+    };
+
+    // The renderer schedules each retry with setTimeout, which the harness tracks through whatever
+    // window.setTimeout is when the renderer loads: this spy, so it sees every delay.
+    let timerSpy;
+    beforeEach(() => {
+      jest.spyOn(Math, 'random').mockReturnValue(0);
+      timerSpy = jest.spyOn(window, 'setTimeout');
+    });
+    afterEach(() => {
+      Math.random.mockRestore();
+      timerSpy.mockRestore();
+    });
+
+    it('says Home Assistant is slow, not that it did not answer or that the URL is wrong', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.ws = {};
+      mockWebsocket.failConnection = jest.fn();
+
+      await loginThenTimeOut();
+
+      expect(mockWebsocket.failConnection).toHaveBeenCalledWith(
+        expect.anything(),
+        'snapshot-timeout'
+      );
+      const copy = document.querySelector('#widget-state-panel .widget-state-copy').textContent;
+      expect(copy).toBe('Home Assistant is slow to send its states. Retrying automatically.');
+      expect(copy).not.toMatch(/URL/);
+    });
+
+    it('waits longer each time, and backs off between attempts, until the states arrive', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.ws = {};
+      mockWebsocket.failConnection = jest.fn();
+
+      for (let attempt = 0; attempt < 4; attempt += 1) await loginThenTimeOut();
+
+      // Twice as long after each timeout, up to four times the first wait.
+      expect(snapshotTimeouts()).toEqual([90000, 180000, 360000, 360000]);
+      // The login succeeding each time no longer puts the retry back to its shortest delay.
+      expect(reconnectDelays()).toEqual([1000, 2000, 4000, 8000]);
+
+      // Once the states arrive, both start over.
+      connectSuccessfully();
+      mockWebsocket.emit('close', { intentional: false });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+      expect(snapshotTimeouts().at(-1)).toBe(90000);
+      expect(reconnectDelays().at(-1)).toBe(1000);
+    });
+  });
+
   describe('the secure storage push at startup', () => {
     const pendingConfig = (pending) => ({ ...tokenConfig(), secureStoragePending: pending });
 
@@ -1156,6 +1055,26 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockWebsocket.close).toHaveBeenCalled();
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // Every test boots its own renderer into the same window. This file's own loader used to stop
+  // only the timeouts a test started, so the window listeners of every earlier renderer kept
+  // answering, each with its own websocket and config.
+  describe('the renderer of an earlier test', () => {
+    it('does not answer the network coming back once its test is over', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      const earlierWebsocket = mockWebsocket;
+      const earlierConnects = earlierWebsocket.connect.mock.calls.length;
+      harness.cleanup();
+
+      await loadRenderer({ config: tokenConfig() });
+      const connects = mockWebsocket.connect.mock.calls.length;
+      window.dispatchEvent(new Event('online'));
+      await flushAsync();
+
+      expect(earlierWebsocket.connect).toHaveBeenCalledTimes(earlierConnects);
+      expect(mockWebsocket.connect.mock.calls.length).toBeGreaterThan(connects);
     });
   });
 });

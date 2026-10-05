@@ -8,8 +8,8 @@
 /* The header and footer pad by --space-5, so the fields start where the title does. */
 .dashboard-tools-modal .modal-body,
 .add-page-modal .modal-body {
+  --modal-body-inset: var(--space-5);
   min-height: 0;
-  padding: var(--space-5);
 }
 
 .workflow-description {
@@ -70,10 +70,10 @@
   grid-column: 1 / -1;
 }
 
+/* The list grows with the dialog, whose body is the one thing that scrolls: a list with a scroll
+   bar of its own inside a scrolling dialog left two to work in a small window. It draws at most
+   a hundred rows (see showAddPageModal), so growing is bounded. */
 .room-entity-list {
-  max-height: 220px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--glass-surface);
@@ -265,12 +265,23 @@
   overflow-wrap: anywhere;
 }
 
+/* "Minimum 18.2 °C" moves to the next line as a whole rather than leaving its value behind; only a
+   figure wider than the whole line wraps inside. */
+.sensor-history-figure {
+  display: inline-block;
+  max-width: 100%;
+}
+
 /* Keep the previous chart in place while a new period loads so the dialog does not collapse
    and re-centre on every request. */
 .sensor-detail-sparkline.is-loading {
   opacity: 0.35;
   transition: opacity var(--transition-base);
 }
+
+/* The alert dialog's errors make its body scroll in the default window. Its fields keep their width
+   when they do because every dialog body holds its scrollbar's room and gives it back in its end
+   padding (.modal-body in styles.css), in forced colours too, where the scrollbar is wider. */
 
 .alert-advanced-options {
   display: grid;
@@ -296,6 +307,13 @@
 /* Two fields side by side line up at the bottom when one label wraps to a second line. */
 .alert-advanced-options > label {
   grid-template-rows: 1fr auto;
+}
+
+/* The duration and the cooldown share their rows (label, field, notes), so the two fields stay level
+   however each label wraps and whichever of them shows an error under its help. */
+.alert-advanced-options > label:has(#alert-duration, #alert-cooldown) {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
 }
 
 .alert-advanced-options label:has(#alert-condition),
@@ -332,6 +350,34 @@
 
 .alert-advanced-options label .alert-field-help:empty {
   display: none;
+}
+
+/* A field's help and its error, one under the other in the field's cell. A threshold with no unit or
+   reading to show has nothing here until it has an error. */
+.alert-advanced-options .alert-field-notes {
+  display: grid;
+  gap: 8px;
+}
+
+.alert-advanced-options .alert-field-notes:has(> .alert-field-help:empty:only-child) {
+  display: none;
+}
+
+.alert-advanced-options .field-error {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* An error about a pair (quiet hours' start and end) or a group (the target state) runs under all
+   of it, as close to it as a help line. */
+.alert-advanced-options > .field-error {
+  grid-column: 1 / -1;
+  margin-top: -8px;
+}
+
+/* The field an error is about stays red while it has focus, too. */
+.alert-advanced-options .form-control[aria-invalid='true'] {
+  border-color: var(--error);
 }
 
 /* A switch with a line of help under its label (Notify when unavailable or unknown). It sits in a
@@ -468,12 +514,6 @@
 }
 
 .room-device-search[hidden] {
-  display: none;
-}
-
-/* Search hides rows with the hidden attribute. `.form-group label:has(input[type='checkbox'])` in
-   styles.css sets display: flex at higher specificity, so this rule has to outrank it. */
-.room-dashboard .room-entity-list > label[hidden] {
   display: none;
 }
 

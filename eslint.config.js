@@ -132,6 +132,7 @@ module.exports = [
       globals: {
         ...globals.browser,
         __APP_VERSION__: 'readonly',
+        __BUNDLED_LOCALE_PACK_VERSIONS__: 'readonly',
         Buffer: 'readonly', // Used for base64 encoding
       },
     },

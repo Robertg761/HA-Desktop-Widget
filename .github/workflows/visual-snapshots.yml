@@ -6,6 +6,12 @@ name: Visual snapshots
 # (the real screen around the window: acrylic, vibrancy, shadows, native fonts).
 # See scripts/visual-snapshots/run.cjs. Informational only: nothing is compared.
 #
+# Each OS runs the scenes in two jobs, one per half of the list (SNAPSHOT_SHARD, see
+# scripts/visual-snapshots/shard.cjs). With every scene in one job, a slow windows-latest runner
+# ran past the 45-minute limit. Each half uploads visual-snapshots-<OS>-shard-<k>, and the merge
+# job joins the two into the one artifact per OS that reviewers download: visual-snapshots-Windows,
+# visual-snapshots-Windows-11-arm, visual-snapshots-macOS and visual-snapshots-Linux.
+#
 # windows-latest is Windows Server 2022. windows-11-arm is the only hosted Windows 11 image (free
 # for public repositories; ARM64 rather than x64), and its captures, in
 # visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. The widget's own
@@ -41,12 +47,29 @@ concurrency:
 
 jobs:
   snapshots:
+    name: snapshots (${{ matrix.os }}, shard ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, windows-11-arm, macos-latest, ubuntu-latest]
+        shard: [1, 2]
+        # The OS in the artifact names. Both Windows images report runner.os Windows, so the
+        # Windows 11 one gets its own.
+        include:
+          - os: windows-latest
+            artifact: Windows
+          - os: windows-11-arm
+            artifact: Windows-11-arm
+          - os: macos-latest
+            artifact: macOS
+          - os: ubuntu-latest
+            artifact: Linux
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # On a healthy runner, setup takes 1 to 7 minutes and a half of the scenes 7 to 9.
+    timeout-minutes: 30
+    env:
+      # The number after the slash is the length of the shard list above.
+      SNAPSHOT_SHARD: ${{ matrix.shard }}/2
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -58,11 +81,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install native build dependencies (Linux)
+      # The app bundles Latin, Cyrillic, Greek and Vietnamese fonts only, and the image has no
+      # Devanagari font, so every Hindi string in the hi-* scenes was drawn as boxes. fonts-noto-core
+      # has Noto Sans Devanagari, the font most Linux desktops fall back to for Hindi. It also has
+      # Noto Sans Arabic, as Ubuntu desktops do, so from the first run with it the Linux ar-* captures
+      # may draw Arabic in a different font. That change is the runner's, not the app's.
+      - name: Install native build dependencies and fonts (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick fonts-noto-core
 
       - name: Install dependencies
         run: npm ci
@@ -76,7 +104,7 @@ jobs:
         run: node -e "require('electron')"
 
       - name: Take snapshots (Linux)
-        timeout-minutes: 30
+        timeout-minutes: 20
         if: runner.os == 'Linux'
         run: |
           # The npm-installed Electron's sandbox helper lacks the setuid bit.
@@ -127,17 +155,59 @@ jobs:
             }
           Start-Sleep -Seconds 2
 
+      # The runner's agent keeps a console window (hosted-compute-agent) on the desktop. It covered
+      # the lower third of every Windows 11 pin capture and sat behind the widget in the others. The
+      # pointer rests in the middle of the screen, where the widget opens, so the first capture also
+      # showed the native tooltip of the tile under it. Minimize what is open and park the pointer in
+      # the top-left corner, clear of the widget and its pins. The run never moves the real pointer:
+      # scenes click through the page, not the mouse.
+      - name: Clear the desktop (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type -Namespace Win32 -Name Desktop -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);'
+          # explorer's own window is the desktop and the taskbar, which stay.
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.ProcessName -ne 'explorer' } |
+            ForEach-Object {
+              Write-Output "Minimizing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
+              # SW_MINIMIZE
+              [Win32.Desktop]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
+            }
+          [Win32.Desktop]::SetCursorPos(0, 0) | Out-Null
+
       - name: Take snapshots (Windows, macOS)
-        timeout-minutes: 30
+        timeout-minutes: 20
         if: runner.os != 'Linux'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 
+      # Only the merge job reads this one. It is kept for a day so that re-running one failed half
+      # can merge again with the other half from the first attempt.
       - name: Upload snapshots
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          # Both Windows images report runner.os Windows, so the Windows 11 one gets its own name.
-          name: visual-snapshots-${{ runner.os }}${{ matrix.os == 'windows-11-arm' && '-11-arm' || '' }}
+          name: visual-snapshots-${{ matrix.artifact }}-shard-${{ matrix.shard }}
           path: visual-snapshots/
           if-no-files-found: warn
+          retention-days: 1
+
+  # One artifact per OS, as before the suite was split. The scene files of the two halves have
+  # different names, so they merge into one folder without overwriting each other. It runs after a
+  # half has failed too, so that half's captures, the -failed ones included, still arrive. That
+  # takes always() and not !cancelled(): a job that runs out of time ends as cancelled.
+  merge:
+    needs: snapshots
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: [Windows, Windows-11-arm, macOS, Linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Merge the halves
+        uses: actions/upload-artifact/merge@v6
+        with:
+          name: visual-snapshots-${{ matrix.artifact }}
+          pattern: visual-snapshots-${{ matrix.artifact }}-shard-*
           retention-days: 14

@@ -186,7 +186,9 @@ function createMockElectronAPI() {
         profileSync: { ...(mockConfig.profileSync || {}), ...(config.profileSync || {}) },
       };
       if (
-        ['encryption_unavailable', 'decryption_failed'].includes(mockConfig.tokenResetReason) &&
+        ['encryption_unavailable', 'decryption_failed', 'not_persisted'].includes(
+          mockConfig.tokenResetReason
+        ) &&
         mockConfig.homeAssistant?.token &&
         mockConfig.homeAssistant.token !== 'YOUR_LONG_LIVED_ACCESS_TOKEN'
       ) {

@@ -37,7 +37,9 @@ const {
   settingsFileErrorCode,
 } = require('./src/settings-file-controller.cjs');
 const {
+  forgetInheritedAppImage,
   getLaunchAction,
+  getToggleCommand,
   hasIsolatedProfile,
   isGnome,
   isHyprland,
@@ -47,6 +49,10 @@ const {
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
 } = require('./src/linux-desktop.cjs');
+// Started from inside another AppImage, such as a terminal packaged as one, this process inherits
+// that app's APPIMAGE and APPDIR. Dropped before anything reads them, so the updater, a restart, the
+// desktop-layer handoff and the launchers this app writes all act on this app and not that one.
+const inheritedAppImage = forgetInheritedAppImage();
 const IS_ISOLATED_PROFILE = hasIsolatedProfile();
 let initialLaunchAction = process.env.HA_WIDGET_LAUNCH_VISIBILITY || getLaunchAction();
 // Started by an explicit --show or --toggle (the Omarchy bar, a launcher or a key binding) rather
@@ -78,6 +84,7 @@ const {
   updateInstalledOmarchyBarPlugin,
 } = require('./src/omarchy-bar.cjs');
 const {
+  ensureAppImageCommandLink,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 } = require('./src/linux-desktop-entry.cjs');
@@ -155,6 +162,7 @@ configureMainLogging(log, { isPackaged: app.isPackaged });
 
 // Log the app starting up
 log.info('App starting...');
+if (inheritedAppImage) log.info(`Ignoring APPIMAGE inherited from ${inheritedAppImage}`);
 
 const IS_DEV_MODE = process.argv.includes('--dev');
 const IS_SMOKE_TEST_MODE = process.argv.includes('--smoke-test');
@@ -349,11 +357,7 @@ if (
 // --------------------------- end early startup -----------------------------
 
 const profileSyncCore = require('./profile-sync-core.js');
-const {
-  createLocalizationService,
-  detectSystemLocale,
-  pickSpellCheckerLanguage,
-} = require('./src/i18n-main.cjs');
+const { createLocalizationService, detectSystemLocale } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
@@ -425,6 +429,7 @@ const {
   shouldUsePortalGlobalShortcuts,
   shouldUseTransparentWindow,
   supportsAutoUpdater,
+  isSoftwareRendering,
 } = require('./src/platform.cjs');
 const { supportsNativeGlass } = require('./src/window-glass.cjs');
 const {
@@ -442,6 +447,7 @@ const {
   acceleratorsConflict,
   validateAccelerator,
 } = require('./src/accelerators.cjs');
+const { liveEntityHotkeys, supportsEntityHotkey } = require('./src/entity-hotkeys.cjs');
 const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
@@ -455,6 +461,7 @@ const { installSystemShutdownHandlers } = require('./src/system-shutdown.cjs');
 const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
+const { turnOffSpellChecker } = require('./src/spell-checker.cjs');
 const {
   createSerializedTaskRunner,
   createLatestTaskCoalescer,
@@ -491,8 +498,14 @@ const {
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
 
-// package.json names the app "home-assistant-widget" (renaming it would move userData and orphan
-// every config), so app.getName() is that, not what the person knows it as.
+// package.json names the app "home-assistant-widget", and app.getName() is that, not what the
+// person knows it as, so text names the app with this instead. app.getName() itself stays: it is
+// more than a label. Before the app is ready Electron names the keyring entry that holds the key to
+// every saved token after it (the libsecret "application", the KWallet folder, the macOS keychain
+// item), and a rename there makes a new key and loses the tokens. After ready it still names each
+// tray icon's StatusNotifierItem id ("home-assistant-widget_status_icon_1"), which the Omarchy bar,
+// KDE and Waybar keep the user's pinned and hidden tray icons under. Linux notifications carry it
+// as their app name too, which only some daemons print.
 const APP_DISPLAY_NAME = 'HA Desktop Widget';
 
 let autoUpdaterInstance = null;
@@ -855,7 +868,14 @@ const PROFILE_SYNC_CONFLICT_PATTERNS = [
 ];
 const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-const TOKEN_RESET_RECOVERY_REASONS = new Set(['encryption_unavailable', 'decryption_failed']);
+// Why the saved token is not there to use. 'encryption_unavailable' and 'decryption_failed' are
+// about an encrypted token that is still on disk; 'not_persisted' says none was written, because
+// there was no way to encrypt it when it was entered.
+const TOKEN_RESET_RECOVERY_REASONS = new Set([
+  'encryption_unavailable',
+  'decryption_failed',
+  'not_persisted',
+]);
 const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS = 5 * 60 * 1000;
 const HOME_ASSISTANT_OAUTH_RETRY_MS = 60 * 1000;
 
@@ -1232,26 +1252,6 @@ const localizationService = createLocalizationService({
   // net.fetch is invoked here.
   fetchImpl: (url, init) => net.fetch(url, init),
 });
-// On Windows and Linux the spell checker starts in the language of the locale .pak Chromium loaded,
-// and the package ships only the paks of the app's languages, so a pt-BR or Italian system would
-// check its spelling in English. Set it from the system's own languages; see
-// pickSpellCheckerLanguage. macOS uses its own spell checker, which follows the system already.
-function applySystemSpellCheckerLanguage(targetSession) {
-  if (process.platform === 'darwin') return;
-  try {
-    const language = pickSpellCheckerLanguage(
-      app.getPreferredSystemLanguages(),
-      targetSession.availableSpellCheckerLanguages,
-      targetSession.getSpellCheckerLanguages()
-    );
-    if (!language) return;
-    targetSession.setSpellCheckerLanguages([language]);
-    log.info(`Spell checker set to the system language: ${language}`);
-  } catch (error) {
-    // Spelling suggestions are a convenience; startup must go on without them.
-    log.warn('Could not set the spell checker language:', error?.message || error);
-  }
-}
 // Installed language packs follow the manifest on main, so an upgrade's new strings arrive without
 // the user finding the Update button. Only started once the window is up; see
 // schedulePostWindowStartupTasks.
@@ -1307,6 +1307,22 @@ function resolveFrostedGlassConfig(currentConfig = config, overrideFrostedGlass)
   return typeof overrideFrostedGlass === 'boolean'
     ? overrideFrostedGlass
     : !!currentConfig?.frostedGlass;
+}
+
+// Whether Chromium draws the windows on the CPU (no GPU, or one its blocklist turns off). The
+// renderer then holds the seasonal art still, which would otherwise keep a core busy all month.
+// Asked each time: a GPU process that gives up moves a running app onto software rendering. Until
+// Chromium's first GPU report (gpu-info-update, under a second after start) every machine reads as
+// software, GPU or not, so the answer is no until then: otherwise every GPU machine would start
+// with the art still and set it moving a second later.
+let gpuInfoReported = false;
+function rendersInSoftware() {
+  if (!gpuInfoReported) return false;
+  try {
+    return isSoftwareRendering(app.getGPUFeatureStatus());
+  } catch {
+    return false;
+  }
 }
 
 // On native Wayland (and as a layer surface) an opaque window is given a larger surface and no
@@ -2136,6 +2152,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     isolatedProfile: IS_ISOLATED_PROFILE,
     nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
     systemColorScheme: getSystemColorScheme(),
+    softwareRendering: rendersInSoftware(),
   };
   cloned.configRevision = configSnapshotVersion;
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
@@ -2883,7 +2900,10 @@ function applyDesktopPinWindowShape(targetWindow, bounds = null) {
     return;
   // A transparent window is rounded by the page's own clip-path, which is antialiased. This region
   // has hard 1 px steps, so on top of that it only adds a jagged edge. An opaque window (the Linux
-  // default at full opacity) has nothing else to round its corners.
+  // default at full opacity) has nothing else to round its corners. On X11 with no compositing
+  // manager a transparent pin's corners are drawn black, and nothing the app can read says whether
+  // one runs, so that case keeps the clean edge and the README points those users to 100% opacity,
+  // which makes the pins opaque and brings this region back.
   if (targetWindow.__desktopPinTransparent) return;
 
   const nextBounds = bounds || targetWindow.getBounds();
@@ -3412,6 +3432,8 @@ function createDesktopPinWindow(entityId, options = {}) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      // Off on purpose, as in every window: see src/spell-checker.cjs.
+      spellcheck: false,
     },
   };
 
@@ -5338,6 +5360,30 @@ function isPlaceholderOrEmptyToken(token) {
   return !token || token === HOME_ASSISTANT_TOKEN_PLACEHOLDER;
 }
 
+// A reason that speaks of an encrypted token on disk, with no token there at all, was written when
+// a token could not be saved (builds before 'not_persisted' wrote 'encryption_unavailable' then).
+// Unlocking a keyring and restarting would bring nothing back, so the reason says what happened.
+function reconcileTokenResetReason(target) {
+  if (
+    TOKEN_RESET_RECOVERY_REASONS.has(target?.tokenResetReason) &&
+    target.homeAssistant?.authMethod !== 'oauth' &&
+    !target.homeAssistant?.tokenEncrypted &&
+    isPlaceholderOrEmptyToken(target.homeAssistant?.token)
+  ) {
+    target.tokenResetReason = 'not_persisted';
+  }
+  return target;
+}
+
+// Whether the renderer having seen a reason is enough to forget it. A keyring reason comes back at
+// the next start from the encrypted token on disk, if that still cannot be read. 'not_persisted'
+// would not: no token is on disk, so it is the only record that this setup lost its token rather
+// than never had one, and without it the next start opens Welcome over the dashboard. It stays
+// until a token is saved (update-config drops it then).
+function isAcknowledgeableTokenResetReason(reason) {
+  return TOKEN_RESET_RECOVERY_REASONS.has(reason) && reason !== 'not_persisted';
+}
+
 function hasRecoveryTokenBackup() {
   return !!preservedEncryptedTokenForRecovery;
 }
@@ -5715,6 +5761,7 @@ function loadConfig(options = {}) {
           }
         }
       }
+      reconcileTokenResetReason(config);
     } else {
       // Migrate legacy config if present in app directory
       const legacyPath = path.join(__dirname, CONFIG_FILE_NAME);
@@ -5996,7 +6043,8 @@ function shouldBlockPotentialConfigClobber() {
  * Writes the current `config` object to the application's userData/config.json. If `homeAssistant.token` is present
  * and not the placeholder value, this function attempts to encrypt the token using Electron's `safeStorage`; on
  * successful encryption the token is stored as a base64 string and `homeAssistant.tokenEncrypted` is set to `true`.
- * If encryption is unavailable or fails, the token is omitted from the saved config and `tokenResetReason` is recorded.
+ * If encryption is unavailable or fails, the token is omitted from the saved config, which records `tokenResetReason`
+ * 'not_persisted' for the next start.
  * The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during the save
  * process are logged; the function does not throw.
  */
@@ -6034,12 +6082,15 @@ function buildConfigSnapshotForSave() {
     configToSave.homeAssistant.tokenEncrypted = true;
   }
 
-  const omitTokenFromSavedConfig = (reason, warning, error = null) => {
+  // The token in memory keeps working for this session, so only the file says it is missing: the
+  // next start reads that and asks for the token again. It is 'not_persisted', not
+  // 'encryption_unavailable', because no encrypted token is kept that unlocking a keyring and
+  // restarting could bring back.
+  const omitTokenFromSavedConfig = (warning, error = null) => {
     configToSave.homeAssistant = configToSave.homeAssistant || {};
     delete configToSave.homeAssistant.token;
     configToSave.homeAssistant.tokenEncrypted = false;
-    configToSave.tokenResetReason = reason;
-    config.tokenResetReason = reason;
+    configToSave.tokenResetReason = 'not_persisted';
     if (!persistenceWarnings.some((entry) => entry.code === 'home_assistant_token_not_persisted')) {
       persistenceWarnings.push({
         code: 'home_assistant_token_not_persisted',
@@ -6071,14 +6122,12 @@ function buildConfigSnapshotForSave() {
         log.debug('Token encrypted for storage');
       } catch (error) {
         omitTokenFromSavedConfig(
-          'encryption_unavailable',
           'Failed to encrypt token; omitting it from saved config so it is not written in plaintext:',
           error
         );
       }
     } else {
       omitTokenFromSavedConfig(
-        'encryption_unavailable',
         'Encryption not available; omitting token from saved config so it is not written in plaintext'
       );
     }
@@ -7442,6 +7491,9 @@ function createWindow() {
       nodeIntegration: false, // Security: disabled, renderer uses bundled code
       contextIsolation: true, // Security: enabled, uses contextBridge for IPC
       webSecurity: true,
+      // The app has no use for spell-check, so it is off on purpose in every window. The session's
+      // own spell checker is turned off at startup as well; see src/spell-checker.cjs.
+      spellcheck: false,
     },
   };
 
@@ -7598,6 +7650,7 @@ function createWindow() {
         return;
       }
       mainWindow.hide();
+      announceHiddenWithoutTray();
     }
   });
 
@@ -8841,7 +8894,7 @@ ipcMain.handle(
   serializeConfigMutationHandler(async (event) => {
     const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
     if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
-    if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
+    if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
       const previousReason = config.tokenResetReason;
       delete config.tokenResetReason;
       const persistence = await saveConfigDurably();
@@ -8971,6 +9024,13 @@ function describeLinuxKeyringOAuthError(code, platform = process.platform) {
   return value;
 }
 
+// A new authorization has nothing saved to read yet: the keyring is why it cannot be saved, which
+// a first run must not be told is a saved authorization it cannot read. The remedy is the same.
+function describeLinuxKeyringPairingError(code, platform = process.platform) {
+  const value = describeLinuxKeyringOAuthError(code, platform);
+  return value === 'OAUTH_KEYRING_UNAVAILABLE' ? 'OAUTH_KEYRING_CANNOT_SAVE' : value;
+}
+
 async function refreshHomeAssistantOAuthSession() {
   if (config?.homeAssistant?.authMethod !== 'oauth') return null;
   try {
@@ -9034,7 +9094,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   } catch (error) {
     return {
       success: false,
-      code: describeLinuxKeyringOAuthError(error?.code || 'OAUTH_PAIRING_FAILED'),
+      code: describeLinuxKeyringPairingError(error?.code || 'OAUTH_PAIRING_FAILED'),
       error: error?.message || 'Home Assistant authorization failed',
     };
   } finally {
@@ -9506,6 +9566,23 @@ ipcMain.handle('update-tray-entity-icon', (event, payload) => {
   return { success: true };
 });
 
+// The hotkey items of a tile's menu: Add or Edit only where a hotkey has an action to run, and
+// Remove wherever one is set, which also clears one an earlier version let a sensor or a camera
+// save. `requestHotkey(remove)` hands the request to the renderer.
+function entityTileHotkeyMenuItems(entityId, hasHotkey, requestHotkey) {
+  const items = [];
+  if (supportsEntityHotkey(entityId)) {
+    items.push({
+      label: hasHotkey ? mainT('Edit Hotkey') : mainT('Add Hotkey'),
+      click: () => requestHotkey(false),
+    });
+  }
+  if (hasHotkey) {
+    items.push({ label: mainT('Remove Hotkey'), click: () => requestHotkey(true) });
+  }
+  return items;
+}
+
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
   if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
@@ -9529,17 +9606,16 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
       ? existingHotkeyConfig.hotkey
       : existingHotkeyConfig;
   const hasHotkey = typeof existingHotkey === 'string' && existingHotkey.trim().length > 0;
+  const hotkeyItems = entityTileHotkeyMenuItems(normalizedEntityId, hasHotkey, (remove) => {
+    senderWindow.focus();
+    senderWindow.webContents.send('entity-tile-hotkey-requested', {
+      entityId: normalizedEntityId,
+      remove,
+    });
+  });
   const menu = Menu.buildFromTemplate([
-    {
-      label: hasHotkey ? mainT('Edit Hotkey') : mainT('Add Hotkey'),
-      click: () => {
-        senderWindow.focus();
-        senderWindow.webContents.send('entity-tile-hotkey-requested', {
-          entityId: normalizedEntityId,
-        });
-      },
-    },
-    { type: 'separator' },
+    ...hotkeyItems,
+    ...(hotkeyItems.length ? [{ type: 'separator' }] : []),
     {
       label: isPinned
         ? mainT('Unpin from Desktop')
@@ -9802,6 +9878,15 @@ ipcMain.handle('get-desktop-integration', (event) => {
     platform: process.platform,
     hyprland: isHyprland(),
     layerMode: isLayerShellChildProcess,
+    // What to bind to a key in Sway, niri or river to show or hide this widget.
+    toggleCommand:
+      process.platform === 'linux'
+        ? getToggleCommand({
+            execPath: process.execPath,
+            isPackaged: app.isPackaged,
+            appPath: app.getAppPath(),
+          })
+        : null,
     helperPid: isLayerShellChildProcess ? process.ppid : null,
     output: layerActualMonitor?.name || null,
     preferredOutput: config.layerShellOutputName || null,
@@ -10928,6 +11013,27 @@ ipcMain.handle('restart-app', async (event) => {
   }
 });
 
+// Stock GNOME has no tray without an AppIndicator extension, so a widget its X, Ctrl+W or Alt+F4
+// hid has no icon to come back from, and looks as if it quit. Say once per run where it went.
+let announcedHiddenWithoutTray = false;
+function announceHiddenWithoutTray() {
+  if (process.platform !== 'linux' || !trayHostMissing || !isGnome()) return;
+  if (announcedHiddenWithoutTray || !ElectronNotification.isSupported?.()) return;
+  announcedHiddenWithoutTray = true;
+  try {
+    const notification = new ElectronNotification({
+      title: mainT('HA Desktop Widget is still running'),
+      body: mainT(
+        'Open it from your app launcher to bring it back. GNOME shows its tray icon only with an AppIndicator extension.'
+      ),
+    });
+    notification.on('click', () => showMainWindowFromTray());
+    notification.show();
+  } catch (error) {
+    log.warn('Could not say where the hidden widget went:', error?.message || error);
+  }
+}
+
 /**
  * The title bar's minimize button. The widget normally hides to the tray instead, but a desktop
  * with no tray host (stock GNOME without the AppIndicator extension) would then leave no visible
@@ -11041,9 +11147,10 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
 }
 
 // The updater reports a check the app started on its own schedule exactly as it reports one a
-// person asked for. Nobody is waiting for the first, so its "checking" and "error" are marked
-// `background` and the window leaves them out of the Updates row; otherwise a laptop that woke
-// without a network would show "Could not reach GitHub" there until someone next looked.
+// person asked for. Nobody is waiting for the first, so its "checking", "error" and "none" are
+// marked `background` and the window leaves them out of the Updates row; otherwise a laptop that
+// woke without a network would show "Could not reach GitHub" there until someone next looked, and
+// every six-hourly check would put "You are up to date!" there and announce it to a screen reader.
 let backgroundUpdateCheckRunning = false;
 let manualUpdateCheckRunning = false;
 
@@ -11053,7 +11160,7 @@ function sendAutoUpdateToWindow(payload) {
   }
 }
 
-// The two updater events that only mean something to a person who asked for the check.
+// The updater events that only mean something to a person who asked for the check.
 function sendUpdaterCheckEvent(payload) {
   sendAutoUpdateToWindow(backgroundUpdateCheckRunning ? { ...payload, background: true } : payload);
 }
@@ -11281,6 +11388,10 @@ ipcMain.handle(
     const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
     if (!normalizedEntityId) {
       return { success: false, error: 'Invalid entity ID' };
+    }
+    // A hotkey on any other domain would be a shortcut that does nothing.
+    if (!supportsEntityHotkey(normalizedEntityId)) {
+      return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
     }
 
     if (!validateHotkey(hotkey)) {
@@ -11894,10 +12005,10 @@ function handlePortalShortcutActivated(shortcutId) {
   if (!config?.globalHotkeys?.enabled) return;
 
   const entityId = shortcutId.slice(PORTAL_ENTITY_SHORTCUT_PREFIX.length);
-  const hotkeyConfig = config.globalHotkeys.hotkeys?.[entityId];
-  if (!hotkeyConfig) return;
-  const { hotkey, action } =
-    typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
+  // Config decides here too: a removed hotkey, or one that cannot act, is inert.
+  const live = liveEntityHotkeys(config.globalHotkeys.hotkeys).find(([id]) => id === entityId);
+  if (!live) return;
+  const { hotkey, action } = live[1];
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
   }
@@ -11986,25 +12097,19 @@ function syncLegacyPortalShortcuts(shortcuts) {
 function collectPortalShortcuts() {
   const shortcuts = [];
   if (config?.globalHotkeys?.enabled) {
-    Object.entries(config.globalHotkeys.hotkeys || {}).forEach(([entityId, hotkeyConfig]) => {
-      const { hotkey, action } =
-        typeof hotkeyConfig === 'object'
-          ? hotkeyConfig
-          : { hotkey: hotkeyConfig, action: 'toggle' };
-      if (hotkey && hotkey.trim()) {
-        shortcuts.push({
-          id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
-          // Shown in the desktop's shortcut settings. Sent with every bind, so a
-          // language change applies the next time the shortcuts are rebound.
-          description:
-            action === 'turn_on'
-              ? mainT('Turn on {{entity}}', { entity: entityId })
-              : action === 'turn_off'
-                ? mainT('Turn off {{entity}}', { entity: entityId })
-                : mainT('Toggle {{entity}}', { entity: entityId }),
-          accelerator: hotkey,
-        });
-      }
+    liveEntityHotkeys(config.globalHotkeys.hotkeys).forEach(([entityId, { hotkey, action }]) => {
+      shortcuts.push({
+        id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
+        // Shown in the desktop's shortcut settings. Sent with every bind, so a
+        // language change applies the next time the shortcuts are rebound.
+        description:
+          action === 'turn_on'
+            ? mainT('Turn on {{entity}}', { entity: entityId })
+            : action === 'turn_off'
+              ? mainT('Turn off {{entity}}', { entity: entityId })
+              : mainT('Toggle {{entity}}', { entity: entityId }),
+        accelerator: hotkey,
+      });
     });
   }
   const popupHotkey = typeof config?.popupHotkey === 'string' ? config.popupHotkey.trim() : '';
@@ -12325,32 +12430,28 @@ function registerGlobalHotkeys() {
 
   // Register each configured hotkey
   let allRegistered = true;
-  Object.entries(config.globalHotkeys.hotkeys).forEach(([entityId, hotkeyConfig]) => {
-    const { hotkey, action } =
-      typeof hotkeyConfig === 'object' ? hotkeyConfig : { hotkey: hotkeyConfig, action: 'toggle' };
-    if (hotkey && hotkey.trim()) {
-      try {
-        const success = globalShortcut.register(hotkey, () => {
-          // Send hotkey event to renderer process
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
-          }
-        });
-
-        if (!success) {
-          allRegistered = false;
-          log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
-          }
-        } else {
-          registeredEntityHotkeyAccelerators.add(hotkey);
-          log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
+  liveEntityHotkeys(config.globalHotkeys.hotkeys).forEach(([entityId, { hotkey, action }]) => {
+    try {
+      const success = globalShortcut.register(hotkey, () => {
+        // Send hotkey event to renderer process
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hotkey-triggered', { entityId, hotkey, action });
         }
-      } catch (error) {
+      });
+
+      if (!success) {
         allRegistered = false;
-        log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
+        log.warn(`Failed to register hotkey: ${hotkey} for entity: ${entityId}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('hotkey-registration-failed', { entityId, hotkey });
+        }
+      } else {
+        registeredEntityHotkeyAccelerators.add(hotkey);
+        log.info(`Registered hotkey: ${hotkey} for entity: ${entityId}`);
       }
+    } catch (error) {
+      allRegistered = false;
+      log.error(`Error registering hotkey ${hotkey} for entity ${entityId}:`, error);
     }
   });
   return {
@@ -12398,19 +12499,17 @@ function hotkeyConflictResult(entityId) {
 }
 
 // Command+K, Super+K and Win+K are one chord, so the comparison goes through the shared model
-// instead of lower-casing the text.
+// instead of lower-casing the text. A saved hotkey that cannot act (one an earlier version let a
+// sensor take) holds no chord.
 function findConfiguredEntityHotkey(hotkey, excludedEntityId = '') {
   if (!hotkey || typeof hotkey !== 'string') return null;
 
   return (
-    Object.entries(config?.globalHotkeys?.hotkeys || {}).find(([entityId, hotkeyConfig]) => {
-      if (entityId === excludedEntityId) return false;
-      const configuredHotkey =
-        typeof hotkeyConfig === 'object' && hotkeyConfig?.hotkey
-          ? hotkeyConfig.hotkey
-          : hotkeyConfig;
-      return acceleratorsConflict(configuredHotkey, hotkey, process.platform);
-    }) || null
+    liveEntityHotkeys(config?.globalHotkeys?.hotkeys).find(
+      ([entityId, { hotkey: configuredHotkey }]) =>
+        entityId !== excludedEntityId &&
+        acceleratorsConflict(configuredHotkey, hotkey, process.platform)
+    ) || null
   );
 }
 
@@ -12816,16 +12915,8 @@ async function checkManualReleaseUpdate({ allowPrerelease } = {}) {
         downloadUrl,
       };
     }
-    return {
-      status: 'manual',
-      // One sentence with the version inside it, so a language can order it as it needs to.
-      message: mainT(
-        'Update available: v{{version}}. This package cannot update itself; use Download Update to get it from GitHub.',
-        { version: latestVersion }
-      ),
-      version: latestVersion,
-      downloadUrl,
-    };
+    // The window words it (src/update-status.js), so the line follows a later language change.
+    return { status: 'manual', version: latestVersion, downloadUrl };
   } catch (error) {
     return { status: 'error', error: describeUpdateError(error) };
   }
@@ -12867,18 +12958,11 @@ async function checkPortableUpdate({ allowPrerelease } = {}) {
       return { status: 'none', message: mainT('You are up to date!') };
     }
 
+    // The window words it (src/update-status.js), so the line follows a later language change.
     return {
       status: 'portable',
-      message: isPrereleaseVersion(latestVersion)
-        ? mainT(
-            'Portable beta update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
-            { version: latestVersion }
-          )
-        : mainT(
-            'Portable update available: v{{version}}. Click "Download Portable Update" to get the Portable build.',
-            { version: latestVersion }
-          ),
       version: latestVersion,
+      prerelease: isPrereleaseVersion(latestVersion),
       downloadUrl,
     };
   } catch (error) {
@@ -12976,7 +13060,7 @@ function setupAutoUpdates() {
       });
       autoUpdater.on('update-not-available', () => {
         autoUpdateDownloaded = false;
-        sendAutoUpdateToWindow({ status: 'none' });
+        sendUpdaterCheckEvent({ status: 'none' });
       });
       autoUpdater.on('download-progress', (progress) => {
         sendAutoUpdateToWindow({ status: 'downloading', progress: { percent: progress?.percent } });
@@ -13331,6 +13415,12 @@ app
         log.warn('Could not create the AppImage launcher:', error?.message || error);
       }
       try {
+        // The command Settings tells Sway, niri and river users to bind, which outlasts updates.
+        ensureAppImageCommandLink();
+      } catch (error) {
+        log.warn('Could not link the AppImage command:', error?.message || error);
+      }
+      try {
         repairStaleAppImageLaunchers({
           onError: (file, error) =>
             log.warn(`Could not repair launcher ${file}:`, error?.message || error),
@@ -13380,13 +13470,25 @@ app
       }
     }
 
-    installApplicationMenu(Menu, process.platform, { isDev: IS_DEV_MODE });
+    installApplicationMenu(Menu, process.platform, {
+      isDev: IS_DEV_MODE,
+      // Cmd+M on macOS: the main window hides as its minimize button does; a pin has nothing to do.
+      onMinimize: (browserWindow) => {
+        if (browserWindow && browserWindow === mainWindow) minimizeMainWindow();
+      },
+    });
     protectAutoHideDuringMenu(Menu.getApplicationMenu());
+    // The first use of the session starts Chromium's spell checker, which downloads a dictionary
+    // unless this runs before control returns to the event loop. See src/spell-checker.cjs.
+    try {
+      turnOffSpellChecker(session.defaultSession);
+    } catch (error) {
+      log.warn('Could not turn off the spell checker:', error?.message || error);
+    }
     installSessionPermissionPolicy(session.defaultSession, {
       rendererEntryPath: path.join(__dirname, 'index.html'),
       isTrustedWebContents: isTrustedAppWebContents,
     });
-    applySystemSpellCheckerLanguage(session.defaultSession);
 
     // Set app ID for Windows (helps with icon caching and taskbar behavior)
     if (process.platform === 'win32') {
@@ -13463,6 +13565,18 @@ app
     }
     app.exit(1);
   });
+
+// The window learns whether it is drawn on the CPU from its config, so a change is sent when
+// Chromium reports it: its first report on a machine without a working GPU, or the GPU process
+// giving up later. Every config before the first report said no, so a GPU machine sends nothing.
+let lastSoftwareRendering = false;
+app.on('gpu-info-update', () => {
+  gpuInfoReported = true;
+  const softwareRendering = rendersInSoftware();
+  if (softwareRendering === lastSoftwareRendering) return;
+  lastSoftwareRendering = softwareRendering;
+  pushConfigToRenderer();
+});
 
 // XWayland cannot render at all on some machines (a driver stack where Chromium's GPU process
 // dies on startup), and the widget would then simply never appear. Rather than leave the user

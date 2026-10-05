@@ -146,7 +146,9 @@ XWayland is unavailable:
   position, and the widget's opacity setting does nothing.
 - Desktop pin windows cannot place themselves either: drags are not persisted and saved pin
   positions are not applied, though size edits still work. Their edit mode says so in the tile
-  itself, and the per-pin titles above are what let a KWin rule remember each pin's position.
+  itself: the hint reads "Resize only" rather than "Drag or resize", and a pin 240 px wide or
+  more also says that the desktop decides where it sits. The per-pin titles above are what let a
+  KWin rule remember each pin's position.
   A resize from a top or left handle therefore grows the tile from the origin the compositor
   keeps instead of holding the opposite edge still, and the saved x and y are left as they
   were. Layer-shell pins (below) do hold the opposite edge.

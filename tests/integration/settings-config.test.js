@@ -86,10 +86,23 @@ const mockUiUtils = {
         description: 'Saved custom color',
         rgb: hexToRgbString(entry.color),
         isCustom: true,
+        hasDefaultName: !entry.name,
       }))
       .filter((entry) => entry.color && entry.rgb);
   }),
-  getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
+  // A colour nobody named is named when the list is read, in the language of the day, as the real
+  // localizeTheme does.
+  getAccentThemes: jest.fn(() => [
+    ...BASE_THEMES,
+    ...mockCustomThemes.map((theme) =>
+      theme.hasDefaultName
+        ? {
+            ...theme,
+            name: require('../../src/i18n.js').t('Custom {{color}}', { color: theme.color }),
+          }
+        : theme
+    ),
+  ]),
   // The window a Background choice gives: the untinted base for null, a tinted one otherwise.
   getBackgroundWindowColor: jest.fn((color = null) => (color === null ? '#12161e' : '#222c3c')),
   // The real dialog layer: class-based visibility plus the inline display, the focus trap and
@@ -1222,6 +1235,28 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
     });
 
+    test('clearing the popup hotkey says why it failed and leaves the hotkey shown', async () => {
+      state.CONFIG.popupHotkey = 'Ctrl+Shift+F12';
+      await settings.openSettings();
+      await Promise.resolve();
+      await Promise.resolve();
+      mockElectronAPI.unregisterPopupHotkey.mockResolvedValueOnce({
+        success: false,
+        error: 'Failed to save popup hotkey removal: disk full',
+      });
+
+      document.getElementById('popup-hotkey-clear-btn').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        'Failed to save popup hotkey removal: disk full',
+        'error'
+      );
+      expect(state.CONFIG.popupHotkey).toBe('Ctrl+Shift+F12');
+      expect(document.getElementById('popup-hotkey-input').value).toBe('Ctrl+Shift+F12');
+    });
+
     test('a platform without a global shortcut service shows a read-only card that says so', async () => {
       mockElectronAPI.isPopupHotkeyAvailable.mockResolvedValue(false);
 
@@ -1985,8 +2020,87 @@ describe('Settings + Config Integration', () => {
         'Installed'
       );
       expect(rowFor('Español').querySelector('.language-pack-name').lang).toBe('es');
-      expect(spanishOption.lang).toBe('es');
+      // An option is in one language: the installed one's name is French, but the other's
+      // "(Not downloaded)" is in the interface's language, so that option is not marked Spanish.
+      expect(frenchOption.lang).toBe('fr');
+      expect(spanishOption.lang).toBe('');
       expect(document.body.textContent).not.toContain('Download first');
+    });
+
+    describe('German, which the app carries built in', () => {
+      const german = {
+        locale: 'de',
+        displayName: 'Deutsch',
+        englishName: 'German',
+        version: '1.2.64',
+        latestVersion: '1.2.64',
+        installed: false,
+        updateAvailable: false,
+      };
+      const french = {
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.2.64',
+        latestVersion: '1.2.64',
+        installed: true,
+        updateAvailable: false,
+      };
+      const germanRow = () =>
+        [...document.querySelectorAll('#language-packs-list .language-pack-row')].find((row) =>
+          row.textContent.includes('Deutsch')
+        );
+
+      afterEach(() => {
+        delete global.__BUNDLED_LOCALE_PACK_VERSIONS__;
+      });
+
+      test('is built in, not a pack to download, and keeps the download hint away', async () => {
+        // German was listed as "Not downloaded" with a Download button, though it is a choice in
+        // the selector already, so the hint about downloading never went away.
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.64' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([german, french]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        expect(germanRow().querySelector('.language-pack-meta').textContent).toBe('Built in');
+        expect(germanRow().querySelectorAll('button')).toHaveLength(0);
+        expect(document.getElementById('language-select-help').classList.contains('hidden')).toBe(
+          true
+        );
+      });
+
+      test('offers its pack as an update once the pack is newer than the built-in copy', async () => {
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.60' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([german, french]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        const buttons = [...germanRow().querySelectorAll('button')];
+        expect(buttons.map((button) => button.textContent)).toEqual(['Update']);
+        expect(buttons[0].getAttribute('aria-label')).toBe('Update Deutsch');
+        expect(buttons[0].dataset.localeAction).toBe('download');
+      });
+
+      test('shows a downloaded pack of it like any other', async () => {
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.60' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([
+          { ...german, installed: true, version: '1.2.64' },
+          french,
+        ]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        expect(germanRow().querySelector('.language-pack-meta').textContent).toContain(
+          'Installed • v1.2.64'
+        );
+        expect([...germanRow().querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+          'Remove',
+        ]);
+      });
     });
 
     test('changing the language selector persists immediately without waiting for Save', async () => {
@@ -2119,6 +2233,30 @@ describe('Settings + Config Integration', () => {
       expect(meta).toMatch(/\b\d{2}:\d{2}\b(?!:)/);
       expect(meta).not.toMatch(/\d{2}:\d{2}:\d{2}/);
       expect(meta).not.toMatch(/[AP]M/);
+    });
+
+    test('keeps a pack version apart from its install date in an Arabic line', async () => {
+      const i18n = require('../../src/i18n.js');
+      window.electronAPI.getLocalePacks.mockResolvedValueOnce([
+        {
+          locale: 'fr',
+          displayName: 'Français',
+          version: '1.2.64',
+          latestVersion: '1.2.64',
+          installed: true,
+          downloadedAt: '2026-10-05T02:02:00.000Z',
+        },
+      ]);
+      i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: { Installed: 'مثبت' } });
+      try {
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+        // Bare, the version's digits joined the date after it: "مثبت • 05 • 2026/10/v1.2.64".
+        const meta = document.querySelector('.language-pack-meta').textContent;
+        expect(meta.startsWith('مثبت • \u2066v1.2.64\u2069 • ')).toBe(true);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     test('names the language on every language pack button', async () => {
@@ -2309,6 +2447,50 @@ describe('Settings + Config Integration', () => {
         expect(
           document.getElementById('language-fallback-summary').classList.contains('hidden')
         ).toBe(false);
+      });
+
+      describe('on Auto, for a system language the app has as a pack', () => {
+        const arabicPack = (installed) => ({
+          ...frenchPack(installed),
+          locale: 'ar',
+          displayName: 'العربية',
+          englishName: 'Arabic',
+        });
+        const openOnAuto = async (detectedLocale, packs) => {
+          state.CONFIG.ui.language = 'auto';
+          setLocaleBootstrap({
+            languageSetting: 'auto',
+            detectedLocale,
+            requestedLocale: detectedLocale,
+            activeLocale: 'en',
+            usingEnglishFallback: detectedLocale !== 'en',
+            messages: {},
+          });
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce(packs);
+          await openWithLocaleHooks();
+          return document.getElementById('language-fallback-summary');
+        };
+        afterEach(() => {
+          setLocaleBootstrap({ languageSetting: 'auto', usingEnglishFallback: false });
+        });
+
+        test('says English is standing in until its pack is downloaded', async () => {
+          const line = await openOnAuto('ar-EG', [arabicPack(false), frenchPack(false)]);
+
+          expect(line.classList.contains('hidden')).toBe(false);
+          // In the interface's language, like "System language detected: Arabic" above it.
+          expect(line.textContent).toBe(
+            'Using English until the Arabic language pack is downloaded.'
+          );
+        });
+
+        test.each([
+          ['an English system', 'en-US', [arabicPack(false)]],
+          ['a language with no pack', 'ja-JP', [arabicPack(false)]],
+        ])('says nothing of the kind for %s', async (_name, detected, packs) => {
+          const line = await openOnAuto(detected, packs);
+          expect(line.classList.contains('hidden')).toBe(true);
+        });
       });
 
       test('removing a language that is not in use leaves the interface alone', async () => {
@@ -2761,7 +2943,7 @@ describe('Settings + Config Integration', () => {
     });
   });
 
-  describe('Custom Entity Icons', () => {
+  describe('Custom entity icons', () => {
     test('should apply icon changes as draft state until main Save', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
@@ -2946,6 +3128,9 @@ describe('Settings + Config Integration', () => {
       await openSettingsWithCustomIconsExpanded();
       const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
       expect(iconInput).toBeTruthy();
+      // Keywords and pasted emoji are not words to spellcheck or capitalize.
+      expect(iconInput.spellcheck).toBe(false);
+      expect(iconInput.getAttribute('autocapitalize')).toBe('off');
 
       // Act
       iconInput.value = 'timer';
@@ -3006,6 +3191,26 @@ describe('Settings + Config Integration', () => {
         }
       });
 
+      test.each([
+        ['1f600', '😀', 1],
+        ['U+1F600', '😀', 1],
+        // Every heart sequence holds U+2764 as well.
+        ['2764', '❤️', 120],
+      ])('finds an emoji by its code point, "%s"', async (query, icon, most) => {
+        const found = [...(await search(query)).querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain(icon);
+        expect(found.length).toBeLessThanOrEqual(most);
+      });
+
+      test('does not take a lone digit for a code point that is in every emoji', async () => {
+        const picker = await search('1');
+        expect(
+          picker.querySelector('.custom-entity-icon-picker-meta')?.textContent || ''
+        ).not.toMatch(/first 120/);
+      });
+
       test('finds a pasted emoji by the emoji itself', async () => {
         const picker = await search('🌲');
         const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
@@ -3052,6 +3257,149 @@ describe('Settings + Config Integration', () => {
         // A word narrows the catalog to a handful of icons, not a scrollable page of them.
         expect(found.length).toBeLessThan(40);
         expect(picker.querySelector('.custom-entity-icon-picker-empty')).toBeNull();
+      });
+
+      // The words written into settings.js cover a few hundred icons, in English. Every other emoji,
+      // and every other language, is found by the names Unicode CLDR gives it.
+      const choicesOf = (picker) =>
+        [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+      // Settings watches <html lang> and redraws itself in the new language. The watcher runs a
+      // moment after the change, so each change is let settle before going on.
+      const setLanguage = async (activeLocale) => {
+        require('../../src/i18n.js').setLocaleBootstrap({ activeLocale, messages: {} });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+      const inLanguage = async (activeLocale, run) => {
+        await setLanguage(activeLocale);
+        try {
+          await openSettingsWithCustomIconsExpanded();
+          await run();
+        } finally {
+          await setLanguage('en');
+        }
+      };
+
+      test.each([
+        ['de', 'Lampe', '💡'],
+        ['de', 'Glühbirne', '💡'],
+        ['de', 'Fernseher', '📺'],
+        ['fr', 'ampoule', '💡'],
+        ['es', 'bombilla', '💡'],
+        ['ar', 'مصباح', '💡'],
+        ['hi', 'बल्ब', '💡'],
+        ['zh', '灯泡', '💡'],
+        ['zh', '灯', '💡'],
+        // English words keep working whatever the interface's language.
+        ['de', 'lamp', '💡'],
+      ])('in %s, finds an icon by the word "%s"', async (locale, query, icon) => {
+        await inLanguage(locale, async () => {
+          const found = choicesOf(await type(query));
+          expect(found).toContain(icon);
+          expect(found.length).toBeLessThan(40);
+        });
+      });
+
+      test('names each icon in the interface language', async () => {
+        await inLanguage('de', async () => {
+          const bulb = (await type('Lampe')).querySelector('[data-custom-icon-choice="💡"]');
+          expect(bulb.getAttribute('aria-label')).toBe('Glühbirne (💡)');
+          expect(bulb.title).toBe('Glühbirne');
+        });
+      });
+
+      test.each([
+        ['grinning', '😀'],
+        ['germany', '🇩🇪'],
+        ['firefighter', '🧑‍🚒'],
+        ['heart eyes', '😍'],
+      ])('finds an emoji outside the hand-picked ones by its name, "%s"', async (query, icon) => {
+        const found = choicesOf(await search(query));
+        expect(found).toContain(icon);
+        expect(found.length).toBeLessThan(40);
+      });
+
+      test('puts a whole-word match before a word that only starts the same', async () => {
+        // "car" once found "card", "carrot" and "cartwheel" as well, in catalog order.
+        const found = choicesOf(await search('car'));
+        expect(found).toEqual(expect.arrayContaining(['🚗', '🚓', '🏎️']));
+        expect(found).not.toContain('🃏');
+        expect(found).not.toContain('🥕');
+      });
+
+      test('lists skin-tone variants only when the tone is asked for', async () => {
+        await openSettingsWithCustomIconsExpanded();
+        const plain = choicesOf(await type('thumbs up'));
+        expect(plain).toContain('👍');
+        expect(plain.some((icon) => /[\u{1F3FB}-\u{1F3FF}]/u.test(icon))).toBe(false);
+
+        const toned = choicesOf(await type('thumbs up medium'));
+        expect(toned).toContain('👍🏽');
+        expect(toned).not.toContain('👍');
+        const label = document
+          .querySelector('[data-custom-icon-choice="👍🏽"]')
+          .getAttribute('aria-label');
+        expect(label).toBe('thumbs up: medium skin tone (👍🏽)');
+      });
+
+      test('searches in the new language after the interface changes language', async () => {
+        await inLanguage('fr', async () => {
+          expect(choicesOf(await type('ampoule'))).toContain('💡');
+          await setLanguage('es');
+          expect(choicesOf(await type('bombilla'))).toContain('💡');
+          expect(choicesOf(await type('ampoule'))).not.toContain('💡');
+        });
+      });
+
+      test('keeps the English names when the German ones fail, and asks for them again', async () => {
+        // A fresh copy of the module, so no earlier test has loaded (and cached) the names. The
+        // German chunk fails the first time it is asked for, as a chunk can, and loads after that.
+        let germanLoads = 0;
+        let isolated;
+        let isolatedI18n;
+        jest.isolateModules(() => {
+          jest.doMock('../../emoji-names/de.json', () => {
+            germanLoads += 1;
+            if (germanLoads === 1) throw new Error('chunk failed to load');
+            return jest.requireActual('../../emoji-names/de.json');
+          });
+          isolated = require('../../src/settings.js');
+          isolatedI18n = require('../../src/i18n.js');
+          const isolatedState = require('../../src/state.js').default;
+          isolatedState.setConfig(state.CONFIG);
+          isolatedState.setStates(state.STATES);
+        });
+        isolatedI18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        try {
+          await isolated.openSettings();
+          const toggle = document.getElementById('custom-entity-icons-toggle');
+          if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+          // The German names are missing, but the English ones loaded beside them still find an
+          // emoji outside the hand-picked ones.
+          expect(choicesOf(await type('Glühbirne'))).not.toContain('💡');
+          expect(choicesOf(await type('grinning'))).toContain('😀');
+
+          // The next picker asks for the German names again, and shows what they find.
+          document.querySelector('[data-custom-icon-input="light.living_room"]').value =
+            'Glühbirne';
+          document.querySelector('[data-custom-icon-picker-toggle="light.living_room"]').click();
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const picker = document.querySelector('[data-custom-icon-picker="light.living_room"]');
+            if (choicesOf(picker).includes('💡')) break;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          expect(
+            choicesOf(document.querySelector('[data-custom-icon-picker="light.living_room"]'))
+          ).toContain('💡');
+          expect(germanLoads).toBe(2);
+        } finally {
+          isolated.closeSettings();
+          jest.dontMock('../../emoji-names/de.json');
+          isolatedI18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       });
     });
 
@@ -3748,15 +4096,33 @@ describe('Settings + Config Integration', () => {
         );
       });
 
-      test('does not change the name itself, which the rename field shows and compares', async () => {
+      test('shows the name in the rename field as the summary line does, and stores it without the marks', async () => {
         i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
-        await openWithCustomAccent('#AB34CD مخصص');
+        await openWithCustomAccent('Ocean #AB34CD');
 
         const option = document.querySelector('.color-theme-option[data-theme="custom-ab34cd"]');
         expect(option.getAttribute('aria-label')).toContain('\u2066#AB34CD\u2069');
-        expect(document.getElementById('custom-color-name-input').value).not.toMatch(
-          /[\u2066\u2069]/
+        // In the field as well, the '#' would land at the far end of the code: "Ocean AB34CD#".
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Ocean \u2066#AB34CD\u2069');
+
+        field.value = 'Sea \u2066#AB34CD\u2069';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('Sea #AB34CD');
+      });
+
+      test('reads an unchanged field as no edit, so Save does not ask about it', async () => {
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent('');
+
+        expect(document.getElementById('custom-color-name-input').value).toBe(
+          '\u2066#AB34CD\u2069 مخصص'
         );
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
       });
 
       test('leaves a name the person typed alone', async () => {
@@ -3778,6 +4144,112 @@ describe('Settings + Config Integration', () => {
         expect(document.getElementById('theme-current-selection').textContent).not.toMatch(
           /[\u2066\u2069]/
         );
+      });
+    });
+
+    describe('a name typed but not yet renamed', () => {
+      const i18n = require('../../src/i18n.js');
+
+      afterEach(() => {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      });
+
+      // Types a new name for the background's custom colour and leaves the field, without Rename or
+      // Enter; the editor counts as idle once focus has gone.
+      const typeNameAndLeave = async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.background = 'custom-ab34cd';
+        await settings.openSettings();
+        const target = document.getElementById('color-target-select');
+        target.value = 'background';
+        target.dispatchEvent(new Event('change'));
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Ocean');
+        field.focus();
+        field.value = 'Lilac';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.blur();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return field;
+      };
+
+      const expectSaveToAskAboutIt = async () => {
+        mockUiUtils.showConfirm.mockClear();
+        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+          expect.stringContaining('Unsaved custom color changes'),
+          expect.any(String),
+          expect.any(Object)
+        );
+        expect(state.CONFIG.ui.customColors[0].name).toBe('Lilac');
+      };
+
+      test('survives the swatches being drawn again for a theme mode', async () => {
+        const field = await typeNameAndLeave();
+
+        document.querySelector('#theme-mode-control [data-theme-mode="dark"]').click();
+
+        expect(field.value).toBe('Lilac');
+        await expectSaveToAskAboutIt();
+      });
+
+      test('survives a language change', async () => {
+        const field = await typeNameAndLeave();
+
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+
+        expect(field.value).toBe('Lilac');
+        await expectSaveToAskAboutIt();
+      });
+
+      test('is not mistaken for the default a language change renames', async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: '', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.accent = 'custom-ab34cd';
+        await settings.openSettings();
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Custom #AB34CD');
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+        });
+        await Promise.resolve();
+
+        expect(field.value).toBe('Eigene Farbe #AB34CD');
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('');
+      });
+
+      test('follows a language change once it is renamed back to the default', async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.accent = 'custom-ab34cd';
+        await settings.openSettings();
+        const field = document.getElementById('custom-color-name-input');
+        field.value = 'Custom #AB34CD';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+        });
+        await Promise.resolve();
+
+        expect(field.value).toBe('Eigene Farbe #AB34CD');
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
       });
     });
 
@@ -4040,14 +4512,89 @@ describe('Settings + Config Integration', () => {
       saveCustomBtn.click();
       await settings.saveSettings();
 
-      // Assert
+      // Assert: stored without a name, which is given when the colour is shown, in the language of
+      // the day; a stored "Custom #112233" would stay English after a change to German.
       expect(state.CONFIG.ui.customColors).toHaveLength(1);
       expect(state.CONFIG.ui.customColors[0]).toEqual(
         expect.objectContaining({
           color: '#112233',
-          name: 'Custom #112233',
+          name: '',
         })
       );
+      expect(document.getElementById('custom-color-name-input').value).toBe('Custom #112233');
+    });
+
+    test('names a saved colour in the language of the day, also one saved by an older version', async () => {
+      const i18n = require('../../src/i18n.js');
+      state.CONFIG.ui.customColors = [
+        // A name the colour got when it was saved, in English and in German.
+        { id: 'custom-112233', name: 'Custom #112233', color: '#112233' },
+        { id: 'custom-445566', name: 'Eigene Farbe #445566', color: '#445566' },
+        { id: 'custom-778899', name: 'Ocean', color: '#778899' },
+      ];
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+      });
+      try {
+        await settings.openSettings();
+        await settings.saveSettings();
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+
+      expect(state.CONFIG.ui.customColors.map((entry) => entry.name)).toEqual(['', '', 'Ocean']);
+    });
+
+    test('names a colour an older version saved in another language in the language of the day', async () => {
+      const i18n = require('../../src/i18n.js');
+      // The default name each language gave a colour when versions 3.11 to 4.0 saved it, read after
+      // a change to French.
+      state.CONFIG.ui.customColors = [
+        { id: 'custom-de', name: 'Eigene Farbe #110000', color: '#110000' },
+        { id: 'custom-es', name: '#220000 personalizado', color: '#220000' },
+        { id: 'custom-ar', name: '#330000 مخصص', color: '#330000' },
+        { id: 'custom-hi', name: 'कस्टम #440000', color: '#440000' },
+        { id: 'custom-zh', name: '自定义 #550000', color: '#550000' },
+        // A name the person gave stays, even one that starts like a default or names another code.
+        { id: 'custom-dark', name: 'Eigene Farbe #660000 dunkel', color: '#660000' },
+        { id: 'custom-other', name: 'Eigene Farbe #000000', color: '#770000' },
+      ];
+      i18n.setLocaleBootstrap({
+        activeLocale: 'fr',
+        messages: { 'Custom {{color}}': '{{color}} personnalisée' },
+      });
+      try {
+        await settings.openSettings();
+        await settings.saveSettings();
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+
+      expect(state.CONFIG.ui.customColors.map((entry) => entry.name)).toEqual([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Eigene Farbe #660000 dunkel',
+        'Eigene Farbe #000000',
+      ]);
+    });
+
+    test('keeps the default name when it is typed back', async () => {
+      state.CONFIG.ui.customColors = [{ id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD' }];
+      state.CONFIG.ui.accent = 'custom-ab34cd';
+      await settings.openSettings();
+      const field = document.getElementById('custom-color-name-input');
+      const rename = document.getElementById('rename-custom-color-btn');
+
+      field.value = 'Custom #AB34CD';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      rename.click();
+      await settings.saveSettings();
+      expect(state.CONFIG.ui.customColors[0].name).toBe('');
+      expect(field.value).toBe('Custom #AB34CD');
     });
 
     test('should prompt for unsaved custom color draft and save when confirmed', async () => {
@@ -4063,10 +4610,10 @@ describe('Settings + Config Integration', () => {
 
       // Assert: three ways out, and the safe one (save the colour) is where focus starts
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-        expect.stringContaining('Unsaved Custom Color Changes'),
+        expect.stringContaining('Unsaved custom color changes'),
         expect.stringContaining('unsaved custom color edits'),
         expect.objectContaining({
-          confirmText: 'Save and Continue',
+          confirmText: 'Save and continue',
           alternateText: 'Discard color edits',
           cancelText: 'Keep editing',
           confirmFirst: true,
@@ -4166,8 +4713,8 @@ describe('Settings + Config Integration', () => {
 
       // Assert
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
-        'Remove Custom Color',
-        'Remove "My Slate" from your custom colors?',
+        'Remove custom color',
+        'Remove “My Slate” from your custom colors?',
         expect.objectContaining({ confirmClass: 'btn-danger' })
       );
       const customOptions = document.querySelectorAll(
@@ -4268,6 +4815,24 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.applyUiPreferences).toHaveBeenCalledWith(
         expect.objectContaining({ highContrast: true })
       );
+    });
+
+    test('writes the text size choices in the percent format of the language', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+      try {
+        await settings.openSettings();
+        const labels = () =>
+          [...document.querySelectorAll('#ui-scale-select option')].map((option) => option.text);
+        // The Window opacity readout beside it already reads "95 %".
+        expect(labels()).toEqual(['100\u00a0%', '150\u00a0%']);
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+        expect(labels()).toEqual(['100%', '150%']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
 
     test('previews appearance choices live and persists them only on Save', async () => {
@@ -4636,9 +5201,9 @@ describe('Settings + Config Integration', () => {
 
   describe('the keyring notice', () => {
     const notice = () => document.getElementById('secure-storage-notice');
-    const openWithIntegration = async (info) => {
+    const openWithIntegration = async (info, hooks) => {
       window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(info);
-      await settings.openSettings();
+      await settings.openSettings(hooks);
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
 
@@ -4665,6 +5230,59 @@ describe('Settings + Config Integration', () => {
       settings.closeSettings();
       await openWithIntegration({ platform: 'linux', secureStorageAvailable: true });
       expect(notice().classList.contains('hidden')).toBe(true);
+    });
+
+    describe('beside a token that has to be entered again', () => {
+      const noKeyring = { platform: 'linux', secureStorageAvailable: false };
+      const status = () => document.getElementById('ha-oauth-status');
+      let connection;
+      const hooks = { initUpdateUI: jest.fn(), getConnectionState: () => connection };
+      const needsToken = (tokenReason, reason) => ({
+        status: 'disconnected',
+        reason,
+        needsToken: true,
+        tokenReason,
+      });
+
+      test.each([
+        [
+          'encryption_unavailable',
+          'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.',
+        ],
+        [
+          'not_persisted',
+          'No unlocked system keyring (Secret Service) was found when the access token was entered, so it was not saved. Enter it again, and start gnome-keyring or KWallet so it is remembered.',
+        ],
+      ])(
+        'says the missing keyring once, in the line above the field (%s)',
+        async (tokenReason, reason) => {
+          connection = needsToken(tokenReason, reason);
+          await openWithIntegration(noKeyring, hooks);
+
+          expect(status().textContent).toBe(reason);
+          expect(notice().classList.contains('hidden')).toBe(true);
+        }
+      );
+
+      test('keeps the notice when the token was lost for another reason', async () => {
+        // The token line says this computer cannot decrypt it; only the notice says a new one
+        // will not be remembered either.
+        connection = needsToken('decryption_failed', 'This computer cannot decrypt the token.');
+        await openWithIntegration(noKeyring, hooks);
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
+
+      test('brings the notice back once a token is entered and the keyring is still missing', async () => {
+        connection = needsToken('not_persisted', 'The access token was not saved.');
+        await openWithIntegration(noKeyring, hooks);
+        expect(notice().classList.contains('hidden')).toBe(true);
+
+        connection = { status: 'connected', reason: '' };
+        settings.refreshHomeAssistantAuthStatus();
+
+        expect(notice().classList.contains('hidden')).toBe(false);
+      });
     });
   });
 
@@ -4735,14 +5353,14 @@ describe('Settings + Config Integration', () => {
           },
         });
         expect(legacy).toBe(
-          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle", for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
+          'Hyprland sent “Popup hotkey” through the old app name “ha_desktop_widget”. That still works for now; change the bind to “ha-desktop-widget:popup-toggle”, for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
         );
         const noExample = await show({
           lastActivation: null,
           legacyActivation: { legacyAppId: 'ha_desktop_widget', id: 'popup-toggle', binding: '' },
         });
         expect(noExample.legacy).toBe(
-          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle".'
+          'Hyprland sent “Popup hotkey” through the old app name “ha_desktop_widget”. That still works for now; change the bind to “ha-desktop-widget:popup-toggle”.'
         );
       });
     });
@@ -5699,7 +6317,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
         'Sync file already exists',
         expect.stringContaining('/tmp/new-sync already has a sync file'),
-        expect.objectContaining({ confirmText: 'Use That File', cancelText: 'Keep Current' })
+        expect.objectContaining({ confirmText: 'Use that file', cancelText: 'Keep current' })
       );
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
@@ -5764,7 +6382,7 @@ describe('Settings + Config Integration', () => {
       expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
         'Sync folder changed',
         'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
-        expect.objectContaining({ confirmText: 'Copy & Switch', cancelText: 'Keep Current' })
+        expect.objectContaining({ confirmText: 'Copy & switch', cancelText: 'Keep current' })
       );
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
         'Kept the current sync folder: /tmp/old-sync',
@@ -6451,7 +7069,7 @@ describe('Settings + Config Integration', () => {
         await flush();
 
         expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
-          'Clear Saved Passphrase',
+          'Clear saved passphrase',
           'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.',
           expect.anything()
         );
@@ -6722,9 +7340,46 @@ describe('Settings + Config Integration', () => {
       };
       afterEach(() => document.getElementById('inline-alerts-list')?.remove());
 
-      test('a threshold rule reads "Above 25 °C", with the entity unit', () => {
+      test('a threshold rule reads "Above 25°C", with the entity unit as the tile writes it', () => {
         const row = renderRow('sensor.office_temperature', temperatureAlert());
-        expect(row.querySelector('.alert-type').textContent).toBe('Above 25 °C');
+        expect(row.querySelector('.alert-type').textContent).toBe('Above 25°C');
+      });
+
+      describe('in other languages', () => {
+        const i18n = require('../../src/i18n.js');
+        afterEach(() => i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} }));
+
+        test('the threshold and the reading keep their order in an Arabic sentence', () => {
+          i18n.setLocaleBootstrap({
+            activeLocale: 'ar',
+            messages: {
+              'Above {{value}}': 'أعلى من {{value}}',
+              'Currently {{value}}': 'القيمة الحالية {{value}}',
+              'In {{unit}}': 'بوحدة {{unit}}',
+            },
+          });
+          // Bare, the degree sign comes after the C: "أعلى من C° 25".
+          const row = renderRow('sensor.office_temperature', temperatureAlert());
+          expect(row.querySelector('.alert-type').textContent).toBe('أعلى من \u206625°C\u2069');
+
+          state.STATES['sensor.office_temperature'].state = '21.4';
+          settings.openAlertConfigModal('sensor.office_temperature');
+          expect(document.getElementById('alert-threshold-help').textContent).toBe(
+            'القيمة الحالية \u206621.4°C\u2069'
+          );
+          state.STATES['sensor.office_temperature'].state = 'unavailable';
+          settings.openAlertConfigModal('sensor.office_temperature');
+          expect(document.getElementById('alert-threshold-help').textContent).toBe(
+            'بوحدة \u2066°C\u2069'
+          );
+          state.STATES['sensor.office_temperature'].state = '21.5';
+        });
+
+        test("the gap before the unit is the language's own", () => {
+          i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+          const row = renderRow('sensor.office_temperature', temperatureAlert());
+          expect(row.querySelector('.alert-type').textContent).toBe('Above 25\u00a0°C');
+        });
       });
 
       test('a below rule, and a unitless sensor, read without a dangling "threshold"', () => {
@@ -6784,7 +7439,38 @@ describe('Settings + Config Integration', () => {
         settings.openAlertConfigModal('sensor.office_temperature');
 
         expect(document.getElementById('alert-threshold-help').textContent).toBe(
-          'Currently 21.5 °C'
+          'Currently 21.5°C'
+        );
+      });
+
+      test('the reading is rounded as the tile rounds it, and a duration stays in its unit', () => {
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '21.4567',
+          attributes: {
+            friendly_name: 'Office temperature',
+            unit_of_measurement: '°C',
+            device_class: 'temperature',
+          },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 21.5°C'
+        );
+
+        // The tile reads "1 hr 15 min", but the threshold is typed in minutes.
+        state.STATES['sensor.office_temperature'] = {
+          entity_id: 'sensor.office_temperature',
+          state: '75',
+          attributes: {
+            friendly_name: 'Run time',
+            unit_of_measurement: 'min',
+            device_class: 'duration',
+          },
+        };
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(document.getElementById('alert-threshold-help').textContent).toBe(
+          'Currently 75\u00a0min'
         );
       });
 
@@ -6890,37 +7576,137 @@ describe('Settings + Config Integration', () => {
       duration.value = '90000';
       expect(press(duration).defaultPrevented).toBe(true);
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
+      expect(document.getElementById('alert-duration-error').textContent).toBe(
+        'Enter a whole number of seconds from 0 to 86400.'
       );
 
-      mockUiUtils.showToast.mockClear();
+      duration.value = '60';
+      duration.dispatchEvent(new Event('input', { bubbles: true }));
       expect(press(document.getElementById('alert-quiet-enabled')).defaultPrevented).toBe(false);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(document.getElementById('alert-duration-error')).toBeNull();
 
-      // Opening again must not stack a second listener.
+      // Opening again must not stack a second listener: one Enter saves once.
       settings.openAlertConfigModal('sensor.office_temperature');
-      document.getElementById('alert-duration').value = '90000';
       press(document.getElementById('alert-duration'));
       await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.updateConfig).toHaveBeenCalledTimes(1);
       expect(modal.getAttribute('role')).toBe('dialog');
     });
 
-    test('rejects out-of-range durations with a toast instead of a native bubble', async () => {
-      settings.openAlertConfigModal('sensor.office_temperature');
-      const duration = document.getElementById('alert-duration');
-      duration.value = '90000';
+    describe('a value that cannot be saved', () => {
+      const error = (id) => document.getElementById(`${id}-error`);
+      const chooseCondition = (value) => {
+        const condition = document.getElementById('alert-condition');
+        condition.value = value;
+        condition.dispatchEvent(new Event('change', { bubbles: true }));
+      };
 
-      await settings.saveAlert();
+      test('is said under its field, which is marked invalid and focused, not in a toast', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const duration = document.getElementById('alert-duration');
+        duration.value = '90000';
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Enter a whole number of seconds from 0 to 86400.',
-        'error'
-      );
-      expect(document.activeElement).toBe(duration);
-      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+        await settings.saveAlert();
+
+        expect(error('alert-duration').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(duration.getAttribute('aria-invalid')).toBe('true');
+        expect(duration.getAttribute('aria-describedby')).toBe(
+          'alert-duration-help alert-duration-error'
+        );
+        // In the field's own notes, under its help, so it stays in the field's grid cell.
+        expect(error('alert-duration').previousElementSibling.id).toBe('alert-duration-help');
+        expect(document.activeElement).toBe(duration);
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+
+        // Editing the value answers it.
+        duration.value = '120';
+        duration.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(error('alert-duration')).toBeNull();
+        expect(duration.hasAttribute('aria-invalid')).toBe(false);
+      });
+
+      test('is flagged with every other wrong field at once, and the first takes the focus', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('above');
+        document.getElementById('alert-threshold').value = '';
+        document.getElementById('alert-cooldown').value = '1.5';
+
+        await settings.saveAlert();
+
+        expect(error('alert-threshold').textContent).toBe('Enter a valid numeric threshold.');
+        expect(error('alert-cooldown').textContent).toBe(
+          'Enter a whole number of seconds from 0 to 86400.'
+        );
+        expect(error('alert-duration')).toBeNull();
+        expect(document.activeElement).toBe(document.getElementById('alert-threshold'));
+        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      });
+
+      test('asks for a target state under the state field', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        chooseCondition('specific-state');
+        const target = document.getElementById('target-state-input');
+        target.value = '  ';
+
+        await settings.saveAlert();
+
+        expect(error('target-state-input').textContent).toBe('Enter a target state.');
+        expect(document.activeElement).toBe(target);
+
+        // The field leaves with its condition, and takes its error with it.
+        chooseCondition('state-change');
+        expect(error('target-state-input')).toBeNull();
+      });
+
+      test('for quiet hours runs under the start and the end, and goes when either changes', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const start = document.getElementById('alert-quiet-start');
+        const end = document.getElementById('alert-quiet-end');
+        end.value = start.value;
+
+        await settings.saveAlert();
+
+        const message = error('alert-quiet-end');
+        expect(message.textContent).toBe('Choose different start and end times for quiet hours.');
+        expect(message.previousElementSibling).toBe(end.closest('label'));
+        expect(message.parentElement.id).toBe('alert-advanced-options');
+        expect(document.activeElement).toBe(end);
+
+        start.value = '23:00';
+        start.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).toBeNull();
+      });
+
+      test('is gone when quiet hours are switched off, and when the dialog opens again', async () => {
+        settings.openAlertConfigModal('sensor.office_temperature');
+        const quietEnabled = document.getElementById('alert-quiet-enabled');
+        quietEnabled.checked = true;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        const end = document.getElementById('alert-quiet-end');
+        end.value = document.getElementById('alert-quiet-start').value;
+        document.getElementById('alert-duration').value = '-1';
+
+        await settings.saveAlert();
+        expect(error('alert-quiet-end')).not.toBeNull();
+
+        quietEnabled.checked = false;
+        quietEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(error('alert-quiet-end')).toBeNull();
+        expect(error('alert-duration')).not.toBeNull();
+
+        settings.openAlertConfigModal('sensor.office_temperature');
+        expect(error('alert-duration')).toBeNull();
+        expect(document.getElementById('alert-duration').hasAttribute('aria-invalid')).toBe(false);
+      });
     });
   });
 
@@ -7368,6 +8154,17 @@ describe('Settings + Config Integration', () => {
         }
       });
 
+      test('leaves the bell on an alert row to the stylesheet, so it keeps its side in Arabic', () => {
+        document.querySelector('.add-alert-btn').click();
+
+        const button = '.entity-selector-btn[data-entity-id="switch.kitchen"]';
+        const row = document.querySelector(`#alert-entity-picker-list ${button}`).parentElement;
+        const badge = row.querySelector('.alert-badge');
+        // An inline left margin doubled the logical one in right-to-left text, and a fixed 14px
+        // ignored the text size.
+        expect(badge.getAttribute('style')).toBeNull();
+      });
+
       test('starts the picker on its search field, not on Close', async () => {
         document.querySelector('.add-alert-btn').click();
         await tick();
@@ -7583,6 +8380,22 @@ describe('Settings + Config Integration', () => {
           expect(document.querySelector('.no-alerts-message')).toBeNull();
         });
 
+        test('wraps a long id at its dots and underscores, not inside its words', () => {
+          // With no break opportunity of its own, the id broke anywhere: "sensor.living_room_nor" /
+          // "th_wall_temperature_s".
+          const id = 'sensor.living_room_north_wall_temperature';
+          state.CONFIG.entityAlerts.alerts[id] = { onStateChange: true };
+          state.setStates({});
+          settings.renderAlertsListInline();
+
+          const name = row(id).querySelector('.alert-name');
+          expect(name.textContent).toBe(id);
+          expect(name.innerHTML).toBe(
+            'sensor.<wbr>living_<wbr>room_<wbr>north_<wbr>wall_<wbr>temperature'
+          );
+          expect(row(id).querySelector('.alert-actions').getAttribute('aria-label')).toBe(id);
+        });
+
         test('does not mark an entity that is listed', () => {
           expect(row('switch.kitchen').querySelector('.alert-missing')).toBeNull();
           expect(row('switch.kitchen').querySelector('.alert-name').textContent).toBe('Kitchen');
@@ -7705,7 +8518,9 @@ describe('Settings + Config Integration', () => {
           await settings.saveAlert();
 
           expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith('Enter a target state.', 'error');
+          expect(document.getElementById('target-state-input-error').textContent).toBe(
+            'Enter a target state.'
+          );
         });
       });
 
@@ -8010,8 +8825,9 @@ describe('Settings + Config Integration', () => {
 
         await settings.saveSettings();
 
+        // Pages, as the rest of the app calls them, not "tabs/tiles".
         expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-          expect.stringContaining('Custom icons saved'),
+          'Custom icons saved. They show on your pages right away.',
           'success',
           expect.any(Number)
         );
@@ -8032,7 +8848,7 @@ describe('Settings + Config Integration', () => {
         expect(askedToRestart()).toEqual([
           [
             'Restart required',
-            'Changing "Always on top" may require a restart. Restart now?',
+            'Changing “Always on top” may require a restart. Restart now?',
             expect.objectContaining({
               confirmText: 'Restart now',
               cancelText: 'Later',
@@ -8296,8 +9112,9 @@ describe('Settings + Config Integration', () => {
 
         const status = document.getElementById('ha-oauth-status');
         expect(status.dataset.status).toBe('error');
+        // Not "...in Settings": the line is in Settings, right above the token field.
         expect(status.textContent).toBe(
-          'Authentication failed. Check your long-lived access token in Settings.'
+          'Authentication failed. Check your long-lived access token.'
         );
         expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
       });
@@ -8336,17 +9153,67 @@ describe('Settings + Config Integration', () => {
         );
       });
 
+      describe('whose saved token this computer cannot read', () => {
+        const reason =
+          'This computer cannot decrypt the saved Home Assistant token. That happens after moving to another computer or user account. Enter the token again to reconnect.';
+        const recovery = () => ({
+          initUpdateUI: jest.fn(),
+          getConnectionState: () => ({ status: 'disconnected', reason, needsToken: true }),
+        });
+
+        test('says why beside the open token field, and puts the cursor in it', async () => {
+          await settings.openSettings(recovery());
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          const status = document.getElementById('ha-oauth-status');
+          expect(status.dataset.status).toBe('error');
+          expect(status.textContent).toBe(reason);
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+          // The status line says it; a toast on opening used to say it a third time.
+          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        });
+
+        test('is brought to General with the token field when Settings was left on another page', async () => {
+          await settings.openSettings(recovery());
+          const generalTab = document.createElement('button');
+          generalTab.className = 'tab-link';
+          generalTab.dataset.tab = 'general';
+          const tabs = document.createElement('div');
+          tabs.className = 'modal-tabs';
+          tabs.appendChild(generalTab);
+          document.getElementById('settings-modal').appendChild(tabs);
+          const openedTab = jest.fn();
+          generalTab.addEventListener('click', openedTab);
+          document.getElementById('legacy-ha-token-settings').open = false;
+          document.body.focus();
+
+          settings.revealHomeAssistantToken();
+
+          expect(openedTab).toHaveBeenCalled();
+          expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
+          expect(document.activeElement).toBe(document.getElementById('ha-token'));
+        });
+      });
+
       test('follows the connection while Settings is open', async () => {
         let current = { status: 'connected', reason: '' };
         await settings.openSettings({ initUpdateUI: jest.fn(), getConnectionState: () => current });
         const status = document.getElementById('ha-oauth-status');
         expect(status.dataset.status).toBe('');
 
-        current = { status: 'auth-failed', reason: 'Home Assistant refused the token.' };
+        current = {
+          status: 'auth-failed',
+          reason: 'Authentication failed. Check your long-lived access token in Settings.',
+        };
         settings.refreshHomeAssistantAuthStatus();
 
         expect(status.dataset.status).toBe('error');
-        expect(status.textContent).toBe('Home Assistant refused the token.');
+        // The connection's reason is written for the main window; here it is said without "in
+        // Settings".
+        expect(status.textContent).toBe(
+          'Authentication failed. Check your long-lived access token.'
+        );
       });
     });
 
@@ -8457,10 +9324,78 @@ describe('Settings + Config Integration', () => {
     });
   });
 
+  describe('numbers in a region that writes its own digits', () => {
+    const i18n = require('../../src/i18n.js');
+
+    // An Arabic catalog with an Egyptian region writes Arabic-Indic digits; a count passed to t()
+    // raw would stay Latin beside them.
+    beforeEach(() => {
+      i18n.setLocaleBootstrap({
+        languageSetting: 'auto',
+        systemLocale: 'ar-EG',
+        detectedLocale: 'ar',
+        activeLocale: 'ar',
+        messages: {},
+      });
+    });
+
+    afterEach(() => {
+      i18n.setLocaleBootstrap({ systemLocale: '', activeLocale: 'en', messages: {} });
+    });
+
+    test('writes the card numbers of the Primary Cards picker in them', async () => {
+      await settings.openSettings();
+      const toggle = document.getElementById('primary-cards-toggle');
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      const labels = () =>
+        [...document.querySelectorAll('#primary-cards-list [data-primary-assign]')].map(
+          (button) => button.textContent
+        );
+
+      expect(labels()).toEqual(expect.arrayContaining(['Set card \u0661', 'Set card \u0662']));
+      document.querySelector('#primary-cards-list [data-primary-assign="0"]').click();
+      expect(labels()).toContain('Card \u0661 \u2713');
+      settings.closeSettings();
+    });
+
+    test('writes the shortest passphrase in them', async () => {
+      state.CONFIG.profileSync = buildProfileSync({ enabled: false, cloudFilePath: '' });
+      await settings.openSettings();
+      document.getElementById('profile-sync-enabled').checked = true;
+      document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
+      document.getElementById('profile-sync-encryption-enabled').checked = true;
+      document.getElementById('profile-sync-passphrase').value = 'short';
+      await settings.saveSettings();
+
+      expect(fieldError('profile-sync-passphrase')).toBe(
+        'Passphrase must be at least \u0668 characters long'
+      );
+    });
+
+    test('counts the conflict copies next to the sync file in them', async () => {
+      document
+        .getElementById('settings-modal')
+        .insertAdjacentHTML('beforeend', '<p id="profile-sync-provider-hint" class="hidden"></p>');
+      mockElectronAPI.getProfileSyncStatus.mockResolvedValueOnce(
+        buildProfileSyncStatus({
+          enabled: true,
+          folderWarnings: ['conflict_copies'],
+          conflictCopies: ['a (conflict).json', 'b (conflict).json'],
+        })
+      );
+      await settings.openSettings();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(document.getElementById('profile-sync-provider-hint').textContent).toMatch(
+        /^Found \u0662 conflict copy file/
+      );
+    });
+  });
+
   describe('Settings translations', () => {
     const i18n = require('../../src/i18n.js');
     const GERMAN = {
-      'Set Card {{index}}': 'Karte {{index}} setzen',
+      'Set card {{index}}': 'Karte {{index}} setzen',
       'Card {{index}} ✓': 'Karte {{index}} ✓',
       'Weather (default)': 'Wetter (Standard)',
       'Time (default)': 'Uhrzeit (Standard)',
@@ -8470,8 +9405,8 @@ describe('Settings + Config Integration', () => {
       '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
       'All custom icons cleared. Click Save to persist changes.':
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
-      'Remove Alert': 'Warnung entfernen',
-      'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
+      'Remove alert': 'Warnung entfernen',
+      'Remove alert for “{{name}}”?': 'Warnung für „{{name}}“ entfernen?',
       Remove: 'Entfernen',
       'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
       'Accent colors': 'Akzentfarben',
@@ -8544,7 +9479,7 @@ describe('Settings + Config Integration', () => {
       i18n.setLocaleBootstrap({
         activeLocale: 'de',
         messages: {
-          'None (Hide Media Tile)': 'Keine (Medienkachel ausblenden)',
+          'None (hide media tile)': 'Keine (Medienkachel ausblenden)',
           'Unavailable: {{entityId}}': 'Nicht verfügbar: {{entityId}}',
         },
       });
@@ -8921,7 +9856,11 @@ describe('Settings + Config Integration', () => {
             <p id="desktop-integration-status"></p>
             <p id="desktop-integration-legacy" hidden></p>
           </div>
-          <p id="layer-toggle-note" hidden></p>
+          <p
+            id="layer-toggle-note"
+            data-i18n-html="Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
+            hidden
+          ></p>
           <p id="popup-hotkey-immediate-note">Popup hotkey changes take effect immediately.</p>
           <p id="entity-hotkey-immediate-note">Entity hotkey changes take effect immediately.</p>`
         );
@@ -9066,15 +10005,23 @@ describe('Settings + Config Integration', () => {
         ],
         ['an ordinary desktop', { hyprland: false, layerMode: false }, true, false],
       ])('guides the layer on %s', async (_name, info, layerNoteHidden, toggleNoteShown) => {
-        window.electronAPI.getDesktopIntegration = jest
-          .fn()
-          .mockResolvedValue({ shortcuts: [], ...info });
+        // Main names the command for the way the widget was installed (here the .deb's).
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+          shortcuts: [],
+          toggleCommand: 'home-assistant-widget --toggle',
+          ...info,
+        });
         await openPanel();
 
         // "Sits underneath normal windows" is only true when it is a layer.
         expect(el('desktop-integration-layer-note').hidden).toBe(layerNoteHidden);
         // Only Hyprland can list the binds; the others get the command to bind.
         expect(el('layer-toggle-note').hidden).toBe(!toggleNoteShown);
+        if (toggleNoteShown) {
+          expect(el('layer-toggle-note').querySelector('code').textContent).toBe(
+            'home-assistant-widget --toggle'
+          );
+        }
         settings.closeSettings();
       });
     });
@@ -9187,6 +10134,116 @@ describe('Settings + Config Integration', () => {
         );
         settings.closeSettings();
       });
+    });
+  });
+  describe('Settings rows', () => {
+    test('a row select carries its value as its title only while the value is cut', async () => {
+      // Its value can end in an ellipsis in a narrow window or a long translation, and the title is
+      // then the way to read it. On a select that shows its whole value the title was a tooltip
+      // repeating it, and screen readers read it out again after the value.
+      const select = document.getElementById('time-format');
+      const row = document.createElement('div');
+      row.className = 'form-group setting-row';
+      select.replaceWith(row);
+      row.appendChild(select);
+      state.CONFIG.ui.timeFormat = '24-hour';
+      // jsdom lays nothing out: every letter is 8px wide, in a select with room for ten of them.
+      const originalOffscreenCanvas = global.OffscreenCanvas;
+      global.OffscreenCanvas = class {
+        getContext() {
+          return { font: '', measureText: (text) => ({ width: text.length * 8 }) };
+        }
+      };
+      let room = 80;
+      Object.defineProperty(select, 'clientWidth', { configurable: true, get: () => room });
+      const pointAt = () => select.dispatchEvent(new Event('pointerover', { bubbles: true }));
+
+      try {
+        await settings.openSettings();
+        expect(select.hasAttribute('title')).toBe(false);
+        pointAt();
+        expect(select.hasAttribute('title')).toBe(false);
+
+        // A narrower window cuts "24-hour": pointing at it shows the whole value, and a change
+        // keeps the title on the new one.
+        room = 40;
+        pointAt();
+        expect(select.title).toBe('24-hour');
+        select.value = '12-hour';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(select.title).toBe('12-hour');
+
+        room = 80;
+        pointAt();
+        expect(select.hasAttribute('title')).toBe(false);
+      } finally {
+        global.OffscreenCanvas = originalOffscreenCanvas;
+        settings.closeSettings();
+      }
+    });
+  });
+  describe('Hide to tray on macOS', () => {
+    // The widget's icon is in the menu bar on a Mac; the row named the tray Windows and Linux have.
+    beforeEach(() => {
+      const checkbox = document.getElementById('hide-on-blur');
+      checkbox.insertAdjacentHTML(
+        'beforebegin',
+        `<label for="hide-on-blur"><span data-i18n="Hide to tray when focus is lost">Hide to tray when focus is lost</span></label>
+         <p id="hide-on-blur-help" data-i18n="Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins stay visible."></p>`
+      );
+    });
+
+    afterEach(() => {
+      mockElectronAPI.platform = 'test';
+    });
+
+    const label = () => document.querySelector('label[for="hide-on-blur"] span');
+    const help = () => document.getElementById('hide-on-blur-help');
+
+    test('names the menu bar on macOS, and keeps doing so after a language change', async () => {
+      mockElectronAPI.platform = 'darwin';
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Hide to menu bar when focus is lost');
+      expect(help().textContent).toBe(
+        'Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.'
+      );
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Hide to menu bar when focus is lost': 'Bei Fokusverlust in die Menüleiste ausblenden',
+        },
+      });
+      i18n.translateDocument(document);
+      expect(label().textContent).toBe('Bei Fokusverlust in die Menüleiste ausblenden');
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      settings.closeSettings();
+    });
+
+    test.each(['win32', 'linux'])('names the tray on %s', async (platform) => {
+      mockElectronAPI.platform = platform;
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Hide to tray when focus is lost');
+      expect(help().textContent).toMatch(/Reopen it from the tray/);
+      settings.closeSettings();
+    });
+  });
+  describe('the popup hotkey help', () => {
+    test('says what holding the hotkey does in plain words on Windows and macOS', async () => {
+      // It said the window "returns to normal z-order", a graphics programmer's term.
+      mockElectronAPI.platform = 'win32';
+      try {
+        await settings.openSettings();
+        await settings.initializePopupHotkey();
+        expect(document.getElementById('popup-hotkey-help-text').textContent).toBe(
+          'Configure a global hotkey that brings the widget to the front while you hold it down. When you let go, it goes back behind other windows.'
+        );
+      } finally {
+        mockElectronAPI.platform = 'test';
+        settings.closeSettings();
+      }
     });
   });
 });

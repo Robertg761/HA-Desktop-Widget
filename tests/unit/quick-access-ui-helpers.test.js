@@ -6,6 +6,7 @@ const {
   getQuickAccessTabOverflow,
   getQuickAccessTabRevealDelta,
   getQuickAccessTabWheelDelta,
+  watchSensorValueFitInputs,
 } = require('../../src/quick-access-ui-helpers.js');
 
 // A tile's box, as getBoundingClientRect reports it.
@@ -259,6 +260,93 @@ describe('quick access UI helpers', () => {
       ]) {
         expect(getFittedSensorValueFontSize(metrics)).toBeNull();
       }
+    });
+  });
+  // A fit is measured in the font a reading is drawn in and at the density it is drawn at. Neither
+  // changing moves the tile's width, so the resize observer never refit: a value fitted in the
+  // fallback face before Plus Jakarta Sans arrived was left cut at full size ('123,456… W').
+  describe('watchSensorValueFitInputs', () => {
+    let frames;
+    let fonts;
+    let resolveFontsReady;
+    let refit;
+    let stop;
+
+    const flushFrames = () => {
+      const due = frames;
+      frames = [];
+      due.forEach((callback) => callback());
+    };
+    // The density observer reports at the end of the task that changed the class.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    beforeEach(() => {
+      frames = [];
+      fonts = new EventTarget();
+      fonts.ready = new Promise((resolve) => {
+        resolveFontsReady = resolve;
+      });
+      refit = jest.fn();
+      document.body.className = '';
+      const view = {
+        requestAnimationFrame: (callback) => frames.push(callback),
+        cancelAnimationFrame: () => {},
+        MutationObserver: window.MutationObserver,
+      };
+      stop = watchSensorValueFitInputs({ defaultView: view, body: document.body, fonts }, refit);
+    });
+
+    afterEach(() => {
+      stop();
+      document.body.className = '';
+    });
+
+    it('fits the readings again once the fonts have loaded, after a fit taken before', async () => {
+      resolveFontsReady();
+      await settle();
+      flushFrames();
+      expect(refit).toHaveBeenCalledTimes(1);
+    });
+
+    it('fits them again when a font that arrives late finishes loading', () => {
+      fonts.dispatchEvent(new Event('loadingdone'));
+      flushFrames();
+      expect(refit).toHaveBeenCalledTimes(1);
+    });
+
+    it('fits them again when the density switches, and not for other classes', async () => {
+      document.body.classList.add('theme-light');
+      await settle();
+      flushFrames();
+      expect(refit).not.toHaveBeenCalled();
+
+      document.body.classList.add('density-compact');
+      await settle();
+      flushFrames();
+      expect(refit).toHaveBeenCalledTimes(1);
+
+      document.body.classList.remove('density-compact');
+      await settle();
+      flushFrames();
+      expect(refit).toHaveBeenCalledTimes(2);
+    });
+
+    it('answers fonts and a density switch that come together with one refit', async () => {
+      fonts.dispatchEvent(new Event('loadingdone'));
+      fonts.dispatchEvent(new Event('loadingdone'));
+      document.body.classList.add('density-compact');
+      await settle();
+      flushFrames();
+      expect(refit).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops when asked', async () => {
+      stop();
+      fonts.dispatchEvent(new Event('loadingdone'));
+      document.body.classList.add('density-compact');
+      await settle();
+      flushFrames();
+      expect(refit).not.toHaveBeenCalled();
     });
   });
 });

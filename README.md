@@ -29,6 +29,22 @@ Light, climate, fan, cover, and media tiles include a **Controls** button (the s
 
 See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, the Omarchy 4 bar plugin, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
 
+## Sway, niri and river
+
+On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` for the AppImage. With the `.deb`:
+
+- Sway: `bindsym $mod+Shift+h exec home-assistant-widget --toggle`
+- niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
+
+The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows. With the AppImage:
+
+- Sway: `bindsym $mod+Shift+h exec ~/.local/bin/ha-desktop-widget --toggle`
+- niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn '~/.local/bin/ha-desktop-widget --toggle'`
+
+The widget leaves that name alone if something else already has it, such as a file of yours there or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
+
 ## Weather Effects
 
 <img src="images/Rain_Effect.png?v=20261004" alt="Rain effect" width="280"> <img src="images/Snow_Effect.png?v=20261004" alt="Snow effect" width="280">
@@ -104,10 +120,10 @@ Live tray values are available only in beta builds. Stable builds retain saved t
 without showing the feature. Enable **Receive beta updates** in Settings to receive beta releases.
 
 Right-click a Quick Access tile and choose **Show in Tray**, or enable **Show in system tray**
-under **Edit Tile Settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
+under **Edit tile settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
 Hover for its name and full value; use its menu to show the widget or remove the icon.
 
-Tile Settings also provides an optional short name. On macOS it appears before the value in the
+Tile settings also provides an optional short name. On macOS it appears before the value in the
 menu bar, with units and decimal precision retained. On Windows and Linux it appears in tooltips
 and menus; an optional icon color helps distinguish multiple readings at a glance.
 
@@ -148,6 +164,11 @@ Planned for a future release:
 > `gnome-keyring`, or another Secret Service, and restart the widget. The `.deb` recommends
 > `gnome-keyring`, and the Arch package lists it as optional.
 
+> **AppImage on Ubuntu 23.10 and later:** These releases block the sandbox the AppImage needs, so
+> a double-clicked AppImage closes without opening a window. Install the `.deb` instead, or start
+> the AppImage once from a terminal with `--no-sandbox`. See
+> [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).
+
 ### First-Time Setup
 
 1. **Get your Home Assistant URL**: Use the exact address you normally open in your browser, such as `http://homeassistant.local`, a legacy `http://your-ha-ip:8123` address, or `https://your-ha-domain.com`
@@ -187,9 +208,9 @@ Assistant can flag out-of-date desktops.
 
 ### Quick Access Management
 
-- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and devices** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the devices, name the page, and choose **Add Page**. Beside other pages, an empty page offers **Fill this page** instead and keeps its name. Either way, pages that already hold entities are never replaced. If room registry access is unavailable, choose directly from your device states. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
+- **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and entities** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the entities, name the page, and choose **Add Page**. Beside other pages, an empty page offers **Fill this page** instead and keeps its name. Either way, pages that already hold entities are never replaced. If room registry access is unavailable, choose directly from your entities; the list shows the first 100 matches, so type to narrow it. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.
 - **Build a page from a room**: Enter reorganize mode and choose **Add page**. Rooms load automatically when connected; use **Load rooms** or **Retry** if needed. Select a Home Assistant area, choose its entities, review the preview, and save. Entity area overrides take precedence over device areas; hidden and disabled registry entries are omitted. Registry access requires permission from Home Assistant.
-- **Undo and restore**: The undo arrow reverses the latest dashboard edit. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Restoring a saved layout first backs up the current layout. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
+- **Undo and restore**: The undo arrow reverses the latest dashboard edit, one edit at a time. **Settings > Advanced > Restore dashboard** lists up to 20 local restore points, retained across restarts and separated by Home Assistant server. Edits less than 30 seconds apart share one restore point, so a run of small changes does not push older layouts out of the list. The layout from before them is kept when the first edit is saved, and the layout they leave once the dashboard has been idle for 30 seconds or the app closes. The dialog leaves out a restore point that matches the layout already on screen, since restoring it would change nothing. Restoring a saved layout, an undo, or a profile applied from Home Assistant always keeps the layout it replaced as a restore point. These backups contain dashboard data, including names, icons, tile options, and comparison graphs, but exclude authorization, desktop pins, hotkeys, and connection settings. They depend on local browser storage being available.
 - **Add Entities**: Click the "+" button to search and add entities to your dashboard
 - **Reorder**: Click the Reorganize button to enter reorganize mode, then drag and drop to reorder. Without dragging, select a tile and then the tile whose place it should take, or press Alt and an arrow key on a tile's buttons to move it
 - **Rename**: In reorganize mode, click the edit icon to set custom display names
@@ -224,7 +245,7 @@ Click a numeric sensor tile to open its larger chart. Select **1 hour**, **6 hou
 
 ### Connection diagnostics
 
-Open **Settings > General > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session. New workflow labels currently use English fallbacks in other language packs.
+Open **Settings > General > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session.
 
 ### Entity Interactions
 
@@ -233,7 +254,7 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 - **Covers**: Click to open/close, long-press for open/stop/close controls
 - **Climate**: Long-press for target temperature and mode controls
 - **Media Players**: Use the media tile controls or long-press a media player for details and seek controls
-- **Cameras**: Click to view live feed in popup window
+- **Cameras**: Click to open the camera viewer (snapshot, with a Live button)
 - **Sensors**: Display real-time values with automatic unit formatting
 - **Timers**: Show live countdown when active
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
@@ -248,7 +269,7 @@ power controls without a brightness slider.
 ### System Integration
 
 - **Hide to Tray**: The minimize button, the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all hide the widget to the system tray, and it keeps running. Choose **Quit** from the tray menu (or the app menu on macOS) to exit
-- **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” under General → Window & Behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
+- **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” (“Hide to menu bar when focus is lost” on macOS) under General → Window & behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
 - **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
@@ -397,7 +418,7 @@ Syncthing, or any similar app already keeps in sync. There is no server and no a
 
 **Set up the first computer**
 
-1. Open **Settings → Advanced → Profile Syncing** and turn on **Profile sync**.
+1. Open **Settings → Advanced → Profile syncing** and turn on **Profile sync**.
 2. Pick your **Sync app**, then **Choose folder...** and select a folder inside it.
 3. Optionally turn on **Encrypt synced profile with passphrase** and enter a passphrase of at
    least 8 characters.
@@ -485,6 +506,12 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 - **Firewall**: Ensure your OS firewall allows the app to connect to your network
 - **Network**: Test connectivity by opening your HA URL in a web browser
 
+### Linux
+
+- **No tray icon on GNOME**: Stock GNOME shows no tray icons. Install an AppIndicator extension (such as "AppIndicator and KStatusNotifierItem Support") to get the widget's icon. Without one, Minimize leaves the widget in the dock and the window switcher, but the title-bar X, Ctrl+W and Alt+F4 hide it with no icon to bring it back. The first time, a notification says the widget is still running: open HA Desktop Widget from your app launcher again, which shows it.
+- **Black window, or black corners round the pins, on X11**: See-through windows need a compositing manager. On a window manager without one (i3 or Openbox without picom, for example) the widget and its desktop pins are drawn against black. Run a compositor such as picom, or set **Settings → Appearance → Window opacity** to 100%, which makes the windows solid and gives the pins their rounded corners back.
+- **The widget and its pins in the taskbar and Alt-Tab on Wayland**: GNOME and KDE on Wayland list every window, because Wayland has no way for an app to ask to be left out. On KDE a window rule hides them; see [Linux Wayland notes](docs/linux-wayland-notes.md#keeping-the-widget-and-its-pins-out-of-the-task-switcher).
+
 ### Performance Issues
 
 - **Reduce Entities**: Limit the number of entities in Quick Access
@@ -494,7 +521,12 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 
 - **Restart**: Close and reopen the app if entities aren't updating
 - **Reconnect**: Go to Settings and click **Reconnect with Home Assistant**
-- **Check Logs**: Use Settings > View Logs to open the log file location
+- **Check Logs**: Use **Settings > Advanced > Show log file** to show the log file in your file manager (its path is copied if no file manager opens)
+
+### Linux
+
+- **The AppImage closes without a window**: On Ubuntu 23.10 and later, install the `.deb`, or start the AppImage from a terminal with `--no-sandbox`. See [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).
+- **Hindi text shows as boxes**: Install a font with Devanagari, such as `fonts-noto-core` on Debian and Ubuntu or `noto-fonts` on Arch.
 
 ## Contributing
 

@@ -16,6 +16,7 @@ const os = require('os');
 const path = require('path');
 const { appId: APP_ID } = require('../package.json');
 const { defaultPageName } = require('./page-names.cjs');
+const { HVAC_MODE_NAMES } = require('../packages/widget-renderer/src/ha-state-names.cjs');
 
 const OMARCHY_BAR_PLUGIN_ID = APP_ID;
 const OMARCHY_BAR_STATUS_VERSION = 1;
@@ -210,13 +211,42 @@ function clipIconGlyph(glyph) {
   return clipped;
 }
 
+// The bar draws a glyph in its own font, a Nerd Font on Omarchy. Nerd Fonts 3 carry Material Design
+// Icons up to U+F1AF0, and the icons MDI has added since then (Home Assistant ships them, the widget's
+// own MDI font has them) are past it, in the same private-use plane, where the bar shows an empty box.
+// A tile with such a glyph gets the line icon the widget would draw for it instead.
+const BAR_FONT_LAST_MDI_GLYPH = 0xf1af0;
+const SUPPLEMENTARY_PRIVATE_USE = [0xf0000, 0xffffd];
+
+function isPastBarFont(glyph) {
+  return Array.from(glyph).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint > BAR_FONT_LAST_MDI_GLYPH &&
+      codePoint >= SUPPLEMENTARY_PRIVATE_USE[0] &&
+      codePoint <= SUPPLEMENTARY_PRIVATE_USE[1]
+    );
+  });
+}
+
 function cleanTileIcon(icon) {
-  if (icon?.kind === 'line' && LINE_ICON_NAME_PATTERN.test(icon.name)) {
+  if (
+    icon?.kind === 'line' &&
+    typeof icon.name === 'string' &&
+    LINE_ICON_NAME_PATTERN.test(icon.name)
+  ) {
     return { kind: 'line', name: icon.name };
   }
   if ((icon?.kind === 'mdi' || icon?.kind === 'custom') && typeof icon.glyph === 'string') {
     const glyph = clipIconGlyph(icon.glyph);
-    if (glyph.trim()) return { kind: 'glyph', glyph };
+    if (glyph.trim() && !isPastBarFont(glyph)) return { kind: 'glyph', glyph };
+    if (
+      glyph.trim() &&
+      typeof icon.fallback === 'string' &&
+      LINE_ICON_NAME_PATTERN.test(icon.fallback)
+    ) {
+      return { kind: 'line', name: icon.fallback };
+    }
   }
   return { kind: 'line', name: 'box' };
 }
@@ -391,9 +421,18 @@ const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
   setRange: 'Set the range in the widget.',
   omittedOne: '1 more tile is not shown here. Open the widget to see it.',
   omittedMany: '{{count}} more tiles are not shown here. Open the widget to see them.',
-  modeHeatCool: 'Heat/Cool',
-  modeFan: 'Fan',
-  modeDry: 'Dry',
+  // A thermostat's modes, in the names the widget gives them. fan_only's id is modeFan, which
+  // plugins up to 1.3.0 already read.
+  modeOff: HVAC_MODE_NAMES.off,
+  modeHeat: HVAC_MODE_NAMES.heat,
+  modeCool: HVAC_MODE_NAMES.cool,
+  modeHeatCool: HVAC_MODE_NAMES.heat_cool,
+  modeAuto: HVAC_MODE_NAMES.auto,
+  modeDry: HVAC_MODE_NAMES.dry,
+  modeFan: HVAC_MODE_NAMES.fan_only,
+  // Above a controls panel that cannot act, to say why.
+  notConnectedControls: "Not connected to Home Assistant. Changes can't be sent right now.",
+  widgetUnreachableControls: "Can't reach the widget. Changes can't be sent right now.",
 });
 
 /**

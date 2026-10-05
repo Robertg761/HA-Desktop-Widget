@@ -4,8 +4,12 @@
 
 const EventEmitter = require('events');
 const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer UI tick scheduler', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   let mockUi;
   let mockWebsocket;
 
@@ -25,6 +29,7 @@ describe('Renderer UI tick scheduler', () => {
     },
   } = {}) => {
     jest.resetModules();
+    lifetime.start();
     resetMockElectronAPI();
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-07-06T12:00:00.000Z'));
@@ -144,6 +149,7 @@ describe('Renderer UI tick scheduler', () => {
       setLocaleBootstrap: jest.fn(),
       t: jest.fn((key) => key),
       translateDocument: jest.fn(),
+      formatNumber: jest.fn((value) => String(value)),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
@@ -161,12 +167,16 @@ describe('Renderer UI tick scheduler', () => {
     await flushPromises();
   };
 
-  afterEach(() => {
+  const cleanup = () => {
     jest.clearAllTimers();
     jest.useRealTimers();
+    lifetime.stop();
     jest.resetModules();
     delete window.electronAPI;
-  });
+  };
+
+  warmUpRenderer(loadRenderer, cleanup);
+  afterEach(cleanup);
 
   it('runs visible dashboard ticks when the window is visible but unfocused', async () => {
     await loadRenderer({ hidden: false, focused: false });
@@ -324,5 +334,21 @@ describe('Renderer UI tick scheduler', () => {
     expect(mockUi.updateTimeDisplay).not.toHaveBeenCalled();
     expect(mockUi.updateTimerDisplays).not.toHaveBeenCalled();
     expect(mockUi.updateMediaSeekBar).not.toHaveBeenCalled();
+  });
+
+  // Every test boots its own renderer into the same window. One left running ticked its own
+  // dashboard whenever the next test's page was shown again.
+  it('stops the renderer of an earlier test, which no longer ticks when the page shows again', async () => {
+    await loadRenderer({ hidden: false, focused: false });
+    const earlierUi = mockUi;
+    cleanup();
+
+    await loadRenderer({ hidden: false, focused: false });
+    earlierUi.getTickTargets.mockClear();
+    mockUi.getTickTargets.mockClear();
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(earlierUi.getTickTargets).not.toHaveBeenCalled();
+    expect(mockUi.getTickTargets).toHaveBeenCalled();
   });
 });
