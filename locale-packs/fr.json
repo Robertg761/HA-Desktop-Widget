@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1996,6 +1996,7 @@
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
     "What's new": "Nouveautés",
     "Fan only": "Ventilation seule",
-    "Remove tile": "Retirer la vignette"
+    "Remove tile": "Retirer la vignette",
+    "Remove {{name}} from {{page}}": "Retirer {{name}} de {{page}}"
   }
 }

@@ -820,7 +820,6 @@
   "And {{count}} more entities": "And {{count}} more entities",
   "Current time": "Current time",
   "Save & Exit Reorganize Mode (ESC)": "Save & Exit Reorganize Mode (ESC)",
-  "Remove from Quick Access": "Remove from Quick Access",
   "Mode": "Mode",
   "Playing now": "Playing now",
   "{{percent}}% brightness": "{{percent}}% brightness",
@@ -1402,7 +1401,6 @@
   "Add entities to {{page}} for one-click control.": "Add entities to {{page}} for one-click control.",
   "Fill this page": "Fill this page",
   "Edit settings for {{name}}": "Edit settings for {{name}}",
-  "Remove {{name}} from Quick Access": "Remove {{name}} from Quick Access",
   "Pin {{name}} to desktop": "Pin {{name}} to desktop",
   "Moved to position {{position}} of {{total}}": "Moved to position {{position}} of {{total}}",
   "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.",
@@ -1637,5 +1635,6 @@
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
   "What's new": "What's new",
   "Fan only": "Fan only",
-  "Remove tile": "Remove tile"
+  "Remove tile": "Remove tile",
+  "Remove {{name}} from {{page}}": "Remove {{name}} from {{page}}"
 }

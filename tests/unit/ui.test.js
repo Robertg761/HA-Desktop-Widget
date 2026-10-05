@@ -9804,7 +9804,10 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const edit = tile('light.b').querySelector('.rename-btn');
         const remove = tile('light.b').querySelector('.remove-btn');
         expect(edit.getAttribute('aria-label')).toBe('Edit settings for Lamp B');
-        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Quick Access');
+        // The tile goes from the page it is on, as the dialog the button opens says, not from
+        // every page.
+        expect(remove.getAttribute('aria-label')).toBe('Remove Lamp B from Home');
+        expect(remove.title).toBe('Remove tile');
         expect(
           tile('light.b').querySelector('.desktop-pin-quick-toggle').getAttribute('aria-label')
         ).toBe('Pin Lamp B to desktop');

@@ -1410,5 +1410,13 @@
   "Drying": {
     "retiredIn": "4.0.0",
     "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Remove from Quick Access": {
+    "retiredIn": "4.0.0",
+    "reason": "The tile's remove button is named for the page the tile is on, as its dialog is"
+  },
+  "Remove {{name}} from Quick Access": {
+    "retiredIn": "4.0.0",
+    "reason": "The tile's remove button is named for the page the tile is on, as its dialog is"
   }
 }

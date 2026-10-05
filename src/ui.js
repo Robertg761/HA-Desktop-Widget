@@ -2332,7 +2332,8 @@ function addButtonsToElement(item) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'remove-btn';
       setChipIcon(removeBtn, 'x', 16);
-      removeBtn.title = t('Remove from Quick Access');
+      // Named as the dialog it opens is: the tile goes from this page, not from every page.
+      removeBtn.title = t('Remove tile');
       removeBtn.setAttribute('draggable', 'false');
       removeBtn.addEventListener(
         'mousedown',
@@ -2391,9 +2392,13 @@ function addButtonsToElement(item) {
     item
       .querySelector('.rename-btn')
       ?.setAttribute('aria-label', t('Edit settings for {{name}}', { name: tileName }));
+    const pageName = getActiveQuickAccessTab(state.CONFIG)?.name || '';
     item
       .querySelector('.remove-btn')
-      ?.setAttribute('aria-label', t('Remove {{name}} from Quick Access', { name: tileName }));
+      ?.setAttribute(
+        'aria-label',
+        t('Remove {{name}} from {{page}}', { name: tileName, page: pageName })
+      );
 
     if (!isPlaceholder) syncQuickAccessControlButton(item, item.dataset.entityId);
   } catch (error) {

@@ -820,7 +820,6 @@
   "And {{count}} more entities": "Und {{count}} weitere Entitäten",
   "Current time": "Aktuelle Uhrzeit",
   "Save & Exit Reorganize Mode (ESC)": "Speichern & Neu-Anordnen beenden (ESC)",
-  "Remove from Quick Access": "Aus Schnellzugriff entfernen",
   "Mode": "Modus",
   "Playing now": "Wird wiedergegeben",
   "{{percent}}% brightness": "{{percent}} % Helligkeit",
@@ -1402,7 +1401,6 @@
   "Add entities to {{page}} for one-click control.": "Füge {{page}} Entitäten für die Steuerung mit einem Klick hinzu.",
   "Fill this page": "Diese Seite füllen",
   "Edit settings for {{name}}": "Einstellungen für {{name}} bearbeiten",
-  "Remove {{name}} from Quick Access": "{{name}} aus Schnellzugriff entfernen",
   "Pin {{name}} to desktop": "{{name}} an Desktop anheften",
   "Moved to position {{position}} of {{total}}": "Auf Position {{position}} von {{total}} verschoben",
   "Picked up {{name}}. Select the tile whose place it should take, or press Escape to cancel.": "{{name}} aufgenommen. Wähle die Kachel, an deren Stelle sie treten soll, oder drücke Esc zum Abbrechen.",
@@ -1637,5 +1635,6 @@
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "What's new": "Neuerungen",
   "Fan only": "Nur Ventilator",
-  "Remove tile": "Kachel entfernen"
+  "Remove tile": "Kachel entfernen",
+  "Remove {{name}} from {{page}}": "{{name}} von {{page}} entfernen"
 }
