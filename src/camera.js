@@ -11,6 +11,7 @@ import { closeDialog, openDialog, releaseFocusTrap, showToast } from './ui-utils
 import { formatClockDateTime, formatClockTime } from './format.js';
 import { t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';
+import { prefersReducedMotion } from './motion.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
 const CAMERA_PREVIEW_REFRESH_OPTIONS = Object.freeze([
@@ -1090,8 +1091,7 @@ function runCameraPreviewViewTransition(update) {
     updated = true;
     update();
   };
-  const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  if (reduceMotion || typeof document.startViewTransition !== 'function') {
+  if (prefersReducedMotion() || typeof document.startViewTransition !== 'function') {
     guardedUpdate();
     return null;
   }

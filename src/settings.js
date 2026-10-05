@@ -39,7 +39,7 @@ import {
   recordKeyEvent,
 } from './hotkeys.js';
 import { getNextTabIndex, getTextDirection, syncRovingTabIndex } from './tab-navigation.js';
-import { syncSlidingIndicator } from './motion.js';
+import { prefersReducedMotion, syncSlidingIndicator } from './motion.js';
 import {
   describeHomeAssistantOAuthFailure,
   describeHomeAssistantOAuthReauthReason,
@@ -4908,14 +4908,6 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
 // motion and high contrast instead of being saved as a fixed choice.
 let seasonalEnabledTouched = false;
 
-function prefersReducedMotionNow() {
-  try {
-    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read the Seasonal Themes controls on top of the saved `ui.seasonal`.
  * @returns {object|null} The next `ui.seasonal`, or null when the controls are missing.
@@ -4980,7 +4972,7 @@ function syncSeasonalControls(ui) {
   if (!enabledInput) return;
   const settings = normalizeSeasonalSettings(ui.seasonal);
   const enabled = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   if (!seasonalEnabledTouched && settings.enabled === null) enabledInput.checked = enabled;
@@ -5065,7 +5057,7 @@ function bindSeasonalSettingsUi(ui) {
   const show = document.getElementById('seasonal-show');
   if (!enabled) return;
   enabled.checked = isSeasonalEnabled(settings, {
-    reducedMotion: prefersReducedMotionNow(),
+    reducedMotion: prefersReducedMotion(),
     highContrast: !!ui.highContrast,
   });
   // Touching a seasonal control shows the holiday's colours again after a colour pick hid them.
