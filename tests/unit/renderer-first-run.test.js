@@ -1691,18 +1691,19 @@ describe('Renderer first-run Home Assistant authorization', () => {
         api.getDesktopIntegration = jest.fn(async () => info);
       },
     });
-    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
-      'underneath normal windows'
-    );
-    await clickButton('Check popup shortcut');
-    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
-      'No popup shortcut received yet'
-    );
+    // The card calls the popup hotkey what Settings calls it, in each state. It said "popup
+    // shortcut" under a first line that already said "popup hotkey".
+    const helpText = () => document.getElementById('first-run-desktop-help').textContent;
+    expect(helpText()).toContain('underneath normal windows');
+    expect(helpText()).toContain('Set up hotkeys');
+    expect(helpText()).not.toMatch(/shortcut/i);
+    await clickButton('Check popup hotkey');
+    expect(helpText()).toContain('No popup hotkey received yet');
+    expect(helpText()).not.toMatch(/shortcut/i);
     info.lastActivation = { id: 'popup-toggle', at: '2026-09-16T12:00:00Z' };
-    await clickButton('Check popup shortcut');
-    expect(document.getElementById('first-run-desktop-help').textContent).toContain(
-      'Popup shortcut received.'
-    );
+    await clickButton('Check popup hotkey');
+    expect(helpText()).toContain('Popup hotkey received.');
+    expect(helpText()).not.toMatch(/shortcut/i);
     await clickButton('Next');
     expect(document.getElementById('first-run-desktop-help')).toBeNull();
   });

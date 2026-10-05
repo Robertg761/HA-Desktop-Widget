@@ -505,12 +505,6 @@
   "Choose the format used by your Hyprland configuration, then copy the bindings after checking for key conflicts.": "Wähle das Format deiner Hyprland-Konfiguration und kopiere die Belegungen, nachdem du mögliche Tastenkonflikte geprüft hast.",
   "Lua (.lua)": "Lua (.lua)",
   "Hyprlang (.conf)": "Hyprlang (.conf)",
-  "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Lege in den Einstellungen ein Popup-Tastenkürzel fest und kopiere dessen Belegung in deine Hyprland-Konfiguration. Drücke es und prüfe hier, bevor du die Einrichtung abschließt. Du kannst das auch später erledigen.",
-  "Check popup shortcut": "Popup-Tastenkürzel prüfen",
-  "Popup shortcut received. You can use it to bring the widget forward.": "Popup-Tastenkürzel empfangen. Du kannst damit das Widget nach vorn holen.",
-  "No popup shortcut received yet. Press your configured shortcut, then check again.": "Noch kein Popup-Tastenkürzel empfangen. Drücke dein konfiguriertes Tastenkürzel und prüfe erneut.",
-  "Could not check the shortcut. Try again.": "Tastenkürzel konnte nicht geprüft werden. Versuche es erneut.",
-  "Set up shortcuts": "Tastenkürzel einrichten",
   "Text and control size": "Text- und Bedienelementgröße",
   "Enlarges the whole interface, including dialogs and desktop pins.": "Vergrößert die gesamte Oberfläche, einschließlich Dialogen und Desktop-Pins.",
   "High contrast with opaque panels": "Hoher Kontrast mit undurchsichtigen Flächen",
@@ -1639,5 +1633,11 @@
   "Save and continue": "Speichern und fortfahren",
   "Set card {{index}}": "Als Karte {{index}} festlegen",
   "Remove alert": "Warnung entfernen",
-  "Full settings": "Alle Einstellungen"
+  "Full settings": "Alle Einstellungen",
+  "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Lege in den Einstellungen ein Popup-Tastenkürzel fest und kopiere dessen Belegung in deine Hyprland-Konfiguration. Drücke es und prüfe hier, bevor du die Einrichtung abschließt. Du kannst das auch später erledigen.",
+  "Check popup hotkey": "Popup-Tastenkürzel prüfen",
+  "Popup hotkey received. You can use it to bring the widget forward.": "Popup-Tastenkürzel empfangen. Du kannst damit das Widget nach vorn holen.",
+  "No popup hotkey received yet. Press your configured hotkey, then check again.": "Noch kein Popup-Tastenkürzel empfangen. Drücke dein konfiguriertes Tastenkürzel und prüfe erneut.",
+  "Could not check the hotkey. Try again.": "Tastenkürzel konnte nicht geprüft werden. Versuche es erneut.",
+  "Set up hotkeys": "Tastenkürzel einrichten"
 }

@@ -2032,6 +2032,12 @@
     "Save and continue": "保存并继续",
     "Set card {{index}}": "设为卡片 {{index}}",
     "Remove alert": "移除警报",
-    "Full settings": "完整设置"
+    "Full settings": "完整设置",
+    "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "在设置中设定弹出快捷键，然后把它的绑定复制到你的 Hyprland 配置中。完成设置前先按一下并在这里检查。你也可以稍后再设置。",
+    "Check popup hotkey": "检查弹出快捷键",
+    "Popup hotkey received. You can use it to bring the widget forward.": "已收到弹出快捷键。你可以用它把小组件置于前台。",
+    "No popup hotkey received yet. Press your configured hotkey, then check again.": "尚未收到弹出快捷键。请按下你配置的快捷键，然后再次检查。",
+    "Could not check the hotkey. Try again.": "无法检查该快捷键。请重试。",
+    "Set up hotkeys": "设置快捷键"
   }
 }

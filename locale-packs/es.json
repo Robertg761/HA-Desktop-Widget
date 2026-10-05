@@ -2032,6 +2032,12 @@
     "Save and continue": "Guardar y continuar",
     "Set card {{index}}": "Asignar a la tarjeta {{index}}",
     "Remove alert": "Eliminar alerta",
-    "Full settings": "Configuración completa"
+    "Full settings": "Configuración completa",
+    "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Define un atajo de ventana emergente en Configuración y copia su asignación en tu configuración de Hyprland. Púlsalo y compruébalo aquí antes de terminar la configuración. También puedes hacerlo más tarde.",
+    "Check popup hotkey": "Comprobar el atajo de ventana emergente",
+    "Popup hotkey received. You can use it to bring the widget forward.": "Atajo de ventana emergente recibido. Puedes usarlo para traer el widget al frente.",
+    "No popup hotkey received yet. Press your configured hotkey, then check again.": "Aún no se ha recibido ningún atajo de ventana emergente. Pulsa el atajo que configuraste y vuelve a comprobarlo.",
+    "Could not check the hotkey. Try again.": "No se pudo comprobar el atajo. Inténtalo de nuevo.",
+    "Set up hotkeys": "Configurar atajos"
   }
 }

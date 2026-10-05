@@ -2032,6 +2032,12 @@
     "Save and continue": "Enregistrer et continuer",
     "Set card {{index}}": "Définir la carte {{index}}",
     "Remove alert": "Supprimer l'alerte",
-    "Full settings": "Paramètres complets"
+    "Full settings": "Paramètres complets",
+    "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "Définissez un raccourci d'affichage dans les paramètres, puis copiez sa combinaison de touches dans votre configuration Hyprland. Appuyez dessus et vérifiez ici avant de terminer la configuration. Vous pouvez aussi le faire plus tard.",
+    "Check popup hotkey": "Vérifier le raccourci d'affichage",
+    "Popup hotkey received. You can use it to bring the widget forward.": "Raccourci d'affichage reçu. Vous pouvez l'utiliser pour ramener le widget au premier plan.",
+    "No popup hotkey received yet. Press your configured hotkey, then check again.": "Aucun raccourci d'affichage reçu pour l'instant. Appuyez sur le raccourci configuré, puis vérifiez à nouveau.",
+    "Could not check the hotkey. Try again.": "Impossible de vérifier le raccourci. Réessayez.",
+    "Set up hotkeys": "Configurer les raccourcis"
   }
 }

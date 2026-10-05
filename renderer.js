@@ -1379,7 +1379,7 @@ async function renderFirstRunDesktopHelp(content) {
         'p',
         'first-run-copy',
         t(
-          'Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.'
+          'Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.'
         )
       )
     );
@@ -1387,24 +1387,22 @@ async function renderFirstRunDesktopHelp(content) {
     status.setAttribute('role', 'status');
     const baseline = info.lastActivation?.at;
     help.appendChild(
-      createActionButton(t('Check popup shortcut'), 'btn btn-secondary', async () => {
+      createActionButton(t('Check popup hotkey'), 'btn btn-secondary', async () => {
         try {
           const current = await window.electronAPI.getDesktopIntegration();
           const received =
             current?.lastActivation?.id === 'popup-toggle' &&
             current.lastActivation.at !== baseline;
           status.textContent = received
-            ? t('Popup shortcut received. You can use it to bring the widget forward.')
-            : t(
-                'No popup shortcut received yet. Press your configured shortcut, then check again.'
-              );
+            ? t('Popup hotkey received. You can use it to bring the widget forward.')
+            : t('No popup hotkey received yet. Press your configured hotkey, then check again.');
         } catch {
-          status.textContent = t('Could not check the shortcut. Try again.');
+          status.textContent = t('Could not check the hotkey. Try again.');
         }
       })
     );
     help.appendChild(
-      createActionButton(t('Set up shortcuts'), 'btn btn-secondary', async () => {
+      createActionButton(t('Set up hotkeys'), 'btn btn-secondary', async () => {
         await skipWizardToSettings();
         document.querySelector('[data-tab="hotkeys"]')?.click();
       })

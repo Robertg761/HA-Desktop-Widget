@@ -2032,6 +2032,12 @@
     "Save and continue": "حفظ ومتابعة",
     "Set card {{index}}": "تعيين البطاقة {{index}}",
     "Remove alert": "إزالة التنبيه",
-    "Full settings": "الإعدادات الكاملة"
+    "Full settings": "الإعدادات الكاملة",
+    "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "عيّن اختصار النافذة المنبثقة في الإعدادات، ثم انسخ ارتباطه إلى إعدادات Hyprland لديك. اضغط عليه وتحقق هنا قبل إنهاء الإعداد. يمكنك أيضًا إعداده لاحقًا.",
+    "Check popup hotkey": "التحقق من اختصار النافذة المنبثقة",
+    "Popup hotkey received. You can use it to bring the widget forward.": "تم استلام اختصار النافذة المنبثقة. يمكنك استخدامه لإحضار الأداة إلى الأمام.",
+    "No popup hotkey received yet. Press your configured hotkey, then check again.": "لم يُستلم أي اختصار للنافذة المنبثقة بعد. اضغط الاختصار الذي أعددته، ثم تحقق مرة أخرى.",
+    "Could not check the hotkey. Try again.": "تعذّر التحقق من الاختصار. حاول مرة أخرى.",
+    "Set up hotkeys": "إعداد الاختصارات"
   }
 }

@@ -2032,6 +2032,12 @@
     "Save and continue": "सहेजें और जारी रखें",
     "Set card {{index}}": "कार्ड {{index}} सेट करें",
     "Remove alert": "अलर्ट हटाएं",
-    "Full settings": "पूरी सेटिंग्स"
+    "Full settings": "पूरी सेटिंग्स",
+    "Set a popup hotkey in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": "सेटिंग्स में पॉपअप हॉटकी सेट करें, फिर उसकी बाइंडिंग अपनी Hyprland कॉन्फ़िगरेशन में कॉपी करें। सेटअप पूरा करने से पहले इसे दबाकर यहाँ जाँचें। आप इसे बाद में भी सेट कर सकते हैं।",
+    "Check popup hotkey": "पॉपअप हॉटकी जाँचें",
+    "Popup hotkey received. You can use it to bring the widget forward.": "पॉपअप हॉटकी मिल गई। आप इससे विजेट को सामने ला सकते हैं।",
+    "No popup hotkey received yet. Press your configured hotkey, then check again.": "अभी तक कोई पॉपअप हॉटकी नहीं मिली। अपनी कॉन्फ़िगर की हुई हॉटकी दबाएँ, फिर दोबारा जाँचें।",
+    "Could not check the hotkey. Try again.": "हॉटकी जाँची नहीं जा सकी। दोबारा कोशिश करें।",
+    "Set up hotkeys": "हॉटकी सेट करें"
   }
 }

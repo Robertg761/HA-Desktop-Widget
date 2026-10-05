@@ -1546,5 +1546,29 @@
   "Add Alert": {
     "retiredIn": "4.0.0",
     "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
+  },
+  "Set a popup shortcut in Settings, then copy its binding into your Hyprland configuration. Press it and check here before finishing setup. You can also set it up later.": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "Check popup shortcut": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "Popup shortcut received. You can use it to bring the widget forward.": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "No popup shortcut received yet. Press your configured shortcut, then check again.": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "Could not check the shortcut. Try again.": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
+  },
+  "Set up shortcuts": {
+    "retiredIn": "4.0.0",
+    "reason": "The first-run Hyprland help calls the popup hotkey by the name Settings gives it (re-audit R-117)."
   }
 }
