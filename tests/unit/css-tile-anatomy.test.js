@@ -332,6 +332,61 @@ describe('Quick Access tile anatomy', () => {
     });
   });
 
+  describe('a camera tile with a preview', () => {
+    const cameraTile = (attributes = '') =>
+      `<div class="control-item camera-preview-tile" ${attributes}>
+        <div class="camera-tile-visual"><div class="camera-tile-fallback">
+          <div class="control-icon"></div></div></div>
+        <div class="camera-tile-copy"><div class="control-name"></div>
+          <div class="control-state camera-tile-preview-status"></div></div>
+      </div>`;
+
+    it('keeps its caption at the foot, which the tile-fit centring took up under the icon', () => {
+      render('', grid(cameraTile("data-camera-preview-state='error'")));
+      expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
+        'flex-end'
+      );
+      // The other tiles keep the centring that loses only their foot when they are too full.
+      render('', grid(tile()));
+      expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
+        'safe center'
+      );
+    });
+
+    it.each([
+      ['', '32px'],
+      ['density-compact', '25px'],
+    ])(
+      'puts the icon of a tile with no picture above the caption, not over it (%s)',
+      (bodyClass, top) => {
+        render(bodyClass, grid(cameraTile("data-camera-preview-state='error'")));
+        const fallback = document.querySelector('.camera-tile-fallback');
+        expect(resolvedValue(fallback, 'place-items')).toBe('start center');
+        expect(resolvedValue(fallback, 'padding-top')).toBe(top);
+        // A plain glyph like its neighbours', not the 38px circle the dark stage seats it in.
+        const icon = fallback.querySelector('.control-icon');
+        expect(resolvedValue(icon, 'width')).toBe('auto');
+        expect(resolvedValue(icon, 'border')).toBe('0');
+      }
+    );
+
+    it('lowers that icon below the edit buttons while editing', () => {
+      for (const bodyClass of ['', 'density-compact']) {
+        render(bodyClass, grid(cameraTile(), 'reorganize-mode'));
+        expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'padding-top')).toBe(
+          '36px'
+        );
+      }
+    });
+
+    it('leaves the picture of a camera that sent one centred under its scrim', () => {
+      render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
+      expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'place-items')).toBe(
+        'center'
+      );
+    });
+  });
+
   describe('motion that is dropped', () => {
     it('shows a pressed scene as a still tint for the 600 ms the class lasts', () => {
       const reduced = styles.slice(

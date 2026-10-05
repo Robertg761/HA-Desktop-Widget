@@ -837,6 +837,43 @@ const presetLight = (now) => {
   ];
 };
 
+// A camera Home Assistant has lost. Its page puts it beside the fixture's camera, whose snapshots
+// fail, and a lamp.
+const offlineCamera = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'camera.porch',
+      state: 'unavailable',
+      attributes: { friendly_name: 'Porch' },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'camera.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+const cameraTilesPage = {
+  customTabs: [
+    {
+      id: 'default',
+      name: 'Cameras',
+      entityIds: ['camera.driveway', 'camera.porch', 'light.desk_lamp'],
+    },
+  ],
+  activeTabId: 'default',
+  quickAccessTileOptions: {
+    'camera.driveway': { cameraPreviewRefresh: '30s' },
+    'camera.porch': { cameraPreviewRefresh: '30s' },
+  },
+};
+// Each camera tile has settled: the failed snapshot and the offline camera have said so.
+const waitForCameraTiles = (ctx) =>
+  ctx.waitForExpression(
+    `!!document.querySelector('${tile('camera.driveway')}[data-camera-preview-state="error"]') &&
+      !!document.querySelector('${tile('camera.porch')}[data-camera-preview-state="unavailable"]')`,
+    'the camera tiles settled on their messages'
+  );
+
 // Restore points that differ by what they hold, one of them with a page nobody named. The list is
 // built when the dialog opens, so the history is put back as it was straight after.
 async function openRestoreDashboard(ctx) {
@@ -1563,6 +1600,22 @@ const scenes = [
       quickAccessTileOptions: { 'camera.driveway': { cameraPreviewRefresh: '30s' } },
     },
     setup: toggleEditMode,
+  },
+  // Camera tiles with a preview and no picture to show: the fixture's snapshot fails, and the porch
+  // camera is offline. Their icon sits above the name like any other tile's, in both themes and at
+  // the compact height.
+  {
+    name: 'camera-tile',
+    config: cameraTilesPage,
+    extraStates: offlineCamera,
+    setup: waitForCameraTiles,
+  },
+  {
+    name: 'camera-tile-light-compact',
+    ui: { theme: 'light', density: 'compact' },
+    config: cameraTilesPage,
+    extraStates: offlineCamera,
+    setup: waitForCameraTiles,
   },
 
   // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an
