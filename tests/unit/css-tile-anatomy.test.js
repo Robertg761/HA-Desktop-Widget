@@ -334,6 +334,26 @@ describe('Quick Access tile anatomy', () => {
       expect(forced.length).toBeGreaterThan(0);
     });
 
+    // The slot a dragged tile leaves in Reorganize is the same dashed accent slot for every tile:
+    // the status edge outranked it, and the wash lay over its fill.
+    it.each(['', 'active-tile-glow high-contrast opaque-panels'])(
+      'leaves the drop slot of a dragged tile alone (%s)',
+      (bodyClass) => {
+        render(bodyClass, grid(tile('sortable-ghost', "data-attention='danger'")));
+        const item = document.querySelector('.control-item');
+        expect(resolvedValue(item, 'outline')).toMatch(/^2px dashed /);
+        expect(resolvedValue(item, 'outline-width')).toBeNull();
+        expect(resolvedValue(item, 'background-image')).toBeNull();
+        expect(resolvedValue(item, 'border-color')).not.toBe(resolvedValue(item, '--error-text'));
+      }
+    );
+
+    it('leaves the drop slot alone in forced colours', () => {
+      render('', grid(tile('sortable-ghost', "data-attention='danger'")));
+      const item = document.querySelector('.control-item');
+      expect(resolvedValue(item, 'outline', { forcedColors: true })).toMatch(/^2px dashed /);
+    });
+
     it('leaves the accent to the tiles that are only on', () => {
       render('active-tile-glow', grid(tile('', "data-active='true'")));
       const item = document.querySelector('.control-item');

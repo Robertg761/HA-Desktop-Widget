@@ -6359,7 +6359,9 @@ body[data-accent-warm] {
    an armed alarm read as one that went off. They have a look no accent gives, with the glow on or
    off: a wash and an edge two pixels wide in the status colour, the icon and the state line in it,
    and a badge with an exclamation mark on the icon, which says it without the colour. The accent
-   rules above and the solid-panel and Readable ones below leave these tiles out. */
+   rules above and the solid-panel and Readable ones below leave these tiles out. While such a tile
+   is dragged in Reorganize, its drop slot is the dashed accent slot every tile leaves (see
+   .sortable-ghost), so the wash and the edge leave the slot out. */
 #quick-controls .control-item[data-attention] {
   --attention-color: var(--warning-text);
   --attention-wash: color-mix(
@@ -6367,18 +6369,21 @@ body[data-accent-warm] {
     var(--attention-color) var(--dash-attention-wash),
     transparent
   );
-  border-color: var(--attention-color);
-  /* A layer over the tile's own fill, so it sits on the glass, the solid panels and the Readable
-     preset's grey alike. */
-  background-image: linear-gradient(var(--attention-wash), var(--attention-wash));
 }
 
 #quick-controls .control-item[data-attention='danger'] {
   --attention-color: var(--error-text);
 }
 
+#quick-controls .control-item[data-attention]:not(.sortable-ghost) {
+  border-color: var(--attention-color);
+  /* A layer over the tile's own fill, so it sits on the glass, the solid panels and the Readable
+     preset's grey alike. */
+  background-image: linear-gradient(var(--attention-wash), var(--attention-wash));
+}
+
 /* The edge's second pixel. It steps aside for the focus ring, which takes the outline. */
-#quick-controls .control-item[data-attention]:not(:focus-visible) {
+#quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
   outline: 1px solid var(--attention-color);
   outline-offset: -2px;
 }
@@ -12530,7 +12535,7 @@ body.opaque-panels.active-tile-glow
   background-image: linear-gradient(var(--active-tile-wash), var(--active-tile-wash)) !important;
 }
 
-body.opaque-panels #quick-controls .control-item[data-attention] {
+body.opaque-panels #quick-controls .control-item[data-attention]:not(.sortable-ghost) {
   background-image: linear-gradient(var(--attention-wash), var(--attention-wash)) !important;
 }
 
@@ -12672,7 +12677,9 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
 
   /* A tile that needs attention keeps its own colour here as well, at the same weight: its edge was
      the accent's, the same as an armed alarm's. */
-  body.high-contrast #quick-controls .control-item[data-attention]:not(:focus-visible) {
+  body.high-contrast
+    #quick-controls
+    .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
     outline-width: 2px;
   }
 
@@ -16876,7 +16883,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
      is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. A tile
      that needs attention is outlined the same way and keeps its badge, drawn in the text colour. */
   #quick-controls .control-item[data-active='true'],
-  #quick-controls .control-item[data-attention]:not(:focus-visible),
+  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost),
   .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
