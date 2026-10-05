@@ -11,18 +11,6 @@ describe('the connection panel on the dashboard', () => {
 
   afterEach(() => harness.cleanup());
 
-  // The "Retrying..." moment is 700 ms of real time; wait for what follows it, not for a fixed time.
-  const until = async (done, timeoutMs = 3000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (!done() && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    return !!done();
-  };
-  const retryOver = () =>
-    !document.querySelector('.widget-state-copy + .widget-state-details .connection-progress') &&
-    !harness.findButton('Retrying...');
-
   const failAttempt = (error = new Error('Could not establish WebSocket connection')) => {
     harness.websocket.emit('error', error);
     harness.websocket.emit('close', { intentional: false });
@@ -126,9 +114,19 @@ describe('the connection panel on the dashboard', () => {
 
   describe('Retry', () => {
     const retry = () => harness.findButton('Retry') || harness.findButton('Retrying...');
+    // These tests run on Jest's clock once the renderer is up. That holds the clock still between
+    // the two clicks on "Retrying...", and lets a test step past that 700 ms moment without ever
+    // reaching the reconnect each failed attempt schedules a second or more later, which on a slow
+    // machine would otherwise start another attempt in the middle of the test.
+    const loadOnJestClock = async () => {
+      await harness.load({ config: harness.tokenConfig() });
+      jest.useFakeTimers();
+    };
+    const RETRY_FEEDBACK_MS = 700;
+    const endRetryMoment = () => jest.advanceTimersByTime(RETRY_FEEDBACK_MS);
 
     it('says it is retrying, even when the port refuses at once, and then says the retry failed', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       expect(retry().textContent).toBe('Retry');
       expect(document.querySelector('.widget-state-note')).toBeNull();
@@ -150,7 +148,7 @@ describe('the connection panel on the dashboard', () => {
       button.click();
       expect(harness.websocket.connect.mock.calls.length).toBe(connectsBefore + 1);
 
-      await until(retryOver);
+      endRetryMoment();
 
       expect(title()).toBe('Home Assistant is disconnected');
       expect(harness.findButton('Retry').getAttribute('aria-disabled')).toBeNull();
@@ -160,7 +158,7 @@ describe('the connection panel on the dashboard', () => {
     });
 
     it('keeps the keyboard on the Retry button through its label changes', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       const button = retry();
       button.focus();
@@ -170,18 +168,19 @@ describe('the connection panel on the dashboard', () => {
       failAttempt();
       expect(document.activeElement.textContent).toBe('Retrying...');
 
-      await until(retryOver);
+      endRetryMoment();
       expect(document.activeElement.textContent).toBe('Retry');
     });
 
     it('announces how the retry went, once', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await until(retryOver);
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      endRetryMoment();
+      // The live region is emptied first and filled 50 ms later.
+      jest.advanceTimersByTime(50);
 
       expect(document.getElementById('widget-state-live').textContent).toMatch(
         /^Still can't reach Home Assistant/
@@ -189,12 +188,12 @@ describe('the connection panel on the dashboard', () => {
     });
 
     it('forgets the failed retry once the connection is back', async () => {
-      await harness.load({ config: harness.tokenConfig() });
+      await loadOnJestClock();
       failAttempt();
       retry().click();
       harness.websocket.emit('connect-attempt');
       failAttempt();
-      await until(retryOver);
+      endRetryMoment();
       expect(document.querySelector('.widget-state-note')).not.toBeNull();
 
       let requestId = 10;
@@ -205,7 +204,7 @@ describe('the connection panel on the dashboard', () => {
       });
       harness.websocket.emit('message', { type: 'auth_ok' });
       harness.websocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
-      await harness.flushAsync();
+      await jest.advanceTimersByTimeAsync(0);
       // Connected, with nothing on the page yet: the connection panel is gone.
       expect(title()).toBe('No Quick Access entities yet');
 
