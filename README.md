@@ -493,6 +493,7 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 ### Linux
 
 - **The AppImage closes without a window**: On Ubuntu 23.10 and later, install the `.deb`, or start the AppImage from a terminal with `--no-sandbox`. See [Running the AppImage on systems that block the Chromium sandbox](docs/linux-appimage.md).
+- **Hindi text shows as boxes**: Install a font with Devanagari, such as `fonts-noto-core` on Debian and Ubuntu or `noto-fonts` on Arch.
 
 ## Contributing
 

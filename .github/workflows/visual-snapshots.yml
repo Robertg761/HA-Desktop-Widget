@@ -58,11 +58,14 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install native build dependencies (Linux)
+      # The app bundles Latin, Cyrillic, Greek and Vietnamese fonts only, and the image has no
+      # Devanagari font, so every Hindi string in the hi-* scenes was drawn as boxes. fonts-noto-core
+      # has Noto Sans Devanagari, the font most Linux desktops fall back to for Hindi.
+      - name: Install native build dependencies and fonts (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick
+          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick fonts-noto-core
 
       - name: Install dependencies
         run: npm ci
