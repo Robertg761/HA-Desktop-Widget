@@ -6646,6 +6646,32 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     });
 
+    it('draws a weather pin with the current condition, or the icon the user chose', () => {
+      const weather = { ...sampleStates['weather.home'], state: 'cloudy' };
+      state.setStates({ 'weather.home': weather });
+      ui.renderDesktopPinnedTile('weather.home', weather);
+
+      const glyph = () =>
+        document.querySelector('.desktop-pin-weather-control .desktop-pin-panel-glyph');
+      // The weather domain's own icon is a sun behind a cloud, which was wrong on a cloudy day.
+      expect(glyph().dataset.weatherCondition).toBe('cloudy');
+      expect(glyph().querySelector('[data-icon="cloud-sun"]')).toBeNull();
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(true);
+
+      const night = { ...weather, state: 'clear-night' };
+      state.setStates({ 'weather.home': night });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().dataset.weatherCondition).toBe('clear-night');
+      expect(glyph().classList.contains('weather-icon-cloudy')).toBe(false);
+      expect(glyph().classList.contains('weather-icon-clear-night')).toBe(true);
+
+      state.setConfig({ ...state.CONFIG, customEntityIcons: { 'weather.home': '☔' } });
+      ui.renderDesktopPinnedTile('weather.home', night);
+      expect(glyph().textContent).toBe('☔');
+      expect(glyph().dataset.weatherCondition).toBeUndefined();
+      expect(glyph().classList.contains('weather-icon')).toBe(false);
+    });
+
     it('renders compact climate controls and sends hvac mode changes', () => {
       state.setStates({
         'climate.thermostat': {

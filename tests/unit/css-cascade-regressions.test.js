@@ -1485,6 +1485,24 @@ describe('stylesheet cascade regressions', () => {
         })
       ).toBe('2px solid Highlight');
     });
+
+    it('keeps the dark weather palette on a pin in the light theme, where pins stay dark glass', () => {
+      const cloud = (bodyClass) => {
+        render(
+          bodyClass,
+          '<div class="desktop-pin-panel-glyph weather-icon weather-icon-cloudy"></div>'
+        );
+        return resolvedValue(document.querySelector('.weather-icon'), '--weather-cloud-fill');
+      };
+      expect(cloud('desktop-pin-mode theme-light')).toBe(cloud('desktop-pin-mode'));
+      expect(cloud('theme-light')).not.toBe(cloud(''));
+      render('desktop-pin-mode', '<div class="desktop-pin-panel-glyph weather-icon"></div>');
+      expect(
+        resolvedValue(document.querySelector('.weather-icon'), 'width', {
+          viewport: { width: 168, height: 148 },
+        })
+      ).toBe('28px');
+    });
   });
 
   describe('desktop pin text', () => {

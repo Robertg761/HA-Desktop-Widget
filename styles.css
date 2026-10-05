@@ -1959,6 +1959,18 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   filter: drop-shadow(0 0 6px rgba(var(--desktop-pin-tint-rgb, var(--accent-rgb)), 0.45));
 }
 
+/* A weather pin draws its condition with the weather card's glyph and classes, which carry the
+   colours; the glyph keeps the size of the box it is drawn in. */
+.desktop-pin-panel-glyph.weather-icon {
+  width: var(--desktop-pin-glyph-size, 28px);
+  height: var(--desktop-pin-glyph-size, 28px);
+}
+
+.desktop-pin-panel-glyph .weather-glyph {
+  width: 75%;
+  height: 75%;
+}
+
 /* At hero size the stroke is scaled down so the icon stays a line drawing. */
 .desktop-pin-scene-emoji .entity-line-icon {
   stroke-width: 1.25;
@@ -4745,57 +4757,60 @@ body.first-run-active .widget-content > * {
 
 /* The palette above is drawn for a dark card: pale cloud, pale rays and a white halo come out at
    1.0 to 1.6:1 on the light one. The light theme gets the same hues stepped down to 3:1 and up on
-   the near-white card (and the dialog behind the weather picker). The Readable preset is dark
-   whatever theme is chosen, so it keeps the palette above. */
-body.theme-light:not(.high-contrast) .weather-icon {
+   the near-white card (and the dialog behind the weather picker). The Readable preset and the
+   desktop pins are dark whatever theme is chosen, so they keep the palette above. */
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon {
   --weather-primary: #c07800;
   --weather-secondary: #2b86a8;
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #dbe6f2;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-icon-cloudy, .weather-icon-partlycloudy) {
   --weather-cloud: #5f7c99;
   --weather-cloud-fill: #e6eef7;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-fog {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-fog {
   --weather-primary: #4f93ad;
   --weather-secondary: #2b86a8;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-clear-night {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-clear-night {
   --weather-primary: #5a78c8;
   --weather-secondary: #8a6fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-icon-exceptional {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-icon-exceptional {
   --weather-primary: #c07800;
   --weather-secondary: #c8423f;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-ray, .weather-glyph-bolt) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-ray, .weather-glyph-bolt) {
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-precip {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-precip {
   stroke: #1f8fc0;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-hail {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-hail {
   fill: #2f8fc4;
 }
 
-body.theme-light:not(.high-contrast) :is(.weather-glyph-wind, .weather-glyph-fog) {
+body.theme-light:not(.high-contrast, .desktop-pin-mode)
+  :is(.weather-glyph-wind, .weather-glyph-fog) {
   stroke: #4f93ad;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph-alert {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph-alert {
   fill: #c8423f;
   stroke: #c07800;
 }
 
-body.theme-light:not(.high-contrast) .weather-glyph {
+body.theme-light:not(.high-contrast, .desktop-pin-mode) .weather-glyph {
   filter: drop-shadow(0 1px 2px rgba(20, 30, 50, 0.3));
 }
 

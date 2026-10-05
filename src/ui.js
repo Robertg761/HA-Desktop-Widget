@@ -8867,6 +8867,30 @@ function getDesktopPinWeatherStatMarkup(stat) {
   return `<div class="desktop-pin-panel-stat" title="${escapeHtmlAttribute(stat)}"><div class="desktop-pin-panel-stat-label">${text}</div></div>`;
 }
 
+// The glyph is the current condition, as the weather card draws it, unless the user or Home
+// Assistant gave the entity an icon of its own: the weather domain's own icon is a sun behind a
+// cloud, which was wrong on a cloudy day and at night.
+function renderDesktopPinWeatherGlyph(glyph, entity) {
+  if (!glyph) return;
+  [...glyph.classList]
+    .filter((name) => name.startsWith('weather-icon'))
+    .forEach((name) => glyph.classList.remove(name));
+  if (getEntityIconDescriptor(entity).kind !== 'line') {
+    delete glyph.dataset.weatherCondition;
+    renderEntityIcon(glyph, entity);
+    return;
+  }
+  const condition = normalizeWeatherCondition(entity?.state);
+  // The card's classes carry the colours for each condition.
+  glyph.classList.add('weather-icon', `weather-icon-${condition}`);
+  // renderEntityIcon skips a redraw when its key is unchanged, and the condition replaced its icon.
+  delete glyph.dataset.iconKey;
+  delete glyph.dataset.iconKind;
+  if (glyph.dataset.weatherCondition !== condition || !glyph.firstElementChild) {
+    renderWeatherIcon(glyph, condition, { size: 20 });
+  }
+}
+
 function createDesktopPinWeatherControlElement(entity) {
   const stats = getDesktopPinWeatherStats(entity);
   const temperature = entity?.attributes?.temperature;
@@ -8889,7 +8913,7 @@ function createDesktopPinWeatherControlElement(entity) {
       })}
       <div class="desktop-pin-panel-body">
         <div class="desktop-pin-panel-meter">
-          <div class="desktop-pin-panel-glyph">${entityIconMarkup(entity)}</div>
+          <div class="desktop-pin-panel-glyph"></div>
           <div class="desktop-pin-panel-value">${utils.escapeHtml(temperatureValue)}</div>
         </div>
         <div class="desktop-pin-weather-stats">
@@ -8907,6 +8931,8 @@ function createDesktopPinWeatherControlElement(entity) {
       </div>
     </div>
   `;
+
+  renderDesktopPinWeatherGlyph(root.querySelector('.desktop-pin-panel-glyph'), entity);
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-weather-focus'), () => {
     requestDesktopPinFocusMain(entity.entity_id);
@@ -8941,8 +8967,7 @@ function updateExistingDesktopPinWeatherControl(root, entity) {
   const kpi = root.querySelector('.desktop-pin-panel-kpi');
   if (kpi) kpi.textContent = temperatureValue;
 
-  const glyph = root.querySelector('.desktop-pin-panel-glyph');
-  if (glyph) renderEntityIcon(glyph, entity);
+  renderDesktopPinWeatherGlyph(root.querySelector('.desktop-pin-panel-glyph'), entity);
 
   const value = root.querySelector('.desktop-pin-panel-value');
   if (value) value.textContent = temperatureValue;
