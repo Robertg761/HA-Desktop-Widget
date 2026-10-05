@@ -66,7 +66,10 @@ function paint(id, pulse = false) {
   const e = ENTITIES[id];
   document.querySelectorAll(`.qa[data-id="${CSS.escape(id)}"]`).forEach((el) => {
     if (e.type === 'sensor') {
-      el.querySelector('.qa-num').textContent = e.val.toFixed(1);
+      // Only a real change is written, so nothing re-renders (or re-reads) while the reading holds.
+      const num = el.querySelector('.qa-num');
+      const text = e.val.toFixed(1);
+      if (num.textContent !== text) num.textContent = text;
     } else {
       const active = e.type === 'scene' ? !!e.flash : !!e.on;
       const was = el.getAttribute('aria-pressed') === 'true';
@@ -92,7 +95,7 @@ function paint(id, pulse = false) {
 
 /* A tile is a slot holding the entity control plus sibling buttons (controls,
    pin), so no interactive element is nested inside another. Sensors are
-   readouts, not buttons. */
+   readouts, not buttons, and plain text: their drifting value is not announced. */
 function renderTile(id, pinned = false) {
   const e = ENTITIES[id];
   const slot = document.createElement('div');
@@ -101,8 +104,7 @@ function renderTile(id, pinned = false) {
   const el = document.createElement(e.type === 'sensor' ? 'div' : 'button');
   el.className = 'qa' + (e.type === 'sensor' ? ' qa-sensor' : '');
   el.dataset.id = id;
-  if (e.type === 'sensor') el.setAttribute('role', 'status');
-  else {
+  if (e.type !== 'sensor') {
     el.type = 'button';
     el.setAttribute('aria-pressed', 'false');
   }
@@ -170,6 +172,21 @@ const popSlider = document.getElementById('bright-slider');
 const popPower = document.getElementById('bright-power');
 let popTarget = null;
 let popOpener = null;
+let releaseBackground = null;
+
+/* The dialog is modal, so while it is open nothing around it takes focus or is read out: every
+   sibling on the way up to the page is made inert, and put back when it closes. */
+function inertOutside(el) {
+  const marked = [];
+  for (let node = el; node && node !== document.body; node = node.parentElement) {
+    for (const sibling of node.parentElement.children) {
+      if (sibling === node || sibling.inert) continue;
+      sibling.inert = true;
+      marked.push(sibling);
+    }
+  }
+  return () => marked.forEach((sibling) => { sibling.inert = false; });
+}
 
 function syncBrightness() {
   const e = ENTITIES[popTarget];
@@ -185,11 +202,16 @@ function openBrightness(id, opener) {
   popName.textContent = ENTITIES[id].name;
   syncBrightness();
   pop.hidden = false;
-  if (finePointer.matches) popSlider.focus();
+  // On a touch screen a long press can fire both the hold timer and the browser's contextmenu,
+  // opening the dialog twice. The page is made inert once, so closing it frees all of it again.
+  if (!releaseBackground) releaseBackground = inertOutside(pop);
+  popSlider.focus();
 }
 function closeBrightness() {
   pop.hidden = true;
   popTarget = null;
+  releaseBackground?.();
+  releaseBackground = null;
   if (popOpener) { popOpener.focus(); popOpener = null; }
 }
 function applyBrightness(bri) {
@@ -350,7 +372,7 @@ function showPage(page) {
   tabs.querySelectorAll('button').forEach((b) => {
     const on = b.dataset.page === page;
     b.classList.toggle('is-on', on);
-    b.setAttribute('aria-selected', String(on));
+    b.setAttribute('aria-pressed', String(on));
   });
   tabs.style.setProperty('--pill-x', `${to * 100}%`);
   // Tiles slide in from the side of the page you picked.
@@ -522,8 +544,9 @@ function applyFx(effect, { fade = false } = {}) {
   });
 }
 
-/* The weather cycles on its own so visitors see every effect. Picking one by
-   hand holds it for 45 seconds before the cycle picks up again from there. */
+/* The weather tours every effect on its own, once, and ends on Off. Picking one by hand holds it
+   for 45 seconds before the tour picks up again from there. Picking Off asks for it to stop, so
+   that stays: motion nobody asked for must not start again by itself. */
 const FX_CYCLE = [...fxBar.querySelectorAll('button')].map((b) => b.dataset.fx);
 const FX_STEP_MS = 7000;
 const FX_HOLD_MS = 45000;
@@ -533,14 +556,15 @@ fxBar.addEventListener('click', (ev) => {
   if (!b) return;
   markInteracted();
   applyFx(b.dataset.fx);
-  fxNextAt = Date.now() + FX_HOLD_MS;
+  fxNextAt = b.dataset.fx === '' ? Infinity : Date.now() + FX_HOLD_MS;
 });
 setInterval(() => {
   if (fx.prefersReducedMotion() || document.hidden || !stageVisible) return;
   if (Date.now() < fxNextAt) return;
   const next = FX_CYCLE[(FX_CYCLE.indexOf(currentFx) + 1) % FX_CYCLE.length];
   applyFx(next, { fade: true });
-  fxNextAt = Date.now() + FX_STEP_MS;
+  // Back at Off is the end of the tour.
+  fxNextAt = next === '' ? Infinity : Date.now() + FX_STEP_MS;
 }, 500);
 
 let stageVisible = true;

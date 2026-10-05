@@ -1,0 +1,39 @@
+name: Website deploy check
+
+# website/ deploys when it reaches main. Nothing else looks at the result, and the live site once
+# described features the app does not have. After a change to website/ lands on main, this waits for
+# the deployment and compares every page, asset and header with the files in the repository.
+# A failure here means the host is not deploying main (check the Vercel project's production branch
+# and its last deployment), or that a deployment failed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'scripts/check-website-deploy.cjs'
+      - '.github/workflows/website-deploy-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-deploy-check
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Compare the deployed site with website/
+        run: node scripts/check-website-deploy.cjs --wait 900

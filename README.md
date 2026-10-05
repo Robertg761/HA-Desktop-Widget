@@ -1,6 +1,6 @@
 # HA Desktop Widget
 
-A semi-transparent desktop widget for Home Assistant that provides quick access to your smart home devices from your desktop.
+A frosted-glass desktop widget for Home Assistant that provides quick access to your smart home devices from your desktop.
 
 [![CI](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml)
 [![Release](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
@@ -11,11 +11,11 @@ A semi-transparent desktop widget for Home Assistant that provides quick access 
 
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
 
-![Main View](images/Main_View.png?v=20260923) ![Edit View](images/Edit_View.png?v=20260923) ![Light Adjust](images/Light_Adjust.png?v=20260923)
+<img src="images/Main_View.png?v=20261004" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261004" alt="Light adjust" width="280">
 
 ## Settings
 
-![Appearance settings](images/Settings_Appearance.png?v=20260923)
+<img src="images/Settings_Appearance.png?v=20261004" alt="Appearance settings" width="320">
 
 Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
 
@@ -31,7 +31,7 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ## Weather Effects
 
-![Rain Effect](images/Rain_Effect.png?v=20260601) ![Snow Effect](images/Snow_Effect.png?v=20260601)
+<img src="images/Rain_Effect.png?v=20261004" alt="Rain effect" width="280"> <img src="images/Snow_Effect.png?v=20261004" alt="Snow effect" width="280">
 
 ## Features
 
@@ -49,9 +49,9 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ### Modern Interface
 
-- **Rainmeter-style Design**: Clean, transparent desktop widget aesthetic
+- **Frosted-glass Design**: One pane of frosted glass with clear, separate tiles; a solid panel where the system cannot blur
 - **Responsive Layout**: Auto-sizing tiles that adapt to content
-- **Dark/Light Themes**: Automatic theme switching based on system preferences
+- **Themes**: Auto, Dark or Light (Auto follows the system)
 - **Color Personalization**: Built-in and custom accent/background colors with live preview
 - **Weather Effects**: Optional subtle rain, snow, clouds, sun, and storm animations when frosted glass is enabled
 - **Smooth Animations**: Fluid drag-and-drop and hover effects
@@ -72,8 +72,8 @@ See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent 
 
 ### Advanced Features
 
-- **Updates**: Automatic installation for Windows installer and Linux AppImage builds; portable, macOS, and Linux deb builds use a GitHub Releases download flow
-- **System Tray**: Minimize to tray with quick access menu
+- **Updates**: Windows installer and Linux AppImage builds download and install updates themselves; portable, macOS, and Linux deb builds are told once per new version and open the GitHub Releases download
+- **System Tray**: Hide to tray with quick access menu
 - **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
 - **Start at Login**: Optional OS login startup control
 - **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
@@ -132,7 +132,7 @@ Planned for a future release:
 
 1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available build for your OS.
 2. Windows: run the `.exe` installer or portable build. macOS: open the universal `.dmg` or `.zip` (older releases may be Apple Silicon-only). Linux: use the `.AppImage` or install the `.deb` package.
-3. Run the app and click the Settings button to configure your Home Assistant connection.
+3. Open the app and follow its setup to connect Home Assistant (see [First-Time Setup](#first-time-setup)).
 
 > **macOS Gatekeeper notice:** Current macOS artifacts are universal, but they are
 > temporarily not Apple Developer-ID signed or notarized. macOS may block the first launch
@@ -157,9 +157,9 @@ Planned for a future release:
 3. **Return to the widget**: Authorization finishes through a temporary loopback callback on this
    computer and live updates start automatically. If you change your mind, **Cancel** next to the
    connect button stops waiting and closes the loopback callback.
-4. **Add entities**: Click the "+" button to add your favorite entities to Quick Access.
+4. **Add entities**: Choose a room to start from, or click the "+" button to add your favorite entities to Quick Access.
 
-The legacy long-lived access-token form remains under **Settings > Legacy access token
+The legacy long-lived access-token form remains under **Settings > General > Legacy access token
 (advanced)** for compatibility. New setups should use browser authorization.
 
 ### Home Assistant Companion Integration
@@ -247,9 +247,9 @@ power controls without a brightness slider.
 
 ### System Integration
 
-- **Minimize to Tray**: Click the minimize button to hide to system tray
+- **Hide to Tray**: The minimize button, the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all hide the widget to the system tray, and it keeps running. Choose **Quit** from the tray menu (or the app menu on macOS) to exit
 - **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” under General → Window & Behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
-- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download
+- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
 - **Settings**: Access via the Settings button or right-click the tray icon
@@ -266,7 +266,7 @@ power controls without a brightness slider.
 
   On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. macOS may ask again after an update; if the popup hotkey stops working, switch the widget on in that list and set the hotkey once more.
 
-- **Alerts**: Enable desktop notifications for entity state changes or target states
+- **Alerts**: Enable desktop notifications for entity state changes or target states, and choose whether Home Assistant's own notifications (new devices, repairs, updates) also reach the desktop; they always appear in the bell
 - **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
 
 ## Advanced Usage
@@ -318,20 +318,29 @@ cannot start while a copy of the widget is already running — quit that one fir
 
 ### Release Channels
 
-- **Stable releases**: Push a tag like `v3.5.4`. GitHub Actions publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
-- **Tester prereleases**: Push a SemVer prerelease tag like `v3.5.4-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings -> Application Updates are offered these builds.
+- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
+- **Tester prereleases**: Push a SemVer prerelease tag like `v4.1.0-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings → Advanced are offered these builds.
 - **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
 - **Manual-update builds**: Portable, macOS, and Linux deb users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
 
-The minimum planned beta version is stored in `.github/beta-target`. It is currently set to
-`3.9.0`, so the active series starts at `v3.9.0-beta.1`. Once `v3.9.0` is stable, the workflow
-automatically moves to `v3.9.1-beta.N`; increasing the file starts a future minor series instead.
+The minimum planned beta version is stored in `.github/beta-target`. The nightly job starts the
+active series at that version (for example `v4.0.0-beta.1`). Once that version is stable, it
+automatically moves to the next patch (`v4.0.1-beta.N`); increasing the file starts a future minor
+series instead.
 
 Release builds align their package version from the tag. Manually prepared betas commit matching
 prerelease metadata before tagging; automated nightly betas align it only inside the build.
 Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
 
-New GitHub releases automatically generate notes from merged pull requests and contributors. A beta compares against the previous published prerelease in the same version series, falling back to the latest stable release for the first beta. A stable release compares against the previous stable release so its notes cover the complete release cycle rather than only the changes since the last beta.
+The notes of a stable release are its `CHANGELOG.md` section, followed by a link to the full
+changelog, and the release fails without a non-empty section. A beta uses its own section when the
+changelog has one; otherwise GitHub generates its notes from merged pull requests, comparing against
+the previous published prerelease in the same version series (or the latest stable release for the
+first beta).
+
+The website in `website/` deploys when it reaches `main`, before a release is tagged, so every
+line on it has to read correctly on both sides of the release. After a website change lands, run
+`node scripts/check-website-deploy.cjs` to compare the deployed pages with the files in `website/`.
 
 ### Configuration
 
@@ -370,7 +379,7 @@ Syncthing, or any similar app already keeps in sync. There is no server and no a
 **Set up the first computer**
 
 1. Open **Settings → Advanced → Profile Syncing** and turn on **Profile sync**.
-2. Pick your **Sync app**, then **Choose Folder...** and select a folder inside it.
+2. Pick your **Sync app**, then **Choose folder...** and select a folder inside it.
 3. Optionally turn on **Encrypt synced profile with passphrase** and enter a passphrase of at
    least 8 characters.
 4. Choose **Save**. The sync file is created.
@@ -379,7 +388,7 @@ Syncthing, or any similar app already keeps in sync. There is no server and no a
 
 Do the same with the same folder (and the same passphrase if you encrypt). If both computers
 already have different settings, Settings lists which ones differ and asks which to keep:
-**Keep Local (Upload)** or **Use Remote (Download)**. The side you replace is backed up.
+**This computer (upload)** or **Sync file (download)**. The side you replace is backed up.
 
 **What syncs**
 
@@ -407,7 +416,7 @@ changes to different sections on two computers are both kept. Only when two comp
 the same section does the newer change win. The other version is then backed up and Settings
 says so.
 
-**Sync Up** replaces the file with this computer's settings, and **Sync Down** replaces this
+**Sync up** replaces the file with this computer's settings, and **Sync down** replaces this
 computer's settings with the file. Both ask first and back up what they replace.
 
 **Backups**

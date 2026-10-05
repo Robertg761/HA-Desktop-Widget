@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes target the latest stable release line of HA Desktop Widget. Until 4.0 is released, that is 3.x. After the stable 4.0 release, fixes target 4.x and users should upgrade from 3.x.
+Security fixes target the latest stable release line of HA Desktop Widget. That is 4.x once 4.0 is released; until then it is the latest 3.x. After the stable 4.0 release, users on 3.x should upgrade; see the [4.0 migration guidance](docs/MIGRATION.md) first.
 
 | Version | Supported                    |
 | ------- | ---------------------------- |
@@ -75,7 +75,7 @@ Keep exceptions narrow, dated, and temporary:
 
 - **Home Assistant**: The app connects to the configured Home Assistant URL with HTTP(S), WebSocket, and media/camera requests needed for entity control and display.
 - **Updates**: Windows installer and Linux AppImage builds can download and install GitHub releases through Electron updater. Portable, macOS, and Linux deb builds check GitHub Releases and send the user to the matching download instead of self-installing.
-- **Language packs**: Packaged builds can fetch the language-pack manifest from the project GitHub repository and download selected language packs. Downloaded packs are validated, including SHA-256 verification when the manifest provides a hash.
+- **Language packs**: Packaged builds can fetch the language-pack manifest from the project GitHub repository and download selected language packs. Installed packs are checked against the manifest again after startup and daily, and replaced only when the manifest lists a newer version with a SHA-256 hash. Downloaded packs are validated, including SHA-256 verification when the manifest provides a hash.
 - **External links**: Actions such as Report Issue, Releases, and Profile Sync help can open GitHub pages in the user's default browser.
 - **Entity-provided media**: Home Assistant entity attributes may reference remote artwork, camera, or stream URLs. Authenticated Home Assistant media remains restricted to the configured server. External artwork requests reject local, private, link-local, and reserved destinations, including redirect targets.
 
@@ -124,4 +124,4 @@ Thank you to security researchers and community members who help keep HA Desktop
 
 ---
 
-**Last updated**: October 2, 2026
+**Last updated**: October 4, 2026

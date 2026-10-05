@@ -16,78 +16,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
 - Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.
 - Duplicate a Quick Access page in reorganize mode, keeping its tile order and copying comparison charts so they can be edited independently.
-- Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections.
+- Search Settings by name or help text, then jump directly to a control, including controls inside collapsed sections. Results are ranked by where the words match, an English query works in a translated window, and a search with no match says so.
 - Choose Auto, Dark, or Light theme in Settings → Appearance. It previews live and saves with Save; Auto still follows the system.
 - Draw entities with line icons that take the accent color and a soft glow when on. Custom emoji and icons set in Home Assistant still take priority. Dialogs, entity lists, the command palette, and the window controls use the same icon set.
 - Show a status line on every Quick Access tile, such as Off, Closed, Locked, or Home, and keep it current as states change.
 - Add subtle motion: a highlight slides between Quick Access pages and settings sections, tiles slide in from the side of the page you pick, a tile's icon swells briefly when it turns on, and settings pages and disclosures ease in. All of it is off when the system asks for reduced motion.
-- Add a visual snapshot workflow that screenshots the real app on Windows, macOS, and Linux against a mock Home Assistant, and `npm run snapshots` to run it locally.
 - Restore what profile sync replaced from Settings → Advanced → Backups. A restore applies on this computer and then syncs to the others, and the settings it replaces are backed up in turn.
 - Add Sync now, which merges both sides, and 30-minute and hourly sync intervals.
 - Add Home Assistant to the Omarchy 4 bar from the tray menu. Its panel shows your Quick Access tiles as the widget draws them, and clicking one does what clicking it in the widget does. Hold a light, fan, cover, thermostat, or player tile to adjust it right in the panel.
 - Add seasonal themes. Halloween fills October with cobwebs, a dangling spider, jack-o'-lanterns in the tiles and along the bottom of the window, bats, drifting ghosts, fog, and a witch who flies across the moon. December brings snow-capped tiles, gifts, holly, lights under the header, a snowdrift, and Santa's sleigh led by a red-nosed reindeer. New Year, Lunar New Year, Valentine's Day, St. Patrick's Day, Easter, and Thanksgiving each get about a week of their own: fireworks and champagne, lanterns and firecrackers, heart balloons and love letters, a rainbow with a pot of gold, a hopping bunny and chicks, a strutting turkey. Every holiday puts a hat or an icon on the window title and a garland under the header. Tiles, cards, and the header frost the animated background behind them so they stay easy to read, and fliers like the witch and the sleigh pick a path between the tiles. Holiday colors stand in for the accent and background while a holiday lasts, including over a followed Omarchy palette. Settings → Appearance → Seasonal Themes switches each holiday on or off and can show any holiday now. Seasonal themes start off when the system asks for reduced motion or high contrast is on.
+- Check for updates on a schedule: 30 seconds after the widget starts, every six hours, and when the computer wakes up. Builds that cannot update themselves (portable, macOS, .deb, Arch) show one notification for each new version instead of waiting for you to press Check, and a What's new link under the update buttons opens the release notes of the version you are running.
+- Refresh installed language packs on their own after an upgrade, so new text appears in your language without finding the Update button. Nothing is requested while no pack is installed.
+- Add a Home Assistant notifications switch under the alert list, which keeps Home Assistant's own notifications (new devices, repairs, updates) off the desktop while they still arrive in the bell, and Dismiss all in the notifications panel.
+- Add a Show log file button that says what happened: it shows the path when it opened the file, and copies the path when no file manager could open it.
+- Reorder Quick Access tiles without dragging: press Alt and an arrow key on a tile, or select a tile and then the tile whose place it should take. The move is announced to screen readers.
+- Suggest the entity's real states while you type a Specific State alert, and accept them the way Home Assistant spells them ("Not home" becomes `not_home`). The alert dialog shows the current reading and explains what duration and cooldown do.
+- Show a Mute button, muted by default, for live camera streams.
+- Show alert notifications with the entity's icon, or the app icon when it cannot be drawn.
 
 ### Changed
 
 - Render 50 entities per page in Manage Quick Access and debounce searches across the full entity list.
-- Split the desktop renderer into smaller device/settings chunks and omit unused legacy icon-font formats from the companion panel build.
 - Redesign the main window after the project website: one pane of frosted glass in a cool slate, lighter tiles and cards with 14px corners, normal-case tile names, and Plus Jakarta Sans for the clock, temperature, and sensor values. The two primary cards share one pane and Quick Access pages are a segmented control.
+- Draw tiles, the weather and clock cards, and the media card as clearly separate blocks in every window mode, over a slightly darker panel, so they no longer melt into a bright or busy wallpaper. Window opacity still makes the dashboard more see-through.
+- Draw a solid panel on Windows 10 and Windows 11 builds before 22H2, which cannot blur the desktop behind the widget; before, they showed a thin tint over a sharp desktop. Windows 11 22H2 and later keep acrylic, macOS keeps vibrancy, and Linux keeps its tint. Settings says why Frosted glass is locked where it cannot work.
+- Make the Settings panel nearly opaque on Linux, where the dashboard used to show through it.
 - Reorganize Settings into six pages on an icon rail (General, Appearance, Dashboard, Hotkeys, Alerts, Advanced) with grouped rows: labels and help on the left, controls on the right. Weather source moves to Dashboard, connection diagnostics to General, and updates to Advanced. Custom colors, language packs, the primary-card entity picker, and the icon editor sit behind disclosures.
-- Restyle dialogs, control pop-ups, toasts, and the command palette to match, with slimmer sliders, chip-style presets, and quieter buttons.
+- Restyle dialogs, control pop-ups, toasts, and the command palette to match, with slimmer sliders, chip-style presets, and quieter buttons. Buttons, fields, selects, sliders, and switches share one look everywhere, and the hotkey action and primary media player pickers are native selects.
 - Show each tile's Controls action as a small sliders button in the tile corner. It stays visible and keyboard accessible.
+- Rebuild the Quick Access page tabs: the pages scroll inside the bar without a scrollbar (also with the mouse wheel), the active page is always scrolled into view, and Add page stays in reach. In edit mode the rename, duplicate, and delete buttons are small glass circles that take their color on hover.
+- Make text readable in both themes. Status messages, secondary text, and accent-colored text are solved separately for the light and the dark theme and reach 4.5:1 contrast on the surfaces they sit on, the light theme gets surface colors of its own, and the Background setting now tints the light window too. Indigo is slightly deeper so its white button text is readable.
+- Show the connection dot as a hollow ring when disconnected and a solid dot when connected, and give text fields and off switches a visible edge.
 - Match native context menus and macOS pop-up menus to the app's theme, and draw Windows and Linux dropdown lists and scrollbars in dark mode when the app is dark.
-- Hide the Follow Omarchy theme switch on desktops where it cannot turn on.
-- Translate everything the refresh adds, including the unavailable and empty states, the camera viewer, and pinned tile labels, and use sentence case for Settings labels.
+- Hide the Follow Omarchy theme switch on desktops where it cannot turn on. While it is on, Settings shows the palette's mode, dims the Colors section with a note, and draws borders as soft hairlines.
+- Translate everything the refresh adds, including the unavailable and empty states, the camera viewer, and pinned tile labels, and use sentence case for Settings labels. Wording is more consistent: English uses US spelling, German uses du throughout, and buttons and dialogs name what they act on ("Add Kitchen", "Disarm Home alarm"), which also gives screen readers distinct names.
 - Give Manage Quick Access one scrolling list under the search box, quiet Remove buttons, a no-matches message, and the comparison graph action in the footer. The comparison graph editor gets a Done button.
 - Show a proper empty state with an Open Settings button when Quick Access has no connection yet.
-- Keep the camera viewer a fixed 16:9 frame, with a "Preview unavailable" message instead of a broken image, and a readable state and update time.
-- Pick black or white text on accent-coloured buttons per accent, so dark custom accents stay readable.
+- Keep the camera viewer a fixed 16:9 frame, with a "Preview unavailable" message instead of a broken image, and a readable state and update time. Snapshot and Live are a pair, the picture stays while Live starts, a stream that shows no frame within 20 seconds falls back to snapshots, and the stream stops while the widget is hidden.
+- Pick black or white text on accent-colored buttons per accent, so dark custom accents stay readable.
 - Profile sync is no longer experimental. It merges section by section (Quick Access and layout, appearance, alerts, weather and media): a section changed on one computer reaches the others whatever their clocks say, and changes to different sections on two computers are both kept. When two computers change the same section, the newer change wins and the other is backed up.
 - Each computer chooses its own sync scope. Pulling no longer switches this computer to another computer's scope, and pushing leaves the sections other computers sync untouched.
 - Keep desktop pins, hotkeys, the open Quick Access page, text and control size, and Omarchy theme following on each computer instead of syncing them.
-- Rebuild the Profile Syncing settings as rows like the rest of Settings, with a status line in plain sentences, the sections that differ named in the first-sync choice, and confirmations before Sync Up and Sync Down replace one side.
+- Rebuild the Profile Syncing settings as rows like the rest of Settings, with a status line in plain sentences, the sections that differ named in the first-sync choice, and confirmations before Sync up and Sync down replace one side. The passphrase has a show/hide button and a confirmation field, backups say why they were taken, and conflict copies from OneDrive and iCloud Drive are recognized.
 - Write version 3 of the sync file. 4.0 reads 3.x sync files and upgrades them on its first change; 3.x cannot read version 3 and stops rather than overwriting it, so update every computer.
+- Hide the widget to the tray when you close it: the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all behave alike, and Quit is in the tray menu and the app menu. Packaged builds keep the Edit and Window menus and drop the invisible View shortcuts (Ctrl+R, F11, Ctrl+Shift+I, and Ctrl+0 and Ctrl+/-, which undid the text size setting).
+- Name the product HA Desktop Widget everywhere: the window, the installer, the Windows Start menu and Desktop shortcuts (an install that used another name has them renamed on upgrade), notifications, and the tray tooltip.
+- Add a new app icon, a rounded one with a margin that sits beside other apps in a Linux icon theme and on the macOS grid, a monochrome menu-bar icon for macOS, and a Windows tray icon that uses a frame of the right size for the display scale.
+- Lay out every desktop pin family at its default 168x148 size so text and controls fit, in every language. The light and fan pins' On/Off switch is a power icon button, the sliders share one look, and a new pin opens in the first free spot instead of on top of the widget.
+- Remove the media tile's hover marquee. Long titles end in an ellipsis and show the full text as a tooltip, and the media dialog wraps them.
+- Format every value, date, and state through one locale-aware formatter. Numbers, units, percentages, times, and dates follow your language and the system's region, so a sensor reads the same on its tile, pin, palette, dialog, and alerts, binary sensors read by device class (Open/Closed, Low/OK), and the Time format default reads Automatic. Searches in Chinese, Arabic, and Hindi no longer match every entity.
+- Match command palette searches on words and close matches instead of scattered letters, so "disarm" no longer lists pendant lights. An empty search lists recent commands, pages, and the page's own entities, a result with nothing to run says so instead of doing nothing, and a failed command shows Home Assistant's own reason.
+- Use one hotkey model on every platform. Command, Super, Meta, and Win mean the same key, hotkeys show the keys as your keyboard prints them, Space, the arrows, and Shift+digit combos can be recorded, a conflict names the entity that already uses it, and macOS asks for Accessibility access only when you set a popup hotkey.
+- Show a lock's own state with its own icon, ask before a tile click unlocks it, tint unlocked locks amber and a triggered alarm red, and let valves, humidifiers, and sirens toggle from their tiles and hotkeys.
+- Show missing weather readings as `--` instead of `0°`, and open the weather picker with a plain click.
+- Render Home Assistant's notifications with their Markdown, so bold text, lists, and links read as intended.
+- Put the connection panel above Quick Access with the server's name, a waiting bar while connecting, and feedback when Retry did not help ("Still can't reach Home Assistant"). Stale values dim until the first state snapshot.
+- Validate Settings forms in place: a bad Home Assistant address, folder, or passphrase gets a message under its field, and `homeassistant.local:8123/lovelace/0` is accepted as the server it points to. Connection failures say which kind they were, Disconnect asks first, and the restart prompts use the app's own dialogs.
+- Open every dialog on one keyboard and focus layer: Escape closes only the top dialog, and focus starts on the first control and returns to where it came from. Toasts are limited to three, repeats fold into one, errors stay until dismissed, and they sit clear of buttons.
+- Keep a minimum window size of 320x360 (scaled by the text size setting), and lay out dialogs, Settings rows, tiles, and toasts for narrow windows, enlarged text, and long German, French, Spanish, and Arabic labels.
+- Show the window already themed: it appears once the saved settings are applied instead of flashing the default colors, and starting with `--hide` shows nothing at all.
+- Keep the widget and its pins on a connected monitor: one left on an unplugged display moves to a connected one, and a pin returns to its saved place when the monitor does.
+- Let the update line keep its result when Settings is closed and reopened, and open Settings on it from the tray's Check for Updates. The Check button now uses the Receive beta updates switch as shown.
+- Make right-to-left and non-Latin text read right: switches, corner buttons, margins, arrows, and dividers mirror in Arabic, readings like "21.4 °C" stay in order, text from Home Assistant keeps its own direction, and Hindi, Arabic, and Chinese get letter-spacing and line heights that do not clip.
+- Draw seasonal art clear of controls: corner art no longer sits behind a tile's Controls button, a dialog's close button, or the Settings rail, and the hats on the window title sit above the "H".
+- Open the first-run starter on the room with the most controllable devices with sensible ones ticked, leave out Back on the first and last wizard steps, and offer Cancel while waiting for approval in the browser.
+- Make weather effects crisp on high-density screens, and show a still scatter of rain and snow under reduced motion instead of an empty window.
 
 ### Fixed
 
-- Update the build/test toolchain's transitive `brace-expansion` patch versions to address newly listed denial-of-service advisories. Run full CI for stacked pull requests as well as PRs targeting main.
-- Preserve existing pages and omitted settings when applying partial companion profiles. Include weather/media selection and tile spans in the profile round-trip, while keeping UI scale and Omarchy theme following local.
-- Serialize companion commands and share the result of duplicate in-flight deliveries. Stop obsolete session initialization and send an initial layout snapshot to each new session.
+- Preserve existing pages and omitted settings when applying partial companion profiles. Include weather/media selection and tile spans in the profile round-trip, while keeping UI scale and Omarchy theme following local. A profile applied from Home Assistant can be undone from Undo and Restore dashboard.
+- Serialize companion commands and share the result of duplicate in-flight deliveries. Stop obsolete session initialization and send an initial layout snapshot to each new session. Retry a companion session that failed to start, and accept commands from a computer whose clock runs a little ahead of Home Assistant.
 - Guard unavailable and unsupported media, fan, to-do, and hotkey actions. Read-only to-do lists no longer expose writes; live task counts and sensor detail values stay current.
 - Clear device caches and close detail dialogs when changing Home Assistant accounts/servers, and discard responses belonging to the old connection.
 - Keep numeric/select/vacuum tiles actionable and unsupported domains explicitly read-only. Preserve a zero climate temperature.
 - Follow visual arrow order in RTL, expose tile values to assistive technology, and allow Enter/Space to capture named hotkeys with cancellation/conflict focus recovery.
 - Offer calendar retry/refresh and show its seven-day event window.
 - Make automation hotkeys set to Toggle enable or disable the automation; they previously sent no command.
-- Refresh alert state after reconnecting, so an ended threshold condition can alert again and state-change alerts use the current reading as their baseline.
+- Refresh alert state after reconnecting, so an ended threshold condition can alert again and state-change alerts use the current reading as their baseline. A "front door open for 10 minutes" alert no longer keeps counting while the connection is down.
 - Let alerts report an entity that goes offline. An exact-state alert for `unavailable` or `unknown` never fired, and a state-change alert only spoke up when the entity came back. A state-change alert now tells you when the entity goes unavailable or unknown, once it has stayed that way for 30 seconds and at most once every 15 minutes per entity; coming back is announced only if the entity returns as something other than it was. A switch on the alert, Notify when unavailable or unknown, turns this off.
+- Show alerts whose entity is gone in Settings → Alerts, under the entity id with an Unavailable mark, so they can still be edited and removed.
 - Frosted glass now actually blurs on Hyprland. The widget asks Hyprland to blur its own surface; before, it was only tinted, because an app cannot blur the desktop behind itself on Linux. Omarchy ships with Hyprland's blur off, so Settings → Appearance → Window Effects says so and offers a button that turns blur on for the widget alone. The button leaves every other window unblurred, and the same button turns it off again.
-- Update the packaged Electron runtime within version 43 to include current security fixes. CI and release checks now audit development dependencies too, so Electron advisories cannot slip past the production dependency check.
+- Update the packaged Electron runtime within version 43 to include current security fixes, and refuse artwork addresses that reach private networks through IPv6 forms such as NAT64 and 6to4.
 - Show calendar event descriptions as text in the calendar dialog. Descriptions that arrive as HTML, as Google Calendar's do, showed their tags.
 - On Hyprland, a widget brought forward from the tray, the Omarchy bar, or the popup shortcut no longer drops behind your windows as the pointer crosses them on its way to it. It lowers once the pointer moves off to something else.
 - Stop a settings change from overwriting another computer's newer sync change that had not arrived yet, and stop a computer whose clock runs ahead from undoing other computers' changes.
 - Refuse to write the sync file unencrypted, or with an old passphrase, from a computer whose encryption settings no longer match it; say what to change instead.
+- Fix turning on sync encryption for a profile that already syncs, which failed on Linux with a working keyring, and joining a file another computer encrypted. A damaged or wrong-sized sync file is reported and left alone, file-system errors get plain sentences, and a first sync no longer asks about a "changed folder".
 - Keep background sync running after a failed first sync at login, such as when the sync folder is not mounted yet.
-- Keep a 30- or 60-minute sync interval when saving Settings; it was reset to 5 minutes.
-- Keep changes another computer made while Settings was open when you save.
-- Refuse to write a sync file larger than every computer will read.
-- Show warnings in Settings in the warning colour; they had taken the help text's colour.
+- Keep changes another computer made while Settings was open when you save, and refuse to write a sync file larger than every computer will read.
 - Quit cleanly when Linux shuts down, restarts, or logs out, instead of holding up the session until the system kills the widget. The settings are saved first, and the widget never stops on a save-error dialog during shutdown.
-- Lay pinned desktop tiles out as designed again: the Quick Access tile rules had been overriding their padding, corners and alignment, so text ran into the rounded corners, a large label spilled over the top-right corner, and bottom buttons were cut off. Pins also stay readable in the light theme, where their text had turned white on light panels.
-- Calm the Quick Access edit mode: the pin, rename and remove buttons are small glass circles that take their colour on hover, the pin chip is an icon so longer translations fit, and sensor icons no longer sit under the buttons.
-- Keep the camera's live view visible after a failed snapshot, and disable every control (including climate modes and presets) in an unavailable entity's pop-up.
-- Make off switches in Settings clearly visible in both themes.
 - Show which Quick Access tile has keyboard focus. The focus outline was clipped by the tile and never visible.
-- Say when an entity is unavailable in its pop-up and disable the controls, instead of showing "Off". A fan without speed control can now be turned on and off from its pop-up.
-- Raise muted and accent-coloured text in the light theme above 4.5:1 contrast, and 10px status text to 11px.
-- Mirror switches, corner buttons, margins, and text alignment in Arabic, and keep readings like "21.4 °C" in order.
-- Keep "on" tiles, selected tabs, and switches visible in Windows High Contrast mode.
-- Keep the humidity and wind icons on the weather card after the primary cards are re-rendered.
-- Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep camera names readable in the light theme before the first frame arrives.
-- Lay out the pinned light tile across the whole pin window, with its power button beside the name and an unclipped brightness slider.
-- Keep an on light without a brightness value from reading "Off" after the first live update.
-- Stop the Home Assistant panel preview from showing "Waiting for live Home Assistant data..." over a working layout. Its virtual connection now answers requests the way Home Assistant does, so the preview reaches the connected state.
-- Tell the Home Assistant panel when tiles are added, removed, or reordered in the preview, so those edits can be saved like appearance changes.
+- Show an unavailable camera preview tile as a dimmed tile instead of a black block with orange text, and keep the camera's live view visible after a failed snapshot.
+- Say when an entity is unavailable in its pop-up and disable every control, including climate modes and presets, instead of showing "Off". A fan without speed control can now be turned on and off from its pop-up.
+- Keep "on" tiles, selected tabs, switches, sliders, and swatches visible in Windows High Contrast mode and the Readable preset, and make the Readable preset's on and selected states stand out.
+- Fix the custom color editor: the red, green, and blue boxes work, typing a hex code keeps what you typed, and an invalid code is flagged instead of saving the previous color.
+- Stop Enter on a focused Cancel from confirming a destructive action, and show Delete graph's confirmation in front of the editor instead of behind it.
+- Keep camera tiles working: each hidden or reconnected camera stream used to leave a connection open until the app exited, and about six of them stalled every other camera and artwork request. Cameras refresh promptly when Home Assistant comes back, instead of showing a stale frame for up to five minutes.
+- Show entities that name an `mdi:` icon with that icon instead of a generic one.
+- Fix the Check for updates button hanging when it found an update, and say so when quitting to install one fails.
+- Fix "Restart now" inside a Linux AppImage, which quit the app and left no window.
+- Make desktop pins send the current value: a select pin steps through its options, number pins send the right number, a rejected command puts the pin back to the real state, and a thermostat pin on a Fahrenheit install reads °F.
+- Fix desktop pin resizing and placement: resizing keeps the opposite edge in place at any text size, the arrow keys resize a pin from its handles, and pins on Sway, niri, and river are placed instead of piling up in one corner.
+- Follow artwork redirects, which failed with "Redirect was cancelled" and could raise a native error box.
+- Keep the Linux keyring warning to once per session and say what is missing; Settings → General shows a notice for as long as no keyring is unlocked.
+- Stop a favorite that Home Assistant no longer reports from showing a stale "On / 50%": after a minute it becomes unavailable on its tile, pin, and tray, without raising a false alert.
+- Show waiting indicators that keep moving under reduced motion, so a waiting bar no longer looks finished, and keep error and warning toasts free of the inline error box styling.
+- Keep sensor charts clear of the reading and draw them with a uniform line, and keep a sensor with a long history fast: tile charts draw at most 240 points and still show spikes.
+- Keep the climate, media, light, fan, and cover pop-ups open and in place when their entity changes, without replaying the opening animation or moving focus: they follow the entity through deletion, and a slider shows the value the device settled on after a drag.
+- Show the comparison graph's hover tooltip beside the pointer with the crosshair exactly under it, and show every graph's latest values when two report at once.
+- Keep tile names, states, and readings readable: names stop at two lines with the full name as a tooltip, a long reading shrinks before it is cut, and tiles in a row start at one height.
+- Fix the Omarchy bar panel: a tile named like markup shows as typed, one changed reading updates one tile, a stopped widget shows as stopped within seconds instead of "Connected", and the panel scrolls to the highlighted tile and has keyboard controls. Its text is translated.
+- Close open device dialogs when the interface language changes, and show the update button and status in the new language.
 
 ### Beta features
 
