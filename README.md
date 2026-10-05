@@ -224,7 +224,7 @@ Click a numeric sensor tile to open its larger chart. Select **1 hour**, **6 hou
 
 ### Connection diagnostics
 
-Open **Settings > General > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session. New workflow labels currently use English fallbacks in other language packs.
+Open **Settings > General > Connection diagnostics** to inspect connection attempts, the last successful connection, the last received state update, and a generic issue code. **Copy report** copies an allowlisted report without server URLs, credentials, entity names, readings, or raw error messages. These counters cover the current app session.
 
 ### Entity Interactions
 
@@ -233,7 +233,7 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 - **Covers**: Click to open/close, long-press for open/stop/close controls
 - **Climate**: Long-press for target temperature and mode controls
 - **Media Players**: Use the media tile controls or long-press a media player for details and seek controls
-- **Cameras**: Click to view live feed in popup window
+- **Cameras**: Click to open the camera viewer (snapshot, with a Live button)
 - **Sensors**: Display real-time values with automatic unit formatting
 - **Timers**: Show live countdown when active
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
@@ -483,7 +483,7 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 
 - **Restart**: Close and reopen the app if entities aren't updating
 - **Reconnect**: Go to Settings and click **Reconnect with Home Assistant**
-- **Check Logs**: Use Settings > View Logs to open the log file location
+- **Check Logs**: Use **Settings > Advanced > Show log file** to show the log file in your file manager (its path is copied if no file manager opens)
 
 ## Contributing
 
