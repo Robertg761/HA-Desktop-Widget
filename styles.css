@@ -15240,8 +15240,10 @@ body.density-compact #quick-controls {
 }
 
 /* While editing, the buttons take the top of every tile and the content sits below them, which
-   leaves no slack for a floor: the tiles keep the fixed row height they always had, and the name
-   sits where it did, a few pixels closer to the icon. */
+   leaves no slack for a floor: the tiles keep the fixed row height they always had, so their content
+   never makes a row taller, and the name sits where it did, a few pixels closer to the icon. A row
+   that a taller media tile has made deeper still takes them to its foot, as it does outside edit
+   mode: the extra height only adds room under the state line. */
 #quick-controls.reorganize-mode {
   --qa-tile-info-offset: 0px;
 }
@@ -15249,6 +15251,7 @@ body.density-compact #quick-controls {
 #quick-controls.reorganize-mode
   .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: var(--qa-tile-height);
+  min-height: 100%;
 }
 
 /* Icon, name and state hang from the top. Centring the name block in what is left under the icon

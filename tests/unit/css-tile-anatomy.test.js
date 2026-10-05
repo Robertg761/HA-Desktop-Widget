@@ -97,6 +97,8 @@ describe('Quick Access tile anatomy', () => {
       render('', grid(tile(), 'reorganize-mode'));
       const item = document.querySelector('.control-item');
       expect(resolvedValue(item, 'height')).toBe('104px');
+      // A row a taller media tile has made deeper still takes the tile to its foot.
+      expect(resolvedValue(item, 'min-height')).toBe('100%');
       expect(resolvedValue(item.querySelector('.control-info'), 'padding-top')).toBe('0px');
       render('density-compact', grid(tile(), 'reorganize-mode'));
       expect(resolvedValue(document.querySelector('.control-item'), 'height')).toBe('96px');
