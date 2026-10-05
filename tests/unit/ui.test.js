@@ -8824,7 +8824,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         '<div id="toast-container"><div class="toast error">Could not save</div></div>'
       );
       const container = document.getElementById('toast-container');
-      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom edge.
+      // jsdom has no layout: put the footer where the editor puts it, along the window's bottom
+      // edge, and the toast where the stack rests, 20px above it, over the footer.
       const isFooter = (element) => element.classList.contains('modal-footer');
       const clientRects = jest
         .spyOn(Element.prototype, 'getClientRects')
@@ -8834,7 +8835,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const boundingRect = jest
         .spyOn(Element.prototype, 'getBoundingClientRect')
         .mockImplementation(function () {
-          const top = isFooter(this) ? window.innerHeight - 60 : 0;
+          let top = 0;
+          if (isFooter(this)) top = window.innerHeight - 60;
+          else if (this === container) top = window.innerHeight - 60;
           return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40 };
         });
 

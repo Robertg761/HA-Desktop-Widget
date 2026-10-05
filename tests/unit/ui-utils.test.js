@@ -108,6 +108,11 @@ describe('UI Utilities', () => {
         top: window.innerHeight - 60,
         bottom: window.innerHeight - 16,
       });
+      // Where one toast rests, 20px above the bottom: over the footer.
+      toastContainer.getBoundingClientRect = () => ({
+        top: window.innerHeight - 80,
+        bottom: window.innerHeight - 20,
+      });
 
       uiUtils.showToast('Failed to control Bed Light', 'error', 2000);
       expect(toastContainer.style.bottom).toBe('68px');
