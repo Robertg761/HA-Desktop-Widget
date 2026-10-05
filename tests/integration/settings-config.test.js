@@ -8921,7 +8921,11 @@ describe('Settings + Config Integration', () => {
             <p id="desktop-integration-status"></p>
             <p id="desktop-integration-legacy" hidden></p>
           </div>
-          <p id="layer-toggle-note" hidden></p>
+          <p
+            id="layer-toggle-note"
+            data-i18n-html="Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
+            hidden
+          ></p>
           <p id="popup-hotkey-immediate-note">Popup hotkey changes take effect immediately.</p>
           <p id="entity-hotkey-immediate-note">Entity hotkey changes take effect immediately.</p>`
         );
@@ -9066,15 +9070,23 @@ describe('Settings + Config Integration', () => {
         ],
         ['an ordinary desktop', { hyprland: false, layerMode: false }, true, false],
       ])('guides the layer on %s', async (_name, info, layerNoteHidden, toggleNoteShown) => {
-        window.electronAPI.getDesktopIntegration = jest
-          .fn()
-          .mockResolvedValue({ shortcuts: [], ...info });
+        // Main names the command for the way the widget was installed (here the .deb's).
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+          shortcuts: [],
+          toggleCommand: 'home-assistant-widget --toggle',
+          ...info,
+        });
         await openPanel();
 
         // "Sits underneath normal windows" is only true when it is a layer.
         expect(el('desktop-integration-layer-note').hidden).toBe(layerNoteHidden);
         // Only Hyprland can list the binds; the others get the command to bind.
         expect(el('layer-toggle-note').hidden).toBe(!toggleNoteShown);
+        if (toggleNoteShown) {
+          expect(el('layer-toggle-note').querySelector('code').textContent).toBe(
+            'home-assistant-widget --toggle'
+          );
+        }
         settings.closeSettings();
       });
     });
