@@ -242,19 +242,21 @@ const unreadableToken = (base) => ({
     tokenEncrypted: true,
   },
 });
-// An existing setup asked for its token again opens on a panel that says why, not on Welcome.
+// Browser authorization set up, and no authorization saved beside it.
+const oauthWithNothingSaved = (base) => ({
+  ...base,
+  homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
+});
+// An existing setup asked for its token or authorization again opens on a panel that says why,
+// not on Welcome. With a title, it waits past any panel before it (restoring) for that one, and a
+// start-up that drifts to another panel fails instead of capturing it.
 async function showTokenPanel(ctx, title) {
+  const shownTitle = `document.querySelector('#widget-state-panel .widget-state-title')?.textContent`;
   await ctx.waitForExpression(
-    `document.querySelector('#widget-state-panel .widget-state-title')?.textContent`,
-    'the token panel'
+    title ? `${shownTitle} === ${JSON.stringify(title)}` : shownTitle,
+    title ? `the panel titled ${title}` : 'the token panel'
   );
   await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
-  if (title) {
-    await ctx.expect(
-      `document.querySelector('#widget-state-panel .widget-state-title').textContent === ${JSON.stringify(title)}`,
-      `the panel is titled ${title}`
-    );
-  }
 }
 const startupScenes = [
   // The header's dot is the hollow ring of no connection.
@@ -322,21 +324,20 @@ const startupScenes = [
     },
     setup: (ctx) => showTokenPanel(ctx, 'Access token was not saved'),
   },
-  // Browser authorization with no saved authorization to restore it from.
+  // Browser authorization with no saved authorization to restore it from. Windows and macOS find
+  // none and ask to reconnect. Linux under CI has no keyring, so it stops before looking and asks
+  // for the keyring to be unlocked: that is the panel it captures, under a name that says so.
   {
     name: 'startup-oauth-reauth',
-    startup: {
-      config: (base) => ({
-        ...base,
-        homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
-      }),
-    },
-    setup: async (ctx) => {
-      // Past the moment it says it is restoring: the outcome is the red panel that asks to
-      // reconnect (or, on Linux without a keyring, to unlock it).
-      await ctx.waitForSelector('#widget-state-panel.widget-state-error .widget-state-actions');
-      await ctx.expect(`!${WIZARD_SHOWN}`, 'an existing setup is not sent through Welcome');
-    },
+    platforms: ['win32', 'darwin'],
+    startup: { config: oauthWithNothingSaved },
+    setup: (ctx) => showTokenPanel(ctx, 'Home Assistant authorization expired'),
+  },
+  {
+    name: 'startup-oauth-keyring',
+    platforms: ['linux'],
+    startup: { config: oauthWithNothingSaved },
+    setup: (ctx) => showTokenPanel(ctx, 'System keyring is locked'),
   },
 ];
 

@@ -271,6 +271,7 @@ describe('visual snapshot scenes', () => {
       'startup-token-unreadable-settings',
       'startup-token-not-saved',
       'startup-oauth-reauth',
+      'startup-oauth-keyring',
       'wizard-welcome-ar',
       'wizard-welcome-minimum',
       'wizard-welcome-s150',
@@ -311,6 +312,7 @@ describe('visual snapshot scenes', () => {
 
       const oauth = startup('startup-oauth-reauth');
       expect(oauth.homeAssistant).toEqual({ url: base.homeAssistant.url, authMethod: 'oauth' });
+      expect(startup('startup-oauth-keyring')).toEqual(oauth);
     });
   });
 
@@ -327,6 +329,17 @@ describe('visual snapshot scenes', () => {
       ['wizard-authorize-error', 'wizard-authorize-keyring'].includes(scene.name)
     );
     expect(failures.flatMap((scene) => scene.platforms).sort()).toStrictEqual([
+      'darwin',
+      'linux',
+      'win32',
+    ]);
+  });
+
+  it('captures a browser authorization with nothing saved once on every system', () => {
+    const startups = scenes.filter((scene) =>
+      ['startup-oauth-reauth', 'startup-oauth-keyring'].includes(scene.name)
+    );
+    expect(startups.flatMap((scene) => scene.platforms).sort()).toStrictEqual([
       'darwin',
       'linux',
       'win32',
