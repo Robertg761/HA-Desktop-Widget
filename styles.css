@@ -15033,20 +15033,24 @@ body:not(.high-contrast) #quick-controls .media-player-entity:not([data-unavaila
   background-color: var(--tile-bg);
 }
 
-/* An unavailable tile stays dashed and dimmed. On glass it gets a pane of its own so its dimmed
-   labels keep their contrast over a bright wallpaper; on the solid dark panel it stays clear. */
+/* An unavailable tile, and the repair tile of an entity that is gone, stay dashed and dimmed. On
+   glass and on the light panel they get a pane of the window's own colour, so their dimmed labels
+   keep their contrast over a bright wallpaper; on the solid dark panel they stay clear. The pane is
+   nearly opaque: a dialog's scrim blurs what is behind it and lays the blur over it, and where that
+   was half see-through (a clear repair tile, the light tile at 70%) the sharp text underneath showed
+   through, so that one tile looked as if it sat on top of the dialog. A repair tile's hover keeps
+   its own fill. */
 body.frosted-glass:not(.theme-light, .high-contrast)
   #quick-controls
-  .control-item[data-unavailable='true'] {
+  :is(.control-item[data-unavailable='true'], .control-item.unavailable-entity:not(:hover)),
+body.theme-light:not(.high-contrast)
+  #quick-controls
+  :is(.control-item[data-unavailable='true'], .control-item.unavailable-entity:not(:hover)) {
   background: color-mix(
     in srgb,
     rgba(var(--window-bg-rgb), 0.9) var(--dash-tile-keep),
     transparent
   );
-}
-
-body.theme-light:not(.high-contrast) #quick-controls .control-item[data-unavailable='true'] {
-  background: color-mix(in srgb, var(--tile-bg) 70%, transparent);
 }
 
 /* A near-white tile barely changes when its fill goes from 88% to 96% white, so on the light panel
