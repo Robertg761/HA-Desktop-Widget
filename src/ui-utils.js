@@ -944,6 +944,8 @@ const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
 
 // Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
 const toastTiming = new WeakMap();
+// Names each message, so the close button can say which one it closes.
+let toastMessageCounter = 0;
 
 /**
  * Play the toast exit animation and then detach the toast.
@@ -1152,10 +1154,10 @@ function dismissNewestToastForEscape(event) {
  *
  * The toast leads with a status icon matching its type and exits through the shared
  * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
- * button; errors stay until dismissed (in a pin window, as long as a warning) and warnings stay
- * long enough to read. Every toast pauses while the pointer or keyboard focus is on it, is
- * dismissed by click or from the keyboard (Enter, Space or Escape), and is folded into an
- * identical toast already showing. At most three stay on screen at once (one in a pin window).
+ * button, which is the keyboard's way to them; errors stay until dismissed (in a pin window, as
+ * long as a warning) and warnings stay long enough to read. Every toast pauses while the pointer
+ * or keyboard focus is on it, is dismissed by click or by Escape, and is folded into an identical
+ * toast already showing. At most three stay on screen at once (one in a pin window).
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -1225,22 +1227,23 @@ function showToast(
     if (passive) {
       toast.classList.add('toast-passive');
     } else {
-      // Dismissible by click, and from the keyboard: it takes focus with Tab, and Enter, Space or
-      // Escape closes it.
-      toast.tabIndex = 0;
+      // A click anywhere on it dismisses it, and so does Escape with focus inside it.
       toast.addEventListener('click', () => dismissToast(toast));
       toast.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+        if (event.key !== 'Escape') return;
         event.preventDefault();
         dismissToast(toast);
       });
       if (kind === 'error' || kind === 'warning') {
-        // For the pointer: the toast itself is the keyboard's one stop, so this stays out of Tab.
+        // The keyboard's way to a problem that waits: a real button, so a screen reader that
+        // reaches it by Tab hears what it does, and which message it closes. The toast itself is
+        // not a Tab stop: a focusable box with no role said only its text.
+        body.id = `toast-message-${++toastMessageCounter}`;
         const close = document.createElement('button');
         close.type = 'button';
         close.className = 'toast-close';
-        close.tabIndex = -1;
         close.setAttribute('aria-label', t('Close'));
+        close.setAttribute('aria-describedby', body.id);
         setIconContent(close, 'close', { size: 14 });
         toast.appendChild(close);
       }

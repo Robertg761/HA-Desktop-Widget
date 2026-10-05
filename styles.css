@@ -9733,8 +9733,8 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   overflow-wrap: anywhere;
 }
 
-/* For the pointer: errors and warnings stay until dismissed, so they say how. The toast itself is
-   the keyboard's one stop (Enter, Space or Escape closes it). */
+/* Errors and warnings stay until dismissed, so they say how. The button is also the keyboard's stop
+   on the toast, and takes the page's focus ring. */
 .toast-close {
   display: inline-flex;
   align-items: center;

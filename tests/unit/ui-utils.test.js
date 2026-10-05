@@ -225,28 +225,28 @@ describe('UI Utilities', () => {
       expect(toastContainer.children.length).toBe(0);
     });
 
-    it('should take focus with Tab and be dismissed from the keyboard', () => {
+    it('should take focus with Tab on its close button and be dismissed from the keyboard', () => {
       uiUtils.showToast('Press a key', 'warning', 20000);
       const toast = toastContainer.querySelector('.toast');
-      expect(toast.tabIndex).toBe(0);
+      const close = toast.querySelector('.toast-close');
+      expect(close.tabIndex).toBe(0);
 
-      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      close.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
       expect(toast.classList.contains('toast-closing')).toBe(false);
 
-      toast.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(toast.classList.contains('toast-closing')).toBe(true);
       jest.advanceTimersByTime(300);
       expect(toastContainer.children.length).toBe(0);
     });
 
-    it.each(['Enter', ' '])('should dismiss a toast with the %j key', (key) => {
-      uiUtils.showToast('Press a key', 'info', 20000);
+    it('should dismiss a toast when its close button is pressed', () => {
+      uiUtils.showToast('Press a key', 'error', 20000);
       const toast = toastContainer.querySelector('.toast');
-      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
 
-      toast.dispatchEvent(keydown);
+      // Enter and Space on a button are its click.
+      toast.querySelector('.toast-close').click();
 
-      expect(keydown.defaultPrevented).toBe(true);
       expect(toast.classList.contains('toast-closing')).toBe(true);
     });
 

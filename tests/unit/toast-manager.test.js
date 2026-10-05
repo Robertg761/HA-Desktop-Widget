@@ -151,32 +151,63 @@ describe('what is announced', () => {
 });
 
 describe('dismissing', () => {
-  it('has a close button on errors and warnings, for the pointer, that is not a second Tab stop', () => {
+  // A screen reader that reached a focusable toast by Tab heard only its text: a box with no role
+  // says nothing about being something to press. The close button is the stop instead, and says
+  // which message it closes.
+  it('reaches an error or warning by Tab through its close button, named for its message', () => {
     const error = uiUtils.showToast('Broken', 'error');
-    const info = uiUtils.showToast('FYI', 'info');
+    const warning = uiUtils.showToast('Careful', 'warning');
 
-    const close = error.querySelector('.toast-close');
-    expect(close.getAttribute('aria-label')).toBe('Close');
-    expect(close.tabIndex).toBe(-1);
-    expect(info.querySelector('.toast-close')).toBeNull();
+    [error, warning].forEach((toast) => {
+      const close = toast.querySelector('.toast-close');
+      expect(close.tagName).toBe('BUTTON');
+      expect(close.tabIndex).toBe(0);
+      expect(close.getAttribute('aria-label')).toBe('Close');
+      const description = document.getElementById(close.getAttribute('aria-describedby'));
+      expect(description).toBe(toast.querySelector('.toast-message'));
+      // The toast around it is not a second stop, and still interrupts as an alert.
+      expect(toast.hasAttribute('tabindex')).toBe(false);
+      expect(toast.getAttribute('role')).toBe('alert');
+    });
 
-    close.click();
+    error.querySelector('.toast-close').click();
     jest.advanceTimersByTime(300);
     expect(error.isConnected).toBe(false);
   });
 
-  it('is dismissed from the keyboard with Enter, Space or Escape on the toast', () => {
-    const [enter, space, escape] = ['a', 'b', 'c'].map((name) => uiUtils.showToast(name, 'error'));
-    const press = (toast, name) =>
-      toast.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+  it('keeps a success or an info toast out of the Tab order, with nothing to press', () => {
+    const info = uiUtils.showToast('FYI', 'info');
+    const success = uiUtils.showToast('Saved', 'success');
 
-    expect(enter.tabIndex).toBe(0);
-    press(enter, 'Enter');
-    press(space, ' ');
-    press(escape, 'Escape');
+    [info, success].forEach((toast) => {
+      expect(toast.hasAttribute('tabindex')).toBe(false);
+      expect(toast.querySelector('button')).toBeNull();
+    });
+  });
+
+  it('is dismissed by Escape with focus on its close button', () => {
+    const toast = uiUtils.showToast('Broken', 'error');
+    const close = toast.querySelector('.toast-close');
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+
+    close.dispatchEvent(escape);
     jest.advanceTimersByTime(300);
 
-    expect(toasts()).toHaveLength(0);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(toast.isConnected).toBe(false);
+  });
+
+  it('leaves Enter and Space to the close button, which presses itself', () => {
+    const toast = uiUtils.showToast('Broken', 'error');
+    const close = toast.querySelector('.toast-close');
+
+    ['Enter', ' '].forEach((key) => {
+      const keydown = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      close.dispatchEvent(keydown);
+      // Taking the key here would cancel the button's own click.
+      expect(keydown.defaultPrevented).toBe(false);
+    });
+    expect(toast.isConnected).toBe(true);
   });
 
   it('hands focus back to where it was when the focused toast goes', () => {
@@ -184,10 +215,11 @@ describe('dismissing', () => {
     const work = document.getElementById('work');
     work.focus();
     const toast = uiUtils.showToast('Broken', 'error');
+    const close = toast.querySelector('.toast-close');
 
-    // Tab to the toast (focus comes from the control the user was on), then dismiss it.
-    toast.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: work }));
-    toast.focus();
+    // Tab to the toast's button (focus comes from the control the user was on), then dismiss it.
+    close.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: work }));
+    close.focus();
     uiUtils.dismissToast(toast);
 
     expect(document.activeElement).toBe(work);
@@ -304,16 +336,21 @@ describe('looking at a toast', () => {
   });
 
   it('stops the clock while it has keyboard focus, and not while only one of the two holds it', () => {
-    const toast = uiUtils.showToast('Reading this', 'info', 2000);
+    // A warning, the kind that stays to be read and can be reached by Tab (on its close button).
+    const toast = uiUtils.showToast('Reading this', 'warning', 2000);
+    const close = toast.querySelector('.toast-close');
 
     toast.dispatchEvent(new Event('pointerenter'));
-    toast.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    close.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     toast.dispatchEvent(new Event('pointerleave'));
     jest.advanceTimersByTime(60000);
     expect(toast.isConnected).toBe(true);
 
-    toast.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-    jest.advanceTimersByTime(2000);
+    close.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    // The 6 s a warning gets were all left.
+    jest.advanceTimersByTime(5900);
+    expect(toast.isConnected).toBe(true);
+    jest.advanceTimersByTime(200);
     expect(toast.isConnected).toBe(false);
   });
 
