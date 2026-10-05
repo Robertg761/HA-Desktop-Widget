@@ -4,9 +4,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  loadAppStylesheets,
+  resolvedValue,
+} = require('../helpers/css-cascade.js');
 
 const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+
+/** The declarations of the first rule with exactly this selector. */
+const ruleBody = (selector) => {
+  const start = styles.indexOf(`\n${selector} {`);
+  expect(start).toBeGreaterThan(-1);
+  return styles.slice(start, styles.indexOf('\n}', start));
+};
+/** A value with the line breaks Prettier puts in long declarations collapsed to single spaces. */
+const flat = (value) => String(value).replace(/\s+/g, ' ');
+// The default accent as the helper resolves it, as an edge and as a fill.
+const ACCENT = 'rgba(100, 181, 246';
+const ACCENT_RGB = '100, 181, 246';
 
 function render(bodyClass, html) {
   document.body.className = bodyClass;
@@ -198,8 +214,7 @@ describe('Quick Access tile anatomy', () => {
   });
 
   describe('the lit state of a tile', () => {
-    // The default accent as the helper resolves it, and the pin's inset highlight.
-    const ACCENT = 'rgba(100, 181, 246';
+    // The pin's inset highlight.
     const HIGHLIGHT = 'inset 0 1px 0 rgba(255, 255, 255, 0.08)';
 
     it('is the glow setting and nothing else: a media player Home Assistant calls on does not glow', () => {
@@ -247,11 +262,73 @@ describe('Quick Access tile anatomy', () => {
       }
     });
 
-    it('lights in its own colour, not the accent, with the glow on', () => {
-      render('active-tile-glow', grid(tile('', "data-attention='warning' data-active='true'")));
-      const background = resolvedValue(document.querySelector('.control-item'), 'background-color');
-      expect(background).toContain('#ffb74d 24%');
-      expect(background).not.toContain('rgba(100, 181, 246');
+    // A holiday's orange or red, or the Amber accent, lit an armed alarm the same way an unlocked
+    // lock or an alarm that went off was lit, so these tiles have a look the accent never gives.
+    it.each(['', 'active-tile-glow', 'theme-light', 'active-tile-glow theme-light'])(
+      'washes and edges it in its own colour and never the accent (%s)',
+      (bodyClass) => {
+        render(bodyClass, grid(tile('', "data-attention='warning' data-active='true'")));
+        const item = document.querySelector('.control-item');
+        const colour = resolvedValue(item, '--attention-color');
+        const wash = bodyClass.includes('theme-light') ? '18%' : '15%';
+
+        expect(flat(resolvedValue(item, 'background-image'))).toContain(`${colour} ${wash}`);
+        expect(String(resolvedValue(item, 'background-color'))).not.toContain(ACCENT_RGB);
+        expect(resolvedValue(item, 'border-color')).toBe(colour);
+        // The edge is two pixels: the border and an outline just inside it.
+        expect(resolvedValue(item, 'outline')).toBe(`1px solid ${colour}`);
+        expect(resolvedValue(item, 'outline-offset')).toBe('-2px');
+      }
+    );
+
+    it('keeps its own look over the solid panels and in the Readable preset', () => {
+      render(
+        'active-tile-glow opaque-panels',
+        grid(tile('', "data-attention='danger' data-active='true'"))
+      );
+      let item = document.querySelector('.control-item');
+      const image = cascadedDeclaration(item, 'background-image');
+      // The solid fill is an !important shorthand; the wash is laid back over it the same way.
+      expect(image.important).toBe(true);
+      expect(flat(resolvedValue(item, 'background-image'))).toContain('#ff8a80 15%');
+
+      render(
+        'active-tile-glow high-contrast opaque-panels',
+        grid(tile('', "data-attention='danger' data-active='true'"))
+      );
+      item = document.querySelector('.control-item');
+      // The preset's accent edge marked it as an "on" tile, the same as an armed alarm.
+      expect(resolvedValue(item, 'outline-color')).toBeNull();
+      expect(resolvedValue(item, 'outline')).toBe(
+        `1px solid ${resolvedValue(item, '--error-text')}`
+      );
+      expect(resolvedValue(item, 'outline-width')).toBe('2px');
+      expect(resolvedValue(item, 'border-color')).toBe(resolvedValue(item, '--error-text'));
+      expect(String(resolvedValue(item, 'background-color'))).not.toContain('0.26');
+    });
+
+    it('marks it with a badge that does not depend on the colour', () => {
+      const badge = ruleBody(
+        '#quick-controls .control-item[data-attention] > .control-icon::after'
+      );
+      expect(badge).toMatch(/content:\s*''/);
+      expect(badge).toMatch(/background:\s*var\(--attention-color\)/);
+      // An exclamation mark cut out of a disc, as a mask, so it is the tile's own wash.
+      expect(badge).toMatch(/mask:\s*url\("data:image\/svg\+xml,[^"]*evenodd/);
+      expect(badge).toMatch(/inset-inline-start:/);
+      // Forced colours would paint the disc Canvas on Canvas.
+      const forced = styles.slice(styles.lastIndexOf('@media (forced-colors: active)'));
+      expect(styles).toMatch(
+        /#quick-controls \.control-item\[data-attention\] > \.control-icon::after \{\s*forced-color-adjust: none;\s*background: CanvasText;/
+      );
+      expect(forced.length).toBeGreaterThan(0);
+    });
+
+    it('leaves the accent to the tiles that are only on', () => {
+      render('active-tile-glow', grid(tile('', "data-active='true'")));
+      const item = document.querySelector('.control-item');
+      expect(resolvedValue(item, 'background-color')).toContain(ACCENT_RGB);
+      expect(resolvedValue(item, 'outline')).toBeNull();
     });
   });
 

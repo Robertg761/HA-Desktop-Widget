@@ -247,6 +247,32 @@ describe('text contrast of the rules', () => {
     });
   });
 
+  describe('a tile that needs attention', () => {
+    const markup = (attention) => `<div id="quick-controls">
+      <div class="control-item" data-attention="${attention}" data-active="true">
+        <div class="control-icon"></div>
+        <div class="control-info"><div class="control-name"></div>
+        <div class="control-state"></div></div></div></div>`;
+
+    // The state line is written in the status colour on the tile's wash of it, and the badge is a
+    // disc of that colour with the mark cut out to the wash, so one ratio covers both.
+    describe.each(THEME_SCOPES)('in %s', (_, config) => {
+      it.each(['warning', 'danger'])('keeps a %s state line at 4.5:1 on its wash', (attention) => {
+        applyScope(config, 'amber');
+        document.body.classList.add('active-tile-glow');
+        render(markup(attention));
+        const surfaces = currentSurfaces(config.highContrast);
+        const tile = document.querySelector('.control-item');
+        const colour = resolvedValue(tile, '--attention-color');
+        const wash = parseFloat(resolvedValue(tile, '--dash-attention-wash')) / 100;
+        const [r, g, b] = parseColor(colour);
+        const washed = over(`rgba(${r}, ${g}, ${b}, ${wash})`, surfaces['dash tile']);
+        expect(colorOf(document.querySelector('.control-state'))).toBe(colour);
+        expect(contrastRatio(colour, washed)).toBeGreaterThanOrEqual(TEXT_MINIMUM);
+      });
+    });
+  });
+
   describe('unavailable tiles', () => {
     const markup = `<div id="quick-controls"><div class="control-item" data-unavailable="true">
       <div class="control-info"><div class="control-name"></div>

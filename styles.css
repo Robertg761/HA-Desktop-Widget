@@ -264,6 +264,10 @@ html {
   --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
   --dash-tile-wash: 24%;
   --dash-tile-wash-hover: 30%;
+  /* A tile that needs attention is washed in its status colour, lighter than a lit tile's accent:
+     its state line is written in that colour on the wash, and the alarm red reached only 3.8:1 at
+     the lit tile's 24%. */
+  --dash-attention-wash: 15%;
 
   /* How much black the panel behind the tiles gets at full window opacity, so the
      tiles stand out from it (see the panel veil beside the solid panel rule). */
@@ -553,6 +557,7 @@ body {
   --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
   --dash-tile-wash: 18%;
   --dash-tile-wash-hover: 24%;
+  --dash-attention-wash: 18%;
   --panel-veil: 0.09;
 
   /* Glass Effects */
@@ -6254,8 +6259,9 @@ body.theme-light:not(.high-contrast)
 /* Tiles are styled the same whatever they are, except for the opt-out accent glow that
    marks a Quick Access tile whose entity is currently on (Personalization > Window
    Effects): the resting pane plus a wash of the accent, an accent icon with a soft halo,
-   and a brighter state line. Read-only tiles never carry data-active, so they never glow. */
-body.active-tile-glow #quick-controls .control-item[data-active='true'] {
+   and a brighter state line. Read-only tiles never carry data-active, so they never glow, and a
+   tile that needs attention (below) is never drawn as an "on" tile, whatever the accent. */
+body.active-tile-glow #quick-controls .control-item[data-active='true']:not([data-attention]) {
   background-color: color-mix(
     in srgb,
     rgb(var(--accent-rgb)) var(--dash-tile-wash),
@@ -6264,7 +6270,9 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] {
   border-color: rgba(var(--accent-rgb), 0.42);
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention]):hover {
   background-color: color-mix(
     in srgb,
     rgb(var(--accent-rgb)) var(--dash-tile-wash-hover),
@@ -6273,12 +6281,18 @@ body.active-tile-glow #quick-controls .control-item[data-active='true']:hover {
   border-color: rgba(var(--accent-rgb), 0.55);
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-icon {
   color: var(--accent-text);
   filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.6));
 }
 
-body.active-tile-glow #quick-controls .control-item[data-active='true'] .control-state {
+body.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-state {
   color: color-mix(in srgb, var(--text-primary) 82%, transparent);
 }
 
@@ -6286,21 +6300,27 @@ body.active-tile-glow #quick-controls .control-item[data-active='true'] .control
    dimmer than the idle icons beside it. It draws the lit icon in the text colour, with the halo. */
 body.active-tile-glow[data-accent-neutral]
   #quick-controls
-  .control-item[data-active='true']
+  .control-item[data-active='true']:not([data-attention])
   .control-icon {
   color: var(--text-primary);
 }
 
 /* Light theme: the icon takes the same solved accent text (3:1 and up on the tinted tile), with a
    softer halo, since a glow around a dark glyph on a pale tile reads as a smudge. */
-body.theme-light.active-tile-glow #quick-controls .control-item[data-active='true'] .control-icon {
+body.theme-light.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention])
+  .control-icon {
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
-/* Security states that have to catch the eye, with the accent glow on or off: an alarm that went
-   off (red), a lock that is jammed or a door that is unlocked (amber). The icon and the state line
-   take the status colour and the edge a tint of it; there is no wash, so the tile stays a plain
-   pane. The glow rules above are matched in weight so the status colour wins over the accent. */
+/* Security states that have to catch the eye: an alarm that went off (red), a lock that is jammed
+   or a door that is unlocked (amber). They used to be lit like an "on" tile in their own colour,
+   and a holiday's orange or red, or the Amber accent, lit an armed alarm or a lamp the same way, so
+   an armed alarm read as one that went off. They have a look no accent gives, with the glow on or
+   off: a wash and an edge two pixels wide in the status colour, the icon and the state line in it,
+   and a badge with an exclamation mark on the icon, which says it without the colour. The accent
+   rules above and the solid-panel and Readable ones below leave these tiles out. */
 #quick-controls .control-item[data-attention] {
   --attention-color: var(--warning-text);
 }
@@ -6309,66 +6329,46 @@ body.theme-light.active-tile-glow #quick-controls .control-item[data-active='tru
   --attention-color: var(--error-text);
 }
 
-#quick-controls .control-item[data-attention],
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
-  border-color: color-mix(in srgb, var(--attention-color) 55%, var(--tile-border));
+/* The edge's second pixel. It steps aside for the focus ring, which takes the outline. */
+#quick-controls .control-item[data-attention]:not(:focus-visible) {
+  outline: 1px solid var(--attention-color);
+  outline-offset: -2px;
 }
 
-#quick-controls .control-item[data-attention]:hover,
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
-  border-color: color-mix(in srgb, var(--attention-color) 75%, var(--tile-border-hover));
-}
-
-#quick-controls .control-item[data-attention] .control-icon,
-body.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']
-  .control-icon {
+  --attention-wash: color-mix(
+    in srgb,
+    var(--attention-color) var(--dash-attention-wash),
+    transparent
+  );
+  border-color: var(--attention-color);
+  /* A layer over the tile's own fill, so it sits on the glass, the solid panels and the Readable
+     preset's grey alike. */
+  background-image: linear-gradient(var(--attention-wash), var(--attention-wash));
+#quick-controls .control-item[data-attention] > .control-icon {
+  position: relative;
   color: var(--attention-color);
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--attention-color) 45%, transparent));
 }
 
-#quick-controls .control-item[data-attention] .control-state,
-body.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']
-  .control-state {
+#quick-controls .control-item[data-attention] .control-state {
   color: var(--attention-color);
 }
 
-/* With the glow on, these tiles are lit like any other, but in their own colour: an amber icon on a
-   blue wash read as two things at once. */
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true'] {
-  background-color: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash),
-    var(--tile-bg)
-  );
-}
-
-body.active-tile-glow #quick-controls .control-item[data-attention][data-active='true']:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash-hover),
-    var(--tile-bg-hover)
-  );
-}
-
-/* The solid panels paint the wash as a layer over their own fill (see opaque-panels below). */
-body.opaque-panels.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true'] {
-  --active-tile-wash: color-mix(in srgb, var(--attention-color) var(--dash-tile-wash), transparent);
-}
-
-body.opaque-panels.active-tile-glow
-  #quick-controls
-  .control-item[data-attention][data-active='true']:hover {
-  --active-tile-wash: color-mix(
-    in srgb,
-    var(--attention-color) var(--dash-tile-wash-hover),
-    transparent
-  );
+/* The badge: a disc in the status colour with the exclamation mark cut out of it, so the mark is
+   the tile's own wash, at the top corner of the glyph on the end side. It is sized in em, so it
+   follows the icon in compact density and with larger text, and mirrors in a right-to-left
+   language. */
+#quick-controls .control-item[data-attention] > .control-icon::after {
+  content: '';
+  position: absolute;
+  top: -0.26em;
+  inset-inline-start: calc(50% + 0.32em);
+  width: 0.62em;
+  height: 0.62em;
+  background: var(--attention-color);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill-rule='evenodd' d='M6 0a6 6 0 1 1 0 12A6 6 0 0 1 6 0Zm-.8 2.4a.8.8 0 0 1 1.6 0v4a.8.8 0 0 1-1.6 0ZM6 8.2a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  pointer-events: none;
 }
 
 #quick-controls .control-item[data-unavailable='true'] {
@@ -12443,11 +12443,13 @@ body.theme-light.opaque-panels:not(.high-contrast)
   background: color-mix(in srgb, var(--bg-primary), white 70%) !important;
 }
 
-/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile
-   and the tint of a running or paused timer. Each is painted back as a layer over that fill: only
-   the background image is set, so the opaque colour underneath (the panel's, or the lifted tile's)
-   stays. */
-body.opaque-panels.active-tile-glow #quick-controls .control-item[data-active='true'] {
+/* The opaque fill above is a background shorthand, which also wiped the accent wash of an "on" tile,
+   the wash of a tile that needs attention and the tint of a running or paused timer. Each is
+   painted back as a layer over that fill: only the background image is set, so the opaque colour
+   underneath (the panel's, or the lifted tile's) stays. */
+body.opaque-panels.active-tile-glow
+  #quick-controls
+  .control-item[data-active='true']:not([data-attention]) {
   --active-tile-wash: color-mix(in srgb, rgb(var(--accent-rgb)) var(--dash-tile-wash), transparent);
   background-image: linear-gradient(var(--active-tile-wash), var(--active-tile-wash)) !important;
 }
@@ -12499,6 +12501,10 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
     background: var(--accent) !important;
     border-color: #fff !important;
   }
+
+body.opaque-panels #quick-controls .control-item[data-attention] {
+  background-image: linear-gradient(var(--attention-wash), var(--attention-wash)) !important;
+}
 
   body.high-contrast :is(#settings-modal, .quick-access-tabs) .tab-link.active {
     border-color: var(--accent);
@@ -12574,12 +12580,14 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
      took this rule's -2px offset and sat on top of the edge, hiding it. */
   body.active-tile-glow.high-contrast
     #quick-controls
-    .control-item[data-active='true']:not(:focus-visible) {
+    .control-item[data-active='true']:not([data-attention], :focus-visible) {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
 
-  body.active-tile-glow.high-contrast #quick-controls .control-item[data-active='true'] {
+  body.active-tile-glow.high-contrast
+    #quick-controls
+    .control-item[data-active='true']:not([data-attention]) {
     background-color: rgba(var(--accent-rgb), 0.26);
     border-color: var(--accent);
   }
@@ -12634,6 +12642,12 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
     box-shadow: none;
   }
 }
+  /* A tile that needs attention keeps its own colour here as well, at the same weight: its edge was
+     the accent's, the same as an armed alarm's. */
+  body.high-contrast #quick-controls .control-item[data-attention]:not(:focus-visible) {
+    outline-width: 2px;
+  }
+
 
 body.high-contrast :focus-visible {
   outline: 3px solid #fff !important;
@@ -16762,7 +16776,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   }
 
   /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
-     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. */
+     is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. A tile
+     that needs attention is outlined the same way and keeps its badge, drawn in the text colour. */
   #quick-controls .control-item[data-active='true'],
   .timer-entity[data-state='active'],
   .segmented-option.active,
@@ -16833,6 +16848,7 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .is-disabled {
     color: GrayText;
   }
+  #quick-controls .control-item[data-attention]:not(:focus-visible),
 
   /* !important: the Settings switch rules carry #settings-modal and would otherwise win. */
   .form-group input[type='checkbox'] {
@@ -16852,6 +16868,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 
   .form-group input[type='checkbox']:checked::after {
     background: HighlightText !important;
+  }
+
+  #quick-controls .control-item[data-attention] > .control-icon::after {
+    forced-color-adjust: none;
+    background: CanvasText;
   }
 
   /* Range sliders paint a gradient track and a white thumb with no border, and all of it goes.

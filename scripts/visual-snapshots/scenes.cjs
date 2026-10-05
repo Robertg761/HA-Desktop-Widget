@@ -1623,6 +1623,19 @@ const scenes = [
     name: 'ar-settings-general',
     ui: { language: 'ar' },
     setup: (ctx) => openSettingsTab(ctx, 'general'),
+  // Halloween's orange, Christmas's red and the Amber accent paint an armed alarm in the same family
+  // as an unlocked lock or an alarm that went off. Those keep a badge and an edge of their own.
+  {
+    name: 'tiles-security-halloween',
+    ui: { seasonal: holiday('halloween') },
+    config: pages('security', 'default'),
+  },
+  {
+    name: 'tiles-security-christmas-light',
+    ui: { theme: 'light', seasonal: holiday('christmas') },
+    config: pages('security', 'default'),
+  },
+  { name: 'tiles-security-amber', ui: { accent: 'amber' }, config: pages('security', 'default') },
   },
 
   // The same dialogs in German (long labels) and Arabic (mirrored), and the light theme.
