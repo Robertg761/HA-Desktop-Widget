@@ -484,7 +484,9 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 
 ### Linux
 
-- **No tray icon on GNOME**: Stock GNOME shows no tray icons. Install an AppIndicator extension (such as "AppIndicator and KStatusNotifierItem Support") to get the widget's icon. Without one, Minimize leaves the widget in the dock and the window switcher, but the title-bar X, Ctrl+W and Alt+F4 hide it with no icon to bring it back: open HA Desktop Widget from your app launcher again, which shows the widget that is still running.
+- **No tray icon on GNOME**: Stock GNOME shows no tray icons. Install an AppIndicator extension (such as "AppIndicator and KStatusNotifierItem Support") to get the widget's icon. Without one, Minimize leaves the widget in the dock and the window switcher, but the title-bar X, Ctrl+W and Alt+F4 hide it with no icon to bring it back. The first time, a notification says the widget is still running: open HA Desktop Widget from your app launcher again, which shows it.
+- **Black window, or black corners round the pins, on X11**: See-through windows need a compositing manager. On a window manager without one (i3 or Openbox without picom, for example) the widget and its desktop pins are drawn against black. Run a compositor such as picom, or set **Settings → Appearance → Window opacity** to 100%, which makes the windows solid and gives the pins their rounded corners back.
+- **The widget and its pins in the taskbar and Alt-Tab on Wayland**: GNOME and KDE on Wayland list every window, because Wayland has no way for an app to ask to be left out. On KDE a window rule hides them; see [Linux Wayland notes](docs/linux-wayland-notes.md#keeping-the-widget-and-its-pins-out-of-the-task-switcher).
 
 ### Performance Issues
 

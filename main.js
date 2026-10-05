@@ -2900,7 +2900,10 @@ function applyDesktopPinWindowShape(targetWindow, bounds = null) {
     return;
   // A transparent window is rounded by the page's own clip-path, which is antialiased. This region
   // has hard 1 px steps, so on top of that it only adds a jagged edge. An opaque window (the Linux
-  // default at full opacity) has nothing else to round its corners.
+  // default at full opacity) has nothing else to round its corners. On X11 with no compositing
+  // manager a transparent pin's corners are drawn black, and nothing the app can read says whether
+  // one runs, so that case keeps the clean edge and the README points those users to 100% opacity,
+  // which makes the pins opaque and brings this region back.
   if (targetWindow.__desktopPinTransparent) return;
 
   const nextBounds = bounds || targetWindow.getBounds();
