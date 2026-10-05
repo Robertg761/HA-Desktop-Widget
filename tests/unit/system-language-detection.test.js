@@ -49,9 +49,21 @@ describe('the language the app finds on the operating system', () => {
   it('takes the first language in the list that the app has', () => {
     // A Japanese interface with German second: the app has German, so German, not English.
     expect(detectSystemLocale(fakeApp({ preferred: ['ja', 'de', 'en'] }))).toBe('de');
-    expect(detectSystemLocale(fakeApp({ preferred: ['ja-JP', 'en-US'] }))).toBe('en-US');
     // The user's own order wins over a language the app also has further down.
     expect(detectSystemLocale(fakeApp({ preferred: ['fr-CA', 'de-DE'] }))).toBe('fr-CA');
+    // English at the top is a language like any other.
+    expect(detectSystemLocale(fakeApp({ preferred: ['en-GB', 'de-DE'] }))).toBe('en-GB');
+  });
+
+  it('does not let English further down stand in for the first language', () => {
+    // English is the fallback either way. Taking it would only swap the user's date and number
+    // formats for US ones and name English as the language found. Common on macOS, which keeps
+    // English in the list under the language the user added.
+    expect(detectSystemLocale(fakeApp({ preferred: ['ja-JP', 'en-US'] }))).toBe('ja-JP');
+    expect(
+      detectSystemLocale(fakeApp({ preferred: ['pt-BR', 'en-US'], systemLocale: 'pt-BR' }))
+    ).toBe('pt-BR');
+    expect(detectSystemLocale(fakeApp({ preferred: ['ja-JP', 'en-US', 'de-DE'] }))).toBe('de-DE');
   });
 
   it('does not let the region setting pick the language when the list names one', () => {
@@ -117,6 +129,7 @@ describe('the language the app shows for each of those systems', () => {
       // The same wiring as main.js.
       getDetectedLocale: () =>
         detectSystemLocale(app, { isSupported: (locale) => service.isSupportedLanguage(locale) }),
+      getSystemLocale: () => app.getSystemLocale(),
       manifestUrl: 'https://example.test/manifest.json',
     });
     return service;
@@ -168,6 +181,25 @@ describe('the language the app shows for each of those systems', () => {
     expect(bootstrap.usingEnglishFallback).toBe(true);
     expect(bootstrap.messages.Hello).toBe('Hello');
   });
+
+  // The renderer formats dates and numbers in a same-language candidate when it finds one, so an
+  // en-US here would turn a Brazilian user's "1.234,5" into "1,234.5" (see format.test.js).
+  it.each([
+    ['pt-BR then en-US', ['pt-BR', 'en-US'], 'pt-BR'],
+    ['ja-JP then en-US, as macOS lists it', ['ja-JP', 'en-US'], 'ja-JP'],
+  ])(
+    'keeps the system language, not the English under it, for %s',
+    (_name, preferred, systemLocale) => {
+      const bootstrap = createService(fakeApp({ preferred, systemLocale })).getLocaleBootstrap(
+        'auto'
+      );
+      expect(bootstrap.detectedLocale).toBe(systemLocale);
+      expect(bootstrap.systemLocale).toBe(systemLocale);
+      expect(bootstrap.activeLocale).toBe('en');
+      expect(bootstrap.usingEnglishFallback).toBe(true);
+      expect(bootstrap.messages.Hello).toBe('Hello');
+    }
+  );
 
   it('still uses a pack for a language that is not in the list but is installed', () => {
     // A pack the remote manifest added after this release: the list has never heard of Japanese,

@@ -85,6 +85,18 @@ describe('the format locale', () => {
       },
       'pt-BR',
     ],
+    // What the main process sends for a pt-BR then en-US system (system-language-detection.test.js).
+    [
+      'pt-BR with English second',
+      {
+        detectedLocale: 'pt-BR',
+        systemLocale: 'pt-BR',
+        requestedLocale: 'pt-BR',
+        activeLocale: 'en',
+        usingEnglishFallback: true,
+      },
+      'pt-BR',
+    ],
   ])('follows the region for an automatic language: %s', (_name, overrides, expected) => {
     bootstrap(overrides);
     expect(i18n.getFormatLocale()).toBe(expected);

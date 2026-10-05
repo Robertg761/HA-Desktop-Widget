@@ -59,8 +59,11 @@ function toLocaleList(value) {
  * In order, the first of these that names any language decides:
  *   1. app.getPreferredSystemLanguages(), the user's ordered list. The first entry in a language
  *      the app has wins, so a Japanese-then-German list gets German, as it would anywhere else.
- *      If none is one the app has, the first entry stands (Japanese), and the app shows English
- *      and says which language it found.
+ *      English further down does not count: the app falls back to English anyway, and picking it
+ *      would cost the user their own date and number formats (a Brazilian list of pt-BR then
+ *      en-US would format like the US) and name English as the language found. So when no entry
+ *      but English is one the app has, the first entry stands (Japanese), and the app shows
+ *      English and says which language it found.
  *   2. app.getSystemLocale(), which is the region setting and is read only when the list is empty.
  *   3. app.getLocale(), Chromium's pick, for a platform where neither of the others answers.
  * The code is returned as the system wrote it ("es-MX"), because the localization service picks
@@ -87,7 +90,12 @@ function detectSystemLocale(app, options = {}) {
     }
     if (!candidates.length) continue;
     try {
-      return candidates.find((candidate) => isSupported(candidate)) || candidates[0];
+      return (
+        candidates.find(
+          (candidate, index) =>
+            (index === 0 || getBaseLocale(candidate) !== 'en') && isSupported(candidate)
+        ) || candidates[0]
+      );
     } catch {
       return candidates[0];
     }
