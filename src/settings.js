@@ -6141,10 +6141,10 @@ function updateHomeAssistantAuthUi() {
   if (!usesOAuth) {
     const connection = getLiveConnectionState();
     if (connection.status === 'auth-failed') {
-      // The saved token was refused: the field to fix it is under "advanced", so open that.
+      // The saved token was refused: the field to fix it is under "advanced", so open that. The
+      // connection's own message sends the reader to Settings, where this line already is.
       setHomeAssistantOAuthStatus(
-        connection.reason ||
-          t('Authentication failed. Check your long-lived access token in Settings.'),
+        t('Authentication failed. Check your long-lived access token.'),
         'error'
       );
       if (legacySettings) legacySettings.open = true;

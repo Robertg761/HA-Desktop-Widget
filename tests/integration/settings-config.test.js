@@ -8389,8 +8389,9 @@ describe('Settings + Config Integration', () => {
 
         const status = document.getElementById('ha-oauth-status');
         expect(status.dataset.status).toBe('error');
+        // Not "...in Settings": the line is in Settings, right above the token field.
         expect(status.textContent).toBe(
-          'Authentication failed. Check your long-lived access token in Settings.'
+          'Authentication failed. Check your long-lived access token.'
         );
         expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
       });
@@ -8435,11 +8436,18 @@ describe('Settings + Config Integration', () => {
         const status = document.getElementById('ha-oauth-status');
         expect(status.dataset.status).toBe('');
 
-        current = { status: 'auth-failed', reason: 'Home Assistant refused the token.' };
+        current = {
+          status: 'auth-failed',
+          reason: 'Authentication failed. Check your long-lived access token in Settings.',
+        };
         settings.refreshHomeAssistantAuthStatus();
 
         expect(status.dataset.status).toBe('error');
-        expect(status.textContent).toBe('Home Assistant refused the token.');
+        // The connection's reason is written for the main window; here it is said without "in
+        // Settings".
+        expect(status.textContent).toBe(
+          'Authentication failed. Check your long-lived access token.'
+        );
       });
     });
 
