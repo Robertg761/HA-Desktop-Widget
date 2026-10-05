@@ -11741,6 +11741,7 @@ async function loadTodoItemsInto(
   } catch {
     if (!container.isConnected || container.closest('.modal-closing')) return;
     const message = document.createElement('p');
+    message.className = 'entity-detail-error';
     message.setAttribute('role', 'alert');
     message.textContent = t('Unable to load items');
     const retry = document.createElement('button');

@@ -11921,10 +11921,12 @@ label.disabled {
   content: none;
 }
 
-/* Improve error message visibility. A toast is a recipe of its own (its error and warning kinds
-   mark the edge); this box has the same specificity and came later, so it won every property and
-   left a translucent red wash that the content under the toast showed through. */
-[role='alert']:not(.toast) {
+/* A list that failed to load says so in a box, with its Retry under it (the to-do items). The box
+   is asked for by class. Keyed to role="alert", it also boxed everything else announced that way,
+   which comes and goes with focus and state: a field error raised while the field has focus, the
+   Support amount, the Add page name, a failed connection test. Those are red text under what they
+   are about, so the same message looked two ways. */
+.entity-detail-error {
   color: var(--error-text);
   font-weight: var(--font-weight-medium);
   padding: var(--space-3);
@@ -12319,7 +12321,7 @@ label.disabled {
 /* A rejected amount is said under the field, in red, until it is changed. */
 .donate-amount-error {
   margin: var(--space-2) 0 0;
-  color: var(--error);
+  color: var(--error-text);
 }
 
 #donate-custom-amount[aria-invalid='true'] {

@@ -7,7 +7,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue, splitTopLevel } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  loadAppStylesheets,
+  resolvedValue,
+  splitTopLevel,
+} = require('../helpers/css-cascade.js');
 
 const STYLESHEET = path.resolve(__dirname, '../../styles.css');
 
@@ -70,13 +75,53 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(toast, 'margin-top')).toBeNull();
     });
 
-    it('still boxes inline error text', () => {
-      render('<p role="alert">Unable to load items</p>');
+    it('boxes a list that failed to load, which asks for it', () => {
+      render('<p class="entity-detail-error" role="alert">Unable to load items</p>');
       const message = document.querySelector('[role="alert"]');
       expect(resolvedValue(message, 'padding')).toBe('0.5rem');
       expect(resolvedValue(message, 'border')).toBe(
         `1px solid ${resolvedValue(message, '--error')}`
       );
+    });
+
+    // Said under the field, in red: announced as an alert or not, an inline error is the same red
+    // line. The box turned up only with role="alert", which a field error gets when it is raised
+    // while the field has focus, so one error looked two ways.
+    it.each([
+      ['the Support amount', '<p class="form-help donate-amount-error" role="alert">Too much</p>'],
+      [
+        'the Add page name',
+        '<div class="add-page-modal"><p class="form-help add-page-name-error" role="alert">Enter page name</p></div>',
+      ],
+      [
+        'a Settings field',
+        '<div id="settings-modal"><p class="form-help form-error field-error" role="alert">Invalid URL</p></div>',
+      ],
+      [
+        'a failed connection test',
+        '<div class="connection-test-status" data-status="error" role="alert">Could not connect</div>',
+      ],
+      [
+        'the first-run wizard',
+        '<div class="first-run-status" data-status="error" role="alert">Enter a valid URL</div>',
+      ],
+    ])('leaves the error for %s as red text, alert or not', (_name, html) => {
+      render(html);
+      const message = document.querySelector('[role="alert"]');
+      const plain = { padding: null, border: null, background: null };
+      const box = Object.fromEntries(
+        Object.keys(plain).map((property) => [property, resolvedValue(message, property)])
+      );
+      // The same element without the role looks the same.
+      message.removeAttribute('role');
+      const without = Object.fromEntries(
+        Object.keys(plain).map((property) => [property, resolvedValue(message, property)])
+      );
+      message.setAttribute('role', 'alert');
+
+      expect(box).toEqual(without);
+      expect(resolvedValue(message, 'background')).toBeNull();
+      expect(cascadedDeclaration(message, 'color').value).toBe('var(--error-text)');
     });
   });
 
