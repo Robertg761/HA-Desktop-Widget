@@ -105,13 +105,18 @@ describe('Settings layout', () => {
     const BOX =
       '<div id="settings-modal" class="modal"><div class="modal-body"><div class="form-group settings-search-box"><input id="settings-search" /></div></div></div>';
 
-    it('stays at the top of a long list of results, over an opaque panel', () => {
+    it('stays at the top of a long list of results, as a solid band across the page', () => {
       render(BOX);
       document.getElementById('settings-modal').classList.add('settings-searching');
       const box = document.querySelector('.settings-search-box');
       expect(resolvedValue(box, 'position')).toBe('sticky');
       expect(resolvedValue(box, 'top')).toBe('-18px');
-      expect(resolvedValue(box, 'background')).toBe('rgb(24, 28, 37)');
+      // The dialog's own colour, solid: the lighter panel colour in the column alone was a slab
+      // floating in the see-through panel, and a see-through band left ghost text in the field.
+      expect(resolvedValue(box, 'background')).toBe('rgb(17, 21, 28)');
+      // Out to the scroller's edges, over the page's 18px padding and the 9px by the scrollbar.
+      expect(resolvedValue(box, 'max-width')).toBe('none');
+      expect(resolvedValue(box, 'margin-inline')).toBe('-18px -9px');
       expect(
         resolvedValue(document.querySelector('.modal-body'), 'scroll-padding-block-start')
       ).toBe('6.5rem');

@@ -14178,17 +14178,25 @@ textarea::selection {
 }
 
 /* While results stand in for the page, the field and the count of matches stay at the top of it, so
-   a long list can be narrowed without scrolling back up. The box reaches over the page's 18px top
-   padding to the scroller's edge and pads the gap under it rather than leaving a margin, so nothing
-   scrolling beneath shows through; it is the opaque panel colour, as the list pagers are. Browsing
-   a page scrolls it away as before. A result reached with the arrow keys stops below it. */
+   a long list can be narrowed without scrolling back up. The box is a band across the whole page
+   under the header, closed by the same hairline: it reaches over the page's padding (18px, and 9px
+   beside the scrollbar) to the scroller's edges, and pads the field back to where it was, in the
+   page's centred column. It is the dialog's own colour, solid so no result shows through it (a
+   see-through band left the results as ghost text inside the field). The panel colour in the
+   column alone was a lighter slab floating in the page, plainest over Windows acrylic and macOS
+   vibrancy; as a band across the page it reads as a bar under the header. Browsing a page scrolls
+   it away as before. A result reached with the arrow keys stops below it. */
 #settings-modal.settings-searching .settings-search-box {
   position: sticky;
   top: -18px;
   z-index: 1;
+  max-width: none;
   margin-block: -18px 0;
+  margin-inline: -18px -9px;
   padding-block: 18px 16px;
-  background: rgb(var(--settings-modal-panel-rgb));
+  padding-inline: max(18px, 18px + (100% - 680px) / 2) max(9px, 9px + (100% - 680px) / 2);
+  border-bottom: 1px solid var(--tile-border);
+  background: rgb(var(--settings-modal-bg-rgb));
 }
 
 #settings-modal.settings-searching .modal-body {

@@ -1385,6 +1385,20 @@ const scenes = [
         'the search box held at the top'
       );
       await ctx.expect(SEARCH_BOX_IN_VIEW, 'the search field and its count stay in view');
+      // A band across the page, not a box in the column, with the field still over the results.
+      await ctx.expect(
+        `(() => {
+          const page = document.querySelector('#settings-modal .modal-body');
+          const edges = page.getBoundingClientRect();
+          const band = document.querySelector('#settings-modal .settings-search-box').getBoundingClientRect();
+          const field = document.getElementById('settings-search').getBoundingClientRect();
+          const result = document.querySelector('.settings-search-result').getBoundingClientRect();
+          return Math.abs(band.left - edges.left) < 1 &&
+            Math.abs(band.right - (edges.left + page.clientWidth)) < 1 &&
+            Math.abs(field.left - result.left) < 1 && Math.abs(field.right - result.right) < 1;
+        })()`,
+        'the search band spans the page, with the field over the results'
+      );
     },
   },
   // Save from another page with a bad address: General opens with the field marked and the
