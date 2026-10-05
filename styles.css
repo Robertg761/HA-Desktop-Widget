@@ -11821,8 +11821,9 @@ body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
 /* Settings draws three blurs of its own, at 56px behind it, 48px on its panel and 20px on the
    Save pill, and they are !important on ID selectors, which the rule above does not outrank. The
    panel and the pill sit inside the dialog's own backdrop, so in performance mode they lose theirs
-   like every other dialog's. On Linux the panel is 96% opaque, so the backdrop behind it takes the
-   8px every dialog has. Windows without acrylic keeps its 56px: there the panel is 82% opaque, the
+   like every other dialog's: on Linux, and on Windows without acrylic, which uses the same class.
+   Only the backdrop differs. On Linux the panel is 96% opaque, so the backdrop behind it takes the
+   8px every dialog has. Windows without acrylic keeps its 56px there: its panel is 82% opaque, the
    dashboard behind it shows through, and a GPU draws the blur. */
 body.linux-performance-mode #settings-modal :is(.modal-content, .modal-footer) {
   backdrop-filter: none !important;
