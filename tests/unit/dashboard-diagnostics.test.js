@@ -4,6 +4,30 @@ const websocket = require('../../src/websocket.js').default;
 const state = require('../../src/state.js').default;
 const { initializeDashboardTools, diagnosticsReport } = require('../../src/dashboard-tools.js');
 
+// Edits less than 30 s apart share one restore point, so the tests hold the clock and move it on
+// themselves. Only Date is faked; the timers the dialogs wait on stay real.
+const holdClock = () =>
+  jest.useFakeTimers({
+    now: new Date('2026-10-05T10:00:00Z'),
+    doNotFake: [
+      'nextTick',
+      'setImmediate',
+      'clearImmediate',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      'queueMicrotask',
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+      'requestIdleCallback',
+      'cancelIdleCallback',
+      'performance',
+      'hrtime',
+    ],
+  });
+const passSeconds = (seconds) => jest.setSystemTime(Date.now() + seconds * 1000);
+
 test('diagnostics record lifecycle events without copying sensitive server or error content', async () => {
   window.electronAPI = { platform: 'linux', getAppVersion: jest.fn(async () => '3.11.0') };
   state.setConfig({ homeAssistant: { url: 'http://private-host', token: 'secret-token' } });
@@ -162,6 +186,7 @@ describe('tool dialogs and the keyboard', () => {
   let tools;
 
   beforeEach(() => {
+    holdClock();
     jest.resetModules();
     tools = require('../../src/dashboard-tools.js');
     currentSocket = require('../../src/websocket.js').default;
@@ -175,6 +200,7 @@ describe('tool dialogs and the keyboard', () => {
   afterEach(() => {
     document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
     currentSocket.removeAllListeners();
+    jest.useRealTimers();
   });
 
   test('Escape closes the diagnostics dialog, stops its live updates and returns focus to the button', async () => {
@@ -227,6 +253,7 @@ describe('tool dialogs and the keyboard', () => {
       ],
     });
     rememberDashboard(layout('One', ['light.a', 'light.b']), layout('Two', []));
+    passSeconds(60);
     rememberDashboard(layout('Two', []), layout('Three', ['light.c']));
 
     tools.showDashboardHistory();
@@ -286,6 +313,7 @@ describe('tool dialogs and the keyboard', () => {
       customTabs: [{ id: name, name, entityIds: [] }],
     });
     rememberDashboard(layout('One'), layout('Two'));
+    passSeconds(60);
     rememberDashboard(layout('Two'), layout('Three'));
     restoreDashboard.mockRejectedValueOnce(new Error('offline'));
 
@@ -354,6 +382,7 @@ test('Undo follows server history and remains disabled while restoring', async (
 });
 
 test('Undo keeps the layout it replaced restorable and steps further back next time', async () => {
+  holdClock();
   jest.resetModules();
   const currentState = require('../../src/state.js').default;
   const { rememberDashboard, readDashboardHistory } = require('../../src/dashboard-history.js');
@@ -369,9 +398,9 @@ test('Undo keeps the layout it replaced restorable and steps further back next t
     customTabs: names.map((name) => ({ id: name, name, entityIds: [] })),
   });
   // Like the real restore, saving the restored layout remembers the one it replaces.
-  restoreDashboard.mockImplementation(async (restored, { activeTabId } = {}) => {
+  restoreDashboard.mockImplementation(async (restored, { activeTabId, undo = false } = {}) => {
     const next = { ...currentState.CONFIG, ...restored, activeTabId };
-    rememberDashboard(currentState.CONFIG, next);
+    rememberDashboard(currentState.CONFIG, next, { wholeLayout: true, undone: undo });
     currentState.setConfig(next);
   });
   const edit = (next) => {
@@ -386,7 +415,10 @@ test('Undo keeps the layout it replaced restorable and steps further back next t
   const undo = document.getElementById('undo-dashboard-btn');
 
   await undo.onclick();
-  expect(restoreDashboard).toHaveBeenLastCalledWith(expect.anything(), { activeTabId: 'Kitchen' });
+  expect(restoreDashboard).toHaveBeenLastCalledWith(expect.anything(), {
+    activeTabId: 'Kitchen',
+    undo: true,
+  });
   expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual(['All', 'Kitchen']);
   let history = readDashboardHistory(currentState.CONFIG);
   expect(history[0]).toMatchObject({ undone: true });
@@ -404,12 +436,16 @@ test('Undo keeps the layout it replaced restorable and steps further back next t
   expect(history.every((entry) => entry.undone)).toBe(true);
   expect(undo.disabled).toBe(true);
 
-  // Both undone layouts can still be brought back from Restore dashboard.
+  // Both undone layouts can still be brought back from Restore dashboard, under the one restore
+  // point the two edits made together.
   showDashboardHistory();
   const rows = [...document.querySelectorAll('.dashboard-restore-entry')];
-  expect(rows).toHaveLength(2);
-  expect(rows[1].textContent).toContain('Before undo');
-  expect(rows[1].textContent).toContain('Bedroom');
+  expect(rows.map((row) => row.querySelector('.dashboard-restore-pages').textContent)).toEqual([
+    'All, Kitchen',
+    'All, Kitchen, Bedroom',
+    'All',
+  ]);
+  expect(rows.map((row) => row.textContent.includes('Before undo'))).toEqual([true, true, false]);
   rows[1].click();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(currentState.CONFIG.customTabs.map((tab) => tab.name)).toEqual([
@@ -421,6 +457,64 @@ test('Undo keeps the layout it replaced restorable and steps further back next t
   document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
   currentSocket.removeAllListeners();
   localStorage.clear();
+  jest.useRealTimers();
+});
+
+test('Restore dashboard lists a burst of edits as one restore point, and Undo still steps back one edit', async () => {
+  holdClock();
+  jest.resetModules();
+  const currentState = require('../../src/state.js').default;
+  const { rememberDashboard } = require('../../src/dashboard-history.js');
+  const {
+    initializeDashboardTools: initialize,
+    showDashboardHistory,
+  } = require('../../src/dashboard-tools.js');
+  const { restoreDashboard } = require('../../src/ui.js');
+  const currentSocket = require('../../src/websocket.js').default;
+  localStorage.clear();
+  const layout = (...names) => ({
+    homeAssistant: { url: 'http://server' },
+    customTabs: names.map((name) => ({ id: name, name, entityIds: [] })),
+  });
+  const pageNames = () => currentState.CONFIG.customTabs.map((tab) => tab.name);
+  const listed = () => {
+    showDashboardHistory();
+    const rows = [...document.querySelectorAll('.dashboard-restore-entry')].map(
+      (row) => row.querySelector('.dashboard-restore-pages').textContent
+    );
+    document.querySelectorAll('.dashboard-tools-modal').forEach((modal) => modal.remove());
+    return rows;
+  };
+  restoreDashboard.mockImplementation(async (restored, { activeTabId, undo = false } = {}) => {
+    const next = { ...currentState.CONFIG, ...restored, activeTabId };
+    rememberDashboard(currentState.CONFIG, next, { wholeLayout: true, undone: undo });
+    currentState.setConfig(next);
+  });
+  const edit = (next) => {
+    passSeconds(5);
+    rememberDashboard(currentState.CONFIG, next);
+    currentState.setConfig(next);
+  };
+  currentState.setConfig(layout('All'));
+  edit(layout('All', 'Kitchen'));
+  edit(layout('All', 'Kitchen', 'Bedroom'));
+  edit(layout('All', 'Kitchen', 'Bedroom', 'Office'));
+  document.body.innerHTML = '<button id="undo-dashboard-btn">Undo</button>';
+  initialize();
+
+  expect(listed()).toEqual(['All']);
+
+  await document.getElementById('undo-dashboard-btn').onclick();
+  expect(pageNames()).toEqual(['All', 'Kitchen', 'Bedroom']);
+  expect(listed()).toEqual(['All, Kitchen, Bedroom, Office', 'All']);
+
+  // After 30 s without a change, the next edit is a burst of its own.
+  passSeconds(30);
+  edit(layout('Office'));
+  expect(listed()).toEqual(['All, Kitchen, Bedroom', 'All, Kitchen, Bedroom, Office', 'All']);
+  currentSocket.removeAllListeners();
+  localStorage.clear();
+  jest.useRealTimers();
 });
 
 test('Copy report copies through the main process and falls back to manual selection', async () => {

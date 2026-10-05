@@ -897,13 +897,13 @@ const radioStream = (now) => {
 };
 
 // Restore points that differ by what they hold, one of them with a page nobody named. The list is
-// built when the dialog opens, so the history is put back as it was straight after.
+// built when the dialog opens, so the restore points are put back as they were straight after.
 async function openRestoreDashboard(ctx) {
   await openSettingsTab(ctx, 'advanced');
   await ctx.ev(`(async () => {
     const config = await window.electronAPI.getConfig();
     const url = new URL(config.homeAssistant.url);
-    const key = 'dashboard-history:' + url.origin + url.pathname.replace(/\\/+$/, '');
+    const key = 'dashboard-restore-points:' + url.origin + url.pathname.replace(/\\/+$/, '');
     const before = localStorage.getItem(key);
     const hour = 60 * 60 * 1000;
     const layout = (pages) => ({ customTabs: pages, favoriteEntities: [], comparisonGraphs: [] });

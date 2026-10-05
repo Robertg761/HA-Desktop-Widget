@@ -1812,10 +1812,12 @@ async function executeDesktopCompanionCommand({ action, payload }) {
       throw new Error(result?.error || 'Profile could not be saved on this desktop');
     }
     // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
-    // save from Settings does, so Undo and Restore dashboard can bring it back.
+    // save from Settings does, so Undo and Restore dashboard can bring it back. It is not part of
+    // a burst of edits: Restore dashboard keeps that layout however soon after an edit it comes.
     rememberDashboard(
       previousConfig,
-      result?.homeAssistant ? result : { ...previousConfig, ...patch }
+      result?.homeAssistant ? result : { ...previousConfig, ...patch },
+      { wholeLayout: true }
     );
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {

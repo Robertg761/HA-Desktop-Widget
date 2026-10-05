@@ -617,7 +617,9 @@ function requireAuthoritativeConfig(response) {
   return response;
 }
 
-async function persistAuthoritativeConfig(nextConfig) {
+// `restorePoint` says how the layout this replaces is kept for Restore dashboard (see
+// rememberDashboard); an ordinary edit leaves it out.
+async function persistAuthoritativeConfig(nextConfig, restorePoint) {
   const host = getRendererHost();
   if (!host.canPersistConfig) {
     throw new Error(t('Configuration updates are unavailable on this build.'));
@@ -625,7 +627,7 @@ async function persistAuthoritativeConfig(nextConfig) {
   try {
     const previousConfig = cloneConfigSnapshot(state.CONFIG);
     const authoritativeConfig = requireAuthoritativeConfig(await host.updateConfig(nextConfig));
-    rememberDashboard(previousConfig, authoritativeConfig);
+    rememberDashboard(previousConfig, authoritativeConfig, restorePoint);
     state.setConfig(authoritativeConfig);
     return state.CONFIG;
   } catch (error) {
@@ -1669,7 +1671,8 @@ function showAddPageModal({ starter = false } = {}) {
   if (starter || websocket.isConnected?.()) void loadRooms.onclick();
 }
 
-async function restoreDashboard(layout, { activeTabId } = {}) {
+// Puts a saved layout back: one picked in Restore dashboard, or the step Undo goes back to (`undo`).
+async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
   if (quickAccessPendingWriteCount)
     throw new Error(t('Wait for the current dashboard save to finish.'));
   const current = normalizeQuickAccessConfig(state.CONFIG);
@@ -1681,7 +1684,8 @@ async function restoreDashboard(layout, { activeTabId } = {}) {
   next.activeTabId =
     [activeTabId, current.activeTabId].find((id) => tabIds.includes(id)) ??
     tabIds[Math.min(Math.max(currentIndex, 0), tabIds.length - 1)];
-  await persistAuthoritativeConfig(next);
+  // The layout this replaces gets a restore point of its own, however soon after an edit it comes.
+  await persistAuthoritativeConfig(next, { wholeLayout: true, undone: undo });
   renderQuickAccessConfigState();
   if (state.CONFIG?.activeTabId !== current.activeTabId) {
     window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));

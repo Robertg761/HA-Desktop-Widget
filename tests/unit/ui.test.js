@@ -1139,6 +1139,58 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(readDashboardHistory(current)).toEqual(entries);
     });
 
+    it('gives the layout a restore or an Undo replaces a restore point, however soon after an edit', async () => {
+      const { rememberDashboard, readRestorePoints } = require('../../src/dashboard-history.js');
+      // Edits less than 30 s apart share a restore point. Only Date is faked.
+      jest.useFakeTimers({
+        now: new Date('2030-01-01T10:00:00Z'),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'queueMicrotask',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'requestIdleCallback',
+          'cancelIdleCallback',
+          'performance',
+          'hrtime',
+        ],
+      });
+      try {
+        localStorage.clear();
+        const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+        const pages = () =>
+          readRestorePoints(state.CONFIG).map((point) =>
+            point.layout.customTabs.map((tab) => tab.id).join('+')
+          );
+        mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+          ...state.CONFIG,
+          ...patch,
+        }));
+        const original = { ...state.CONFIG, customTabs: tabs('one'), activeTabId: 'one' };
+        const edited = { ...original, customTabs: tabs('one', 'two') };
+        rememberDashboard(original, edited);
+        state.setConfig(edited);
+
+        jest.setSystemTime(Date.now() + 5000);
+        await ui.restoreDashboard({ customTabs: tabs('three') });
+        expect(pages()).toEqual(['one+two', 'one']);
+
+        jest.setSystemTime(Date.now() + 5000);
+        await ui.restoreDashboard({ customTabs: tabs('one', 'two') }, { undo: true });
+        expect(pages()).toEqual(['three', 'one+two', 'one']);
+        expect(readRestorePoints(state.CONFIG)[0].undone).toBe(true);
+      } finally {
+        localStorage.clear();
+        jest.useRealTimers();
+      }
+    });
+
     it('restores dashboard fields while preserving local authorization and hotkeys', async () => {
       const current = {
         ...state.CONFIG,
@@ -8551,6 +8603,77 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'graph:temps',
         'graph:temps-copy',
       ]);
+    });
+
+    it('keeps one restore point for pages deleted in a row, and an Undo step for each', async () => {
+      const { readDashboardHistory, readRestorePoints } = require('../../src/dashboard-history.js');
+      const { toStoredPages } = require('../../src/page-names.cjs');
+      // Edits less than 30 s apart share a restore point. Only Date is faked.
+      jest.useFakeTimers({
+        now: new Date('2030-01-01T10:00:00Z'),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'queueMicrotask',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'requestIdleCallback',
+          'cancelIdleCallback',
+          'performance',
+          'hrtime',
+        ],
+      });
+      try {
+        localStorage.clear();
+        // As the main process does, the save comes back with an unnamed page stored unnamed.
+        window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
+          homeAssistant: {},
+          ...state.CONFIG,
+          ...patch,
+          ...(patch.customTabs ? { customTabs: toStoredPages(patch.customTabs) } : {}),
+        }));
+        setPages([
+          { id: 'default', name: 'All', nameIsDefault: true, entityIds: [] },
+          { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+          { id: 'bedroom', name: 'Bedroom', entityIds: [] },
+          { id: 'office', name: 'Office', entityIds: [] },
+        ]);
+        ui.toggleReorganizeMode();
+        const deletePage = async (id, seconds) => {
+          jest.setSystemTime(Date.now() + seconds * 1000);
+          // Only the page on screen has a Delete button; going to it changes no layout.
+          await ui.switchQuickAccessPage(id);
+          uiUtils.showConfirm.mockResolvedValueOnce(true);
+          tabBar.querySelector(`.quick-access-tab[data-tab="${id}"] .qa-tab-delete`).click();
+          for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        };
+        const ids = (entries) =>
+          entries.map((entry) => entry.layout.customTabs.map((page) => page.id).join('+'));
+
+        await deletePage('office', 0);
+        await deletePage('bedroom', 5);
+        expect(state.CONFIG.customTabs.map((page) => page.id)).toEqual(['default', 'kitchen']);
+        expect(ids(readDashboardHistory(state.CONFIG))).toEqual([
+          'default+kitchen+bedroom',
+          'default+kitchen+bedroom+office',
+        ]);
+        expect(ids(readRestorePoints(state.CONFIG))).toEqual(['default+kitchen+bedroom+office']);
+
+        await deletePage('kitchen', 30);
+        expect(ids(readRestorePoints(state.CONFIG))).toEqual([
+          'default+kitchen',
+          'default+kitchen+bedroom+office',
+        ]);
+      } finally {
+        localStorage.clear();
+        jest.useRealTimers();
+      }
     });
 
     it('opens a themed add-page modal and creates a page from a preset chip', async () => {

@@ -2,7 +2,11 @@ import state from './state.js';
 import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
-import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
+import {
+  readDashboardHistory,
+  readRestorePoints,
+  writeDashboardHistory,
+} from './dashboard-history.js';
 import {
   closeDialog,
   copyTextToClipboard,
@@ -137,7 +141,8 @@ function showDashboardHistory() {
     'Restore a saved layout. Your current layout is saved before restoring. Connection settings stay on this device.'
   );
   body.append(description);
-  const entries = readDashboardHistory(state.CONFIG);
+  // Its own coarse list, newest first: one restore point per burst of edits, not every Undo step.
+  const entries = readRestorePoints(state.CONFIG);
   if (!entries.length) {
     description.classList.add('workflow-empty');
     description.textContent = t(
@@ -354,7 +359,7 @@ function initializeDashboardTools() {
       undoInFlight = true;
       refreshDashboardUndoState();
       try {
-        await restoreDashboard(target.layout, { activeTabId: target.activeTabId });
+        await restoreDashboard(target.layout, { activeTabId: target.activeTabId, undo: true });
         refreshRestoredDashboardSettings();
         writeDashboardHistory(
           config,
