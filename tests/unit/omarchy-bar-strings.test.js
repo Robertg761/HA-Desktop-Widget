@@ -137,4 +137,17 @@ describe('the plugin panel', () => {
     // The product name is not translated.
     expect(literal.filter((text) => text !== 'Home Assistant')).toEqual([]);
   });
+
+  it('has no English sentence anywhere else in it either, such as in a condition', () => {
+    // Every word() call's own fallback is English on purpose, and comments are not shown; anything
+    // left is shown as it is.
+    const withoutWords = qml
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/(?:root\.)?word\("\w+", "(?:[^"\\]|\\.)*"\)/g, '');
+    const sentences = [...withoutWords.matchAll(/"([A-Z][^"\n]*\s[^"\n]*)"/g)].map(
+      (match) => match[1]
+    );
+    // The product name is not translated ("Home Assistant: " starts the tooltip).
+    expect(sentences.filter((text) => !/^Home Assistant:? ?$/.test(text))).toEqual([]);
+  });
 });

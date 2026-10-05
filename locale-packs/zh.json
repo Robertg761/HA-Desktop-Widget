@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "还有 1 个磁贴未在此处显示。请打开小组件查看。",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "还有 {{count}} 个磁贴未在此处显示。请打开小组件查看。",
     "What's new": "新增功能",
-    "Resize only": "仅调整大小"
+    "Resize only": "仅调整大小",
+    "Not connected to Home Assistant. Changes can't be sent right now.": "未连接到 Home Assistant。现在无法发送更改。",
+    "Can't reach the widget. Changes can't be sent right now.": "无法连接到小组件。现在无法发送更改。"
   }
 }

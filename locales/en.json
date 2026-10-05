@@ -1640,5 +1640,7 @@
   "1 more tile is not shown here. Open the widget to see it.": "1 more tile is not shown here. Open the widget to see it.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} more tiles are not shown here. Open the widget to see them.",
   "What's new": "What's new",
-  "Resize only": "Resize only"
+  "Resize only": "Resize only",
+  "Not connected to Home Assistant. Changes can't be sent right now.": "Not connected to Home Assistant. Changes can't be sent right now.",
+  "Can't reach the widget. Changes can't be sent right now.": "Can't reach the widget. Changes can't be sent right now."
 }

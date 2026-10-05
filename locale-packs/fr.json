@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
     "What's new": "Nouveautés",
-    "Resize only": "Redimensionner uniquement"
+    "Resize only": "Redimensionner uniquement",
+    "Not connected to Home Assistant. Changes can't be sent right now.": "Non connecté à Home Assistant. Les modifications ne peuvent pas être envoyées pour le moment.",
+    "Can't reach the widget. Changes can't be sent right now.": "Impossible de joindre le widget. Les modifications ne peuvent pas être envoyées pour le moment."
   }
 }

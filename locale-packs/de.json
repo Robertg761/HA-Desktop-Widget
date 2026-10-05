@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
     "What's new": "Neuerungen",
-    "Resize only": "Nur Größe ändern"
+    "Resize only": "Nur Größe ändern",
+    "Not connected to Home Assistant. Changes can't be sent right now.": "Nicht mit Home Assistant verbunden. Änderungen können derzeit nicht gesendet werden.",
+    "Can't reach the widget. Changes can't be sent right now.": "Das Widget ist nicht erreichbar. Änderungen können derzeit nicht gesendet werden."
   }
 }

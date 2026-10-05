@@ -1199,8 +1199,8 @@ describe('the plugin as a package of files', () => {
   // reaches anyone who already has it. Changing a plugin file fails this test until both lines
   // below are updated together.
   const PUBLISHED = {
-    version: '1.3.0',
-    sha256: '87564b1b5ad2f4f1a5ff9ab11df37435aedefdaccb21d8491ca7e827aee13d93',
+    version: '1.3.1',
+    sha256: 'e35cf245825dd44969f1f3474461af120131f0fb3407e89f939e9845a3a52e36',
   };
 
   function pluginHash() {

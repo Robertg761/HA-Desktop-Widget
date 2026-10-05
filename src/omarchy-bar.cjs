@@ -394,6 +394,9 @@ const OMARCHY_BAR_STRING_SOURCES = Object.freeze({
   modeHeatCool: 'Heat/Cool',
   modeFan: 'Fan',
   modeDry: 'Dry',
+  // Above a controls panel that cannot act, to say why.
+  notConnectedControls: "Not connected to Home Assistant. Changes can't be sent right now.",
+  widgetUnreachableControls: "Can't reach the widget. Changes can't be sent right now.",
 });
 
 /**

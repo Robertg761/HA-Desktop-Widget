@@ -1315,8 +1315,8 @@ Panel {
       visible: !view.live
       width: parent.width
       text: !root.connected
-        ? "Not connected to Home Assistant. Changes can't be sent right now."
-        : "Can't reach the widget. Changes can't be sent right now."
+        ? root.word("notConnectedControls", "Not connected to Home Assistant. Changes can't be sent right now.")
+        : root.word("widgetUnreachableControls", "Can't reach the widget. Changes can't be sent right now.")
       color: Color.urgent
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall

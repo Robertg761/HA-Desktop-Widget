@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "What's new": "الجديد",
-    "Resize only": "غيّر الحجم فقط"
+    "Resize only": "غيّر الحجم فقط",
+    "Not connected to Home Assistant. Changes can't be sent right now.": "غير متصل بـ Home Assistant. يتعذر إرسال التغييرات الآن.",
+    "Can't reach the widget. Changes can't be sent right now.": "يتعذر الوصول إلى الأداة. يتعذر إرسال التغييرات الآن."
   }
 }
