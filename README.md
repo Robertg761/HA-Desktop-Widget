@@ -104,10 +104,10 @@ Live tray values are available only in beta builds. Stable builds retain saved t
 without showing the feature. Enable **Receive beta updates** in Settings to receive beta releases.
 
 Right-click a Quick Access tile and choose **Show in Tray**, or enable **Show in system tray**
-under **Edit Tile Settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
+under **Edit tile settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
 Hover for its name and full value; use its menu to show the widget or remove the icon.
 
-Tile Settings also provides an optional short name. On macOS it appears before the value in the
+Tile settings also provides an optional short name. On macOS it appears before the value in the
 menu bar, with units and decimal precision retained. On Windows and Linux it appears in tooltips
 and menus; an optional icon color helps distinguish multiple readings at a glance.
 
@@ -248,7 +248,7 @@ power controls without a brightness slider.
 ### System Integration
 
 - **Hide to Tray**: The minimize button, the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all hide the widget to the system tray, and it keeps running. Choose **Quit** from the tray menu (or the app menu on macOS) to exit
-- **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” under General → Window & Behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
+- **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” (“Hide to menu bar when focus is lost” on macOS) under General → Window & behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
 - **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
@@ -386,7 +386,7 @@ Syncthing, or any similar app already keeps in sync. There is no server and no a
 
 **Set up the first computer**
 
-1. Open **Settings → Advanced → Profile Syncing** and turn on **Profile sync**.
+1. Open **Settings → Advanced → Profile syncing** and turn on **Profile sync**.
 2. Pick your **Sync app**, then **Choose folder...** and select a folder inside it.
 3. Optionally turn on **Encrypt synced profile with passphrase** and enter a passphrase of at
    least 8 characters.
