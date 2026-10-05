@@ -4069,6 +4069,34 @@ function syncRowSelectTitles(root) {
   root?.querySelectorAll('.setting-row > select').forEach(syncRowSelectTitle);
 }
 
+// The tray is the menu bar on macOS, where Hide to tray told Mac users to look for a tray. The
+// keys are swapped rather than the text, so a language change keeps the right ones.
+const HIDE_ON_BLUR_TEXT = {
+  tray: {
+    label: 'Hide to tray when focus is lost',
+    help: 'Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins stay visible.',
+  },
+  menuBar: {
+    label: 'Hide to menu bar when focus is lost',
+    help: 'Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.',
+  },
+};
+
+function renderHideOnBlurText() {
+  const text =
+    window.electronAPI?.platform === 'darwin' ? HIDE_ON_BLUR_TEXT.menuBar : HIDE_ON_BLUR_TEXT.tray;
+  const label = document.querySelector('label[for="hide-on-blur"] [data-i18n]');
+  const help = document.getElementById('hide-on-blur-help');
+  [
+    [label, text.label],
+    [help, text.help],
+  ].forEach(([node, key]) => {
+    if (!node) return;
+    node.dataset.i18n = key;
+    node.textContent = t(key);
+  });
+}
+
 /** Sets the folder field. It is cut to its width, so the whole path is its tooltip. */
 function setProfileSyncFolderField(folder) {
   const input = document.getElementById('profile-sync-folder-path');
@@ -5701,6 +5729,7 @@ async function openSettings(uiHooks) {
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.hideOnBlur === true;
       hideOnBlur.disabled = !!state.CONFIG.desktopCapabilities?.layerMode;
     }
+    renderHideOnBlurText();
     syncLayerModeSwitchReasons();
     const followOmarchy = document.getElementById('follow-omarchy');
     if (followOmarchy) {

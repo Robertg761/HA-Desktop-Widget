@@ -1639,5 +1639,7 @@
   "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "What's new": "Neuerungen",
-  "Built in": "Integriert"
+  "Built in": "Integriert",
+  "Hide to menu bar when focus is lost": "Bei Fokusverlust in die Menüleiste ausblenden",
+  "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Ein Klick auf ein anderes Fenster oder ein App-Wechsel blendet das Widget aus. Über die Menüleiste oder das Popup-Tastenkürzel lässt es sich wieder öffnen. Angeheftete Desktop-Pins bleiben sichtbar."
 }

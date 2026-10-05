@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "1 और टाइल यहाँ नहीं दिख रही है। उसे देखने के लिए विजेट खोलें।",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} और टाइल यहाँ नहीं दिख रही हैं। उन्हें देखने के लिए विजेट खोलें।",
     "What's new": "नया क्या है",
-    "Built in": "अंतर्निहित"
+    "Built in": "अंतर्निहित",
+    "Hide to menu bar when focus is lost": "फ़ोकस हटने पर मेनू बार में छिपाएँ",
+    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "दूसरी विंडो पर क्लिक करने या ऐप बदलने पर विजेट छिप जाता है। इसे मेनू बार या पॉपअप हॉटकी से फिर खोलें। डेस्कटॉप पर पिन किए गए आइटम दिखाई देते रहते हैं।"
   }
 }

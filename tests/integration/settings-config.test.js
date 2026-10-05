@@ -9388,4 +9388,52 @@ describe('Settings + Config Integration', () => {
       settings.closeSettings();
     });
   });
+  describe('Hide to tray on macOS', () => {
+    // The widget's icon is in the menu bar on a Mac; the row named the tray Windows and Linux have.
+    beforeEach(() => {
+      const checkbox = document.getElementById('hide-on-blur');
+      checkbox.insertAdjacentHTML(
+        'beforebegin',
+        `<label for="hide-on-blur"><span data-i18n="Hide to tray when focus is lost">Hide to tray when focus is lost</span></label>
+         <p id="hide-on-blur-help" data-i18n="Clicking another window or switching apps hides the widget. Reopen it from the tray or with your popup hotkey. Desktop pins stay visible."></p>`
+      );
+    });
+
+    afterEach(() => {
+      mockElectronAPI.platform = 'test';
+    });
+
+    const label = () => document.querySelector('label[for="hide-on-blur"] span');
+    const help = () => document.getElementById('hide-on-blur-help');
+
+    test('names the menu bar on macOS, and keeps doing so after a language change', async () => {
+      mockElectronAPI.platform = 'darwin';
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Hide to menu bar when focus is lost');
+      expect(help().textContent).toBe(
+        'Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.'
+      );
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: {
+          'Hide to menu bar when focus is lost': 'Bei Fokusverlust in die Menüleiste ausblenden',
+        },
+      });
+      i18n.translateDocument(document);
+      expect(label().textContent).toBe('Bei Fokusverlust in die Menüleiste ausblenden');
+      i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      settings.closeSettings();
+    });
+
+    test.each(['win32', 'linux'])('names the tray on %s', async (platform) => {
+      mockElectronAPI.platform = platform;
+      await settings.openSettings();
+
+      expect(label().textContent).toBe('Hide to tray when focus is lost');
+      expect(help().textContent).toMatch(/Reopen it from the tray/);
+      settings.closeSettings();
+    });
+  });
 });

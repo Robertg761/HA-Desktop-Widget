@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "What's new": "الجديد",
-    "Built in": "مدمجة"
+    "Built in": "مدمجة",
+    "Hide to menu bar when focus is lost": "إخفاء في شريط القوائم عند فقدان التركيز",
+    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "يُخفى عنصر الواجهة عند النقر على نافذة أخرى أو التبديل بين التطبيقات. أعد فتحه من شريط القوائم أو باستخدام مفتاح اختصار النافذة المنبثقة. تظل العناصر المثبتة على سطح المكتب ظاهرة."
   }
 }

@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
     "What's new": "Nouveautés",
-    "Built in": "Intégré"
+    "Built in": "Intégré",
+    "Hide to menu bar when focus is lost": "Masquer dans la barre des menus à la perte du focus",
+    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "Cliquer sur une autre fenêtre ou changer d’application masque le widget. Rouvrez-le depuis la barre des menus ou avec son raccourci clavier. Les éléments épinglés au bureau restent visibles."
   }
 }

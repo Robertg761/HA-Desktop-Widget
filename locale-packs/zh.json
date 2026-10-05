@@ -1996,6 +1996,8 @@
     "1 more tile is not shown here. Open the widget to see it.": "还有 1 个磁贴未在此处显示。请打开小组件查看。",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "还有 {{count}} 个磁贴未在此处显示。请打开小组件查看。",
     "What's new": "新增功能",
-    "Built in": "内置"
+    "Built in": "内置",
+    "Hide to menu bar when focus is lost": "失去焦点时隐藏到菜单栏",
+    "Clicking another window or switching apps hides the widget. Reopen it from the menu bar or with your popup hotkey. Desktop pins stay visible.": "点击其他窗口或切换应用时隐藏小组件。可通过菜单栏或弹出快捷键重新打开。桌面固定项目保持可见。"
   }
 }
