@@ -6629,6 +6629,29 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
     });
 
+    it('names a heat/cool mode and an auto mode apart, in the words the dialog uses', () => {
+      state.setStates({
+        'climate.thermostat': {
+          ...sampleStates['climate.thermostat'],
+          state: 'heat_cool',
+          attributes: {
+            ...sampleStates['climate.thermostat'].attributes,
+            hvac_modes: ['heat_cool', 'auto'],
+          },
+        },
+      });
+
+      ui.renderDesktopPinnedTile('climate.thermostat', state.STATES['climate.thermostat']);
+
+      const titles = Object.fromEntries(
+        [...document.querySelectorAll('.desktop-pin-climate-mode')].map((button) => [
+          button.dataset.action,
+          button.title,
+        ])
+      );
+      expect(titles).toEqual({ heat_cool: 'Heat/Cool', auto: 'Auto' });
+    });
+
     it('collapses climate desktop pins into the Stage 4 tight variant near the minimum size', () => {
       setDesktopPinViewport(168, 148);
       state.setStates({

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "Aperçu de {{name}}",
     "Last updated: {{time}}": "Dernière mise à jour : {{time}}",
     "Connection is not ready": "La connexion n'est pas encore prête",
-    "Fan only": "Ventilation seule",
     "Heat/Cool": "Chaud/Froid",
     "Disarming": "Désarmement",
     "Triggered": "Déclenchée",
@@ -1995,6 +1994,7 @@
     "Set the range in the widget.": "Réglez la plage dans le widget.",
     "1 more tile is not shown here. Open the widget to see it.": "1 vignette de plus n'est pas affichée ici. Ouvrez le widget pour la voir.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} vignettes de plus ne sont pas affichées ici. Ouvrez le widget pour les voir.",
-    "What's new": "Nouveautés"
+    "What's new": "Nouveautés",
+    "Fan only": "Ventilation seule"
   }
 }

@@ -1155,10 +1155,6 @@
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
   },
-  "Fan only": {
-    "retiredIn": "4.0.0",
-    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
-  },
   "Compact controls": {
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
@@ -1402,5 +1398,17 @@
   "Last updated: {{time}}": {
     "retiredIn": "4.0.0",
     "reason": "The camera viewer no longer shows the camera's own last update before a picture loads"
+  },
+  "Heat Cool": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Fan Only": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Drying": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
   }
 }

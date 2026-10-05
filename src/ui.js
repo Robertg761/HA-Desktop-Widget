@@ -50,6 +50,7 @@ import {
   getClockDateOptions,
   getClockFaceTimeOptions,
   getSensorReading,
+  HVAC_MODE_NAMES,
   joinUnit,
   normalizeSearchText,
   parseNumericState,
@@ -241,27 +242,17 @@ const DESKTOP_PIN_CLIMATE_MODE_PRIORITY = [
   'dry',
   'eco',
 ];
+// The HVAC modes are named from the shared state table, so a pin, the climate dialog, the palette
+// and an alert call one mode the same thing.
 const DESKTOP_PIN_CLIMATE_MODE_LABELS = {
-  off: 'Off',
-  heat: 'Heat',
-  cool: 'Cool',
-  auto: 'Auto',
-  heat_cool: 'Auto',
-  fan_only: 'Fan',
-  dry: 'Dry',
+  ...HVAC_MODE_NAMES,
   eco: 'Eco',
 };
 // Labels for Home Assistant's standard HVAC, fan and preset modes in the climate dialog, translated
 // where they are shown. Modes outside this list are integration-specific and shown as reported.
 const CLIMATE_OPTION_LABELS = {
-  off: 'Off',
+  ...HVAC_MODE_NAMES,
   on: 'On',
-  heat: 'Heat',
-  cool: 'Cool',
-  heat_cool: 'Heat Cool',
-  auto: 'Auto',
-  dry: 'Dry',
-  fan_only: 'Fan Only',
   low: 'Low',
   medium: 'Medium',
   middle: 'Middle',

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.64",
+  "version": "1.2.65",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "Vista previa de {{name}}",
     "Last updated: {{time}}": "Última actualización: {{time}}",
     "Connection is not ready": "La conexión aún no está lista",
-    "Fan only": "Solo ventilador",
     "Heat/Cool": "Calor/Frío",
     "Disarming": "Desarmando",
     "Triggered": "Disparada",
@@ -1995,6 +1994,7 @@
     "Set the range in the widget.": "Ajusta el rango en el widget.",
     "1 more tile is not shown here. Open the widget to see it.": "Hay 1 tarjeta más que no se muestra aquí. Abre el widget para verla.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "Hay {{count}} tarjetas más que no se muestran aquí. Abre el widget para verlas.",
-    "What's new": "Novedades"
+    "What's new": "Novedades",
+    "Fan only": "Solo ventilador"
   }
 }

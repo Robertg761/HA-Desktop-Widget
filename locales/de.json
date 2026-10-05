@@ -388,7 +388,6 @@
   "Error": "Fehler",
   "Heating": "Heizen",
   "Cooling": "Kühlen",
-  "Drying": "Entfeuchten",
   "Fan": "Ventilator",
   "Disarmed": "Unscharf",
   "Armed at home": "Zuhause scharf",
@@ -1015,8 +1014,6 @@
   "e.g., on, off, open, closed": "z. B. on, off, open, closed",
   "Heat": "Heizen",
   "Eco": "Eco",
-  "Heat Cool": "Heizen/Kühlen",
-  "Fan Only": "Nur Ventilator",
   "Middle": "Mittel",
   "Focus": "Fokus",
   "Diffuse": "Diffus",
@@ -1638,5 +1635,6 @@
   "Set the range in the widget.": "Stelle den Bereich im Widget ein.",
   "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
-  "What's new": "Neuerungen"
+  "What's new": "Neuerungen",
+  "Fan only": "Nur Ventilator"
 }

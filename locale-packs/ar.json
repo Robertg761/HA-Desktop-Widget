@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.65",
+  "version": "1.2.66",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1496,7 +1496,6 @@
     "{{name}} preview": "معاينة {{name}}",
     "Last updated: {{time}}": "آخر تحديث: {{time}}",
     "Connection is not ready": "الاتصال غير جاهز بعد",
-    "Fan only": "مروحة فقط",
     "Heat/Cool": "تدفئة/تبريد",
     "Disarming": "جارٍ إلغاء التسليح",
     "Triggered": "تم التفعيل",
@@ -1995,6 +1994,7 @@
     "Set the range in the widget.": "اضبط النطاق في الأداة.",
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
-    "What's new": "الجديد"
+    "What's new": "الجديد",
+    "Fan only": "مروحة فقط"
   }
 }
