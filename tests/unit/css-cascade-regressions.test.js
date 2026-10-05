@@ -1404,6 +1404,16 @@ describe('stylesheet cascade regressions', () => {
         resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display', options)
       ).toBe('flex');
     });
+
+    it.each(['compact', 'balanced', 'roomy'])(
+      'keeps the case of a weather reading in a %s pin ("km/h", never "KM/H")',
+      (layout) => {
+        render('desktop-pin-mode', panel('weather', layout));
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-stat-label'), 'text-transform')
+        ).toBe('none');
+      }
+    );
   });
 
   describe('desktop pin text', () => {

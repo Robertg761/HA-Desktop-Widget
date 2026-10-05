@@ -2509,7 +2509,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   padding: 3px 4px;
 }
 
-.desktop-pin-weather-control[data-layout='compact'] .desktop-pin-panel-stat-label {
+/* The stats are readings, not captions, so they keep their case at every size: a unit is
+   case-sensitive (km/h, hPa), and a resized pin should not rewrite its text. */
+.desktop-pin-weather-stats .desktop-pin-panel-stat-label {
   overflow: hidden;
   letter-spacing: 0;
   text-align: center;
