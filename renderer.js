@@ -414,8 +414,9 @@ function needsTokenReentry() {
 // works or the setup moved to browser authorization.
 function noteTokenRecoveryReason() {
   const reason = state.CONFIG?.tokenResetReason;
-  if (reason) {
-    delete state.CONFIG.tokenResetReason;
+  if (reason) delete state.CONFIG.tokenResetReason;
+  // Main sends 'not_persisted' with every config until a token is saved; it is news only once.
+  if (reason && reason !== tokenRecoveryReason) {
     log.warn('Saved Home Assistant token cannot be used:', reason);
     void window.electronAPI.clearTokenResetReason?.().catch((error) => {
       log.error('Failed to acknowledge token recovery notice:', error);

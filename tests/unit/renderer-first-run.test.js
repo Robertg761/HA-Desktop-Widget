@@ -1541,6 +1541,18 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(findButtonByText('Restart Widget')).toBeUndefined();
     });
 
+    it('notes a token that was not saved once, though main repeats it with every config', async () => {
+      await loadRenderer({ config: recoveryConfig('not_persisted') });
+
+      // Main keeps 'not_persisted' until a token is saved, so every broadcast carries it again.
+      triggerMockEvent('configUpdated', recoveryConfig('not_persisted'));
+      await flushAsync();
+
+      expect(mockElectronAPI.clearTokenResetReason).toHaveBeenCalledTimes(1);
+      expect(panel().textContent).toContain('Access token was not saved');
+      expect(wizardShown()).toBe(false);
+    });
+
     it('keeps the panel when main echoes the config back without the reason', async () => {
       await loadRenderer({ config: recoveryConfig('decryption_failed') });
 
