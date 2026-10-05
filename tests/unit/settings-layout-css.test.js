@@ -171,4 +171,47 @@ describe('Settings layout', () => {
       expect(rule?.style.outline).toBe('2px solid var(--focus-ring)');
     });
   });
+  describe('the hotkey fields', () => {
+    const placeholderRule = (selector) =>
+      [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find(
+          (rule) =>
+            rule.selectorText?.endsWith('::placeholder') &&
+            rule.selectorText.includes(selector) &&
+            rule.style.getPropertyValue('font-family')
+        );
+
+    // An entity row's "None" is a hint, like the popup hotkey's "Not set": in the code face it was
+    // spaced out, and Arabic, Hindi and Chinese fell to a fallback font.
+    it.each(['#popup-hotkey-input', '.hotkey-input'])('sets the %s hint as text', (selector) => {
+      const rule = placeholderRule(selector);
+      expect(rule?.style.getPropertyValue('font-family')).toBe('var(--font-sans)');
+      expect(rule?.style.getPropertyValue('letter-spacing')).toBe('0');
+    });
+  });
+
+  describe('the hotkey recorder', () => {
+    const CARD = `
+      <div class="hotkey-capture-modal"><div class="modal-content">
+        <p>Press the desired key combination...</p>
+        <div id="hotkey-preview" class="hotkey-preview-box"></div>
+        <p><small>Press Esc to cancel.</small></p>
+        <button type="button" class="btn btn-secondary hotkey-capture-cancel">Cancel</button>
+      </div></div>`;
+
+    it('sets Cancel apart from the note above it, at the size of a dialog button', () => {
+      render(CARD);
+      const cancel = document.querySelector('.hotkey-capture-cancel');
+      expect(resolvedValue(cancel, 'align-self')).toBe('center');
+      expect(resolvedValue(cancel, 'margin-top')).toBe('0.75rem');
+    });
+
+    it('writes the Escape note small and dim', () => {
+      render(CARD);
+      const note = document.querySelector('small');
+      expect(resolvedValue(note, 'font-size')).toBe(resolvedValue(note, '--font-size-sm'));
+      expect(resolvedValue(note, 'color')).toBe(resolvedValue(note, '--text-dim'));
+    });
+  });
 });

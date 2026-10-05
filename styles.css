@@ -11254,8 +11254,10 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   letter-spacing: 0.5px;
 }
 
-/* The saved hotkey and the "Not set" hint are placeholders; read them as text, not as code. */
-#popup-hotkey-input::placeholder {
+/* The saved hotkey and the "Not set" hint are placeholders, as is an entity row's "None"; read them
+   as text, not as code. In the code face "None" was spaced out, and in Arabic, Hindi and Chinese
+   it fell to a mismatched fallback font. */
+:is(#popup-hotkey-input, .hotkey-input)::placeholder {
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   letter-spacing: 0;
@@ -11435,6 +11437,19 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   padding: var(--space-6) var(--space-5);
   text-align: center;
   color: var(--text-primary);
+}
+
+/* The card is a column whose rows stretch, so Cancel ran the full width with "Press Esc to cancel."
+   sitting flush on it, read as its label, and the note was as large as the prompt. The note is a
+   small dim line under the preview, and Cancel is a button of the usual size with room above it. */
+.hotkey-capture-modal .modal-content small {
+  color: var(--text-dim);
+  font-size: var(--font-size-sm);
+}
+
+.hotkey-capture-modal .hotkey-capture-cancel {
+  align-self: center;
+  margin-top: var(--space-4);
 }
 
 /* The full-screen overlay takes focus while recording; a ring around the window would only distract. */
