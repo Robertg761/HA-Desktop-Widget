@@ -1,16 +1,19 @@
 /**
  * Boots renderer.js in jsdom against a mocked websocket, state and electron bridge, for tests of
- * what the main window says and does (the connection panel, toasts, language changes).
+ * what the main window says and does (the connection panel, first run, toasts, language changes).
  *
- * The mocks match the ones tests/unit/renderer-connection.test.js builds inline. A test file calls
- * `load()` per test and gets the mocks back to drive and inspect:
+ * A test file calls `load()` per test and gets the mocks back to drive and inspect:
  *
  *   const harness = createRendererHarness();
+ *   warmUpRenderer(() => harness.load(), () => harness.cleanup());
+ *   afterEach(() => harness.cleanup());
+ *
  *   const { websocket, electronAPI } = await harness.load({ config });
  *   websocket.emit('error', new Error('...'));
  *
- * Call `harness.cleanup()` in afterEach. It also stops the renderer the test booted; see
- * createRendererLifetime.
+ * `harness.cleanup()` also stops the renderer the test booted; see createRendererLifetime. A file
+ * whose renderer cannot boot through load() (a desktop pin, fake timers from the start) keeps its
+ * own mocks but starts and stops a createRendererLifetime() around each load all the same.
  */
 const EventEmitter = require('events');
 const {
@@ -141,6 +144,24 @@ function createRendererLifetime() {
   };
 }
 
+// The first load of renderer.js is the slow one: it is when Jest transforms the file, which under
+// coverage on a busy runner with a cold cache can take longer than the 5 s a test gets. Every file
+// that boots the renderer loads it once in beforeAll, with this much room, so no test pays for it.
+const RENDERER_WARM_UP_TIMEOUT_MS = 60000;
+
+function warmUpRenderer(load, cleanup) {
+  beforeAll(async () => {
+    await load();
+    cleanup();
+  }, RENDERER_WARM_UP_TIMEOUT_MS);
+}
+
+// The main window's dashboard, as far as the connection panel and the toasts need it.
+const DASHBOARD_SHELL =
+  '<main class="widget-content"><div id="quick-controls"></div></main>' +
+  '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>' +
+  '<div id="widget-state-live" role="status"></div>';
+
 function createRendererHarness() {
   const lifetime = createRendererLifetime();
   const harness = {
@@ -162,6 +183,10 @@ function createRendererHarness() {
      * @param {Object} [options.messages] - Translations t() should answer with.
      * @param {Object} [options.ui] - Extra members for the mocked src/ui.js.
      * @param {Object} [options.uiUtils] - Extra members for the mocked src/ui-utils.js.
+     * @param {Object} [options.settings] - Extra members for the mocked src/settings.js.
+     * @param {Object} [options.utils] - Extra members for the mocked src/utils.js.
+     * @param {string} [options.shellHtml] - The page the renderer boots into, in place of the
+     *   dashboard (Quick Access, a hidden Settings dialog and the status region).
      * @param {string} [options.bodyHtml] - Extra markup in the document body.
      * @param {Object} [options.constants] - Values that replace the mocked src/constants.js ones.
      */
@@ -171,6 +196,9 @@ function createRendererHarness() {
       messages = {},
       ui = {},
       uiUtils = {},
+      settings = {},
+      utils = {},
+      shellHtml = DASHBOARD_SHELL,
       bodyHtml = '',
       constants = {},
     } = {}) {
@@ -178,11 +206,7 @@ function createRendererHarness() {
       jest.resetModules();
       resetMockElectronAPI();
       lifetime.start();
-      document.body.innerHTML =
-        '<main class="widget-content"><div id="quick-controls"></div></main>' +
-        '<div id="settings-modal" class="hidden"><input id="ha-url" value="" /></div>' +
-        '<div id="widget-state-live" role="status"></div>' +
-        bodyHtml;
+      document.body.innerHTML = shellHtml + bodyHtml;
       document.body.className = '';
       window.history.replaceState({}, '', 'http://localhost/');
 
@@ -238,7 +262,7 @@ function createRendererHarness() {
       jest.doMock('../../src/logger.js', () => ({ __esModule: true, default: log }));
       jest.doMock('../../src/state.js', () => ({ __esModule: true, default: state }));
       jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: websocket }));
-      jest.doMock('../../src/hotkeys.js', () => ({
+      const mockHotkeys = {
         __esModule: true,
         initializeHotkeys: jest.fn(),
         setupHotkeyEventListeners: jest.fn(),
@@ -247,15 +271,17 @@ function createRendererHarness() {
         toggleHotkeys: jest.fn(),
         captureHotkey: jest.fn(),
         cleanupHotkeyEventListeners: jest.fn(),
-      }));
-      jest.doMock('../../src/alerts.js', () => ({
+      };
+      jest.doMock('../../src/hotkeys.js', () => mockHotkeys);
+      const mockAlerts = {
         __esModule: true,
         initializeEntityAlerts: jest.fn(),
         suspendEntityAlerts: jest.fn(),
         resetEntityAlerts: jest.fn(),
         checkEntityAlerts: jest.fn(),
         toggleAlerts: jest.fn(),
-      }));
+      };
+      jest.doMock('../../src/alerts.js', () => mockAlerts);
       jest.doMock('../../src/notifications.js', () => ({
         __esModule: true,
         initializePersistentNotifications: jest.fn(),
@@ -286,7 +312,7 @@ function createRendererHarness() {
         ...ui,
       };
       jest.doMock('../../src/ui.js', () => mockUi);
-      jest.doMock('../../src/settings.js', () => ({
+      const mockSettings = {
         __esModule: true,
         openSettings: jest.fn(() => {
           document.getElementById('settings-modal')?.classList.remove('hidden');
@@ -295,7 +321,9 @@ function createRendererHarness() {
         saveSettings: jest.fn(),
         renderAlertsListInline: jest.fn(),
         refreshHomeAssistantAuthStatus: jest.fn(),
-      }));
+        ...settings,
+      };
+      jest.doMock('../../src/settings.js', () => mockSettings);
       const mockUiUtils = {
         __esModule: true,
         showLoading: jest.fn(),
@@ -319,6 +347,7 @@ function createRendererHarness() {
         __esModule: true,
         reconcileConfigEntityIds: jest.fn((nextConfig) => ({ changed: false, config: nextConfig })),
         resolveEntityId: jest.fn((entityId) => entityId),
+        ...utils,
       }));
       jest.doMock('../../src/i18n.js', () => ({
         __esModule: true,
@@ -373,6 +402,9 @@ function createRendererHarness() {
         log,
         ui: mockUi,
         uiUtils: mockUiUtils,
+        settings: mockSettings,
+        alerts: mockAlerts,
+        hotkeys: mockHotkeys,
       });
       return harness;
     },
@@ -388,4 +420,12 @@ function createRendererHarness() {
   return harness;
 }
 
-module.exports = { createRendererHarness, tokenConfig, oauthConfig, baseConfig, flushAsync };
+module.exports = {
+  createRendererHarness,
+  createRendererLifetime,
+  warmUpRenderer,
+  tokenConfig,
+  oauthConfig,
+  baseConfig,
+  flushAsync,
+};

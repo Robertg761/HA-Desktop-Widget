@@ -7,8 +7,12 @@
 
 const EventEmitter = require('events');
 const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer one-off behaviours', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   let mockElectronAPI;
   let mockState;
   let mockUiUtils;
@@ -33,6 +37,7 @@ describe('Renderer one-off behaviours', () => {
 
   const loadRenderer = async ({ config = baseConfig(), bodyHtml = '' } = {}) => {
     jest.resetModules();
+    lifetime.start();
     resetMockElectronAPI();
     localStorage.clear();
     document.body.innerHTML = `<main class="widget-content"></main>${bodyHtml}`;
@@ -186,12 +191,16 @@ describe('Renderer one-off behaviours', () => {
     await flushAsync();
   };
 
-  afterEach(() => {
+  const cleanup = () => {
+    lifetime.stop();
     jest.resetModules();
     delete window.electronAPI;
     document.body.innerHTML = '';
     localStorage.clear();
-  });
+  };
+
+  warmUpRenderer(loadRenderer, cleanup);
+  afterEach(cleanup);
 
   describe('apply_profile from Home Assistant', () => {
     const profilePayload = (customTabs) => ({
