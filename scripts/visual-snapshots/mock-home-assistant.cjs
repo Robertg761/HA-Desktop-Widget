@@ -286,11 +286,17 @@ function startMockHomeAssistant({
           } else if (item.type === 'ping') {
             send({ id: item.id, type: 'pong' });
           } else if (typeof item.id === 'number' && isRefusedCall(item, failingEntities)) {
+            // A reason as long as a real one, so the toast that reports it wraps at the default
+            // width, as the toast layout scenes need it to.
             send({
               id: item.id,
               type: 'result',
               success: false,
-              error: { code: 'unknown_error', message: 'The mock refused this call' },
+              error: {
+                code: 'unknown_error',
+                message:
+                  'The device did not respond. Check that it is powered on and connected to Home Assistant.',
+              },
             });
           } else if (typeof item.id === 'number') {
             send({

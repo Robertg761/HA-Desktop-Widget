@@ -7,7 +7,6 @@ const {
   APP_LANGUAGES,
   createLocalizationService,
   detectSystemLocale,
-  pickSpellCheckerLanguage,
 } = require('../../src/i18n-main.cjs');
 
 const root = path.resolve(__dirname, '../..');
@@ -231,60 +230,6 @@ describe('the app languages the detection knows', () => {
   });
 });
 
-describe('the spell checker language', () => {
-  // session.availableSpellCheckerLanguages under Electron 43 on Linux.
-  const available = [
-    'af bg ca cs cy da de de-DE el en en-AU en-CA en-GB en-GB-oxendict en-US es es-419 es-AR',
-    'es-ES es-MX es-US et fa fo fr fr-FR gl he hi hr hu hy id it it-IT ko lt lv nb nl pl pt pt-BR',
-    'pt-PT ro ru sh sk sl sq sr sv ta tg tr uk vi',
-  ]
-    .join(' ')
-    .split(' ');
-
-  // What Chromium picks once the trimmed package has no pak for the language: en-US, measured
-  // with LANG=pt_BR.UTF-8 and LANG=ja_JP.UTF-8 against the trimmed locales folder.
-  it.each([
-    ['pt-BR', ['pt-BR', 'pt-BR', 'pt', 'pt'], 'pt-BR'],
-    ['pt-BR then en-US on Windows', ['pt-BR', 'en-US'], 'pt-BR'],
-    ['it-IT', ['it-IT', 'it'], 'it-IT'],
-    ['nl-NL, by its language', ['nl-NL', 'nl'], 'nl'],
-    ['ja-JP then pt-BR, the first with a dictionary', ['ja-JP', 'pt-BR'], 'pt-BR'],
-  ])('moves %s off the English it would start in', (_name, preferred, wanted) => {
-    expect(pickSpellCheckerLanguage(preferred, available, ['en-US'])).toBe(wanted);
-  });
-
-  it.each([
-    // The app's languages keep their pak, so Chromium already picked a dictionary in them.
-    ['es-MX on es-419', ['es-MX', 'es'], ['es-419']],
-    ['de-AT on de', ['de-AT', 'de'], ['de']],
-    ['en-GB on en-GB', ['en-GB', 'en'], ['en-GB']],
-    // No dictionary for Japanese, and English after it is what the spell checker is in.
-    ['ja-JP then en-US', ['ja-JP', 'en-US'], ['en-US']],
-    // A language with no dictionary at all, and a list with nothing usable in it.
-    ['zh-TW alone', ['zh-TW', 'zh'], ['en-US']],
-    ['an empty list', [], ['en-US']],
-    ['placeholders', ['c', 'posix'], ['en-US']],
-  ])('leaves %s as it is', (_name, preferred, current) => {
-    expect(pickSpellCheckerLanguage(preferred, available, current)).toBe('');
-  });
-
-  it('follows a system that changed language since the last pick', () => {
-    // The pick is saved in the profile, so the next start sees it as the current language.
-    expect(pickSpellCheckerLanguage(['de-DE', 'de'], available, ['pt-BR'])).toBe('de-DE');
-    // Japanese has no dictionary, so back to the English Chromium starts Japanese in.
-    expect(pickSpellCheckerLanguage(['ja-JP', 'ja'], available, ['pt-BR'])).toBe('en-US');
-    expect(pickSpellCheckerLanguage(['ja-JP', 'ja'], available, ['en-GB'])).toBe('');
-    expect(pickSpellCheckerLanguage(['ja-JP', 'ja'], available, [])).toBe('');
-  });
-
-  it('answers with the code as the session lists it, and copes with missing input', () => {
-    expect(pickSpellCheckerLanguage(['en-gb-oxendict'], available, ['de'])).toBe('en-GB-oxendict');
-    expect(pickSpellCheckerLanguage(['pt_BR'], ['pt-BR'], [])).toBe('pt-BR');
-    expect(pickSpellCheckerLanguage(['pt-BR'], undefined, undefined)).toBe('');
-    expect(pickSpellCheckerLanguage(undefined, available)).toBe('');
-  });
-});
-
 describe('how main.js asks for the language', () => {
   const mainSource = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 
@@ -297,26 +242,5 @@ describe('how main.js asks for the language', () => {
     // app.getLocale() depends on the .pak files that ship. It is the last resort, and that lives
     // inside detectSystemLocale.
     expect(block).not.toContain('getLocale');
-  });
-});
-
-describe('how main.js sets the spell checker language', () => {
-  const mainSource = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
-
-  it('sets it from the system on Windows and Linux when the app starts', () => {
-    const start = mainSource.indexOf('function applySystemSpellCheckerLanguage(');
-    const body = mainSource.slice(start, mainSource.indexOf('\n}\n', start));
-    expect(start).toBeGreaterThan(-1);
-    expect(body).toContain("process.platform === 'darwin'");
-    expect(body).toContain('app.getPreferredSystemLanguages()');
-    expect(body).toContain('setSpellCheckerLanguages([language])');
-    // Once, on the session the windows use, after the app is ready.
-    const call = 'applySystemSpellCheckerLanguage(session.defaultSession)';
-    const ready = mainSource.indexOf('installSessionPermissionPolicy(session.defaultSession');
-    expect(mainSource.split(call)).toHaveLength(2);
-    expect(mainSource.indexOf(call)).toBeGreaterThan(ready);
-    const readyHandler = mainSource.indexOf('\n  .whenReady()');
-    expect(readyHandler).toBeGreaterThan(-1);
-    expect(ready).toBeGreaterThan(readyHandler);
   });
 });

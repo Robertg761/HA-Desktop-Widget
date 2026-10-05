@@ -84,8 +84,6 @@ const BACKGROUND_BASES = {
     bgColor: { r: 18, g: 22, b: 30, a: 0.8 },
     bgElevated: { r: 24, g: 28, b: 37, a: 0.9 },
     bgPrimary: { r: 13, g: 16, b: 22, a: 0.95 },
-    bgSecondary: { r: 24, g: 28, b: 37, a: 0.9 },
-    bgTertiary: { r: 30, g: 35, b: 45, a: 0.85 },
     surface1: { r: 20, g: 24, b: 32, a: 0.8 },
     surface2: { r: 28, g: 33, b: 42, a: 0.85 },
     surface3: { r: 36, g: 41, b: 51, a: 0.9 },
@@ -100,8 +98,6 @@ const BACKGROUND_BASES = {
     bgColor: { r: 250, g: 250, b: 250, a: 0.8 },
     bgElevated: { r: 255, g: 255, b: 255, a: 0.9 },
     bgPrimary: { r: 245, g: 245, b: 250, a: 0.95 },
-    bgSecondary: { r: 255, g: 255, b: 255, a: 0.9 },
-    bgTertiary: { r: 240, g: 240, b: 245, a: 0.85 },
     surface1: { r: 250, g: 250, b: 255, a: 0.8 },
     surface2: { r: 255, g: 255, b: 255, a: 0.85 },
     surface3: { r: 255, g: 255, b: 255, a: 0.9 },
@@ -201,6 +197,31 @@ const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
 // Below this spread between the strongest and weakest channel an accent reads as grey (slate is
 // 0.14, the most muted of the other presets 0.56).
 const NEUTRAL_ACCENT_CHROMA = 0.25;
+// The hues of the alarm red and the warning amber of a tile that needs attention, and how close an
+// accent's hue can come to one before a tile lit in it reads as that state.
+const ATTENTION_HUES = [4, 36];
+const WARM_ACCENT_HUE_DISTANCE = 30;
+
+/** The hue of an {r, g, b} colour in degrees, 0 to 360 (0 for a grey). */
+function hueOf({ r, g, b }) {
+  const max = Math.max(r, g, b);
+  const spread = max - Math.min(r, g, b);
+  if (spread === 0) return 0;
+  let sector;
+  if (max === r) sector = (g - b) / spread;
+  else if (max === g) sector = (b - r) / spread + 2;
+  else sector = (r - g) / spread + 4;
+  return (sector * 60 + 360) % 360;
+}
+
+/** Whether an accent's hue is close to the red or the amber of a tile that needs attention. */
+function isWarmAccent(rgb) {
+  const hue = hueOf(rgb);
+  return ATTENTION_HUES.some((attentionHue) => {
+    const distance = Math.abs(hue - attentionHue) % 360;
+    return Math.min(distance, 360 - distance) <= WARM_ACCENT_HUE_DISTANCE;
+  });
+}
 
 /**
  * Text colour for content drawn on top of a colour: near-black or white, whichever contrasts
@@ -497,6 +518,11 @@ function applyAccentColor(color, accentId = 'custom-preview') {
     const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
     if (chroma < NEUTRAL_ACCENT_CHROMA) document.body.dataset.accentNeutral = 'true';
     else delete document.body.dataset.accentNeutral;
+    // A tile lit in an orange, a red or a gold looks like one that needs attention, so the
+    // stylesheet gives it a lighter wash with such an accent.
+    const warm = chroma >= NEUTRAL_ACCENT_CHROMA && isWarmAccent(rgb);
+    if (warm) document.body.dataset.accentWarm = 'true';
+    else delete document.body.dataset.accentWarm;
   }
 
   return true;
@@ -567,8 +593,6 @@ function applyBackgroundColor(
   root.style.setProperty('--window-bg-rgb', `${bgColor.r}, ${bgColor.g}, ${bgColor.b}`);
   const bgElevated = setRgbaVar('--bg-elevated', base.bgElevated);
   setRgbaVar('--bg-primary', base.bgPrimary);
-  setRgbaVar('--bg-secondary', base.bgSecondary);
-  const bgTertiary = setRgbaVar('--bg-tertiary', base.bgTertiary);
   const surface1 = setRgbaVar('--surface-1', base.surface1);
   setRgbaVar('--surface-2', base.surface2);
   setRgbaVar('--surface-3', base.surface3);
@@ -584,7 +608,6 @@ function applyBackgroundColor(
 
   setBodyRgb('--frosted-bg-rgb', bgColor);
   setBodyRgb('--frosted-elevated-rgb', bgElevated);
-  setBodyRgb('--frosted-tertiary-rgb', bgTertiary);
   setBodyRgb('--frosted-surface-rgb', surface1);
   setBodyRgb('--frosted-surface-hover-rgb', surfaceHover);
   setBodyRgb('--frosted-card-rgb', cardBg);
@@ -944,6 +967,8 @@ const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
 
 // Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
 const toastTiming = new WeakMap();
+// Names each message, so the close button can say which one it closes.
+let toastMessageCounter = 0;
 
 /**
  * Play the toast exit animation and then detach the toast.
@@ -1055,36 +1080,59 @@ function getToastLifetime(type, message, timeout, inPin = false) {
  * Keep the toast stack clear of the controls its surface is waiting on.
  *
  * Toasts sit at the bottom of the window, which is also where a dialog keeps its footer buttons
- * (Close, Save, Turn On), where the first-run wizard keeps Next, and where the connection panel
- * keeps Retry. The stack is lifted above whichever of those is showing. It is recomputed whenever
- * one of them opens or closes, as well as when a toast is added, so a stack that was already up
- * does not end up covering a footer that appeared afterwards, or float where one used to be.
+ * (Close, Save, Turn On), where the first-run wizard keeps Next, and, in a short window, where the
+ * connection panel keeps Retry. A stack that would cover one of those where it rests is lifted
+ * above it. One that would not stays down: lifting it above buttons higher up the window put it
+ * over what they belong to, such as the connection panel's own message, which sits above Quick
+ * Access. The layout is recomputed whenever one of them opens or closes, as well as when a toast
+ * is added, so a stack that was already up does not end up covering a footer that appeared
+ * afterwards, or float where one used to be. A scroll that moves the connection panel recomputes
+ * it too: in a short window the panel's buttons can come up from below the fold to where the
+ * stack rests.
  */
 function layoutToasts() {
   if (typeof document === 'undefined') return;
   const container = document.getElementById('toast-container');
   if (!container) return;
-  if (!container.querySelector('.toast')) {
-    container.style.removeProperty('bottom');
-    return;
-  }
-  const tops = (selector) =>
+  container.style.removeProperty('bottom');
+  if (!container.querySelector('.toast')) return;
+  const boxes = (selector) =>
     Array.from(document.querySelectorAll(selector))
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => element.getBoundingClientRect())
       // A surface scrolled out of view has nothing for a toast to cover.
-      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight)
-      .map((rect) => rect.top);
-  let avoid = tops(TOAST_DIALOG_AVOID_SELECTOR);
+      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight);
+  let avoid = boxes(TOAST_DIALOG_AVOID_SELECTOR);
   if (!avoid.length && !document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
-    avoid = tops(TOAST_SURFACE_AVOID_SELECTOR);
+    avoid = boxes(TOAST_SURFACE_AVOID_SELECTOR);
   }
-  if (!avoid.length) {
-    container.style.removeProperty('bottom');
-    return;
-  }
-  const bottom = Math.max(0, window.innerHeight - Math.min(...avoid)) + TOAST_FOOTER_GAP_PX;
-  container.style.bottom = `${Math.round(bottom)}px`;
+  if (!avoid.length) return;
+  // Where the stack rests, then from the lowest control up: each one it would cover, or come
+  // closer to than the gap, moves it above that control.
+  const rest = container.getBoundingClientRect();
+  const height = rest.bottom - rest.top;
+  let floor = rest.bottom;
+  avoid
+    .sort((a, b) => b.bottom - a.bottom)
+    .forEach((rect) => {
+      if (rect.top < floor && rect.bottom + TOAST_FOOTER_GAP_PX > floor - height) {
+        floor = rect.top - TOAST_FOOTER_GAP_PX;
+      }
+    });
+  if (floor === rest.bottom) return;
+  container.style.bottom = `${Math.round(Math.max(0, window.innerHeight - floor))}px`;
+}
+
+// At most once a frame, and only while a toast is showing and the scroll moved a surface whose
+// buttons the stack keeps clear of: a scroll anywhere else changes nothing for the toasts.
+let toastScrollFrame = 0;
+function layoutToastsOnScroll(event) {
+  if (toastScrollFrame || !document.querySelector('#toast-container .toast')) return;
+  if (!event.target?.querySelector?.(TOAST_SURFACE_AVOID_SELECTOR)) return;
+  toastScrollFrame = window.requestAnimationFrame(() => {
+    toastScrollFrame = 0;
+    layoutToasts();
+  });
 }
 
 let toastLayoutWired = false;
@@ -1093,6 +1141,8 @@ function wireToastLayout() {
   toastLayoutWired = true;
   installDialogKeyRouter();
   window.addEventListener('resize', layoutToasts);
+  // Scroll events do not bubble; caught on the way down, one listener hears the dashboard's.
+  document.addEventListener('scroll', layoutToastsOnScroll, { capture: true, passive: true });
   // The wizard, the connection panel and the like announce themselves with a class on <body>.
   if (typeof MutationObserver === 'function' && document.body) {
     new MutationObserver(layoutToasts).observe(document.body, {
@@ -1143,10 +1193,10 @@ function dismissNewestToastForEscape(event) {
  *
  * The toast leads with a status icon matching its type and exits through the shared
  * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
- * button; errors stay until dismissed (in a pin window, as long as a warning) and warnings stay
- * long enough to read. Every toast pauses while the pointer or keyboard focus is on it, is
- * dismissed by click or from the keyboard (Enter, Space or Escape), and is folded into an
- * identical toast already showing. At most three stay on screen at once (one in a pin window).
+ * button, which is the keyboard's way to them; errors stay until dismissed (in a pin window, as
+ * long as a warning) and warnings stay long enough to read. Every toast pauses while the pointer
+ * or keyboard focus is on it, is dismissed by click or by Escape, and is folded into an identical
+ * toast already showing. At most three stay on screen at once (one in a pin window).
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -1216,22 +1266,23 @@ function showToast(
     if (passive) {
       toast.classList.add('toast-passive');
     } else {
-      // Dismissible by click, and from the keyboard: it takes focus with Tab, and Enter, Space or
-      // Escape closes it.
-      toast.tabIndex = 0;
+      // A click anywhere on it dismisses it, and so does Escape with focus inside it.
       toast.addEventListener('click', () => dismissToast(toast));
       toast.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+        if (event.key !== 'Escape') return;
         event.preventDefault();
         dismissToast(toast);
       });
       if (kind === 'error' || kind === 'warning') {
-        // For the pointer: the toast itself is the keyboard's one stop, so this stays out of Tab.
+        // The keyboard's way to a problem that waits: a real button, so a screen reader that
+        // reaches it by Tab hears what it does, and which message it closes. The toast itself is
+        // not a Tab stop: a focusable box with no role said only its text.
+        body.id = `toast-message-${++toastMessageCounter}`;
         const close = document.createElement('button');
         close.type = 'button';
         close.className = 'toast-close';
-        close.tabIndex = -1;
         close.setAttribute('aria-label', t('Close'));
+        close.setAttribute('aria-describedby', body.id);
         setIconContent(close, 'close', { size: 14 });
         toast.appendChild(close);
       }
@@ -2187,7 +2238,6 @@ function showConnectionStatusTooltip(target, { pinned = false } = {}) {
   connectionStatusTooltipTarget = target;
   if (pinned) connectionStatusTooltipPinned = true;
   target.setAttribute('aria-describedby', tooltip.id);
-  target.setAttribute('aria-expanded', 'true');
   tooltip.classList.add('visible');
   tooltip.setAttribute('aria-hidden', 'false');
   positionConnectionStatusTooltip(target);
@@ -2198,7 +2248,6 @@ function hideConnectionStatusTooltip({ force = false } = {}) {
   if (connectionStatusTooltipPinned && !force) return;
   if (connectionStatusTooltipTarget) {
     connectionStatusTooltipTarget.removeAttribute('aria-describedby');
-    connectionStatusTooltipTarget.setAttribute('aria-expanded', 'false');
   }
   connectionStatusTooltipTarget = null;
   connectionStatusTooltipPinned = false;
@@ -2310,10 +2359,9 @@ function initializeConnectionStatusTooltip() {
     ensureConnectionStatusTooltip();
     status.setAttribute('tabindex', '0');
     status.setAttribute('role', 'button');
-    status.setAttribute('aria-haspopup', 'true');
-    if (!status.hasAttribute('aria-expanded')) {
-      status.setAttribute('aria-expanded', 'false');
-    }
+    // No aria-haspopup or aria-expanded: what opens is a tooltip (role=tooltip), which repeats the
+    // label the dot already has and is tied to it by aria-describedby. Announced as a menu button,
+    // it promised a menu that never came.
     bindConnectionStatusHandlers(status);
   } catch (error) {
     console.error('Error initializing connection status tooltip:', error);
@@ -2357,7 +2405,7 @@ function setStatus(connected, detailMessage = '') {
 // electronAPI, so this module-load hook must stay optional.
 window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
   showToast(
-    t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }),
+    t('Hotkey “{{hotkey}}” is already in use by another application.', { hotkey }),
     'error',
     5000
   );

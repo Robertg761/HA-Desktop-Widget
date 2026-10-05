@@ -309,6 +309,9 @@ function renderNotificationMarkdown(container, message, options = {}) {
       container.appendChild(pre);
     } else if (block.type === 'list') {
       const list = document.createElement(block.ordered ? 'ol' : 'ul');
+      // A list, like a quote below, is laid out in the language of its own text: an English list
+      // in an Arabic window keeps its bullets at the start of its lines, not after them.
+      list.dir = 'auto';
       block.items.forEach((item) => {
         const element = document.createElement('li');
         appendInline(element, tokenizeInline(item), options);
@@ -317,6 +320,7 @@ function renderNotificationMarkdown(container, message, options = {}) {
       container.appendChild(list);
     } else {
       const element = document.createElement(block.type === 'quote' ? 'blockquote' : 'p');
+      if (block.type === 'quote') element.dir = 'auto';
       if (block.type === 'heading') element.className = 'persistent-notification-heading';
       appendLines(element, block.lines, options);
       container.appendChild(element);

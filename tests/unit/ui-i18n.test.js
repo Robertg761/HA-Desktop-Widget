@@ -257,6 +257,7 @@ describe('ui.js translations and number formatting', () => {
       Stop: 'Stopp',
       Position: 'Position DE',
       Closed: 'Geschlossen',
+      Done: 'Fertig',
     });
     const cover = entity('cover.window', 'open', { current_position: 40, supported_features: 15 });
     state.setStates({ [cover.entity_id]: cover });
@@ -269,7 +270,12 @@ describe('ui.js translations and number formatting', () => {
     expect(
       [...document.querySelectorAll('.cover-slider-labels span')].map((node) => node.textContent)
     ).toEqual(['Geschlossen', 'Offen']);
-    expect(text('#cover-cancel')).toBe('Schließen');
+    // The footer leaves the dialog; it is not a second "Schließen" under the one that moves it.
+    expect(text('#cover-cancel')).toBe('Fertig');
+    const labels = [...document.querySelectorAll('.cover-modal button')]
+      .map((button) => button.textContent.trim())
+      .filter(Boolean);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('translates the media dialog, including the footer Close button', () => {

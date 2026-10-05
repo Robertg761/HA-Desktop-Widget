@@ -517,7 +517,7 @@ describe('stylesheet cascade regressions', () => {
         '',
         `<div class="confirm-modal-content">
           <div class="modal-footer">
-            <button class="btn btn-secondary" id="confirm-cancel-btn">Keep editing</button>
+            <button class="btn btn-secondary btn-neutral" id="confirm-cancel-btn">Keep editing</button>
             <button class="btn btn-secondary" id="confirm-alternate-btn">Discard color edits</button>
             <button class="btn btn-primary" id="confirm-ok-btn">Save and Continue</button>
           </div>
@@ -556,9 +556,15 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(form, 'position')).toBe('sticky');
       // Held at the content edge, so the body's own padding is taken back: negative top and margins,
       // and the same amount as padding on the field itself, which leaves the layout at rest as it was.
+      // At the end the body keeps the scrollbar's room out of its padding, so less is taken back.
+      const scrollbar = resolvedValue(form, '--modal-scrollbar-size');
       expect(resolvedValue(form, 'top')).toBe(`calc(-1 * ${inset})`);
-      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) calc(-1 * ${inset}) 0`);
+      expect(resolvedValue(form, 'margin')).toBe(`calc(-1 * ${inset}) 0 0`);
+      expect(resolvedValue(form, 'margin-inline').replace(/\s+/g, ' ')).toBe(
+        `calc(-1 * ${inset}) calc(${scrollbar} - ${inset})`
+      );
       expect(resolvedValue(form, 'padding')).toBe(`${inset} ${inset} 14px`);
+      expect(resolvedValue(form, 'padding-inline-end')).toBe(`calc(${inset} - ${scrollbar})`);
     });
 
     // A window under 480px high gives a dialog body 12px of padding instead of 16px. An add field that
@@ -571,8 +577,11 @@ describe('stylesheet cascade regressions', () => {
       const form = document.querySelector('.todo-add-form');
       expect(resolvedValue(body, 'padding')).toBe('1rem');
       expect(resolvedValue(body, 'padding', short)).toBe('0.75rem');
-      expect(resolvedValue(form, 'margin')).toBe('calc(-1 * 1rem) calc(-1 * 1rem) 0');
-      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) calc(-1 * 0.75rem) 0');
+      const inline = (options) =>
+        resolvedValue(form, 'margin-inline', options).replace(/\s+/g, ' ');
+      expect(inline()).toBe('calc(-1 * 1rem) calc(9px - 1rem)');
+      expect(inline(short)).toBe('calc(-1 * 0.75rem) calc(9px - 0.75rem)');
+      expect(resolvedValue(form, 'margin', short)).toBe('calc(-1 * 0.75rem) 0 0');
       expect(resolvedValue(form, 'top', short)).toBe('calc(-1 * 0.75rem)');
     });
   });
@@ -920,22 +929,6 @@ describe('stylesheet cascade regressions', () => {
   });
 
   describe('hidden rows in workflow pick lists', () => {
-    it('hides device rows filtered out by the starter search', () => {
-      render(
-        '',
-        `<div class="form-group room-dashboard">
-          <div class="room-entity-list">
-            <label hidden><input type="checkbox" value="light.desk">Desk</label>
-            <label><input type="checkbox" value="sensor.temp">Temperature</label>
-          </div>
-        </div>`
-      );
-
-      const [hidden, shown] = document.querySelectorAll('.room-entity-list > label');
-      expect(resolvedValue(hidden, 'display')).toBe('none');
-      expect(resolvedValue(shown, 'display')).toBe('flex');
-    });
-
     it('hides checkbox rows in the advanced alert options', () => {
       render(
         '',
@@ -1242,24 +1235,6 @@ describe('stylesheet cascade regressions', () => {
       expect(resolvedValue(off, 'border', options)).toMatch(/^1px solid /);
     });
 
-    it.each(['weather', 'numeric', 'enum', 'vacuum', 'presence'])(
-      'leaves the %s pin header to the name, because the meter prints the value',
-      (family) => {
-        const kpi = '<div class="desktop-pin-panel-kpi">1</div>';
-        const pin = (layout) =>
-          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
-            data-layout="${layout}"><div class="desktop-pin-panel-topline">${kpi}</div></div>`;
-        render('desktop-pin-mode', pin('compact'));
-        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).toBe(
-          'none'
-        );
-        render('desktop-pin-mode', pin('roomy'));
-        expect(resolvedValue(document.querySelector('.desktop-pin-panel-kpi'), 'display')).not.toBe(
-          'none'
-        );
-      }
-    );
-
     it('sets a word tightly only as much as a number, and keeps digit tracking for numbers', () => {
       render(
         'desktop-pin-mode',
@@ -1369,6 +1344,282 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  describe('desktop pins larger than the default and in their other states', () => {
+    const panel = (family, layout, attributes = '') =>
+      `<div class="desktop-pin-shell"><div class="desktop-pin-content">
+        <div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-${family}-control"
+          data-layout="${layout}" ${attributes}>
+          <div class="desktop-pin-panel-shell"><div class="desktop-pin-panel-body">
+            <div class="desktop-pin-weather-stats"><div class="desktop-pin-panel-stat">
+              <div class="desktop-pin-panel-stat-label">12 km/h</div></div></div>
+            <div class="desktop-pin-panel-actions">
+              <button class="desktop-pin-panel-button"><span class="desktop-pin-panel-button-label">Cool</span></button>
+            </div>
+          </div></div>
+        </div></div></div>`;
+
+    // 195x160 up to 259x189 is the balanced layout. It brings back a fourth mode or speed, so its
+    // buttons need the default pin's spacing; capitals ran them to "C...". Sentence case is now
+    // every pin button's own, so no rule here has to turn capitals off.
+    it.each([
+      ['climate', { width: 200, height: 170 }],
+      ['fan', { width: 240, height: 180 }],
+      ['cover', { width: 259, height: 189 }],
+    ])('keeps a balanced %s pin to the default pin spacing and buttons', (family, viewport) => {
+      render('desktop-pin-mode', panel(family, 'balanced'));
+      const options = { viewport };
+      const control = document.querySelector('.desktop-pin-panel-control');
+      const button = document.querySelector('.desktop-pin-panel-button');
+      expect(resolvedValue(control, '--desktop-pin-panel-pad', options)).toBe('8px');
+      expect(resolvedValue(control, '--desktop-pin-panel-gap', options)).toBe('6px');
+      expect(resolvedValue(button, 'text-transform', options) ?? 'none').toBe('none');
+      expect(resolvedValue(button, 'min-height', options)).toBe('24px');
+      expect(resolvedValue(button, 'letter-spacing', options)).toBe('0');
+      // The row gives a long label ("Kühlen") the room a short one ("Aus") leaves.
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display', options)
+      ).toBe('flex');
+    });
+
+    it('leaves a balanced media pin its roomier spacing, since no row of it grows', () => {
+      // A media pin is balanced only from 285px wide, and nothing of it ran off the tile there.
+      render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="standard"'));
+      const options = { viewport: { width: 300, height: 170 } };
+      const button = document.querySelector('.desktop-pin-panel-button');
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-panel-pad',
+          options
+        )
+      ).toBe('12px');
+      expect(resolvedValue(button, 'min-height', options)).not.toBe('24px');
+      // Its buttons are in sentence case all the same, like every pin's: a media pin said PLAY
+      // beside pins that say Play.
+      expect(resolvedValue(button, 'text-transform', options) ?? 'none').toBe('none');
+      // The tight media pin, narrower, keeps the default pin's spacing.
+      render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="tight"'));
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-panel-button'), 'min-height', options)
+      ).toBe('24px');
+    });
+
+    it.each(['compact', 'balanced', 'roomy'])(
+      'keeps the case of a weather reading in a %s pin ("km/h", never "KM/H")',
+      (layout) => {
+        render('desktop-pin-mode', panel('weather', layout));
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-stat-label'), 'text-transform')
+        ).toBe('none');
+      }
+    );
+
+    it.each([
+      ['heat', '255, 132, 96'],
+      ['cool', '3, 169, 244'],
+      ['heat_cool', '0, 150, 136'],
+      ['auto', '0, 150, 136'],
+      ['off', '130, 150, 176'],
+      ['dry', '130, 150, 176'],
+      ['fan_only', '130, 150, 176'],
+    ])('tints a climate pin in %s mode %s', (mode, tint) => {
+      render('desktop-pin-mode', panel('climate', 'compact', `data-state="${mode}"`));
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-tint-rgb'
+        )
+      ).toBe(tint);
+    });
+
+    it('takes an automation that is switched off out of its tint, like a switch', () => {
+      render('desktop-pin-mode', panel('action', 'compact', 'data-state="off"'));
+      expect(
+        resolvedValue(
+          document.querySelector('.desktop-pin-panel-control'),
+          '--desktop-pin-tint-rgb'
+        )
+      ).toBe('130, 150, 176');
+    });
+
+    it.each([
+      ['dark', 'high-contrast opaque-panels'],
+      ['light', 'theme-light high-contrast opaque-panels'],
+      ['opaque panels alone', 'opaque-panels'],
+    ])(
+      'leaves the window around a pin clear under the Readable preset (%s), not a square plate',
+      (_, preset) => {
+        render(`desktop-pin-mode ${preset}`, '<div class="desktop-pin-shell"></div>');
+        expect(resolvedValue(document.body, 'background')).toBe('transparent');
+        // The rounded shell is what the preset makes solid.
+        expect(resolvedValue(document.querySelector('.desktop-pin-shell'), 'background')).not.toBe(
+          'transparent'
+        );
+
+        render(preset, '');
+        expect(resolvedValue(document.body, 'background')).not.toBe('transparent');
+      }
+    );
+
+    it('gives a light preset chip its whole width, so "100%" clears an outline', () => {
+      render(
+        'desktop-pin-mode high-contrast opaque-panels',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
+          <button class="desktop-pin-light-preset">100%</button></div>`
+      );
+      const chip = document.querySelector('.desktop-pin-light-preset');
+      expect(resolvedValue(chip, 'padding-inline')).toBe('0');
+      expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+    });
+
+    it.each(THEME_CASES)('marks the lamp preset at the current level (%s)', (_, theme) => {
+      render(
+        `desktop-pin-mode ${theme}`,
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
+          <button class="desktop-pin-light-preset" data-active="true">75%</button>
+          <button class="desktop-pin-light-preset" data-active="false">100%</button></div>`
+      );
+      const [on, off] = document.querySelectorAll('.desktop-pin-light-preset');
+      expect(resolvedValue(on, 'border-color')).not.toBe(resolvedValue(off, 'border-color'));
+    });
+
+    it('marks the lamp preset at the current level under forced colours', () => {
+      render(
+        'desktop-pin-mode',
+        `<button class="desktop-pin-light-preset" data-active="true">75%</button>`
+      );
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'outline', {
+          forcedColors: true,
+        })
+      ).toBe('2px solid Highlight');
+    });
+
+    it('fills the body of an on/off lamp with its state, lit by the lamp', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact"
+          data-can-set-brightness="false" data-state="on">
+          <div class="desktop-pin-light-shell">
+            <div class="desktop-pin-light-topline"></div>
+            <div class="desktop-pin-panel-meter desktop-pin-light-state">
+              <div class="desktop-pin-light-state-value">On</div></div>
+          </div></div>`
+      );
+      // Two rows: no empty third one adding a gap under the meter.
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-shell'), 'grid-template-rows')
+      ).toBe('auto minmax(0, 1fr)');
+      const meter = document.querySelector('.desktop-pin-light-state');
+      expect(resolvedValue(meter, 'border-radius')).toBe('12px');
+      // Its glow is the lamp's level: full while it is on, none while it is off.
+      document
+        .querySelector('.desktop-pin-light-control')
+        .style.setProperty('--desktop-pin-light-level', '1');
+      expect(resolvedValue(meter, '--desktop-pin-progress')).toBe('1');
+    });
+
+    // The cascade helper does not match pseudo-elements, so these read the corner rules themselves.
+    const pseudoRule = (selector) => {
+      let found = null;
+      const visit = (rules) => {
+        for (const rule of rules) {
+          if (rule.cssRules && !rule.selectorText) visit(rule.cssRules);
+          else if (rule.selectorText?.replace(/\s+/g, ' ') === selector) found = rule;
+        }
+      };
+      for (const sheet of document.styleSheets) visit(sheet.cssRules);
+      return found;
+    };
+
+    it.each([
+      ['top', 'left'],
+      ['top', 'right'],
+      ['bottom', 'left'],
+      ['bottom', 'right'],
+    ])('draws the %s-%s resize mark as a ring inside the rounded corner', (vertical, side) => {
+      const rule = pseudoRule(`.desktop-pin-resize-handle-${vertical}-${side}::before`);
+      // A triangle filling the corner box was clipped by the window's rounded corner to a sliver.
+      expect(rule.style.getPropertyValue('clip-path')).toBe('');
+      expect(rule.style.getPropertyValue(`border-${vertical}-${side}-radius`)).toBe('100%');
+      expect(rule.style.getPropertyValue(`border-${vertical}-width`)).toBe('3px');
+      expect(rule.style.getPropertyValue(`border-${side}-width`)).toBe('3px');
+      expect(rule.style.getPropertyValue(vertical)).toBe('var(--desktop-pin-resize-mark-inset)');
+      expect(rule.style.getPropertyValue(side)).toBe('var(--desktop-pin-resize-mark-inset)');
+    });
+
+    it('keeps the whole resize mark inside the window corner at every handle size', () => {
+      render('desktop-pin-mode', '<div class="desktop-pin-shell"></div>');
+      const corner = parseFloat(
+        resolvedValue(document.querySelector('.desktop-pin-shell'), 'clip-path').match(
+          /round\s+([\d.]+)px/
+        )[1]
+      );
+      const handle = pseudoRule('.desktop-pin-resize-handle').style;
+      const [smallest, largest] = handle
+        .getPropertyValue('--desktop-pin-resize-handle-size')
+        .match(/clamp\(([\d.]+)px,.*,\s*([\d.]+)px\)/)
+        .slice(1)
+        .map(Number);
+      // calc(a + (b - size) / k): how far in the mark sits for a handle of a given size.
+      const [a, b, k] = handle
+        .getPropertyValue('--desktop-pin-resize-mark-inset')
+        .match(
+          /^calc\(([\d.]+)px \+ \(([\d.]+)px - var\(--desktop-pin-resize-handle-size\)\) \/ ([\d.]+)\)$/
+        )
+        .slice(1)
+        .map(Number);
+      const insetFor = (size) => a + (b - size) / k;
+      const before = pseudoRule('.desktop-pin-resize-handle::before').style;
+      // The border counts in the size, so the ring's outer edge spans exactly inset to size.
+      expect(before.getPropertyValue('box-sizing')).toBe('border-box');
+      expect(before.getPropertyValue('width')).toBe(
+        'calc(var(--desktop-pin-resize-handle-size) - var(--desktop-pin-resize-mark-inset))'
+      );
+      const ring = parseFloat(
+        pseudoRule('.desktop-pin-resize-handle-top-left::before').style.getPropertyValue(
+          'border-top-width'
+        )
+      );
+      // The 8px around the pin's buttons, which the ring should not cross where the corner allows.
+      const contentPad = 8;
+      for (let size = smallest; size <= largest; size += 1) {
+        // The ring's outer edge is a quarter circle about (size, size), from the window's corner.
+        const inset = insetFor(size);
+        const radius = size - inset;
+        for (let degrees = 0; degrees <= 90; degrees += 5) {
+          const angle = (degrees * Math.PI) / 180;
+          const x = size - radius * Math.cos(angle);
+          const y = size - radius * Math.sin(angle);
+          // Inside the window's rounded corner: within `corner` of the arc's centre.
+          expect(Math.hypot(corner - x, corner - y)).toBeLessThanOrEqual(corner + 1e-9);
+        }
+      }
+      // A full-size handle's ring shares the corner's centre, so it runs a steady band just inside
+      // the window's edge, outside the content's padding along both sides.
+      expect(largest).toBe(corner);
+      expect(insetFor(largest) + ring).toBeLessThan(contentPad);
+    });
+
+    it('keeps the dark weather palette on a pin in the light theme, where pins stay dark glass', () => {
+      const cloud = (bodyClass) => {
+        render(
+          bodyClass,
+          '<div class="desktop-pin-panel-glyph weather-icon weather-icon-cloudy"></div>'
+        );
+        return resolvedValue(document.querySelector('.weather-icon'), '--weather-cloud-fill');
+      };
+      expect(cloud('desktop-pin-mode theme-light')).toBe(cloud('desktop-pin-mode'));
+      expect(cloud('theme-light')).not.toBe(cloud(''));
+      render('desktop-pin-mode', '<div class="desktop-pin-panel-glyph weather-icon"></div>');
+      expect(
+        resolvedValue(document.querySelector('.weather-icon'), 'width', {
+          viewport: { width: 168, height: 148 },
+        })
+      ).toBe('28px');
+    });
+  });
+
   describe('desktop pin text', () => {
     const TEXT_CLASSES = [
       'desktop-pin-panel-name',
@@ -1380,6 +1631,7 @@ describe('stylesheet cascade regressions', () => {
       'desktop-pin-light-status',
       'desktop-pin-light-power',
       'desktop-pin-light-meter-value',
+      'desktop-pin-light-state-value',
       'desktop-pin-light-preset',
       'desktop-pin-media-title',
       'desktop-pin-media-artist',

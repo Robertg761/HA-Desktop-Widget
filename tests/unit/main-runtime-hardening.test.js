@@ -19,6 +19,7 @@ describe('main-process wiring safeguards', () => {
       const migrate = jest.fn(() => ({}));
       const repair = jest.fn(() => ({}));
       const repairLaunchers = jest.fn(() => []);
+      const linkCommand = jest.fn(() => false);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
       const end = mainSource.indexOf('installApplicationMenu(Menu, process.platform', start);
       expect(start).toBeGreaterThan(-1);
@@ -30,6 +31,7 @@ describe('main-process wiring safeguards', () => {
         IS_DEV_MODE: dev,
         IS_ISOLATED_PROFILE: isolated,
         ensureAppImageDesktopEntry: jest.fn(),
+        ensureAppImageCommandLink: linkCommand,
         repairStaleAppImageLaunchers: repairLaunchers,
         path,
         __dirname,
@@ -43,6 +45,8 @@ describe('main-process wiring safeguards', () => {
       expect(migrate).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repair).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repairLaunchers).toHaveBeenCalledTimes(expected ? 1 : 0);
+      // A throwaway profile or a run from source leaves the user's command alone.
+      expect(linkCommand).toHaveBeenCalledTimes(expected ? 1 : 0);
     }
   );
 
@@ -806,8 +810,8 @@ describe('main-process wiring safeguards', () => {
 
   it('fails closed for token saves when encryption is unavailable', () => {
     expect(mainSource).toContain('delete configToSave.homeAssistant.token');
-    expect(mainSource).toContain('configToSave.tokenResetReason = reason');
-    expect(mainSource).toContain('config.tokenResetReason = reason');
+    // The file says the token was not saved; see main-token-reset-reason.test.js.
+    expect(mainSource).toContain("configToSave.tokenResetReason = 'not_persisted'");
     expect(mainSource).toContain(
       'omitting token from saved config so it is not written in plaintext'
     );

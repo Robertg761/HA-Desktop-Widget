@@ -15,6 +15,7 @@ jest.mock('../../src/i18n.js', () => ({
   t: jest.fn((key, vars = {}) =>
     key.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, name) => String(vars[name] ?? ''))
   ),
+  formatNumber: require('../../packages/widget-renderer/src/i18n.js').formatNumber,
 }));
 
 jest.mock('../../src/ui-utils.js', () => ({
@@ -22,6 +23,8 @@ jest.mock('../../src/ui-utils.js', () => ({
   showToast: jest.fn(),
   showConfirm: jest.fn(),
 }));
+
+const { blurFocusedControlsOnDisable } = require('../helpers/chromium-focus.js');
 
 const {
   applyPersistentNotificationEvent,
@@ -136,6 +139,13 @@ describe('persistent notification helpers', () => {
     let websocket;
     let showToast;
 
+    // Focus leaves a button as it is disabled, as it does in the app (see chromium-focus.js).
+    let restoreDisable;
+    beforeEach(() => {
+      restoreDisable = blurFocusedControlsOnDisable();
+    });
+    afterEach(() => restoreDisable());
+
     // A fresh module per test: the panel wires itself to its elements once, and each test builds new ones.
     beforeEach(() => {
       jest.resetModules();
@@ -210,18 +220,32 @@ describe('persistent notification helpers', () => {
       document.getElementById('persistent-notifications-btn').click();
       await nextTick();
       const buttons = () => [...document.querySelectorAll('.persistent-notification-dismiss')];
-      buttons()[0].focus();
+      const pressed = buttons()[0];
+      const next = buttons()[1].dataset.focusKey;
+      const id = pressed.dataset.focusKey.replace('notification:', '');
+      pressed.focus();
       websocket.callService.mockResolvedValue({});
 
-      buttons()[0].click();
+      pressed.click();
+      // Waiting on Home Assistant, the button keeps focus and says it is busy.
+      expect(document.activeElement).toBe(pressed);
+      expect(pressed.getAttribute('aria-disabled')).toBe('true');
       // Home Assistant answers with the removal, which rebuilds the list.
-      send({ type: 'removed', notifications: { c: {} } });
+      send({ type: 'removed', notifications: { [id]: {} } });
 
       expect(buttons()).toHaveLength(2);
-      expect(document.activeElement).toBe(buttons()[0]);
-      expect(
-        document.getElementById('persistent-notifications-modal').contains(document.activeElement)
-      ).toBe(true);
+      expect(document.activeElement.dataset.focusKey).toBe(next);
+    });
+
+    test('ignores a second press while the dismissal is on its way', () => {
+      load('a', 'b');
+      websocket.callService.mockReturnValue(new Promise(() => {}));
+      const dismiss = document.querySelector('.persistent-notification-dismiss');
+
+      dismiss.click();
+      dismiss.click();
+
+      expect(websocket.callService).toHaveBeenCalledTimes(1);
     });
 
     test('keeps focus on the same notification when the list is rebuilt around it', async () => {
@@ -244,12 +268,14 @@ describe('persistent notification helpers', () => {
       websocket.callService.mockRejectedValue(new Error('offline'));
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
       const dismiss = document.querySelector('.persistent-notification-dismiss');
+      dismiss.focus();
 
       dismiss.click();
-      expect(dismiss.disabled).toBe(true);
+      expect(dismiss.getAttribute('aria-disabled')).toBe('true');
       await nextTick();
 
-      expect(dismiss.disabled).toBe(false);
+      expect(dismiss.hasAttribute('aria-disabled')).toBe(false);
+      expect(document.activeElement).toBe(dismiss);
       expect(showToast).toHaveBeenCalledWith('Could not dismiss notification', 'error');
       consoleError.mockRestore();
     });
@@ -327,6 +353,36 @@ describe('persistent notification helpers', () => {
         expect(toolbar().classList).toContain('hidden');
       });
 
+      test('writes the counts in the digits of the language', async () => {
+        const i18n = require('../../packages/widget-renderer/src/i18n.js');
+        // An Arabic interface on a computer set to Egypt writes Arabic-Indic digits; a raw count
+        // put Latin ones beside them.
+        i18n.setLocaleBootstrap({
+          systemLocale: 'ar-EG',
+          detectedLocale: 'ar',
+          activeLocale: 'ar',
+          messages: {},
+        });
+        try {
+          load('a', 'b', 'c');
+          confirm.mockResolvedValue(false);
+          expect(summary().textContent).toBe('٣ notifications');
+          expect(document.getElementById('persistent-notifications-count').textContent).toBe('٣');
+          dismissAll().click();
+          await nextTick();
+          expect(confirm.mock.calls[0][1]).toBe(
+            'This clears ٣ notifications in Home Assistant, on every device.'
+          );
+        } finally {
+          i18n.setLocaleBootstrap({
+            systemLocale: '',
+            detectedLocale: 'en',
+            activeLocale: 'en',
+            messages: {},
+          });
+        }
+      });
+
       test('asks before clearing everything, and does nothing when declined', async () => {
         load('a', 'b', 'c');
         confirm.mockResolvedValue(false);
@@ -356,7 +412,7 @@ describe('persistent notification helpers', () => {
           'dismiss_all',
           {}
         );
-        expect(dismissAll().disabled).toBe(false);
+        expect(dismissAll().hasAttribute('aria-disabled')).toBe(false);
       });
 
       test('dismisses them one by one when Home Assistant has no dismiss_all', async () => {
@@ -383,12 +439,29 @@ describe('persistent notification helpers', () => {
         websocket.callService.mockRejectedValue(new Error('offline'));
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
+        dismissAll().focus();
         dismissAll().click();
         await nextTick();
 
         expect(showToast).toHaveBeenCalledWith('Could not dismiss notifications', 'error');
-        expect(dismissAll().disabled).toBe(false);
+        expect(dismissAll().hasAttribute('aria-disabled')).toBe(false);
+        expect(document.activeElement).toBe(dismissAll());
         consoleError.mockRestore();
+      });
+
+      test('says it is busy while it clears them, and takes no second press', async () => {
+        load('a', 'b');
+        confirm.mockResolvedValue(true);
+        websocket.callService.mockReturnValue(new Promise(() => {}));
+
+        dismissAll().click();
+        await nextTick();
+        expect(dismissAll().getAttribute('aria-disabled')).toBe('true');
+        dismissAll().click();
+        await nextTick();
+
+        expect(confirm).toHaveBeenCalledTimes(1);
+        expect(websocket.callService).toHaveBeenCalledTimes(1);
       });
     });
 
@@ -542,6 +615,24 @@ describe('persistent notification helpers', () => {
     const describedBy = button.getAttribute('aria-describedby');
     expect(describedBy).toBe('persistent-notifications-count');
     expect(button.contains(document.getElementById(describedBy))).toBe(true);
-    expect(button.getAttribute('aria-label')).toBe('Home Assistant Notifications');
+    expect(button.getAttribute('aria-label')).toBe('Home Assistant notifications');
+  });
+
+  it('calls the bell, its panel and the Settings switch by one name', () => {
+    // The bell said "Home Assistant Notifications", the panel "Persistent Notifications" and the
+    // switch "Home Assistant notifications": three names for one thing.
+    const html = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../../index.html'),
+      'utf8'
+    );
+    document.body.innerHTML = html.slice(html.indexOf('<body'), html.lastIndexOf('</body>'));
+    const name = 'Home Assistant notifications';
+    const button = document.getElementById('persistent-notifications-btn');
+    expect(button.dataset.i18nAriaLabel).toBe(name);
+    expect(button.dataset.i18nTitle).toBe(name);
+    expect(document.getElementById('persistent-notifications-title').dataset.i18n).toBe(name);
+    expect(document.querySelector('label[for="persistent-notification-toasts"]').dataset.i18n).toBe(
+      name
+    );
   });
 });

@@ -15,11 +15,12 @@ import {
   formatNumber,
   formatTime,
   getFormatLocale,
+  getLocaleState,
   t,
 } from './i18n.js';
 import stateNameTables from './ha-state-names.cjs';
 
-const { STATE_NAMES, BINARY_STATE_NAMES } = stateNameTables;
+const { HVAC_MODE_NAMES, STATE_NAMES, BINARY_STATE_NAMES } = stateNameTables;
 
 const NO_BREAK_SPACE = '\u00a0';
 
@@ -55,6 +56,8 @@ export function getClockDateOptions() {
   }
 }
 
+const clockHour12Cache = new Map();
+
 /**
  * Hour and minute options for a time of day. A 12-hour clock drops the leading zero ("7:31 AM")
  * while a 24-hour clock keeps it ("07:31"), so every time label and the large clock agree.
@@ -62,14 +65,19 @@ export function getClockDateOptions() {
  */
 export function getClockFaceTimeOptions() {
   const clock = getClockTimeOptions();
-  let hour12 = false;
-  try {
-    hour12 = !!new Intl.DateTimeFormat(getFormatLocale(), {
-      hour: 'numeric',
-      ...clock,
-    }).resolvedOptions().hour12;
-  } catch {
-    // Keep the 24-hour digits.
+  const locale = getFormatLocale();
+  // Asked on every tick of the clock, and the answer only changes with the locale or the setting.
+  const cacheKey = `${locale}|${clock.hour12}`;
+  let hour12 = clockHour12Cache.get(cacheKey);
+  if (hour12 === undefined) {
+    hour12 = false;
+    try {
+      hour12 = !!new Intl.DateTimeFormat(locale, { hour: 'numeric', ...clock }).resolvedOptions()
+        .hour12;
+    } catch {
+      // Keep the 24-hour digits.
+    }
+    clockHour12Cache.set(cacheKey, hour12);
   }
   return { hour: hour12 ? 'numeric' : '2-digit', minute: '2-digit', ...clock };
 }
@@ -369,10 +377,17 @@ export function getTemperatureUnit(entity, fallback = '°') {
 // to a state name ("heat" in a select of heating options is not "Heating").
 const FREE_FORM_DOMAINS = new Set(['select', 'input_select', 'text', 'input_text']);
 
+// Words are cased by the language they are written in, the catalog's, not by the region numbers and
+// dates follow. A raw state is English text whatever the region: cased the Turkish way, an
+// English-fallback user on a Turkish computer read "İdle mode" for "idle_mode".
+function getCasingLocale() {
+  return getLocaleState().activeLocale || 'en';
+}
+
 function capitalizeFirst(text) {
   const [first] = Array.from(text);
   if (!first) return text;
-  return first.toLocaleUpperCase(getFormatLocale()) + text.slice(first.length);
+  return first.toLocaleUpperCase(getCasingLocale()) + text.slice(first.length);
 }
 
 /**
@@ -382,7 +397,7 @@ function capitalizeFirst(text) {
  */
 export function humanizeState(text) {
   const spaced = text.replace(/_/g, ' ');
-  return spaced === spaced.toLocaleLowerCase(getFormatLocale()) ? capitalizeFirst(spaced) : spaced;
+  return spaced === spaced.toLocaleLowerCase(getCasingLocale()) ? capitalizeFirst(spaced) : spaced;
 }
 
 /**
@@ -392,7 +407,7 @@ export function humanizeState(text) {
  * @param {string} text
  */
 export function titleCase(text) {
-  const locale = getFormatLocale();
+  const locale = getCasingLocale();
   return String(text ?? '').replace(
     /(^|\s)(\p{L})/gu,
     (_match, space, letter) => space + letter.toLocaleUpperCase(locale)
@@ -430,7 +445,7 @@ export function formatBinarySensorState(rawState, deviceClass = '') {
   return rawState === 'on' ? t('Detected') : t('Clear');
 }
 
-export { STATE_NAMES, BINARY_STATE_NAMES };
+export { HVAC_MODE_NAMES, STATE_NAMES, BINARY_STATE_NAMES };
 
 // --- Relative times, timestamps and durations ------------------------------------------------
 

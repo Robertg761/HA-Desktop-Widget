@@ -3,7 +3,6 @@ const {
   createApplicationMenuTemplate,
   createEditableContextMenuTemplate,
   createSelectionContextMenuTemplate,
-  createSpellingContextMenuItems,
   installApplicationMenu,
   isPasteAcceleratorInput,
 } = require('../../src/application-menu.cjs');
@@ -22,9 +21,39 @@ describe('application edit menus', () => {
     expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
       { role: 'appMenu' },
       { role: 'editMenu' },
-      { role: 'windowMenu' },
+      expect.objectContaining({ role: 'windowMenu' }),
     ]);
     expect(Menu.setApplicationMenu).toHaveBeenCalledWith(builtMenu);
+  });
+
+  describe("macOS's Window menu", () => {
+    const windowMenu = (options) => createApplicationMenuTemplate('darwin', options).at(-1);
+
+    // The system's own Minimize miniaturizes the window, which leaves a tile in the Dock behind a
+    // widget that is then hidden.
+    test('hides the widget on Cmd+M the way its minimize button does', () => {
+      const onMinimize = jest.fn();
+      const minimize = windowMenu({ onMinimize }).submenu.find(
+        (item) => item.accelerator === 'Command+M'
+      );
+      expect(minimize.role).toBeUndefined();
+
+      const widget = { id: 1 };
+      minimize.click({}, widget);
+      expect(onMinimize).toHaveBeenCalledWith(widget);
+      expect(windowMenu({ onMinimize }).submenu).not.toContainEqual(
+        expect.objectContaining({ role: 'minimize' })
+      );
+    });
+
+    // The system's own Window menu has no Close, so Cmd+W did nothing.
+    test('closes the window on Cmd+W, which hides the widget like the title-bar X', () => {
+      expect(windowMenu().submenu).toContainEqual({ role: 'close' });
+    });
+
+    test('has nothing that zooms the window, which the widget undoes', () => {
+      expect(windowMenu().submenu).not.toContainEqual(expect.objectContaining({ role: 'zoom' }));
+    });
   });
 
   test('keeps the Edit and Window menus on Windows and Linux, and nothing that zooms or reloads', () => {
@@ -49,7 +78,7 @@ describe('application edit menus', () => {
       { role: 'appMenu' },
       { role: 'editMenu' },
       { role: 'viewMenu' },
-      { role: 'windowMenu' },
+      expect.objectContaining({ role: 'windowMenu' }),
     ]);
     const Menu = { buildFromTemplate: jest.fn(() => ({})), setApplicationMenu: jest.fn() };
     installApplicationMenu(Menu, 'win32', { isDev: true });
@@ -187,7 +216,7 @@ describe('application edit menus', () => {
       expect(resume).toHaveBeenCalledTimes(1);
     }
   );
-  describe('spelling and selected text', () => {
+  describe('fields and selected text', () => {
     function openMenu(params, translate) {
       let handler;
       const popup = jest.fn();
@@ -205,37 +234,20 @@ describe('application edit menus', () => {
       return { Menu, webContents, event };
     }
 
-    test('offers the dictionary suggestions and a way to add a misspelled word', () => {
-      const { Menu, webContents } = openMenu(
-        {
-          isEditable: true,
-          misspelledWord: 'recieve',
-          dictionarySuggestions: ['receive', 'relieve'],
-          editFlags: { canPaste: true },
-        },
-        (key) => (key === 'Add to dictionary' ? 'Zum Wörterbuch hinzufügen' : key)
-      );
+    // Spell-check is off on purpose (src/spell-checker.cjs), so Chromium should never report a
+    // misspelled word. If it did, the menu would still be the edit actions and nothing else.
+    test('offers only the edit actions in a field, with no spelling items', () => {
+      const { Menu, webContents } = openMenu({
+        isEditable: true,
+        misspelledWord: 'recieve',
+        dictionarySuggestions: ['receive', 'relieve'],
+        editFlags: { canPaste: true },
+      });
       const template = Menu.buildFromTemplate.mock.lastCall[0];
 
-      expect(template.slice(0, 4).map((item) => item.label ?? item.type)).toEqual([
-        'receive',
-        'relieve',
-        'Zum Wörterbuch hinzufügen',
-        'separator',
-      ]);
-      template[1].click();
-      expect(webContents.replaceMisspelling).toHaveBeenCalledWith('relieve');
-      template[2].click();
-      expect(webContents.session.addWordToSpellCheckerDictionary).toHaveBeenCalledWith('recieve');
-      // The edit actions still follow.
-      expect(template.map((item) => item.role).filter(Boolean)).toContain('paste');
-    });
-
-    test('adds nothing for a field without a misspelled word', () => {
-      const { Menu } = openMenu({ isEditable: true });
-
-      expect(Menu.buildFromTemplate.mock.lastCall[0][0]).toMatchObject({ role: 'undo' });
-      expect(createSpellingContextMenuItems({}, {})).toEqual([]);
+      expect(template).toEqual(createEditableContextMenuTemplate({ canPaste: true }));
+      expect(webContents.replaceMisspelling).not.toHaveBeenCalled();
+      expect(webContents.session.addWordToSpellCheckerDictionary).not.toHaveBeenCalled();
     });
 
     test('copies selected text outside a field, and shows nothing without a selection', () => {

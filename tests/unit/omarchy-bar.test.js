@@ -737,6 +737,32 @@ describe('Omarchy bar status', () => {
     expect(tile({ name: `${'a'.repeat(79)}e\u0301x` }).name).toBe(`${'a'.repeat(79)}e\u0301`);
   });
 
+  describe("an MDI glyph the bar's Nerd Font does not have", () => {
+    const icon = (glyph, fallback, kind = 'mdi') =>
+      cleanOmarchyBarTile('light.porch', { icon: { kind, glyph, fallback } }).icon;
+
+    it('is drawn as the line icon the widget sent with it', () => {
+      // Material Design Icons 7.4 added glyphs past U+F1AF0, the last one Nerd Fonts 3 carries.
+      expect(icon('\u{F1AF1}', 'lightbulb')).toEqual({ kind: 'line', name: 'lightbulb' });
+      expect(icon('\u{F1D17}', 'fan')).toEqual({ kind: 'line', name: 'fan' });
+      expect(icon('\u{F1C80}', 'lightbulb', 'custom')).toEqual({ kind: 'line', name: 'lightbulb' });
+    });
+
+    it('is the box when no usable line icon came with it', () => {
+      expect(icon('\u{F1C80}')).toEqual({ kind: 'line', name: 'box' });
+      expect(icon('\u{F1C80}', '../x')).toEqual({ kind: 'line', name: 'box' });
+    });
+
+    it('leaves the glyphs the font has, and emoji, as they are', () => {
+      expect(icon('\u{F0001}', 'lightbulb')).toEqual({ kind: 'glyph', glyph: '\u{F0001}' });
+      expect(icon('\u{F1AF0}', 'lightbulb')).toEqual({ kind: 'glyph', glyph: '\u{F1AF0}' });
+      expect(icon('\u{1F4A1}', 'lightbulb', 'custom')).toEqual({
+        kind: 'glyph',
+        glyph: '\u{1F4A1}',
+      });
+    });
+  });
+
   it('accepts only plain line-icon SVGs', () => {
     const svg =
       '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor"><path d="M9 18h6"></path></svg>';
@@ -1179,6 +1205,45 @@ describe('Omarchy bar secondary text', () => {
     }
   );
 
+  describe("a running timer's countdown on a lit tile", () => {
+    const { blend } = new vm.Script(
+      `(function () { ${qml.slice(start, end)}; return { blend }; })()`
+    ).runInNewContext({ Qt: { rgba }, Math });
+    // Foreground, panel and accent of themes where Qt.darker left it at 3.8 to 4.3:1 on the 16%
+    // accent tint, and of light ones where it came out darker than the tile's name.
+    const lit = {
+      everforest: ['#d3c6aa', '#2d353b', '#7fbbb3'],
+      gruvbox: ['#d4be98', '#282828', '#7daea3'],
+      'tokyo-night': ['#a9b1d6', '#1a1b26', '#7aa2f7'],
+      'catppuccin-latte': ['#4c4f69', '#eff1f5', '#1e66f5'],
+      'rose-pine-dawn': ['#575279', '#faf4ed', '#56949f'],
+    };
+
+    it('is solved against the tile it sits on, not darkened', () => {
+      expect(qml).not.toContain('Qt.darker(root.foreground');
+      expect(qml).toContain(
+        'color: tileRoot.active ? root.quietTone(root.foreground, tileRoot.activeFill) : root.dimColor'
+      );
+      expect(qml).toContain(
+        'readonly property color activeFill: root.blend(Color.popups.background, Color.accent, hasCursor ? 0.24 : 0.16)'
+      );
+    });
+
+    it.each(Object.entries(lit))(
+      'reads at 4.5:1 and stays quieter than the name (%s)',
+      (_, [fg, panel, accent]) => {
+        for (const tint of [0.16, 0.24]) {
+          const fill = blend(color(panel), color(accent), tint);
+          const tone = quietTone(color(fg), fill);
+          expect(contrastRatio(tone, fill)).toBeGreaterThanOrEqual(4.5);
+          expect(contrastRatio(tone, fill)).toBeLessThanOrEqual(
+            contrastRatio(color(fg), fill) + 0.01
+          );
+        }
+      }
+    );
+  });
+
   it('returns a foreground that cannot reach 4.5:1 unchanged', () => {
     const fg = color('#8a8a8a');
     const bg = color('#999999');
@@ -1199,8 +1264,8 @@ describe('the plugin as a package of files', () => {
   // reaches anyone who already has it. Changing a plugin file fails this test until both lines
   // below are updated together.
   const PUBLISHED = {
-    version: '1.3.0',
-    sha256: '87564b1b5ad2f4f1a5ff9ab11df37435aedefdaccb21d8491ca7e827aee13d93',
+    version: '1.3.1',
+    sha256: 'e23ba9c6de5a4b3ee97c100da3f88ff998e66fc7839764a58f362ec29cf5b9ba',
   };
 
   function pluginHash() {

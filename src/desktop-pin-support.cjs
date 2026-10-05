@@ -357,7 +357,7 @@ function resolveDesktopPinProfile(entityOrEntityId = null) {
         interactive: false,
         family: 'unsupported',
         label: 'Desktop pin not supported yet',
-        reason: `The "${domain || 'unknown'}" domain does not have a desktop-pin profile yet.`,
+        reason: `The “${domain || 'unknown'}” domain does not have a desktop-pin profile yet.`,
       };
   }
 }

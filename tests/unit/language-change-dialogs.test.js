@@ -2,11 +2,15 @@
  * @jest-environment jsdom
  */
 
-const { createRendererHarness } = require('../helpers/renderer-harness');
+const { createRendererHarness, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('device dialogs and a language change', () => {
   const harness = createRendererHarness();
 
+  warmUpRenderer(
+    () => harness.load(),
+    () => harness.cleanup()
+  );
   afterEach(() => harness.cleanup());
 
   const bootstrapOf = (activeLocale) => ({ activeLocale, messages: {} });

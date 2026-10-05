@@ -7,8 +7,12 @@
 
 const EventEmitter = require('events');
 const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer one-off behaviours', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   let mockElectronAPI;
   let mockState;
   let mockUiUtils;
@@ -33,6 +37,7 @@ describe('Renderer one-off behaviours', () => {
 
   const loadRenderer = async ({ config = baseConfig(), bodyHtml = '' } = {}) => {
     jest.resetModules();
+    lifetime.start();
     resetMockElectronAPI();
     localStorage.clear();
     document.body.innerHTML = `<main class="widget-content"></main>${bodyHtml}`;
@@ -169,6 +174,7 @@ describe('Renderer one-off behaviours', () => {
       setLocaleBootstrap: jest.fn(),
       t: jest.fn((key) => key),
       translateDocument: jest.fn(),
+      formatNumber: jest.fn((value) => String(value)),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
@@ -186,12 +192,16 @@ describe('Renderer one-off behaviours', () => {
     await flushAsync();
   };
 
-  afterEach(() => {
+  const cleanup = () => {
+    lifetime.stop();
     jest.resetModules();
     delete window.electronAPI;
     document.body.innerHTML = '';
     localStorage.clear();
-  });
+  };
+
+  warmUpRenderer(loadRenderer, cleanup);
+  afterEach(cleanup);
 
   describe('apply_profile from Home Assistant', () => {
     const profilePayload = (customTabs) => ({
@@ -223,6 +233,57 @@ describe('Renderer one-off behaviours', () => {
       expect(history).toHaveLength(1);
       expect(history[0].layout.customTabs).toEqual(replaced.customTabs);
       expect(history[0].activeTabId).toBe('home');
+    });
+
+    it('keeps the layout it replaces as a restore point of its own, even just after an edit', async () => {
+      await loadRenderer();
+      // The renderer's own copy, which knows the burst of edits in progress.
+      const { rememberDashboard, readRestorePoints } = require('../../src/dashboard-history.js');
+      // Edits less than 30 s apart share a restore point. Only Date is faked.
+      jest.useFakeTimers({
+        now: new Date('2030-01-01T10:00:00Z'),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'queueMicrotask',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'requestIdleCallback',
+          'cancelIdleCallback',
+          'performance',
+          'hrtime',
+        ],
+      });
+      try {
+        // An edit a moment ago left the layout on screen.
+        const replaced = JSON.parse(JSON.stringify(mockState.CONFIG));
+        rememberDashboard(
+          { ...replaced, customTabs: [{ id: 'home', name: 'Home', entityIds: [] }] },
+          replaced
+        );
+        mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+          ...replaced,
+          ...patch,
+          success: true,
+        }));
+        jest.setSystemTime(Date.now() + 5000);
+
+        await companionOptions.executeCommand({
+          action: 'apply_profile',
+          payload: profilePayload([{ id: 'kitchen', name: 'Kitchen', entityIds: [] }]),
+        });
+
+        expect(
+          readRestorePoints(replaced).map((point) => point.layout.customTabs[0].entityIds)
+        ).toEqual([['light.desk'], []]);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('remembers the layout even when the save reports no config back', async () => {

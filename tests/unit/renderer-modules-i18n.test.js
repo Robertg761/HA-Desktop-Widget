@@ -197,7 +197,7 @@ describe('English display changes from the shared state names', () => {
     );
     expect(
       utils.getEntityDisplayState({ entity_id: 'climate.office', state: 'heat', attributes: {} })
-    ).toBe('Heating');
+    ).toBe('Heat');
     expect(utils.getEntityDisplayState({ entity_id: 'vacuum.robot', state: 'docked' })).toBe(
       'Docked'
     );
@@ -369,6 +369,11 @@ describe('sensor history summary in the active language', () => {
     const summary = body.querySelector('.sensor-history-summary').textContent;
     // Every figure has the unit, at the one decimal a temperature reads with.
     expect(summary).toBe('Minimum 1,5\u00a0°C · Maximum 2,3\u00a0°C · Sample average 1,9\u00a0°C');
+    // Each figure is a piece of its own, so a line never ends between "Sample average" and its
+    // value; only the separators between them break.
+    expect(
+      [...body.querySelectorAll('.sensor-history-figure')].map((figure) => figure.textContent)
+    ).toEqual(['Minimum 1,5\u00a0°C', 'Maximum 2,3\u00a0°C', 'Sample average 1,9\u00a0°C']);
     modal.remove();
   });
 });

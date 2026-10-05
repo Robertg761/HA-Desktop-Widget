@@ -51,8 +51,8 @@ export class WeatherEffectsManager {
     this.reducedMotionQuery = null;
     this.reducedMotionChangeHandler = null;
     this.themeObserver = null;
-    // The window's size in CSS pixels, which is what the scenes are laid out and drawn in. The
-    // canvas itself has pixelRatio times as many pixels (see resizeCanvas).
+    // The size of the area the scenes cover, in CSS pixels, which is what they are laid out and
+    // drawn in (see measureCanvas). The canvas itself has pixelRatio times as many pixels.
     this.width = 0;
     this.height = 0;
     this.pixelRatio = 1;
@@ -145,10 +145,17 @@ export class WeatherEffectsManager {
     this.watchPixelRatio();
   }
 
+  /**
+   * The area the scenes cover, in CSS pixels. In the widget that is the window; the website's demo
+   * runs this same file over a smaller stage and measures that instead.
+   */
+  measureCanvas() {
+    return { width: window.innerWidth, height: window.innerHeight };
+  }
+
   resizeCanvas() {
     if (!this.canvas) return;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const { width, height } = this.measureCanvas();
     // Draw at device resolution so a 1.5px streak and a snow dot stay crisp on HiDPI screens; past
     // 2x costs more than it shows. The scenes keep working in CSS pixels through the transform.
     const pixelRatio = Math.min(2, Math.max(1, window.devicePixelRatio || 1));

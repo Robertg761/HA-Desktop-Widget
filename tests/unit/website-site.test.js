@@ -221,6 +221,20 @@ describe('the download page', () => {
     expect(document.getElementById('install-steps').textContent).toMatch(/keyring/i);
   });
 
+  // A double-clicked AppImage exits without a window on Ubuntu 23.10 and later, and these steps
+  // replace the page's own for every Linux visitor, so they are where the way around it has to be.
+  // It belongs to the step that tells them to double-click, not to a step of its own after it.
+  it('tells Ubuntu users what to do when the AppImage will not start', async () => {
+    await loadPage(DOWNLOAD, { answers: answersFor({ stable }) });
+    const start = [...document.querySelectorAll('#install-steps li')].find((step) =>
+      /Double-click it to start/.test(step.textContent)
+    );
+    expect(start.textContent).toMatch(/Ubuntu 23\.10 and later.*\.deb.*--no-sandbox/);
+    expect(start.querySelector('a').href).toBe(
+      'https://github.com/Robertg761/HA-Desktop-Widget/blob/main/docs/linux-appimage.md'
+    );
+  });
+
   it('points the download button at the release page while GitHub cannot be reached', async () => {
     await loadPage(DOWNLOAD);
     expect(document.getElementById('rec-primary').href).toBe(

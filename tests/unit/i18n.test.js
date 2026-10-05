@@ -163,6 +163,72 @@ describe('renderer i18n helpers', () => {
     expect(longDate).toMatch(/8/);
     expect(time).toMatch(/14:35/);
   });
+  describe('dates and times, from formatters kept between calls', () => {
+    const date = new Date(Date.UTC(2026, 8, 8, 14, 35, 7));
+    const OPTIONS = [
+      {},
+      { timeZone: 'UTC' },
+      { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' },
+      { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' },
+      { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' },
+      { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' },
+      { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' },
+      { timeZoneName: 'short', timeZone: 'UTC' },
+    ];
+
+    // The same text the Date methods write, defaults included: a date gets day, month and year
+    // when no field is named, a time gets hours, minutes and seconds, and both get both.
+    it.each(['en-US', 'de-DE', 'ar-EG', 'hi-IN', 'zh-CN'])(
+      'writes what the Date methods write (%s)',
+      (requestedLocale) => {
+        i18n.setLocaleBootstrap({
+          activeLocale: requestedLocale.split('-')[0],
+          requestedLocale,
+          messages: {},
+        });
+        const locale = i18n.getFormatLocale();
+        for (const options of OPTIONS) {
+          if (!options.timeStyle) {
+            expect(i18n.formatDate(date, options)).toBe(date.toLocaleDateString(locale, options));
+          }
+          if (!options.dateStyle) {
+            expect(i18n.formatTime(date, options)).toBe(date.toLocaleTimeString(locale, options));
+          }
+          expect(i18n.formatDateTime(date, options)).toBe(date.toLocaleString(locale, options));
+        }
+      }
+    );
+
+    it('says Invalid Date for a date that is not one, as the Date methods do', () => {
+      expect(i18n.formatDate('not a date')).toBe('Invalid Date');
+      expect(i18n.formatTime(Number.NaN)).toBe('Invalid Date');
+      expect(i18n.formatDateTime(new Date(Number.NaN))).toBe('Invalid Date');
+    });
+
+    it('refuses a date with only a time style, and a time with only a date style', () => {
+      expect(() => i18n.formatDate(date, { timeStyle: 'short' })).toThrow(TypeError);
+      expect(() => i18n.formatTime(date, { dateStyle: 'short' })).toThrow(TypeError);
+    });
+
+    it('builds a formatter once for a pattern written again and again, such as the clock', () => {
+      i18n.setLocaleBootstrap({ activeLocale: 'en', requestedLocale: 'en-CA', messages: {} });
+      const constructor = jest.spyOn(Intl, 'DateTimeFormat');
+      try {
+        const options = { hour: 'numeric', minute: '2-digit', era: 'short' };
+        for (let second = 0; second < 5; second++) {
+          i18n.formatTime(new Date(Date.UTC(2026, 0, 1, 10, 0, second)), options);
+        }
+        expect(constructor).toHaveBeenCalledTimes(1);
+        // Another language is another formatter.
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        i18n.formatTime(date, options);
+        expect(constructor).toHaveBeenCalledTimes(2);
+      } finally {
+        constructor.mockRestore();
+      }
+    });
+  });
+
   it('formats numbers with the active language', () => {
     i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
     expect(i18n.formatNumber(15.6)).toBe('15,6');

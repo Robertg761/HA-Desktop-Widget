@@ -509,7 +509,7 @@ describe('optional hide on focus loss', () => {
         }),
         runSerializedConfigMutation: (task) => Promise.resolve().then(task),
         applyHomeAssistantOAuthSession: jest.fn(async () => ({ homeAssistant: {} })),
-        describeLinuxKeyringOAuthError: (code) => code,
+        describeLinuxKeyringPairingError: (code) => code,
         log: { warn: jest.fn() },
       };
       vm.runInNewContext(handlerSource, context);

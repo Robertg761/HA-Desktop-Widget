@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const { renderNotificationMarkdown } = require('../../src/notification-markdown.js');
 
 const stylesheet = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
 
@@ -74,6 +75,58 @@ describe('right-to-left and script-aware typography', () => {
       }
     );
 
+    describe('a notification message', () => {
+      const renderMessage = () => {
+        render('<div class="persistent-notification-message"></div>', { dir: 'rtl', lang: 'ar' });
+        const message = document.querySelector('.persistent-notification-message');
+        renderNotificationMarkdown(
+          message,
+          '**2 issues need attention.** Open [Repairs](/config/repairs) to fix them:\n\n' +
+            '- The `backup` integration has no recent backup\n- Update available\n\n' +
+            '> Quoted.\n\n```yaml\nautomation:\n  - alias: Lights on\n```\n\n' +
+            'See https://www.home-assistant.io/docs for help.'
+        );
+        return message;
+      };
+
+      it('gives every block of text the direction of its own text', () => {
+        // The message is drawn from Markdown as paragraphs, list items and quotes, and
+        // unicode-bidi is not inherited: a block left to the page's direction moves the "2" of "2
+        // issues need attention:" to the far end and the colon to the front.
+        const blocks = renderMessage().querySelectorAll('p, li, blockquote');
+        expect([...blocks].map((block) => block.tagName)).toEqual([
+          'P',
+          'LI',
+          'LI',
+          'BLOCKQUOTE',
+          'P',
+        ]);
+        for (const block of blocks) {
+          expect(resolvedValue(block, 'unicode-bidi')).toBe('plaintext');
+        }
+      });
+
+      it('sets its lists and quotes, which follow their own language, at the reading edge', () => {
+        // Each is as wide as its text, so an English list's lines stay beside their bullets, and
+        // the box sits at the right like the paragraphs around it.
+        for (const block of renderMessage().querySelectorAll('ul, blockquote')) {
+          expect(block.getAttribute('dir')).toBe('auto');
+          expect(resolvedValue(block, 'width')).toBe('fit-content');
+          expect(resolvedValue(block, 'margin-left')).toBe('auto');
+          expect(resolvedValue(block, 'text-align')).toBe('start');
+        }
+      });
+
+      it('writes code left to right from the left edge, keeping its indentation', () => {
+        // Right-aligned, the lines of a YAML snippet end at a ragged right edge and lose their
+        // indentation.
+        const pre = renderMessage().querySelector('pre');
+        expect(resolvedValue(pre, 'direction')).toBe('ltr');
+        expect(resolvedValue(pre, 'text-align')).toBe('left');
+        expect(resolvedValue(pre, 'unicode-bidi')).toBeNull();
+      });
+    });
+
     it('leaves a left-to-right page alone', () => {
       render('<span class="command-palette-result-state">21.4 °C</span>');
       expect(
@@ -104,7 +157,7 @@ describe('right-to-left and script-aware typography', () => {
       expect(stylesheet.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/match-parent/);
     });
 
-    it('sits the names that are cut after two lines at the reading edge by their width, not their alignment', () => {
+    it('sits the names that are cut after a few lines at the reading edge by their width, not their alignment', () => {
       // Chromium draws a line-clamp ellipsis outside the box when right-aligned text ends short, so
       // these names are not aligned: the box is as wide as the text and starts at the edge.
       for (const [selector, html] of [
@@ -112,6 +165,10 @@ describe('right-to-left and script-aware typography', () => {
         ['.desktop-pin-panel-name', '<div class="desktop-pin-panel-name">Weather</div>'],
         ['.desktop-pin-media-title', '<div class="desktop-pin-media-title">Song</div>'],
         ['.desktop-pin-media-artist', '<div class="desktop-pin-media-artist">Band</div>'],
+        // The media dialog's track and artist, beside an Arabic header and state that start at the
+        // right, sat at the left.
+        ['.media-detail-title', '<div class="media-detail-title">Kind of Blue</div>'],
+        ['.media-detail-artist', '<div class="media-detail-artist">Miles Davis</div>'],
       ]) {
         render(html);
         expect(resolvedValue(document.querySelector(selector), 'width')).toBeNull();
@@ -182,6 +239,19 @@ describe('right-to-left and script-aware typography', () => {
       );
     });
 
+    it('reads a custom colour name in the direction of its own text, from the reading edge', () => {
+      // The default name is "#AB34CD مخصص" with the code isolated, a typed one is in any script.
+      render('<input id="custom-color-name-input" value="Ocean (blue)">', {
+        dir: 'rtl',
+        lang: 'ar',
+      });
+      const field = document.querySelector('input');
+      expect(resolvedValue(field, 'unicode-bidi')).toBe('plaintext');
+      expect(resolvedValue(field, 'text-align')).toBe('right');
+      render('<input id="custom-color-name-input" value="Ocean (blue)">');
+      expect(resolvedValue(document.querySelector('input'), 'unicode-bidi')).toBeNull();
+    });
+
     it('keeps the hotkey fields centred, as they were', () => {
       render('<input class="hotkey-input">', { dir: 'rtl', lang: 'ar' });
       expect(resolvedValue(document.querySelector('input'), 'text-align')).toBe('center');
@@ -209,6 +279,13 @@ describe('right-to-left and script-aware typography', () => {
       );
       for (const field of document.querySelectorAll('input')) {
         expect(resolvedValue(field, 'direction')).toBeNull();
+      }
+      // A dir attribute in the markup would beat all of that and put the hint at the left edge.
+      const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
+      for (const id of ['ha-token', 'profile-sync-folder-path']) {
+        const tag = html.match(new RegExp(`<input[^>]*\\bid="${id}"[^>]*>`))?.[0];
+        expect(tag).toBeTruthy();
+        expect(tag).not.toMatch(/\sdir=/);
       }
     });
   });

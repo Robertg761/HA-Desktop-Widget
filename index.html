@@ -112,10 +112,10 @@
           type="button"
           id="persistent-notifications-btn"
           class="control-btn notification-bell-btn hidden"
-          data-i18n-title="Home Assistant Notifications"
-          title="Home Assistant Notifications"
-          data-i18n-aria-label="Home Assistant Notifications"
-          aria-label="Home Assistant Notifications"
+          data-i18n-title="Home Assistant notifications"
+          title="Home Assistant notifications"
+          data-i18n-aria-label="Home Assistant notifications"
+          aria-label="Home Assistant notifications"
           aria-describedby="persistent-notifications-count"
           aria-hidden="true"
         >
@@ -697,7 +697,7 @@
                   <button
                     type="button"
                     id="cancel-ha-oauth-btn"
-                    class="btn btn-secondary hidden"
+                    class="btn btn-secondary btn-neutral hidden"
                     data-i18n="Cancel"
                   >
                     Cancel
@@ -1803,7 +1803,7 @@
                       </div>
                       <button
                         id="custom-entity-icons-reset-all"
-                        class="btn btn-secondary btn-reset btn-sm"
+                        class="btn btn-secondary btn-neutral btn-sm"
                         type="button"
                         data-i18n="Reset all custom icons"
                       >
@@ -1940,12 +1940,9 @@
                   <p
                     id="layer-toggle-note"
                     class="form-help"
-                    data-i18n="Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget."
+                    data-i18n-html="Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
                     hidden
-                  >
-                    Bind a key in your window manager to run ha-desktop-widget --toggle, which shows
-                    or hides the widget.
-                  </p>
+                  ></p>
                   <p
                     id="popup-hotkey-immediate-note"
                     class="help-text"
@@ -2055,12 +2052,16 @@
                     <label for="global-hotkeys-enabled" data-i18n="Entity hotkeys"
                       >Entity hotkeys</label
                     >
+                    <!-- The key names are this platform's (renderer.js applyPlatformKeyNames):
+                         Shift alone does not make a hotkey, and the Meta key is Super, Win or Cmd. -->
                     <p
+                      id="entity-hotkeys-help"
                       class="form-help"
-                      data-i18n-html="Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>)."
+                      data-i18n-html="Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>)."
+                      data-i18n-vars='{"ctrl": "Ctrl", "alt": "Alt", "meta": "Super", "shift": "Shift", "example": "Ctrl+Shift+A"}'
                     >
-                      Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win,
-                      Command, Super (for example <code>Ctrl+Shift+A</code>).
+                      Toggle or control entities from anywhere. Hold Ctrl, Alt or Super with the
+                      key, and Shift too if you like (for example <code>Ctrl+Shift+A</code>).
                     </p>
                     <p
                       id="entity-hotkey-immediate-note"
@@ -2356,7 +2357,7 @@
                       <button
                         type="button"
                         id="profile-sync-resolve-cancel"
-                        class="btn btn-secondary"
+                        class="btn btn-secondary btn-neutral"
                         data-i18n="Cancel setup"
                       >
                         Cancel setup
@@ -2407,7 +2408,6 @@
                         class="form-control"
                         placeholder="Choose a synced folder..."
                         data-i18n-placeholder="Choose a synced folder..."
-                        dir="ltr"
                         readonly
                       />
                       <button
@@ -2644,7 +2644,7 @@
                       <button
                         type="button"
                         id="profile-sync-cancel-encryption-change"
-                        class="btn btn-secondary hidden"
+                        class="btn btn-secondary btn-neutral hidden"
                         data-i18n="Cancel change"
                       >
                         Cancel change
@@ -2835,7 +2835,12 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" id="cancel-settings" class="btn btn-secondary" data-i18n="Cancel">
+          <button
+            type="button"
+            id="cancel-settings"
+            class="btn btn-secondary btn-neutral"
+            data-i18n="Cancel"
+          >
             Cancel
           </button>
           <button type="button" id="save-settings" class="btn btn-primary" data-i18n="Save">
@@ -2931,7 +2936,7 @@
           <button
             type="button"
             id="confirm-cancel-btn"
-            class="btn btn-secondary"
+            class="btn btn-secondary btn-neutral"
             data-i18n="Cancel"
           >
             Cancel
@@ -3052,7 +3057,12 @@
           </p>
         </div>
         <div class="modal-footer">
-          <button type="button" id="donate-cancel-btn" class="btn btn-secondary" data-i18n="Cancel">
+          <button
+            type="button"
+            id="donate-cancel-btn"
+            class="btn btn-secondary btn-neutral"
+            data-i18n="Cancel"
+          >
             Cancel
           </button>
           <button
@@ -3129,7 +3139,7 @@
 
     <!-- Camera Viewer Modal (created dynamically by openCamera) -->
 
-    <!-- Home Assistant Persistent Notifications Modal -->
+    <!-- Home Assistant notifications modal -->
     <div
       id="persistent-notifications-modal"
       class="modal hidden"
@@ -3139,8 +3149,8 @@
     >
       <div class="modal-content persistent-notifications-modal-content">
         <div class="modal-header">
-          <h2 id="persistent-notifications-title" data-i18n="Persistent notifications">
-            Persistent notifications
+          <h2 id="persistent-notifications-title" data-i18n="Home Assistant notifications">
+            Home Assistant notifications
           </h2>
           <button
             id="close-persistent-notifications"
@@ -3254,7 +3264,12 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" id="cancel-alert" class="btn btn-secondary" data-i18n="Cancel">
+          <button
+            type="button"
+            id="cancel-alert"
+            class="btn btn-secondary btn-neutral"
+            data-i18n="Cancel"
+          >
             Cancel
           </button>
           <button type="button" id="save-alert" class="btn btn-primary" data-i18n="Save">

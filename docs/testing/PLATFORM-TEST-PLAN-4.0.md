@@ -495,12 +495,13 @@ Run this on the Setup or Portable build from the Releases page, not a build from
 1. In Windows Settings > Time & language > Language & region, add Español (México) under Preferred languages and move it to the top. Quit the app from the tray and start it again. If the next step still names your old language, sign out and back in.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front.
-5. Do steps 1 to 3 again with Chinese (Traditional, Taiwan) at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front.
+6. Do steps 1 to 3 again with Chinese (Traditional, Taiwan) at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
 
-Expected: The app starts with its window and tray icon. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+Expected: The app starts with its window and tray icon. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
 
-Capture: A screenshot of the language line and of the right-click menu in each language. If the hotkey does nothing, the log lines that mention uiohook-napi.
+Capture: A screenshot of the language line and of the right-click menu in each language. If a word is underlined or a menu offers spellings, a screenshot of it. If the hotkey does nothing, the log lines that mention uiohook-napi.
 
 Ref: MP-78
 
@@ -566,16 +567,15 @@ Capture: Which of the three ways did nothing.
 
 Ref: MP-21
 
-### MAC-4 Minimize and the app menu
+### MAC-4 Minimize, Cmd+M and Cmd+W
 
-1. Click the widget's Minimize button, then press Cmd+M. Look at the Dock and Mission Control.
-2. Bring the widget back from the menu-bar icon.
-3. Focus the widget and look at the app menu in the menu bar (the menu to the right of the Apple menu).
-4. Set Settings > General > Language to a different language from macOS (for example German on an English macOS) and look at the menu again.
+1. Click the widget's Minimize button. Look at the Dock and Mission Control, then bring the widget back from the menu-bar icon.
+2. Click the widget so it has focus and press Cmd+M. Look again, and bring it back.
+3. Click the widget and press Cmd+W. Look again, and bring it back.
 
-Expected: Minimize puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, and you can bring it back. The menu names the app "HA Desktop Widget". Its labels follow the app's language, or at least the macOS language; report which.
+Expected: Each of the three puts the widget away without leaving a tile in the Dock or a window stuck in Mission Control, the app keeps running, and the menu-bar icon brings the widget back. The app shows no menu bar of its own: it lives in the menu bar, so its menus only supply these keys.
 
-Capture: A screenshot of the Dock and Mission Control after Minimize, and of the app menu in both languages.
+Capture: A screenshot of the Dock and Mission Control after each.
 
 Ref: MP-76
 
@@ -646,12 +646,16 @@ Run this on the `.dmg` or `.zip` from the Releases page, not a build from source
 1. In System Settings > General > Language & Region, add Español (México) under Preferred Languages and drag it to the top. Quit the app from the menu-bar item and open it again.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
-5. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack. When you finish, put your own language back at the top.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then hold it while another app is in front. The app needs the Accessibility permission for this (see MAC-5).
+6. Do steps 1 to 3 again with 繁體中文（台灣）, Chinese Traditional (Taiwan), at the top of the list and the Chinese pack.
+7. Put Português (Brasil), a language the app does not have, at the top, quit and reopen the app. Open Settings > Advanced > Export settings, look at the save panel, and cancel it. When you finish, put your own language back at the top.
 
-Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
+Expected: The app starts with its menu-bar icon and window. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). With Chinese (Taiwan) the line names it, and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. Holding the hotkey brings the widget to the front and releasing it sends it back. The log (Settings > Advanced > Show log file) has the line "uiohook-napi loaded successfully" near the start.
 
-Capture: A screenshot of the language line and of the right-click menu in each language, and which kind of Mac you used. If the hotkey does nothing, the log lines that mention uiohook-napi.
+With Portuguese (Brazil) the app starts and works, in English, and the save panel is in English too. That is expected: the package lists only the app's own languages to macOS, which shows its own panels and message boxes in the first of your languages on that list. 4.0 leaves the other languages' Chromium files out to keep the package small, and listing a language without its file is untested: Chromium picks its own language from the same list and may not cope with one it has no file for. So 4.0 lists only the languages it has files for.
+
+Capture: A screenshot of the language line and of the right-click menu in each language, of the save panel in Portuguese (Brazil), and which kind of Mac you used. If a word is underlined or a menu offers spellings, a screenshot of it. If the hotkey does nothing, the log lines that mention uiohook-napi.
 
 Ref: MP-78
 
@@ -724,9 +728,11 @@ Ref: SM3-37, SM1-30
 1. Turn on Start at login in Settings > General (real profile). Open your desktop's startup list (GNOME Tweaks > Startup Applications, or KDE System Settings > Autostart).
 2. Set up an alert in Settings > Alerts (turn on Entity alerts), trigger it, and read the application name your notification daemon shows.
 
-Expected: Both say "HA Desktop Widget", not `home-assistant-widget`.
+Expected: The startup list says "HA Desktop Widget", not `home-assistant-widget`. The notification's title and text name the widget as "HA Desktop Widget".
 
-Capture: A screenshot of the list and the notification.
+Known exception, raised with the owner: a daemon that also prints the sending application's name (dunst or swaync with `%a` in their format, KDE for an app it cannot match to a launcher) shows `home-assistant-widget` there. 4.0 still sends the package name, because the keyring entry that holds the key to saved sign-ins and the tray icon's id are named after it. Write down what your daemon shows.
+
+Capture: A screenshot of the list and the notification, including the application name if your daemon prints one.
 
 Ref: MP-52
 
@@ -762,12 +768,13 @@ Run this on the AppImage or the `.deb` from the Releases page, not a build from 
 1. Quit the app. Start it from a terminal with Mexican Spanish as the system language: `LANGUAGE=es_MX LANG=es_MX.UTF-8 ./"HA Desktop Widget-<version>-linux-x64.AppImage" --user-data-dir=$HOME/hadw-test`, or `LANGUAGE=es_MX LANG=es_MX.UTF-8 home-assistant-widget --user-data-dir=$HOME/hadw-test` for the `.deb`.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
 3. Right-click the Search settings field at the top of Settings, once while it is empty and once with a word typed in it.
-4. Settings > Hotkeys > Popup hotkey: set a hotkey, then press it while another app is in front. On Wayland, approve the shortcut when your desktop asks.
-5. Quit, and do steps 1 to 3 again with `LANGUAGE=zh_TW LANG=zh_TW.UTF-8` and the Chinese pack.
+4. Close Settings and turn on Reorganize Quick Access. Click the pencil on a tile, add the words `Kitchn lihgt` at the end of Display name and right-click `lihgt`. Then press Cancel. In a terminal, run `ls $HOME/hadw-test/session/Dictionaries`.
+5. Settings > Hotkeys > Popup hotkey: set a hotkey, then press it while another app is in front. On Wayland, approve the shortcut when your desktop asks.
+6. Quit, and do steps 1 to 3 again with `LANGUAGE=zh_TW LANG=zh_TW.UTF-8` and the Chinese pack.
 
-Expected: The app starts with its window, and its tray icon if your desktop has a tray. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. With `zh_TW` the line names Chinese (Taiwan), and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. The hotkey brings the widget to the front. On Linux it goes through the desktop's shortcut service or X11, not uiohook, so the log has "Using Electron globalShortcut for Linux popup hotkeys" and no line about uiohook-napi.
+Expected: The app starts with its window, and its tray icon if your desktop has a tray. The line names Spanish (Mexico), and once the pack is downloaded the whole app is in Spanish without picking it in Language. The app draws the right-click menu from the same pack, so it is in Spanish too: Deshacer, Rehacer, Cortar, Copiar, Pegar, Eliminar, Seleccionar todo. Spell-check is off on purpose: no word in Display name or the search field has a red underline, and right-clicking `lihgt` opens the same edit menu, with no spelling suggestions and no Add to dictionary (Añadir al diccionario). The `ls` lists no `.bdic` file, because the app downloads no spelling dictionary. The folder may exist and be empty; a `.bdic` file dated before this build's first start was left by an earlier version. With `zh_TW` the line names Chinese (Taiwan), and the app and the menu are in Chinese (撤销, 剪切, 复制, 粘贴, 全选). The Chinese pack is written in simplified characters, so Taiwan gets those too. The hotkey brings the widget to the front. On Linux it goes through the desktop's shortcut service or X11, not uiohook, so the log has "Using Electron globalShortcut for Linux popup hotkeys" and no line about uiohook-napi.
 
-Capture: A screenshot of the language line and of the right-click menu in each language, and your session type. If the hotkey does nothing, the log lines about hotkeys.
+Capture: A screenshot of the language line and of the right-click menu in each language, and your session type. If a word is underlined or a menu offers spellings, a screenshot of it. If the `ls` lists a `.bdic` file, its name and date. If the hotkey does nothing, the log lines about hotkeys.
 
 Ref: MP-78
 
@@ -796,9 +803,9 @@ Needs: A GNOME without an AppIndicator extension.
 1. Click the widget's Minimize button. Look for a way back: the Dock, Alt+Tab, the overview, a tray icon.
 2. Start the app again with the same command you used before (the app grid starts your real profile, not the throwaway folder). Then close the widget with the X, and again with Alt+F4, and look for a way back each time.
 
-Expected: The widget does not vanish with no way back. Either it minimizes like a normal window and shows in the overview, or the app tells you once that GNOME needs an AppIndicator extension to show its tray icon. Starting the app again brings the widget back.
+Expected: The widget does not vanish with no way back. Minimize minimizes it like a normal window, and it shows in the Dock, Alt+Tab and the overview. The X and Alt+F4 hide it; the first time in a run a notification says "HA Desktop Widget is still running", to open it from the app launcher and that GNOME shows its tray icon only with an AppIndicator extension. Clicking the notification, or starting the app again, brings the widget back.
 
-Capture: What you saw after Minimize.
+Capture: What you saw after Minimize, and the notification after the X.
 
 Ref: MP-41
 
@@ -870,7 +877,7 @@ Ref: MP-16
 
 ## Ubuntu 24.04, AppImage and .deb
 
-Ubuntu 24.04 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
+Ubuntu 23.10 and later restrict unprivileged user namespaces, which affects the AppImage. Test both package types on a clean 24.04 install or virtual machine.
 
 ### UBU-1 AppImage start
 
@@ -1081,7 +1088,7 @@ Ref: none
 
 ## Sway, niri and river (SWAY)
 
-Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup hotkey, bind the widget's `--toggle` command yourself. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the full path of the AppImage file for the AppImage. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
+Sway, niri and river use the same desktop-layer mode as Hyprland, started automatically. Dragging and per-monitor pin positions are Hyprland features today, so these checks look at what a user of another compositor sees. For the popup hotkey, bind the widget's `--toggle` command yourself; Settings > Hotkeys names it for your installation. The command depends on the package: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` (by its full path) for the AppImage, a link the widget points at the AppImage each time it starts. With the Arch package, Sway: `bindsym $mod+Shift+h exec ha-desktop-widget --toggle`; niri: `Mod+Shift+H { spawn "ha-desktop-widget" "--toggle"; }`; river: `riverctl map normal Super+Shift H spawn 'ha-desktop-widget --toggle'`. Replace `ha-desktop-widget` with your package's command.
 
 ### SWAY-1 Pins
 
@@ -1098,8 +1105,9 @@ Ref: MP-07, CSSA1-10
 
 1. Settings > Hotkeys: read the page, in particular the Global popup trigger section.
 2. Press your `--toggle` key several times.
+3. AppImage only, when a newer version is out: update from Settings > Advanced, let the new version start, and press the key again.
 
-Expected: Where there is no shortcut portal, the Global popup trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward, including binding `--toggle`. The key raises and lowers the widget.
+Expected: Where there is no shortcut portal, the Global popup trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, `/home/<you>/.local/bin/ha-desktop-widget --toggle` for the AppImage). The key, bound to exactly that command, raises and lowers the widget, and with the AppImage it still does after the update.
 
 Capture: A screenshot of the Hotkeys page.
 
@@ -1624,7 +1632,7 @@ Ref: UIC-13, MP-19, MP-47, MP-52, MP-51, MP-01, MP-77
 4. Use Check for Updates in the tray menu with the widget hidden.
 5. Leave the older build running for a day while a newer release exists.
 
-Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download Update, or Download Portable Update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
+Expected: The status is one sentence that says an update exists, with the version in it, and names the button that is shown (Download update, or Download portable update on the Portable build). The button opens the Releases page in your browser. Reopening Settings keeps the state and the button still works. The tray menu entry brings the widget up on the update line with the answer. Leaving the widget running does not leave you unaware of a newer release: the app looks every six hours (and when the machine wakes, if one is due) and shows one notification, naming HA Desktop Widget, for each new version.
 
 Capture: Screenshots of the status line and the button.
 

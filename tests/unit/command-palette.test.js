@@ -438,6 +438,25 @@ describe('command palette recents', () => {
     expect(stored.join()).not.toContain('secret');
   });
 
+  it('lists the commands of an empty search by name, with numbers in natural order', () => {
+    const { palette, paletteState } = load();
+    const light = (entityId, name) => ({
+      entity_id: entityId,
+      state: 'off',
+      attributes: { friendly_name: name },
+    });
+    paletteState.setStates({
+      'light.room_10': light('light.room_10', 'Room 10'),
+      'light.room_2': light('light.room_2', 'Room 2'),
+    });
+    palette.openCommandPalette();
+    // A plain comparison put "Room 10" before "Room 2", unlike every other list of names.
+    expect(resultNames().filter((name) => name.startsWith('Turn on'))).toEqual([
+      'Turn on Room 2',
+      'Turn on Room 10',
+    ]);
+  });
+
   describe('keeping the highlight where the keyboard put it', () => {
     const highlightedName = () =>
       document.querySelector('.command-palette-result.highlighted .command-palette-result-name')
@@ -682,7 +701,7 @@ describe('command palette recents', () => {
       expect(paletteOpen()).toBe(true);
       const hint = document.querySelector('.command-palette-hint');
       expect(hint.hidden).toBe(false);
-      expect(hint.textContent).toBe('To control Front Door, type "lock" or "unlock".');
+      expect(hint.textContent).toBe('To control Front Door, type “lock” or “unlock”.');
 
       search('unl');
       expect(hint.hidden).toBe(true);
@@ -1265,7 +1284,7 @@ describe('command palette recents', () => {
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
       );
 
-      expect(status().textContent).toBe('To control Front Door, type "lock" or "unlock".');
+      expect(status().textContent).toBe('To control Front Door, type “lock” or “unlock”.');
       expect(document.querySelector('.command-palette-hint').getAttribute('aria-hidden')).toBe(
         'true'
       );
@@ -1392,7 +1411,7 @@ describe('command palette recents', () => {
         'No matching results'
       );
       expect(emptyText().querySelector('.command-palette-empty-hint').textContent).toBe(
-        'Try a device name, a command like "turn on", or a page name'
+        'Try a device name, a command like “turn on”, or a page name'
       );
     });
   });
@@ -1451,6 +1470,54 @@ describe('command palette recents', () => {
 
         expect(paletteOpen()).toBe(true);
       }
+    });
+
+    it('opens on a layout without Latin letters, from the key where K sits', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Russian and Arabic layouts report their own letter for Ctrl+K.
+      expect(shortcut(control, { key: 'л', code: 'KeyK' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
+    });
+
+    it.each([
+      ['Arabic', 'ن'],
+      ['Greek', 'κ'],
+      ['Hebrew', 'ל'],
+      // The Burmese K key types a vowel sign, a mark rather than a letter.
+      ['Burmese', 'ု'],
+    ])('opens on an %s layout too', (_layout, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(true);
+    });
+
+    it.each([
+      ['punctuation', ';'],
+      ['a dead key', 'Dead'],
+      ['an accented Latin letter', 'é'],
+      ['a combining accent', '́'],
+      ['a digit', '5'],
+    ])('stays shut on a Latin layout whose US K key types %s', (_what, key) => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // The layout has its K somewhere else, which is the key that opens the palette there.
+      expect(shortcut(control, { key, code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
+    });
+
+    it('follows the printed K on a layout that moves it, and not the US position', () => {
+      const control = setup('<button id="c">Go</button>');
+      control.focus();
+
+      // Dvorak: the US K key types T, and K is where the US V is.
+      expect(shortcut(control, { key: 't', code: 'KeyK' }).defaultPrevented).toBe(false);
+      expect(paletteOpen()).toBe(false);
+      expect(shortcut(control, { key: 'k', code: 'KeyV' }).defaultPrevented).toBe(true);
+      expect(paletteOpen()).toBe(true);
     });
 
     it('leaves Ctrl+K in a Mac text field alone, since it deletes to the end of the line there', () => {
@@ -1537,6 +1604,42 @@ describe('command palette recents', () => {
     } finally {
       i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
     }
+  });
+
+  it('marks the Command and Page pills, which a narrow window keeps, and not an entity type', () => {
+    const { palette, paletteState } = load();
+    paletteState.setConfig({
+      homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' },
+      customTabs: [
+        { id: 'main', name: 'Main', entityIds: [] },
+        { id: 'kitchen', name: 'Kitchen', entityIds: [] },
+      ],
+      activeTabId: 'main',
+    });
+    paletteState.setServices({ light: { turn_on: {}, turn_off: {} } });
+    paletteState.setStates({ 'light.bed_light': bedLight('on') });
+    palette.openCommandPalette();
+
+    const pills = Object.fromEntries(
+      [...document.querySelectorAll('.command-palette-result')].map((row) => {
+        const pill = row.querySelector('.command-palette-result-domain');
+        return [
+          row.querySelector('.command-palette-result-name').textContent,
+          {
+            kind: pill.classList.contains('is-row-kind'),
+            glyph: pill.querySelector('.command-palette-result-kind-icon svg')?.dataset.icon,
+            text: pill.textContent,
+            title: pill.title,
+          },
+        ];
+      })
+    );
+    // The glyph is what a narrow window shows; the word stays for screen readers and the tooltip.
+    expect(pills).toMatchObject({
+      'Bed Light': { kind: false, glyph: undefined, text: 'Light' },
+      'Turn off Bed Light': { kind: true, glyph: 'play', text: 'Command', title: 'Command' },
+      'Switch to Kitchen': { kind: true, glyph: 'app-window', text: 'Page', title: 'Page' },
+    });
   });
 
   it('does not offer switching to the page already on screen', () => {

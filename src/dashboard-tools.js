@@ -2,7 +2,13 @@ import state from './state.js';
 import websocket from './websocket.js';
 import { restoreDashboard } from './ui.js';
 import { refreshRestoredDashboardSettings } from './settings.js';
-import { readDashboardHistory, writeDashboardHistory } from './dashboard-history.js';
+import {
+  dashboardSnapshot,
+  readDashboardHistory,
+  readRestorePoints,
+  sameLayout,
+  writeDashboardHistory,
+} from './dashboard-history.js';
 import {
   closeDialog,
   copyTextToClipboard,
@@ -10,8 +16,8 @@ import {
   openDialog,
   showToast,
 } from './ui-utils.js';
-import { formatClockDateTime } from './format.js';
-import { t } from './i18n.js';
+import { formatClockDateTime, formatList } from './format.js';
+import { formatNumber, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';
 import pageNameRules from './page-names.cjs';
 
@@ -137,7 +143,14 @@ function showDashboardHistory() {
     'Restore a saved layout. Your current layout is saved before restoring. Connection settings stay on this device.'
   );
   body.append(description);
-  const entries = readDashboardHistory(state.CONFIG);
+  // Its own coarse list, newest first: one restore point per burst of edits, not every Undo step.
+  // Once the dashboard has been idle, the newest point is the layout already on screen, and
+  // restoring it would change nothing. A point that holds the current layout is left out, compared
+  // as stored, as the list itself compares layouts.
+  const current = dashboardSnapshot(state.CONFIG);
+  const entries = readRestorePoints(state.CONFIG).filter(
+    (entry) => !sameLayout(entry.layout, current)
+  );
   if (!entries.length) {
     description.classList.add('workflow-empty');
     description.textContent = t(
@@ -156,19 +169,18 @@ function showDashboardHistory() {
     pages.className = 'dashboard-restore-pages';
     // A page nobody named is saved either with the name of the language of the day or, as the
     // server stores it, with no name at all; both are shown with today's default name.
-    pages.textContent = entry.layout.customTabs
-      .map((tab, index) =>
+    pages.textContent = formatList(
+      entry.layout.customTabs.map((tab, index) =>
         tab.nameIsDefault || !String(tab.name ?? '').trim() ? defaultPageName(index, t) : tab.name
       )
-      .join(', ');
+    );
     // Near-identical rows are told apart by how much each holds, not only by when it was saved.
     const count = document.createElement('span');
     count.className = 'dashboard-restore-count';
     count.textContent = t('Pages: {{pages}} · Tiles: {{tiles}}', {
-      pages: entry.layout.customTabs.length,
-      tiles: entry.layout.customTabs.reduce(
-        (total, tab) => total + (tab.entityIds?.length || 0),
-        0
+      pages: formatNumber(entry.layout.customTabs.length),
+      tiles: formatNumber(
+        entry.layout.customTabs.reduce((total, tab) => total + (tab.entityIds?.length || 0), 0)
       ),
     });
     const arrow = document.createElement('span');
@@ -311,7 +323,12 @@ function initializeDashboardTools() {
   websocket.on('close', (event) => {
     // Closing a socket to reconnect with new settings is not a connection problem.
     if (event?.intentional) return;
-    recordIssue(event?.reason === 'timeout' ? 'connection_timeout' : 'connection_closed');
+    // A first snapshot that ran out of time is a timeout too, only later in the connection.
+    recordIssue(
+      ['timeout', 'snapshot-timeout'].includes(event?.reason)
+        ? 'connection_timeout'
+        : 'connection_closed'
+    );
   });
   websocket.on('error', (error) => {
     recordIssue(
@@ -354,7 +371,7 @@ function initializeDashboardTools() {
       undoInFlight = true;
       refreshDashboardUndoState();
       try {
-        await restoreDashboard(target.layout, { activeTabId: target.activeTabId });
+        await restoreDashboard(target.layout, { activeTabId: target.activeTabId, undo: true });
         refreshRestoredDashboardSettings();
         writeDashboardHistory(
           config,

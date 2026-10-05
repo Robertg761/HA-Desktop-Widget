@@ -8,8 +8,12 @@ const {
   resetMockElectronAPI,
   triggerMockEvent,
 } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer desktop pin waiting escape hatch', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   let mockElectronAPI;
   let mockLogger;
   let mockUi;
@@ -174,6 +178,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
   const loadRenderer = async ({ bootstrapOverrides = {} } = {}) => {
     jest.resetModules();
+    lifetime.start();
     setDesktopPinDom();
 
     resetMockElectronAPI();
@@ -285,9 +290,13 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     await flushAsync();
   };
 
+  const cleanup = () => lifetime.stop();
+
+  warmUpRenderer(loadRenderer, cleanup);
   beforeEach(() => {
     jest.clearAllMocks();
   });
+  afterEach(cleanup);
 
   it('gives the pin the Home Assistant unit system from the bootstrap and from later updates', async () => {
     await loadRenderer({ bootstrapOverrides: { unitSystem: { temperature: '°F' } } });
@@ -393,7 +402,8 @@ describe('Renderer desktop pin waiting escape hatch', () => {
 
     expect(mockUi.renderDesktopPinnedTile).toHaveBeenLastCalledWith('light.bedroom', null, {
       hasSnapshot: false,
-      connectionIssue: 'Please configure your Home Assistant token in Settings (gear icon).',
+      // A pin has no Settings button; it sends the person to the widget.
+      connectionIssue: 'No access token is saved. Open the widget to enter one.',
     });
     expect(mockElectronAPI.getConfig).not.toHaveBeenCalled();
   });
@@ -734,6 +744,25 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     ])('%s', async (_, supportsWindowPositioning, canDrag, shown) => {
       await loadRenderer({ bootstrapOverrides: bootstrap(supportsWindowPositioning, canDrag) });
       expect(document.body.classList.contains('desktop-pin-compositor-placement')).toBe(shown);
+    });
+
+    // The notice itself only fits a pin 240px wide, so the default pin says it with its hint: a
+    // drag there looks as if it works and is gone at the next start.
+    it('swaps "Drag or resize" for a hint that does not invite a drag, at every size', async () => {
+      await loadRenderer({ bootstrapOverrides: bootstrap(false, false) });
+      const content = document.getElementById('desktop-pin-content');
+      expect(content.getAttribute('data-resize-hint')).toBe('Resize only');
+
+      const styles = require('fs').readFileSync(
+        require('path').join(__dirname, '../../styles.css'),
+        'utf8'
+      );
+      const rule = styles.match(
+        /body\.desktop-pin-mode\.desktop-pin-edit-mode\.desktop-pin-compositor-placement\s+\.desktop-pin-content::after \{([^}]*)\}/
+      );
+      expect(rule?.[1]).toMatch(/content: attr\(data-resize-hint\);/);
+      // At the top level (a rule in a media query is indented), so the default 168x148 pin has it.
+      expect(styles[rule.index - 1]).toBe('\n');
     });
   });
 

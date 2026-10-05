@@ -8,8 +8,12 @@ const {
   resetMockElectronAPI,
   triggerMockEvent,
 } = require('../mocks/electron.js');
+const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer stale favorite state handling', () => {
+  // Stops what each test's renderer started (its timers and window and document listeners), so it
+  // does not act on the next test's page. See tests/helpers/renderer-harness.js.
+  const lifetime = createRendererLifetime();
   const STALE_PRESERVE_MS = 15 * 60 * 1000;
   const favoriteEntity = {
     entity_id: 'light.favorite',
@@ -67,6 +71,7 @@ describe('Renderer stale favorite state handling', () => {
 
   const loadRenderer = async (config = createConfig()) => {
     jest.resetModules();
+    lifetime.start();
     resetMockElectronAPI();
     jest.useFakeTimers();
 
@@ -206,6 +211,7 @@ describe('Renderer stale favorite state handling', () => {
       setLocaleBootstrap: jest.fn(),
       t: jest.fn((key) => key),
       translateDocument: jest.fn(),
+      formatNumber: jest.fn((value) => String(value)),
     }));
     jest.doMock('../../src/icons.js', () => ({
       __esModule: true,
@@ -242,13 +248,17 @@ describe('Renderer stale favorite state handling', () => {
     });
   };
 
-  afterEach(() => {
+  const cleanup = () => {
     jest.clearAllTimers();
     jest.useRealTimers();
     dateNowSpy?.mockRestore();
+    lifetime.stop();
     jest.resetModules();
     delete window.electronAPI;
-  });
+  };
+
+  warmUpRenderer(() => loadRenderer(), cleanup);
+  afterEach(cleanup);
 
   it('preserves a missing favorite during the stale grace window', async () => {
     await loadRenderer();
