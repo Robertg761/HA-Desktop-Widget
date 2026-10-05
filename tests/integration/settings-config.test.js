@@ -83,18 +83,26 @@ const mockUiUtils = {
       .map((entry) => ({
         ...entry,
         color: normalizeHex(entry.color),
-        // A colour nobody named is named when it is read, in the language of the day, as the real
-        // localizeTheme does.
-        name:
-          entry.name ||
-          require('../../src/i18n.js').t('Custom {{color}}', { color: normalizeHex(entry.color) }),
         description: 'Saved custom color',
         rgb: hexToRgbString(entry.color),
         isCustom: true,
+        hasDefaultName: !entry.name,
       }))
       .filter((entry) => entry.color && entry.rgb);
   }),
-  getAccentThemes: jest.fn(() => [...BASE_THEMES, ...mockCustomThemes]),
+  // A colour nobody named is named when the list is read, in the language of the day, as the real
+  // localizeTheme does.
+  getAccentThemes: jest.fn(() => [
+    ...BASE_THEMES,
+    ...mockCustomThemes.map((theme) =>
+      theme.hasDefaultName
+        ? {
+            ...theme,
+            name: require('../../src/i18n.js').t('Custom {{color}}', { color: theme.color }),
+          }
+        : theme
+    ),
+  ]),
   // The window a Background choice gives: the untinted base for null, a tinted one otherwise.
   getBackgroundWindowColor: jest.fn((color = null) => (color === null ? '#12161e' : '#222c3c')),
   // The real dialog layer: class-based visibility plus the inline display, the focus trap and
@@ -3828,6 +3836,112 @@ describe('Settings + Config Integration', () => {
         expect(document.getElementById('theme-current-selection').textContent).not.toMatch(
           /[\u2066\u2069]/
         );
+      });
+    });
+
+    describe('a name typed but not yet renamed', () => {
+      const i18n = require('../../src/i18n.js');
+
+      afterEach(() => {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      });
+
+      // Types a new name for the background's custom colour and leaves the field, without Rename or
+      // Enter; the editor counts as idle once focus has gone.
+      const typeNameAndLeave = async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.background = 'custom-ab34cd';
+        await settings.openSettings();
+        const target = document.getElementById('color-target-select');
+        target.value = 'background';
+        target.dispatchEvent(new Event('change'));
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Ocean');
+        field.focus();
+        field.value = 'Lilac';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.blur();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return field;
+      };
+
+      const expectSaveToAskAboutIt = async () => {
+        mockUiUtils.showConfirm.mockClear();
+        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+          expect.stringContaining('Unsaved Custom Color Changes'),
+          expect.any(String),
+          expect.any(Object)
+        );
+        expect(state.CONFIG.ui.customColors[0].name).toBe('Lilac');
+      };
+
+      test('survives the swatches being drawn again for a theme mode', async () => {
+        const field = await typeNameAndLeave();
+
+        document.querySelector('#theme-mode-control [data-theme-mode="dark"]').click();
+
+        expect(field.value).toBe('Lilac');
+        await expectSaveToAskAboutIt();
+      });
+
+      test('survives a language change', async () => {
+        const field = await typeNameAndLeave();
+
+        i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+
+        expect(field.value).toBe('Lilac');
+        await expectSaveToAskAboutIt();
+      });
+
+      test('is not mistaken for the default a language change renames', async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: '', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.accent = 'custom-ab34cd';
+        await settings.openSettings();
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toBe('Custom #AB34CD');
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+        });
+        await Promise.resolve();
+
+        expect(field.value).toBe('Eigene Farbe #AB34CD');
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('');
+      });
+
+      test('follows a language change once it is renamed back to the default', async () => {
+        state.CONFIG.ui.customColors = [
+          { id: 'custom-ab34cd', name: 'Ocean', color: '#AB34CD', createdAt: 'x', updatedAt: 'x' },
+        ];
+        state.CONFIG.ui.accent = 'custom-ab34cd';
+        await settings.openSettings();
+        const field = document.getElementById('custom-color-name-input');
+        field.value = 'Custom #AB34CD';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+
+        i18n.setLocaleBootstrap({
+          activeLocale: 'de',
+          messages: { 'Custom {{color}}': 'Eigene Farbe {{color}}' },
+        });
+        await Promise.resolve();
+
+        expect(field.value).toBe('Eigene Farbe #AB34CD');
+        mockUiUtils.showConfirm.mockClear();
+        await settings.saveSettings();
+        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
       });
     });
 

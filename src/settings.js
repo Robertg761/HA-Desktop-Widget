@@ -139,6 +139,9 @@ let isSyncingCustomColorEditor = false;
 let lastValidCustomColorHex = '#64B5F6';
 let hasDraftColorPreview = false;
 let isCustomEditorActive = false;
+// The name last written into the custom colour's rename field; a field that still holds it has not
+// been edited.
+let shownCustomColorName = '';
 let settingsUiHooks = null;
 let languageSaveQueue = Promise.resolve();
 // The Start at login state shown when Settings opened, so Save only writes a real change.
@@ -665,6 +668,11 @@ function isDefaultCustomColorName(name, color) {
 // getThemeDisplayName); what it holds is read back without those marks.
 function readCustomColorNameField(input) {
   return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
+}
+
+function showCustomColorName(input, theme) {
+  input.value = theme ? getThemeDisplayName(theme) : '';
+  shownCustomColorName = readCustomColorNameField(input);
 }
 
 function normalizeCustomColorList(customColors) {
@@ -1270,14 +1278,19 @@ function updateCustomThemeManagementUI(theme = null) {
 
   if (!isCustomTheme) {
     activeCustomManagementThemeId = null;
-    if (nameInput) nameInput.value = '';
+    if (nameInput) showCustomColorName(nameInput, null);
     return;
   }
 
-  // A name nobody is editing follows the colour and the language, so a default name shown before a
-  // language change is not left behind to be compared with, or saved as, the new one.
-  if (nameInput && (activeCustomManagementThemeId !== selectedTheme.id || !isCustomEditorActive)) {
-    nameInput.value = getThemeDisplayName(selectedTheme);
+  // An untouched name follows the colour and the language, so a default name shown before a language
+  // change is not left behind to be compared with, or saved as, the new one. A name the user typed
+  // stays until they pick another colour, even after the field loses focus: the swatches are drawn
+  // again for a theme mode or a language, and Save still has to ask about it.
+  if (nameInput) {
+    const isUntouched = readCustomColorNameField(nameInput) === shownCustomColorName;
+    if (activeCustomManagementThemeId !== selectedTheme.id || isUntouched) {
+      showCustomColorName(nameInput, selectedTheme);
+    }
   }
   activeCustomManagementThemeId = selectedTheme.id;
 }
@@ -1351,7 +1364,7 @@ function renameSelectedCustomColor() {
 
   const nextName = readCustomColorNameField(nameInput);
   if (!nextName) {
-    nameInput.value = getThemeDisplayName(selectedTheme);
+    showCustomColorName(nameInput, selectedTheme);
     return;
   }
 
@@ -1368,6 +1381,9 @@ function renameSelectedCustomColor() {
 
   setCustomThemes(pendingCustomColors);
   persistCustomColorsImmediately();
+  // The field now holds the saved name, so the swatches drawn next may show it in the language of
+  // the day.
+  shownCustomColorName = nextName;
   renderColorThemeOptions();
   showToast(t('Custom color renamed.'), 'success', 1800);
 }
@@ -5622,6 +5638,8 @@ async function openSettings(uiHooks) {
       enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
     }
     setPendingCustomColorList(state.CONFIG.ui.customColors || []);
+    // Settings opens on the saved name, whatever the rename field held before.
+    activeCustomManagementThemeId = null;
 
     const currentAccent = getCurrentAccentTheme();
     previewAccent = currentAccent;
