@@ -15,6 +15,7 @@ import {
   formatNumber,
   formatTime,
   getFormatLocale,
+  getLocaleState,
   t,
 } from './i18n.js';
 import stateNameTables from './ha-state-names.cjs';
@@ -369,10 +370,17 @@ export function getTemperatureUnit(entity, fallback = '°') {
 // to a state name ("heat" in a select of heating options is not "Heating").
 const FREE_FORM_DOMAINS = new Set(['select', 'input_select', 'text', 'input_text']);
 
+// Words are cased by the language they are written in, the catalog's, not by the region numbers and
+// dates follow. A raw state is English text whatever the region: cased the Turkish way, an
+// English-fallback user on a Turkish computer read "İdle mode" for "idle_mode".
+function getCasingLocale() {
+  return getLocaleState().activeLocale || 'en';
+}
+
 function capitalizeFirst(text) {
   const [first] = Array.from(text);
   if (!first) return text;
-  return first.toLocaleUpperCase(getFormatLocale()) + text.slice(first.length);
+  return first.toLocaleUpperCase(getCasingLocale()) + text.slice(first.length);
 }
 
 /**
@@ -382,7 +390,7 @@ function capitalizeFirst(text) {
  */
 export function humanizeState(text) {
   const spaced = text.replace(/_/g, ' ');
-  return spaced === spaced.toLocaleLowerCase(getFormatLocale()) ? capitalizeFirst(spaced) : spaced;
+  return spaced === spaced.toLocaleLowerCase(getCasingLocale()) ? capitalizeFirst(spaced) : spaced;
 }
 
 /**
@@ -392,7 +400,7 @@ export function humanizeState(text) {
  * @param {string} text
  */
 export function titleCase(text) {
-  const locale = getFormatLocale();
+  const locale = getCasingLocale();
   return String(text ?? '').replace(
     /(^|\s)(\p{L})/gu,
     (_match, space, letter) => space + letter.toLocaleUpperCase(locale)

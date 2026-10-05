@@ -344,6 +344,24 @@ describe('units and percentages', () => {
     expect(format.formatMeasurement(5, 'W')).toBe(`5${NBSP}W`);
   });
 
+  it('cases English state words the English way on a Turkish computer', () => {
+    // Numbers follow the region (above), but the words are English: the Turkish capital of "i" is
+    // the dotted "İ", which made "İdle mode" of "idle_mode" and "İntensive" of a climate preset.
+    useLocale('en', {
+      languageSetting: 'auto',
+      detectedLocale: 'tr-TR',
+      systemLocale: 'tr-TR',
+      requestedLocale: 'tr-TR',
+      usingEnglishFallback: true,
+    });
+    expect(i18n.getFormatLocale()).toBe('tr-TR');
+    expect(format.humanizeState('idle_mode')).toBe('Idle mode');
+    expect(format.formatStateName('ironing')).toBe('Ironing');
+    expect(format.titleCase('intensive eco')).toBe('Intensive Eco');
+    // A state written with a capital "I" is not lower case, whichever way "I" is lowered.
+    expect(format.humanizeState('IDLE')).toBe('IDLE');
+  });
+
   it('keeps the unit next to the number in a right-to-left language', () => {
     useLocale('ar');
     const text = format.formatMeasurement(21.4, '°C');
