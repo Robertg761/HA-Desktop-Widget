@@ -552,6 +552,21 @@ async function openHotkeysFor(ctx, filter, options) {
   await revealInSettings(ctx, '#hotkeys-list');
 }
 
+// A Dashboard section opens with a transition, and what is inside it is only where it will stay
+// once the body has reached its full height and nothing in it is still moving. A fixed wait could
+// end mid-transition on a slow runner.
+async function waitForSectionOpen(ctx, sectionId) {
+  await ctx.waitForExpression(
+    `(() => {
+      const body = document.querySelector(${JSON.stringify(`#${sectionId} .section-body`)});
+      return !!body && !body.closest('.collapsed') &&
+        !body.getAnimations({ subtree: true }).length &&
+        Math.abs(body.getBoundingClientRect().height - body.scrollHeight) < 1;
+    })()`,
+    `${sectionId} to finish opening`
+  );
+}
+
 async function openPrimaryCardsList(ctx) {
   await openSettingsTab(ctx, 'dashboard');
   // A section remembers whether it was open, so only open it when it is shut.
@@ -560,8 +575,7 @@ async function openPrimaryCardsList(ctx) {
     if (section.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
   })()`);
   await ctx.waitForSelector('#primary-cards-list .entity-item');
-  // The section opens with a transition; its heading is only where it will stay once it is open.
-  await ctx.sleep(600);
+  await waitForSectionOpen(ctx, 'primary-cards-section');
   await revealInSettings(ctx, '#primary-cards-section');
 }
 
@@ -1449,8 +1463,7 @@ const scenes = [
         if (section.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
       })()`);
       await ctx.waitForSelector('#custom-entity-icons-list .custom-entity-icon-item');
-      // It opens with a transition; its list is only where it will stay once it is open.
-      await ctx.sleep(600);
+      await waitForSectionOpen(ctx, 'custom-entity-icons-section');
       await typeInto(ctx, '#custom-entity-icons-list [data-custom-icon-input]', 'Glühbirne');
       await ctx.waitForSelector('.custom-entity-icon-choice[aria-label="Glühbirne (💡)"]');
       await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
