@@ -65,6 +65,7 @@ import {
   createLineIcon,
   entityIconMarkup,
   getEntityIconDescriptor,
+  getEntityLineIconName,
   lineIconMarkup,
   renderEntityIcon,
   setLineIconContent,
@@ -3386,6 +3387,13 @@ function getQuickAccessTileCountdown(entity) {
   return { endsAt, finishedValue: domain === 'sensor' ? t('Finished') : '0:00' };
 }
 
+// The tile's icon, and for a glyph the line icon to draw where the bar's font lacks it (see
+// cleanTileIcon in src/omarchy-bar.cjs).
+function describeTileIconForBar(entity) {
+  const icon = getEntityIconDescriptor(entity);
+  return icon.kind === 'line' ? icon : { ...icon, fallback: getEntityLineIconName(entity) };
+}
+
 /**
  * Describe a Quick Access tile for another surface (the Omarchy bar plugin), so it can draw the
  * same tile: name, icon, status line, active and unavailable states, and what a click does.
@@ -3427,7 +3435,7 @@ function describeQuickAccessTile(entityId) {
     state: typeof entity.state === 'string' ? entity.state : '',
     value: getQuickAccessTileSummaryText(entity),
     ...(countdown ? { countdown } : {}),
-    icon: getEntityIconDescriptor(entity),
+    icon: describeTileIconForBar(entity),
     // A scene or button nobody has pressed yet is `unknown` and works fine.
     available:
       !unavailable && (entity.state !== 'unknown' || QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)),

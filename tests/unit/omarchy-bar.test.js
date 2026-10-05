@@ -737,6 +737,32 @@ describe('Omarchy bar status', () => {
     expect(tile({ name: `${'a'.repeat(79)}e\u0301x` }).name).toBe(`${'a'.repeat(79)}e\u0301`);
   });
 
+  describe("an MDI glyph the bar's Nerd Font does not have", () => {
+    const icon = (glyph, fallback, kind = 'mdi') =>
+      cleanOmarchyBarTile('light.porch', { icon: { kind, glyph, fallback } }).icon;
+
+    it('is drawn as the line icon the widget sent with it', () => {
+      // Material Design Icons 7.4 added glyphs past U+F1AF0, the last one Nerd Fonts 3 carries.
+      expect(icon('\u{F1AF1}', 'lightbulb')).toEqual({ kind: 'line', name: 'lightbulb' });
+      expect(icon('\u{F1D17}', 'fan')).toEqual({ kind: 'line', name: 'fan' });
+      expect(icon('\u{F1C80}', 'lightbulb', 'custom')).toEqual({ kind: 'line', name: 'lightbulb' });
+    });
+
+    it('is the box when no usable line icon came with it', () => {
+      expect(icon('\u{F1C80}')).toEqual({ kind: 'line', name: 'box' });
+      expect(icon('\u{F1C80}', '../x')).toEqual({ kind: 'line', name: 'box' });
+    });
+
+    it('leaves the glyphs the font has, and emoji, as they are', () => {
+      expect(icon('\u{F0001}', 'lightbulb')).toEqual({ kind: 'glyph', glyph: '\u{F0001}' });
+      expect(icon('\u{F1AF0}', 'lightbulb')).toEqual({ kind: 'glyph', glyph: '\u{F1AF0}' });
+      expect(icon('\u{1F4A1}', 'lightbulb', 'custom')).toEqual({
+        kind: 'glyph',
+        glyph: '\u{1F4A1}',
+      });
+    });
+  });
+
   it('accepts only plain line-icon SVGs', () => {
     const svg =
       '<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor"><path d="M9 18h6"></path></svg>';

@@ -523,9 +523,11 @@ function publishOmarchyBarTiles({ force = false } = {}) {
     const tile = ui.describeQuickAccessTile(entityId);
     if (!tile) return;
     tiles[entityId] = tile;
-    if (tile.icon?.kind === 'line' && !icons[tile.icon.name]) {
+    // A glyph's line icon goes too, for main to draw where the bar's font lacks the glyph.
+    const lineIcon = tile.icon?.kind === 'line' ? tile.icon.name : tile.icon?.fallback;
+    if (lineIcon && !icons[lineIcon]) {
       // Sized in pixels: the shell draws it as an image, where 1em means nothing.
-      icons[tile.icon.name] = lineIconMarkup(tile.icon.name).replace(
+      icons[lineIcon] = lineIconMarkup(lineIcon).replace(
         'width="1em" height="1em"',
         'width="24" height="24"'
       );

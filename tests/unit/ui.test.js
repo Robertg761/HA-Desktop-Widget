@@ -10345,6 +10345,26 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   describe('describeQuickAccessTile', () => {
+    it("sends a glyph icon with the line icon to draw where the bar's font lacks it", () => {
+      const light = { entity_id: 'light.porch', state: 'on', attributes: {} };
+      state.setStates({ [light.entity_id]: light });
+      state.setConfig({ ...state.CONFIG, customEntityIcons: { 'light.porch': '\u{F1C80}' } });
+      try {
+        expect(ui.describeQuickAccessTile(light.entity_id).icon).toEqual({
+          kind: 'custom',
+          glyph: '\u{F1C80}',
+          fallback: 'lightbulb',
+        });
+        state.setConfig({ ...state.CONFIG, customEntityIcons: {} });
+        expect(ui.describeQuickAccessTile(light.entity_id).icon).toEqual({
+          kind: 'line',
+          name: 'lightbulb',
+        });
+      } finally {
+        state.setConfig({ ...state.CONFIG, customEntityIcons: {} });
+      }
+    });
+
     it('publishes deadlines for native timers and timer sensors, clearing them on pause or stop', () => {
       jest.useFakeTimers();
       try {

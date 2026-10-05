@@ -210,13 +210,42 @@ function clipIconGlyph(glyph) {
   return clipped;
 }
 
+// The bar draws a glyph in its own font, a Nerd Font on Omarchy. Nerd Fonts 3 carry Material Design
+// Icons up to U+F1AF0, and the icons MDI has added since then (Home Assistant ships them, the widget's
+// own MDI font has them) are past it, in the same private-use plane, where the bar shows an empty box.
+// A tile with such a glyph gets the line icon the widget would draw for it instead.
+const BAR_FONT_LAST_MDI_GLYPH = 0xf1af0;
+const SUPPLEMENTARY_PRIVATE_USE = [0xf0000, 0xffffd];
+
+function isPastBarFont(glyph) {
+  return Array.from(glyph).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint > BAR_FONT_LAST_MDI_GLYPH &&
+      codePoint >= SUPPLEMENTARY_PRIVATE_USE[0] &&
+      codePoint <= SUPPLEMENTARY_PRIVATE_USE[1]
+    );
+  });
+}
+
 function cleanTileIcon(icon) {
-  if (icon?.kind === 'line' && LINE_ICON_NAME_PATTERN.test(icon.name)) {
+  if (
+    icon?.kind === 'line' &&
+    typeof icon.name === 'string' &&
+    LINE_ICON_NAME_PATTERN.test(icon.name)
+  ) {
     return { kind: 'line', name: icon.name };
   }
   if ((icon?.kind === 'mdi' || icon?.kind === 'custom') && typeof icon.glyph === 'string') {
     const glyph = clipIconGlyph(icon.glyph);
-    if (glyph.trim()) return { kind: 'glyph', glyph };
+    if (glyph.trim() && !isPastBarFont(glyph)) return { kind: 'glyph', glyph };
+    if (
+      glyph.trim() &&
+      typeof icon.fallback === 'string' &&
+      LINE_ICON_NAME_PATTERN.test(icon.fallback)
+    ) {
+      return { kind: 'line', name: icon.fallback };
+    }
   }
   return { kind: 'line', name: 'box' };
 }
