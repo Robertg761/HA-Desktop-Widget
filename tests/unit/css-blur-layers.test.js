@@ -75,6 +75,19 @@ describe('how many blur passes a dialog costs', () => {
       expect(resolvedValue(document.getElementById('playing'), 'filter')).toMatch(/drop-shadow/);
     });
 
+    it("gives the media dialog's filled play button no glow, as on every other platform", () => {
+      render(
+        'linux-performance-mode',
+        `<div class="media-detail-controls">
+           <button class="btn play-pause-btn media-detail-play-btn playing" id="dialog-play"></button>
+         </div>`
+      );
+
+      const button = document.getElementById('dialog-play');
+      expect(resolvedValue(button, 'filter') || 'none').not.toMatch(/drop-shadow/);
+      expect(resolvedValue(button, 'animation')).toBe('none');
+    });
+
     it("lets the playing button's glow pulse everywhere else", () => {
       render('', '<button class="play-pause-btn playing" id="playing"></button>');
 

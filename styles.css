@@ -11803,13 +11803,14 @@ body.linux-performance-mode *:not(.modal):not(.hotkey-capture-modal) {
 }
 
 /* The glow that pulses on the playing button repaints a filter every frame; without a GPU that is
-   software work for one small button. It keeps the glow, still. */
+   software work for one small button. It keeps the glow, still. The media dialog's filled play
+   button never glows (its own rule turns the pulse off), so it keeps its plain circle. */
 body.linux-performance-mode .play-pause-btn.playing,
 body.linux-performance-mode .media-player-entity[data-media-playing='true'] .play-pause-btn {
   animation: none;
 }
 
-body.linux-performance-mode .play-pause-btn.playing:not(:hover),
+body.linux-performance-mode .play-pause-btn.playing:not(:hover, .media-detail-play-btn),
 body.linux-performance-mode
   .media-player-entity[data-media-playing='true']
   .play-pause-btn:not(:hover) {
@@ -11819,9 +11820,16 @@ body.linux-performance-mode
 /* Linux performance mode strips backdrop blur from everything but modals, and what the palette, a
    toast, a menu or a tooltip floats over then shows through their 96% opaque panel: the text of the
    tile beneath doubles up faintly behind the rows. Without a blur to hide it they take the solid
-   panel colour. (Settings and the other dialogs keep their blur and their 96% panel.) */
+   panel colour. That includes the label of a Settings page beside the rail, which floats over the
+   page's own text. (Settings and the other dialogs keep their blur and their 96% panel.) */
 body.linux-performance-mode
-  :is(.command-palette-panel, .toast, .connection-status-tooltip, .theme-tooltip-flyout) {
+  :is(
+    .command-palette-panel,
+    .toast,
+    .connection-status-tooltip,
+    .theme-tooltip-flyout,
+    .tab-tooltip
+  ) {
   --dialog-bg: var(--dialog-bg-solid);
 }
 
