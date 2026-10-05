@@ -1108,9 +1108,10 @@ function scoreCustomEntityIconChoice(choice, groups, relaxed) {
   return choice.toned && !(matchedWhat && matchedTone) ? 0 : score;
 }
 
-// A code point, as written in a character table: "1f600", "U+1F600". A word that happens to be
-// made of the letters a to f ("bed", "cafe") has no digit and is not one.
-const CODEPOINT_QUERY_PATTERN = /^(?:u\+)?[0-9a-f]*\d[0-9a-f]*$/;
+// A code point, as written in a character table: "U+1F600", or four hex digits or more ("1f600",
+// "2764"). A word made of the letters a to f ("bed", "cafe") has no digit and is not one, and a
+// lone "1" would be part of every emoji's code point.
+const CODEPOINT_QUERY_PATTERN = /^(?:u\+[0-9a-f]+|(?=[0-9a-f]*\d)[0-9a-f]{4,})$/;
 
 function matchesCustomEntityIconText(choice, rawFilter) {
   const pasted = stripEmojiVariationSelectors(rawFilter);

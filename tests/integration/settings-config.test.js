@@ -3085,6 +3085,26 @@ describe('Settings + Config Integration', () => {
         }
       });
 
+      test.each([
+        ['1f600', '😀', 1],
+        ['U+1F600', '😀', 1],
+        // Every heart sequence holds U+2764 as well.
+        ['2764', '❤️', 120],
+      ])('finds an emoji by its code point, "%s"', async (query, icon, most) => {
+        const found = [...(await search(query)).querySelectorAll('.custom-entity-icon-choice')].map(
+          (button) => button.dataset.customIconChoice
+        );
+        expect(found).toContain(icon);
+        expect(found.length).toBeLessThanOrEqual(most);
+      });
+
+      test('does not take a lone digit for a code point that is in every emoji', async () => {
+        const picker = await search('1');
+        expect(
+          picker.querySelector('.custom-entity-icon-picker-meta')?.textContent || ''
+        ).not.toMatch(/first 120/);
+      });
+
       test('finds a pasted emoji by the emoji itself', async () => {
         const picker = await search('🌲');
         const found = [...picker.querySelectorAll('.custom-entity-icon-choice')].map(
