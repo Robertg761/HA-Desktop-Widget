@@ -4701,9 +4701,10 @@ function updateLanguageSummaryText() {
       !!systemPack ||
       (!BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en');
     fallbackSummary.classList.toggle('hidden', !needsPack);
+    // Named in the interface's language, as the "System language detected" line above it is.
     fallbackSummary.textContent = systemPack
       ? t('Using English until the {{language}} language pack is downloaded.', {
-          language: getLanguagePackDisplayName(systemPack),
+          language: getLanguageDisplayName(systemPack.locale, systemPack.englishName),
         })
       : t('Using English until the selected language pack is installed.');
   }

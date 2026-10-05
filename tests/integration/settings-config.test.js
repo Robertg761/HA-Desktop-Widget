@@ -2340,8 +2340,9 @@ describe('Settings + Config Integration', () => {
           const line = await openOnAuto('ar-EG', [arabicPack(false), frenchPack(false)]);
 
           expect(line.classList.contains('hidden')).toBe(false);
+          // In the interface's language, like "System language detected: Arabic" above it.
           expect(line.textContent).toBe(
-            'Using English until the العربية language pack is downloaded.'
+            'Using English until the Arabic language pack is downloaded.'
           );
         });
 
