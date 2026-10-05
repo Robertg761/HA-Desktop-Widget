@@ -12302,9 +12302,15 @@ label.disabled {
   margin: 0;
 }
 
+/* The keyboard ring goes round the whole option, rounded like every other ring in the app. Drawn on
+   the radio it was a square box round a round control, and it ran into the "One-time" label. */
 .donate-frequency-option input[type='radio']:focus-visible {
+  outline: none;
+}
+
+.donate-frequency-option:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 .donate-amount-grid {

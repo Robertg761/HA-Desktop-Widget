@@ -1134,6 +1134,16 @@ const scenes = [
       await ctx.waitForExpression(
         `!document.querySelector('#donate-modal')?.classList.contains('hidden')`
       );
+      // The dialog opens on the chosen frequency; its ring is the option's, not a box round the radio.
+      await ctx.expect(
+        `(() => {
+          const radio = document.activeElement;
+          const option = radio?.closest('.donate-frequency-option');
+          return !!option && getComputedStyle(radio).outlineStyle === 'none' &&
+            getComputedStyle(option).outlineStyle === 'solid';
+        })()`,
+        'the focused frequency is ringed as a whole option'
+      );
     },
   },
   {

@@ -155,4 +155,20 @@ describe('Settings layout', () => {
       );
     });
   });
+  describe('the donation frequency', () => {
+    // A square ring round the round radio ran into its "One-time" label.
+    it('rings the whole option for keyboard focus, not the radio', () => {
+      render(
+        '<div class="donate-frequency"><label class="donate-frequency-option"><input type="radio" data-focus-visible checked /><span>One-time</span></label></div>'
+      );
+      const radio = document.querySelector('input');
+      expect(resolvedValue(radio, 'outline')).toBe('none');
+      const rule = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find(
+          (cssRule) => cssRule.selectorText === '.donate-frequency-option:has(input:focus-visible)'
+        );
+      expect(rule?.style.outline).toBe('2px solid var(--focus-ring)');
+    });
+  });
 });
