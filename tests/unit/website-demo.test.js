@@ -198,7 +198,7 @@ describe('website demo weather transitions', () => {
 });
 
 // The demo offers the app's weather as the real thing. A copy that drifted missed the app's
-// high-density drawing and its light-theme colours for six weeks.
+// high-density drawing and its light-theme colours.
 describe('website weather engine', () => {
   it('is the file the app runs, unchanged', () => {
     const read = (file) =>
