@@ -19,7 +19,7 @@ function isHidden(node, modal) {
 const STATIC_HELP =
   ':is(.form-help, .help-text):is([data-i18n], [data-i18n-html], [data-search-help])';
 const ARIA_NAMED_CONTROL = 'select[aria-label], input[aria-label], textarea[aria-label]';
-// The control a result for a row, or for a whole group, lands on: its first one.
+// The control a result for a row lands on: its first one.
 const FOCUSABLE_IN_ROW = ['input:not([type="hidden"])', 'select', 'button', 'textarea']
   .map((selector) => `${selector}:not([aria-hidden="true"])`)
   .join(', ');
@@ -178,7 +178,7 @@ function scoreEntry(entry, words) {
 /**
  * The results in rank order, with the rows a query found only through their group's name folded
  * into one result for the group. "theme" listed every row under Seasonal Themes, a holiday each,
- * because the caption said "Themes"; it now lists the group once, which opens on its first row. A
+ * because the caption said "Themes"; it now lists the group once, which lands on its caption. A
  * row whose own words match stays a result of its own.
  */
 function rankResults(entries, words) {
@@ -200,6 +200,7 @@ function rankResults(entries, words) {
         row: entry.groupBox,
         title: entry.group,
         subtitle: entry.page,
+        isGroup: true,
       },
     ];
   });
@@ -313,15 +314,19 @@ function initializeSettingsSearch(modal) {
         // A custom widget such as a radiogroup points back at its label through aria-labelledby.
         const labelledWidget =
           entry.label.id && modal.querySelector(`[aria-labelledby~="${entry.label.id}"]`);
-        const target =
-          labelled?.control ||
-          (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
-          (labelledWidget &&
-            (labelledWidget.querySelector('[aria-checked="true"], [tabindex="0"]') ||
-              labelledWidget.querySelector('button, input, select, textarea'))) ||
-          (entry.label.matches('summary, button, input, select, textarea')
-            ? entry.label
-            : entry.row?.querySelector(FOCUSABLE_IN_ROW));
+        // A group result lands on its caption, not on the group's first control: that is a button
+        // in some groups, so Enter after choosing "Primary cards" reset the cards. Tab goes on into
+        // the group from there.
+        const target = entry.isGroup
+          ? null
+          : labelled?.control ||
+            (entry.label.htmlFor && document.getElementById(entry.label.htmlFor)) ||
+            (labelledWidget &&
+              (labelledWidget.querySelector('[aria-checked="true"], [tabindex="0"]') ||
+                labelledWidget.querySelector('button, input, select, textarea'))) ||
+            (entry.label.matches('summary, button, input, select, textarea')
+              ? entry.label
+              : entry.row?.querySelector(FOCUSABLE_IN_ROW));
         requestAnimationFrame(() => {
           entry.label.scrollIntoView?.({ block: 'center' });
           const focusTarget = target && !target.disabled ? target : entry.label;

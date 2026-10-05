@@ -80,7 +80,18 @@ describe('settings search', () => {
     const group = caption.closest('.settings-group');
     expect(document.getElementById('personalization-tab').classList.contains('active')).toBe(true);
     expect(group.classList.contains('settings-search-target')).toBe(true);
-    expect(group.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(caption);
+  });
+
+  test('a group result does not land on a button that does something', () => {
+    // The first control under Primary cards is its Reset button, so Enter straight after choosing
+    // the result reset the cards.
+    const result = search('primary').find(
+      (button) => button.firstChild.textContent === 'Primary cards'
+    );
+    result.click();
+    expect(document.activeElement.id).not.toBe('primary-cards-reset');
+    expect(document.activeElement.classList.contains('settings-group-caption')).toBe(true);
   });
 
   test('keeps a row whose own name matches, beside its group', () => {
