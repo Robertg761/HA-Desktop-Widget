@@ -14,11 +14,28 @@ function sliceMain(startMarker, endMarker) {
 
 // The real snapshot code that decides what config.json says about the token, with the keyring
 // and the file system stubbed. `keyring` is 'working', 'none' (no Secret Service) or 'failing'
-// (encryptString throws).
+// (encryptString throws). `handlers` holds the IPC handler the renderer calls once it has shown a
+// reason, and `written` every config.json a save made.
 function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } = {}) {
+  const handlers = {};
+  const written = [];
   const context = {
     JSON,
     Buffer,
+    handlers,
+    written,
+    ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
+    serializeConfigMutationHandler: (handler) => handler,
+    authorizeIpcSender: () => ({}),
+    rejectUnauthorizedIpc: () => ({ success: false }),
+    mainT: (text) => text,
+    runPostSaveSideEffect: async () => {},
+    pushConfigToRenderer: () => {},
+    sanitizeConfigForRenderer: (value) => JSON.parse(JSON.stringify(value)),
+    saveConfigDurably: async () => {
+      written.push(context.buildConfigSnapshotForSave().configToSave);
+      return { success: true };
+    },
     log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
     app: { getPath: () => path.join('profile', 'userData') },
     path,
@@ -46,6 +63,10 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
       ),
       sliceMain('function pruneConfig(', 'function quarantineCorruptConfig('),
       sliceMain('function buildConfigSnapshotForSave(', 'async function writeConfigSnapshotAsync('),
+      sliceMain(
+        "ipcMain.handle(\n  'clear-token-reset-reason'",
+        'function normalizeHomeAssistantBaseUrlForIpc('
+      ),
     ]
       .join('\n')
       .replace(/^const /gm, 'var '),
@@ -137,5 +158,44 @@ describe('the reason a saved token is missing, as loaded', () => {
   it('leaves a setup without a reason alone', () => {
     const loaded = reconcileTokenResetReason({ homeAssistant: { url: '', token: '' } });
     expect(loaded.tokenResetReason).toBeUndefined();
+  });
+});
+
+describe('the reason a saved token is missing, once the renderer has shown it', () => {
+  const placeholderConfig = (tokenResetReason, homeAssistant = {}) =>
+    tokenConfig({
+      homeAssistant: {
+        url: 'http://ha.local:8123',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'token',
+        ...homeAssistant,
+      },
+      tokenResetReason,
+    });
+
+  it('still says not saved at the next start, so it does not open Welcome over the dashboard', async () => {
+    // A start that read 'not_persisted': the person sees the panel and quits without a token.
+    const config = placeholderConfig('not_persisted', { tokenEncrypted: false });
+    const main = loadSnapshotCode({ keyring: 'none', config });
+
+    await main.handlers['clear-token-reset-reason']({});
+    // Any later save (a theme, a tab) writes the file the next start reads.
+    main.written.push(main.buildConfigSnapshotForSave().configToSave);
+
+    for (const file of main.written) {
+      expect(main.reconcileTokenResetReason(file).tokenResetReason).toBe('not_persisted');
+    }
+  });
+
+  it('forgets a keyring reason, which the encrypted token on disk brings back if still unreadable', async () => {
+    const config = placeholderConfig('decryption_failed', { tokenEncrypted: true });
+    const main = loadSnapshotCode({ keyring: 'none', config, recoveryToken: 'ZW5jcnlwdGVk' });
+
+    await main.handlers['clear-token-reset-reason']({});
+
+    expect(config.tokenResetReason).toBeUndefined();
+    expect(main.written).toHaveLength(1);
+    expect(main.written[0].tokenResetReason).toBeUndefined();
+    expect(main.written[0].homeAssistant.token).toBe('ZW5jcnlwdGVk');
   });
 });

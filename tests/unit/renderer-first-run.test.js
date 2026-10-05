@@ -1595,6 +1595,19 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(wizardShown()).toBe(false);
     });
 
+    it('starts over at Welcome once the server is cleared too', async () => {
+      // Main keeps 'not_persisted' until a token is saved, so it outlives a cleared setup.
+      await loadRenderer({
+        config: {
+          ...recoveryConfig('not_persisted'),
+          homeAssistant: { url: '', token: '', authMethod: 'token' },
+        },
+      });
+
+      expect(wizardShown()).toBe(true);
+      expect(panel()?.textContent || '').not.toContain('Access token was not saved');
+    });
+
     it('says a missing keyring once when the config also carries the persistence warning', async () => {
       await loadRenderer({
         config: {

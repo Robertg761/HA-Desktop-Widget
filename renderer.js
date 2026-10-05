@@ -393,14 +393,16 @@ function isSecureStoragePending(targetConfig = state.CONFIG) {
 
 // Why the saved token could not be used: this computer could not decrypt it ('decryption_failed'),
 // there was no keyring to decrypt it with ('encryption_unavailable'), or there was none to save it
-// to when it was entered ('not_persisted'). Main forgets the reason once told it was seen; this
-// keeps it until a token is entered, because it is what tells a setup that lost its token from a
-// first run.
+// to when it was entered ('not_persisted'). Main forgets a keyring reason once told it was seen and
+// keeps 'not_persisted' until a token is saved; this keeps either until a token is entered, because
+// it is what tells a setup that lost its token from a first run.
 let tokenRecoveryReason = '';
 
+// A setup whose server was cleared too is set up again from the start, whatever the reason says.
 function needsTokenReentry() {
   return (
     !!tokenRecoveryReason &&
+    !!state.CONFIG?.homeAssistant?.url &&
     !usesOAuth() &&
     !isConfigured(state.CONFIG) &&
     !isSecureStoragePending() &&

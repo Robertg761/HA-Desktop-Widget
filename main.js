@@ -5357,6 +5357,15 @@ function reconcileTokenResetReason(target) {
   return target;
 }
 
+// Whether the renderer having seen a reason is enough to forget it. A keyring reason comes back at
+// the next start from the encrypted token on disk, if that still cannot be read. 'not_persisted'
+// would not: no token is on disk, so it is the only record that this setup lost its token rather
+// than never had one, and without it the next start opens Welcome over the dashboard. It stays
+// until a token is saved (update-config drops it then).
+function isAcknowledgeableTokenResetReason(reason) {
+  return TOKEN_RESET_RECOVERY_REASONS.has(reason) && reason !== 'not_persisted';
+}
+
 function hasRecoveryTokenBackup() {
   return !!preservedEncryptedTokenForRecovery;
 }
@@ -8862,7 +8871,7 @@ ipcMain.handle(
   serializeConfigMutationHandler(async (event) => {
     const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
     if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
-    if (TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason)) {
+    if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
       const previousReason = config.tokenResetReason;
       delete config.tokenResetReason;
       const persistence = await saveConfigDurably();
