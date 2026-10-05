@@ -12,6 +12,14 @@ const {
 } = require('../../scripts/check-website-deploy.cjs');
 
 const HEADERS = [{ key: 'X-Content-Type-Options', value: 'nosniff' }];
+const ASSET_CACHE = 'public, max-age=86400';
+// The site-wide rule, and one for a part of the site only, as website/vercel.json has.
+const WITH_ASSET_RULE = JSON.stringify({
+  headers: [
+    { source: '/(.*)', headers: HEADERS },
+    { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: ASSET_CACHE }] },
+  ],
+});
 
 function makeSite(files = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-site-'));
@@ -33,7 +41,7 @@ function makeSite(files = {}) {
 }
 
 // Serves a directory the way the host does: clean URLs, and the configured headers.
-function serve(dir, { headers = true } = {}) {
+function serve(dir, { headers = true, assetCache = true } = {}) {
   const server = http.createServer((request, response) => {
     let pathname = new URL(request.url, 'http://localhost').pathname;
     if (pathname === '/') pathname = '/index';
@@ -46,7 +54,9 @@ function serve(dir, { headers = true } = {}) {
       response.end('not found');
       return;
     }
-    response.writeHead(200, headers ? { 'x-content-type-options': 'nosniff' } : {});
+    const sent = headers ? { 'x-content-type-options': 'nosniff' } : {};
+    if (assetCache && pathname.startsWith('/assets/')) sent['cache-control'] = ASSET_CACHE;
+    response.writeHead(200, sent);
     response.end(fs.readFileSync(file));
   });
   return new Promise((resolve) =>
@@ -116,6 +126,39 @@ describe('check-website-deploy', () => {
       siteDir: dir,
     });
     expect(problems).toEqual([expect.stringMatching(/x-content-type-options/)]);
+  });
+
+  it('holds each path to the header rules that cover it, not only the site-wide one', async () => {
+    const dir = makeSite({ 'vercel.json': WITH_ASSET_RULE });
+    expect(expectedHeaders(dir, '/assets/icon.png')).toEqual({
+      'x-content-type-options': 'nosniff',
+      'cache-control': ASSET_CACHE,
+    });
+    expect(expectedHeaders(dir, '/privacy')).toEqual({ 'x-content-type-options': 'nosniff' });
+
+    expect(await compareDeployment({ baseUrl: await start(dir), siteDir: dir })).toEqual([]);
+    // A deployment that kept the site-wide headers but lost the asset cache rule is caught.
+    const problems = await compareDeployment({
+      baseUrl: await start(dir, { assetCache: false }),
+      siteDir: dir,
+    });
+    expect(problems).toEqual([expect.stringMatching(/cache-control .* on \/assets\/icon\.png$/)]);
+  });
+
+  it('reports a body that fails part way as a problem to retry, not an error', async () => {
+    const dir = makeSite();
+    const problems = await compareDeployment({
+      baseUrl: 'http://example.test',
+      siteDir: dir,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'x-content-type-options': 'nosniff' }),
+        arrayBuffer: () => Promise.reject(new Error('socket hang up')),
+      }),
+    });
+    expect(problems).toHaveLength(listFiles(dir).length);
+    expect(problems.every((problem) => problem.endsWith('socket hang up'))).toBe(true);
   });
 
   it('reports a site that cannot be reached instead of throwing', async () => {
