@@ -97,6 +97,20 @@ import {
 
 const BUILTIN_LANGUAGE_OPTIONS = new Set(['auto', 'en', 'de']);
 
+// The pack version of a language the app carries built in (German), written in at build time; empty
+// where the build wrote none (tests, a hand-run renderer).
+function getBundledLocalePackVersion(locale) {
+  const versions =
+    typeof __BUNDLED_LOCALE_PACK_VERSIONS__ === 'object' ? __BUNDLED_LOCALE_PACK_VERSIONS__ : null;
+  return versions?.[locale] || '';
+}
+
+// A built-in language needs no download, so it is neither "Not downloaded" nor a reason to say how
+// to get languages; its downloadable pack is only an update, once it is newer than the built-in copy.
+function isBuiltinLanguagePack(pack) {
+  return !!pack?.locale && BUILTIN_LANGUAGE_OPTIONS.has(pack.locale);
+}
+
 let previewState = null;
 let previewRaf = null;
 let previewAccent = null;
@@ -4835,7 +4849,9 @@ function updateLanguageSummaryText() {
   );
 
   // Nothing to say about downloading once every pack is installed, or while there are none to offer.
-  const hasPackToDownload = localePackListCache.some((pack) => !pack.installed);
+  const hasPackToDownload = localePackListCache.some(
+    (pack) => !pack.installed && !isBuiltinLanguagePack(pack)
+  );
   downloadHint?.classList.toggle('hidden', !hasPackToDownload);
   // The select is described by it only while it is shown: a hidden line is still read out.
   setDescribedByLine(languageSelect, downloadHint, hasPackToDownload);
@@ -4932,11 +4948,18 @@ function renderLanguagePackList() {
 
     const meta = document.createElement('div');
     meta.className = 'language-pack-meta';
-    // The same words as the selector's suffix: a language is either downloaded or it is not.
-    const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
-    const versionLabel = pack.version ? `v${pack.version}` : '';
-    const downloadedLabel = pack.downloadedAt ? ` • ${formatClockDateTime(pack.downloadedAt)}` : '';
-    meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
+    const builtIn = isBuiltinLanguagePack(pack) && !pack.installed;
+    if (builtIn) {
+      meta.textContent = t('Built in');
+    } else {
+      // The same words as the selector's suffix: a language is either downloaded or it is not.
+      const stateLabel = pack.installed ? t('Installed') : t('Not downloaded');
+      const versionLabel = pack.version ? `v${pack.version}` : '';
+      const downloadedLabel = pack.downloadedAt
+        ? ` • ${formatClockDateTime(pack.downloadedAt)}`
+        : '';
+      meta.textContent = `${stateLabel}${versionLabel ? ` • ${versionLabel}` : ''}${downloadedLabel}`;
+    }
 
     info.appendChild(name);
     info.appendChild(meta);
@@ -4944,10 +4967,15 @@ function renderLanguagePackList() {
     const actions = document.createElement('div');
     actions.className = 'language-pack-actions';
 
-    const versionAhead =
-      !!pack.updateAvailable ||
-      (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
-    if (pack.installed && versionAhead) {
+    const versionAhead = builtIn
+      ? !!getBundledLocalePackVersion(pack.locale) &&
+        compareLocalePackVersions(
+          pack.latestVersion || pack.version,
+          getBundledLocalePackVersion(pack.locale)
+        ) > 0
+      : !!pack.updateAvailable ||
+        (pack.latestVersion && compareLocalePackVersions(pack.latestVersion, pack.version) > 0);
+    if ((pack.installed || builtIn) && versionAhead) {
       const updateBtn = document.createElement('button');
       updateBtn.type = 'button';
       updateBtn.className = 'btn btn-secondary btn-sm';
@@ -4956,7 +4984,7 @@ function renderLanguagePackList() {
       updateBtn.textContent = t('Update');
       updateBtn.setAttribute('aria-label', t('Update {{language}}', { language }));
       actions.appendChild(updateBtn);
-    } else if (!pack.installed) {
+    } else if (!pack.installed && !builtIn) {
       const downloadBtn = document.createElement('button');
       downloadBtn.type = 'button';
       downloadBtn.className = 'btn btn-secondary btn-sm';

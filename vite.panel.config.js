@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
 import modernMdiFontPlugin from './scripts/vite-mdi-font-plugin.cjs';
+import { readBundledLocalePackVersions } from './scripts/bundled-locale-pack-versions.cjs';
 
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
 
@@ -29,6 +30,7 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUNDLED_LOCALE_PACK_VERSIONS__: JSON.stringify(readBundledLocalePackVersions()),
   },
   resolve: {
     alias: {

@@ -1328,6 +1328,13 @@ const scenes = [
       await openSettingsTab(ctx, 'general');
       await ctx.waitForSelector('#language-packs-list .language-pack-row');
       await revealInSettings(ctx, '#language-packs-list', 'center');
+      // Every pack but German is installed, and German is built in: nothing is left to download.
+      await ctx.expect(
+        `document.getElementById('language-select-help').classList.contains('hidden') &&
+          ![...document.querySelectorAll('#language-packs-list .language-pack-row')].some((row) =>
+            row.querySelector('[data-locale-action="download"]')?.textContent === 'Download')`,
+        'no pack is offered for download'
+      );
     },
   },
   {

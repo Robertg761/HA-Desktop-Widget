@@ -1989,6 +1989,82 @@ describe('Settings + Config Integration', () => {
       expect(document.body.textContent).not.toContain('Download first');
     });
 
+    describe('German, which the app carries built in', () => {
+      const german = {
+        locale: 'de',
+        displayName: 'Deutsch',
+        englishName: 'German',
+        version: '1.2.64',
+        latestVersion: '1.2.64',
+        installed: false,
+        updateAvailable: false,
+      };
+      const french = {
+        locale: 'fr',
+        displayName: 'Français',
+        englishName: 'French',
+        version: '1.2.64',
+        latestVersion: '1.2.64',
+        installed: true,
+        updateAvailable: false,
+      };
+      const germanRow = () =>
+        [...document.querySelectorAll('#language-packs-list .language-pack-row')].find((row) =>
+          row.textContent.includes('Deutsch')
+        );
+
+      afterEach(() => {
+        delete global.__BUNDLED_LOCALE_PACK_VERSIONS__;
+      });
+
+      test('is built in, not a pack to download, and keeps the download hint away', async () => {
+        // German was listed as "Not downloaded" with a Download button, though it is a choice in
+        // the selector already, so the hint about downloading never went away.
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.64' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([german, french]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        expect(germanRow().querySelector('.language-pack-meta').textContent).toBe('Built in');
+        expect(germanRow().querySelectorAll('button')).toHaveLength(0);
+        expect(document.getElementById('language-select-help').classList.contains('hidden')).toBe(
+          true
+        );
+      });
+
+      test('offers its pack as an update once the pack is newer than the built-in copy', async () => {
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.60' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([german, french]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        const buttons = [...germanRow().querySelectorAll('button')];
+        expect(buttons.map((button) => button.textContent)).toEqual(['Update']);
+        expect(buttons[0].getAttribute('aria-label')).toBe('Update Deutsch');
+        expect(buttons[0].dataset.localeAction).toBe('download');
+      });
+
+      test('shows a downloaded pack of it like any other', async () => {
+        global.__BUNDLED_LOCALE_PACK_VERSIONS__ = { de: '1.2.60' };
+        window.electronAPI.getLocalePacks.mockResolvedValue([
+          { ...german, installed: true, version: '1.2.64' },
+          french,
+        ]);
+
+        await settings.openSettings();
+        await waitForLanguagePackRefresh();
+
+        expect(germanRow().querySelector('.language-pack-meta').textContent).toContain(
+          'Installed • v1.2.64'
+        );
+        expect([...germanRow().querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+          'Remove',
+        ]);
+      });
+    });
+
     test('changing the language selector persists immediately without waiting for Save', async () => {
       state.CONFIG.ui.language = 'fr';
       window.electronAPI.getLocalePacks.mockResolvedValue([
