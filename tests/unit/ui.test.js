@@ -6358,6 +6358,50 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(control.dataset.state).toBe('off');
     });
 
+    it('fills an on/off lamp pin with its state, since it has no brightness to show', () => {
+      const porch = {
+        entity_id: 'light.porch',
+        state: 'on',
+        attributes: { friendly_name: 'Porch light', supported_color_modes: ['onoff'] },
+      };
+      state.setStates({ [porch.entity_id]: porch });
+      ui.renderDesktopPinnedTile(porch.entity_id, porch);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      // The body is not left empty: the state is its meter, and the caption under the name, which
+      // the default pin hides, is not the only place it is written.
+      expect(
+        control.querySelector('.desktop-pin-light-state .desktop-pin-light-state-value')
+          ?.textContent
+      ).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-status')).toBeNull();
+
+      const off = { ...porch, state: 'off' };
+      state.setStates({ [porch.entity_id]: off });
+      ui.renderDesktopPinnedTile(porch.entity_id, off);
+      expect(document.querySelector('#desktop-pin-content .desktop-pin-light-control')).toBe(
+        control
+      );
+      expect(control.querySelector('.desktop-pin-light-state-value').textContent).toBe('Off');
+      expect(control.dataset.state).toBe('off');
+    });
+
+    it('says whether a dimmable lamp is on under its name, not the level its meter shows', () => {
+      state.setStates({
+        'light.desk': {
+          entity_id: 'light.desk',
+          state: 'on',
+          attributes: { friendly_name: 'Desk lamp', brightness: 204 },
+        },
+      });
+      ui.renderDesktopPinnedTile('light.desk', state.STATES['light.desk']);
+
+      const control = document.querySelector('#desktop-pin-content .desktop-pin-light-control');
+      expect(control.querySelector('.desktop-pin-light-status').textContent).toBe('On');
+      expect(control.querySelector('.desktop-pin-light-meter-value').textContent).toBe('80%');
+      expect(control.querySelector('.desktop-pin-light-state')).toBeNull();
+    });
+
     it('marks the preset chip that matches the lamp brightness and the fan speed', () => {
       state.setStates({
         'light.desk': {

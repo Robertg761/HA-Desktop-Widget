@@ -6293,7 +6293,6 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
   if (!root) return;
 
   const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
-  const canSetBrightness = root.dataset.canSetBrightness === 'true';
   root.dataset.state = isOn ? 'on' : 'off';
   root.style.setProperty('--desktop-pin-light-level', String(safePct / 100));
   root.style.setProperty(
@@ -6311,16 +6310,13 @@ function applyDesktopPinLightVisualState(root, { isOn, brightnessPct }) {
     brightnessFill.style.width = `${safePct}%`;
   }
 
-  const status = root.querySelector('.desktop-pin-light-status');
-  if (status) {
-    status.textContent = canSetBrightness
-      ? isOn
-        ? t('{{percent}}% brightness', { percent: safePct })
-        : t('Use slider or a preset')
-      : isOn
-        ? t('On')
-        : t('Off');
-  }
+  // The brightness block prints the level, so the line under the name says only whether the lamp
+  // is on. A lamp without brightness has no such line: its state fills the body instead.
+  root
+    .querySelectorAll('.desktop-pin-light-status, .desktop-pin-light-state-value')
+    .forEach((element) => {
+      element.textContent = isOn ? t('On') : t('Off');
+    });
 
   const powerButton = root.querySelector('.desktop-pin-light-power');
   if (powerButton) setDesktopPinPowerButtonState(powerButton, isOn);
@@ -6424,15 +6420,7 @@ function createDesktopPinLightControlElement(entity) {
         <div class="desktop-pin-light-glyph">${entityIconMarkup(entity)}</div>
         <div class="desktop-pin-light-meta">
           <div class="desktop-pin-light-name">${displayName}</div>
-          <div class="desktop-pin-light-status">${utils.escapeHtml(
-            capabilities.canSetBrightness
-              ? isOn
-                ? t('{{percent}}% brightness', { percent: brightnessPct })
-                : t('Use slider or a preset')
-              : isOn
-                ? t('On')
-                : t('Off')
-          )}</div>
+          ${capabilities.canSetBrightness ? '<div class="desktop-pin-light-status"></div>' : ''}
         </div>
         <button class="desktop-pin-power desktop-pin-light-power" type="button">${lineIconMarkup('power')}</button>
       </div>
@@ -6456,7 +6444,9 @@ function createDesktopPinLightControlElement(entity) {
             `<button class="desktop-pin-light-preset" type="button" data-brightness="${percent}" aria-label="${escapeHtmlAttribute(t('{{percent}}% brightness', { percent }))}">${formatPercent(percent)}</button>`
         ).join('')}
       </div>`
-          : ''
+          : `<div class="desktop-pin-panel-meter desktop-pin-light-state">
+        <div class="desktop-pin-light-state-value"></div>
+      </div>`
       }
     </div>
   `;

@@ -985,10 +985,10 @@ describe('User-facing audit regressions', () => {
       mockCallService.mockRejectedValueOnce(new Error('Light rejected'));
 
       document.querySelector('.desktop-pin-light-preset[data-brightness="75"]').click();
-      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('75% brightness');
+      expect(root.querySelector('.desktop-pin-light-meter-value').textContent).toBe('75%');
       await jest.advanceTimersByTimeAsync(300);
 
-      expect(root.querySelector('.desktop-pin-light-status').textContent).toBe('50% brightness');
+      expect(root.querySelector('.desktop-pin-light-meter-value').textContent).toBe('50%');
       expect(root.querySelector('.desktop-pin-light-slider').value).toBe('50');
       expect(uiUtils.showToast).toHaveBeenCalled();
     });

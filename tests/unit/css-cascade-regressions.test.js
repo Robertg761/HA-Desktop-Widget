@@ -1486,6 +1486,30 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('2px solid Highlight');
     });
 
+    it('fills the body of an on/off lamp with its state, lit by the lamp', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact"
+          data-can-set-brightness="false" data-state="on">
+          <div class="desktop-pin-light-shell">
+            <div class="desktop-pin-light-topline"></div>
+            <div class="desktop-pin-panel-meter desktop-pin-light-state">
+              <div class="desktop-pin-light-state-value">On</div></div>
+          </div></div>`
+      );
+      // Two rows: no empty third one adding a gap under the meter.
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-shell'), 'grid-template-rows')
+      ).toBe('auto minmax(0, 1fr)');
+      const meter = document.querySelector('.desktop-pin-light-state');
+      expect(resolvedValue(meter, 'border-radius')).toBe('12px');
+      // Its glow is the lamp's level: full while it is on, none while it is off.
+      document
+        .querySelector('.desktop-pin-light-control')
+        .style.setProperty('--desktop-pin-light-level', '1');
+      expect(resolvedValue(meter, '--desktop-pin-progress')).toBe('1');
+    });
+
     it('keeps the dark weather palette on a pin in the light theme, where pins stay dark glass', () => {
       const cloud = (bodyClass) => {
         render(
@@ -1516,6 +1540,7 @@ describe('stylesheet cascade regressions', () => {
       'desktop-pin-light-status',
       'desktop-pin-light-power',
       'desktop-pin-light-meter-value',
+      'desktop-pin-light-state-value',
       'desktop-pin-light-preset',
       'desktop-pin-media-title',
       'desktop-pin-media-artist',

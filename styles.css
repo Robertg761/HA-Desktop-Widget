@@ -1130,6 +1130,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   --desktop-pin-control-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
   --desktop-pin-panel-pad: 12px;
   --desktop-pin-panel-gap: 10px;
+  --desktop-pin-panel-meter-radius: 14px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -1660,6 +1661,30 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-light-control[data-layout='roomy'] .desktop-pin-light-brightness {
   gap: 10px;
+}
+
+/* A lamp that only switches on and off (a relay, a smart plug) has no brightness to show, so its
+   state fills the body, lit with the lamp's glow while it is on. A click on it switches the lamp,
+   as a click anywhere else on the tile does. */
+.desktop-pin-light-control[data-can-set-brightness='false'] .desktop-pin-light-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.desktop-pin-light-state {
+  --desktop-pin-progress: var(--desktop-pin-light-level, 0);
+}
+
+.desktop-pin-light-state-value {
+  font-family: var(--desktop-pin-display-font);
+  font-size: clamp(20px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgba(var(--desktop-pin-ink-rgb), 0.98);
+}
+
+.desktop-pin-light-control[data-state='off'] .desktop-pin-light-state-value {
+  color: rgba(var(--desktop-pin-ink-rgb), 0.6);
 }
 
 .desktop-pin-panel-control {

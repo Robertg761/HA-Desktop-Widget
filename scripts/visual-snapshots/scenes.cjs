@@ -340,6 +340,33 @@ const resizedPinScene = (family, entityId, size) =>
     },
   });
 
+// A lamp that can only be switched on and off (a relay or a smart plug): no brightness to show.
+// The fixture's own lights all dim, and a light added to it would join every list of lights.
+const onOffLight = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'light.porch',
+      state: 'on',
+      attributes: {
+        friendly_name: 'Porch light',
+        supported_color_modes: ['onoff'],
+        color_mode: 'onoff',
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'light.porch', parent_id: null, user_id: null },
+    },
+  ];
+};
+const onOffLightPage = {
+  customTabs: [
+    { id: 'pins', name: 'Pins', entityIds: ['light.porch'] },
+    { id: 'default', name: 'Home', entityIds: ['light.desk_lamp'] },
+  ],
+  activeTabId: 'pins',
+};
+
 const pages = (set, activeTabId) => ({ customTabs: PAGE_SETS[set], activeTabId });
 
 // A comparison graph of four temperatures on a page of its own, wide enough for two columns, with a
@@ -2004,6 +2031,7 @@ const scenes = [
   // theme, where pins stay dark glass.
   pinScene('pin-light-off', 'light.shelf_leds'),
   pinScene('pin-light-long', 'light.upstairs_hallway_ceiling'),
+  pinScene('pin-light-onoff', 'light.porch', { config: onOffLightPage, extraStates: onOffLight }),
   pinScene('pin-climate', 'climate.bedroom'),
   pinScene('pin-fan', 'fan.office'),
   pinScene('pin-cover', 'cover.garage_door'),
