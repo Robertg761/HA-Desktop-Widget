@@ -1162,6 +1162,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ],
       });
       try {
+        // An earlier test's last edit still waits to become a restore point. Let it settle, as
+        // closing the app does, before starting from an empty list.
+        window.dispatchEvent(new Event('pagehide'));
         localStorage.clear();
         const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
         const pages = () =>
@@ -8629,6 +8632,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ],
       });
       try {
+        // An earlier test's last edit still waits to become a restore point. Let it settle, as
+        // closing the app does, before starting from an empty list.
+        window.dispatchEvent(new Event('pagehide'));
         localStorage.clear();
         // As the main process does, the save comes back with an unnamed page stored unnamed.
         window.electronAPI.updateConfig.mockImplementation(async (patch) => ({
