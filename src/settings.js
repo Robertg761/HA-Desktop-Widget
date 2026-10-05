@@ -1380,7 +1380,7 @@ async function removeSelectedCustomColor() {
   // background using it falls back to the default, so a stray click should not do it.
   const confirmed = await showConfirm(
     t('Remove Custom Color'),
-    t('Remove "{{name}}" from your custom colors?', { name: getThemeDisplayName(selectedTheme) }),
+    t('Remove “{{name}}” from your custom colors?', { name: getThemeDisplayName(selectedTheme) }),
     { confirmText: t('Remove'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -6834,7 +6834,7 @@ async function persistSettings() {
       const windowState = await window.electronAPI.getWindowState();
       if (!res?.applied || windowState?.alwaysOnTop !== state.CONFIG.alwaysOnTop) {
         const restartForAlwaysOnTop = await askToRestart(
-          t('Changing "Always on top" may require a restart. Restart now?')
+          t('Changing “Always on top” may require a restart. Restart now?')
         );
         // Force window to regain focus after the dialog, whatever was chosen (Windows focus bug
         // workaround)
@@ -7531,7 +7531,7 @@ async function removeAlert(entityId) {
 
     const confirmed = await showConfirm(
       t('Remove Alert'),
-      t('Remove alert for "{{name}}"?', { name: entityName }),
+      t('Remove alert for “{{name}}”?', { name: entityName }),
       {
         confirmText: t('Remove'),
         confirmClass: 'btn-danger',
@@ -8327,11 +8327,11 @@ function describeLegacyDesktopActivation(activation, appId) {
   };
   return activation.binding
     ? t(
-        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}", for example: {{binding}}',
+        'Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”, for example: {{binding}}',
         values
       )
     : t(
-        'Hyprland sent "{{shortcut}}" through the old app name "{{legacyAppId}}". That still works for now; change the bind to "{{target}}".',
+        'Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”.',
         values
       );
 }

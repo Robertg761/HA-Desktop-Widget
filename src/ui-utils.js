@@ -2357,7 +2357,7 @@ function setStatus(connected, detailMessage = '') {
 // electronAPI, so this module-load hook must stay optional.
 window.electronAPI?.onHotkeyRegistrationFailed?.(({ hotkey }) => {
   showToast(
-    t('Hotkey "{{hotkey}}" is already in use by another application.', { hotkey }),
+    t('Hotkey “{{hotkey}}” is already in use by another application.', { hotkey }),
     'error',
     5000
   );

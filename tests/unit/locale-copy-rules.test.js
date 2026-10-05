@@ -43,6 +43,32 @@ describe('English wording', () => {
     expect(Object.keys(english).filter((key) => /[…’‘]/.test(key))).toEqual([]);
   });
 
+  // The two portable-update notices quote a button name that is being reworded on its own; they
+  // take curly marks with it.
+  const QUOTING_RENAMED_BUTTON = new Set(
+    Object.keys(english).filter((key) => key.includes('"Download Portable Update"'))
+  );
+
+  it('writes quotation marks curly, never straight', () => {
+    // "Remove "{{name}}" from "{{page}}"?" sat beside "No settings match “{{query}}”".
+    const offenders = Object.keys(english).filter(
+      (key) => key.includes('"') && !QUOTING_RENAMED_BUTTON.has(key)
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(packLocales)(
+    'quotes with the marks of the language in %s, never straight ones',
+    (locale) => {
+      // Each pack has its own: « » in French and Spanish, «» in Arabic, „“ in German, “” in Chinese
+      // and Hindi. A straight pair was copied from the English it translated.
+      const offenders = currentEntries(readPack(locale))
+        .filter(([key, text]) => text.includes('"') && !QUOTING_RENAMED_BUTTON.has(key))
+        .map(([key]) => key.slice(0, 60));
+      expect(offenders).toEqual([]);
+    }
+  );
+
   it('keeps the names of the sync buttons in sentence case, as the buttons are written', () => {
     expect(Object.keys(english).filter((key) => /\bSync (Up|Down|Folder)\b/.test(key))).toEqual([]);
   });
@@ -102,6 +128,14 @@ describe('punctuation and register of the other packs', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('holds French guillemets to their words with no-break spaces', () => {
+    // A plain space let a line end after « and start with ».
+    const offenders = currentEntries(readPack('fr'))
+      .filter(([, text]) => /« | »/.test(text))
+      .map(([key]) => key.slice(0, 60));
+    expect(offenders).toEqual([]);
+  });
+
   it('writes the French apostrophe straight', () => {
     const offenders = currentEntries(readPack('fr'))
       .filter(([, text]) => /[’‘]/.test(text))
@@ -137,12 +171,12 @@ describe('the palette hint for locks and alarms', () => {
   const cases = [
     [
       'alarm',
-      'To control {{name}}, type "arm" or "disarm".',
+      'To control {{name}}, type “arm” or “disarm”.',
       [['Arm {{name}} at home', 'Arm {{name}} away', 'Arm {{name}} at night'], ['Disarm {{name}}']],
     ],
     [
       'lock',
-      'To control {{name}}, type "lock" or "unlock".',
+      'To control {{name}}, type “lock” or “unlock”.',
       [['Lock {{name}}'], ['Unlock {{name}}']],
     ],
   ];

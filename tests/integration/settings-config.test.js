@@ -4256,7 +4256,7 @@ describe('Settings + Config Integration', () => {
       // Assert
       expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
         'Remove Custom Color',
-        'Remove "My Slate" from your custom colors?',
+        'Remove “My Slate” from your custom colors?',
         expect.objectContaining({ confirmClass: 'btn-danger' })
       );
       const customOptions = document.querySelectorAll(
@@ -4842,14 +4842,14 @@ describe('Settings + Config Integration', () => {
           },
         });
         expect(legacy).toBe(
-          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle", for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
+          'Hyprland sent “Popup hotkey” through the old app name “ha_desktop_widget”. That still works for now; change the bind to “ha-desktop-widget:popup-toggle”, for example: bind = SUPER, H, global, ha-desktop-widget:popup-toggle'
         );
         const noExample = await show({
           lastActivation: null,
           legacyActivation: { legacyAppId: 'ha_desktop_widget', id: 'popup-toggle', binding: '' },
         });
         expect(noExample.legacy).toBe(
-          'Hyprland sent "Popup hotkey" through the old app name "ha_desktop_widget". That still works for now; change the bind to "ha-desktop-widget:popup-toggle".'
+          'Hyprland sent “Popup hotkey” through the old app name “ha_desktop_widget”. That still works for now; change the bind to “ha-desktop-widget:popup-toggle”.'
         );
       });
     });
@@ -8207,7 +8207,7 @@ describe('Settings + Config Integration', () => {
         expect(askedToRestart()).toEqual([
           [
             'Restart required',
-            'Changing "Always on top" may require a restart. Restart now?',
+            'Changing “Always on top” may require a restart. Restart now?',
             expect.objectContaining({
               confirmText: 'Restart now',
               cancelText: 'Later',
@@ -8646,7 +8646,7 @@ describe('Settings + Config Integration', () => {
       'All custom icons cleared. Click Save to persist changes.':
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
       'Remove Alert': 'Warnung entfernen',
-      'Remove alert for "{{name}}"?': 'Warnung für „{{name}}“ entfernen?',
+      'Remove alert for “{{name}}”?': 'Warnung für „{{name}}“ entfernen?',
       Remove: 'Entfernen',
       'Profile sync upload complete.': 'Profil-Upload abgeschlossen.',
       'Accent colors': 'Akzentfarben',

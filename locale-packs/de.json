@@ -1998,6 +1998,21 @@
     "What's new": "Neuerungen",
     "Minimum {{value}}": "Minimum {{value}}",
     "Maximum {{value}}": "Maximum {{value}}",
-    "Sample average {{value}}": "Durchschnitt {{value}}"
+    "Sample average {{value}}": "Durchschnitt {{value}}",
+    "Renamed to “{{name}}”": "Umbenannt in „{{name}}“",
+    "Hotkey “{{hotkey}}” is already in use by another application.": "Tastenkürzel „{{hotkey}}“ wird bereits von einer anderen Anwendung verwendet.",
+    "To control {{name}}, type “lock” or “unlock”.": "Um {{name}} zu steuern, gib „verriegeln“ oder „entriegeln“ ein.",
+    "Changing “Always on top” may require a restart. Restart now?": "Das Ändern von „Immer im Vordergrund“ erfordert möglicherweise einen Neustart. Jetzt neu starten?",
+    "Remove alert for “{{name}}”?": "Warnung für „{{name}}“ entfernen?",
+    "The “{{domain}}” domain does not have a desktop-pin profile yet.": "Für die Domäne „{{domain}}“ gibt es noch kein Desktop-Pin-Profil.",
+    "To control {{name}}, type “arm” or “disarm”.": "Um {{name}} zu steuern, gib „scharfstellen“ oder „unscharf“ ein.",
+    "Remove “{{name}}” from your custom colors?": "„{{name}}“ aus den eigenen Farben entfernen?",
+    "Try a device name, a command like “turn on”, or a page name": "Probiere einen Gerätenamen, einen Befehl wie „einschalten“ oder einen Seitennamen",
+    "No sensors match “{{query}}”": "Keine Sensoren passen zu „{{query}}“",
+    "Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”, for example: {{binding}}": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“, zum Beispiel: {{binding}}",
+    "Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”.": "Hyprland hat „{{shortcut}}“ über den alten App-Namen „{{legacyAppId}}“ gesendet. Das funktioniert vorerst weiter; ändere die Bindung in „{{target}}“.",
+    "Delete “{{name}}” and its tiles?": "„{{name}}“ und ihre Kacheln löschen?",
+    "Remove “{{name}}” from “{{page}}”?": "„{{name}}“ von „{{page}}“ entfernen?",
+    "Removed from “{{page}}”": "Von „{{page}}“ entfernt"
   }
 }

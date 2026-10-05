@@ -1998,6 +1998,21 @@
     "What's new": "الجديد",
     "Minimum {{value}}": "الحد الأدنى {{value}}",
     "Maximum {{value}}": "الحد الأقصى {{value}}",
-    "Sample average {{value}}": "متوسط العينة {{value}}"
+    "Sample average {{value}}": "متوسط العينة {{value}}",
+    "Renamed to “{{name}}”": "تمت إعادة التسمية إلى «{{name}}»",
+    "Hotkey “{{hotkey}}” is already in use by another application.": "الاختصار «{{hotkey}}» مستخدم بالفعل بواسطة تطبيق آخر.",
+    "To control {{name}}, type “lock” or “unlock”.": "للتحكم في {{name}}، اكتب «قفل» أو «فتح قفل».",
+    "Changing “Always on top” may require a restart. Restart now?": "قد يتطلب تغيير «دائمًا في المقدمة» إعادة التشغيل. هل تريد إعادة التشغيل الآن؟",
+    "Remove alert for “{{name}}”?": "هل تريد إزالة التنبيه الخاص بـ «{{name}}»؟",
+    "The “{{domain}}” domain does not have a desktop-pin profile yet.": "لا يتوفر بعد ملف تعريف للتثبيت على سطح المكتب لنطاق «{{domain}}».",
+    "To control {{name}}, type “arm” or “disarm”.": "للتحكم في {{name}}، اكتب «تسليح» أو «إلغاء تسليح».",
+    "Remove “{{name}}” from your custom colors?": "هل تريد إزالة «{{name}}» من ألوانك المخصصة؟",
+    "Try a device name, a command like “turn on”, or a page name": "جرّب اسم جهاز أو أمرًا مثل «تشغيل» أو اسم صفحة",
+    "No sensors match “{{query}}”": "لا توجد مستشعرات تطابق «{{query}}»",
+    "Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”, for example: {{binding}}": "أرسل Hyprland «{{shortcut}}» عبر اسم التطبيق القديم «{{legacyAppId}}». ما زال هذا يعمل حاليًا؛ غيّر الربط إلى «{{target}}»، على سبيل المثال: {{binding}}",
+    "Hyprland sent “{{shortcut}}” through the old app name “{{legacyAppId}}”. That still works for now; change the bind to “{{target}}”.": "أرسل Hyprland «{{shortcut}}» عبر اسم التطبيق القديم «{{legacyAppId}}». ما زال هذا يعمل حاليًا؛ غيّر الربط إلى «{{target}}».",
+    "Delete “{{name}}” and its tiles?": "حذف «{{name}}» مع بطاقاتها؟",
+    "Remove “{{name}}” from “{{page}}”?": "هل تريد إزالة «{{name}}» من «{{page}}»؟",
+    "Removed from “{{page}}”": "تمت الإزالة من «{{page}}»"
   }
 }

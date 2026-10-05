@@ -701,7 +701,7 @@ describe('command palette recents', () => {
       expect(paletteOpen()).toBe(true);
       const hint = document.querySelector('.command-palette-hint');
       expect(hint.hidden).toBe(false);
-      expect(hint.textContent).toBe('To control Front Door, type "lock" or "unlock".');
+      expect(hint.textContent).toBe('To control Front Door, type “lock” or “unlock”.');
 
       search('unl');
       expect(hint.hidden).toBe(true);
@@ -1284,7 +1284,7 @@ describe('command palette recents', () => {
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
       );
 
-      expect(status().textContent).toBe('To control Front Door, type "lock" or "unlock".');
+      expect(status().textContent).toBe('To control Front Door, type “lock” or “unlock”.');
       expect(document.querySelector('.command-palette-hint').getAttribute('aria-hidden')).toBe(
         'true'
       );
@@ -1411,7 +1411,7 @@ describe('command palette recents', () => {
         'No matching results'
       );
       expect(emptyText().querySelector('.command-palette-empty-hint').textContent).toBe(
-        'Try a device name, a command like "turn on", or a page name'
+        'Try a device name, a command like “turn on”, or a page name'
       );
     });
   });

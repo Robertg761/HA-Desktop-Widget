@@ -797,7 +797,7 @@ describe('dashboard data display', () => {
       expect(uiUtils.showConfirm).toHaveBeenCalledWith(
         'Remove from Quick Access',
         // The page it is taken off, since the same entity on another page stays.
-        'Remove "Reading light" from "Polish"?',
+        'Remove “Reading light” from “Polish”?',
         { confirmText: 'Remove', confirmClass: 'btn-danger' }
       );
     });
@@ -814,7 +814,7 @@ describe('dashboard data display', () => {
       state.setStates({ 'light.other': entity('light.other', 'off') });
       ui.renderActiveTab();
       await removeFirstTile();
-      expect(uiUtils.showConfirm.mock.calls[0][1]).toBe('Remove "Porch light" from "All"?');
+      expect(uiUtils.showConfirm.mock.calls[0][1]).toBe('Remove “Porch light” from “All”?');
     });
   });
 

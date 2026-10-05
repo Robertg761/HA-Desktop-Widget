@@ -1410,5 +1410,65 @@
   "Minimum {{min}} · Maximum {{max}} · Sample average {{average}}": {
     "retiredIn": "4.0.0",
     "reason": "Split into one string per figure, so each figure wraps as a whole"
+  },
+  "Renamed to \"{{name}}\"": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Hotkey \"{{hotkey}}\" is already in use by another application.": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "To control {{name}}, type \"lock\" or \"unlock\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Changing \"Always on top\" may require a restart. Restart now?": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Remove alert for \"{{name}}\"?": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "The \"{{domain}}\" domain does not have a desktop-pin profile yet.": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "To control {{name}}, type \"arm\" or \"disarm\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Remove \"{{name}}\" from your custom colors?": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Try a device name, a command like \"turn on\", or a page name": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "No sensors match \"{{query}}\"": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\", for example: {{binding}}": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Hyprland sent \"{{shortcut}}\" through the old app name \"{{legacyAppId}}\". That still works for now; change the bind to \"{{target}}\".": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Delete \"{{name}}\" and its tiles?": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Remove \"{{name}}\" from \"{{page}}\"?": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Removed from \"{{page}}\"": {
+    "retiredIn": "4.0.0",
+    "reason": "Written with curly quotation marks, as the other English strings are"
   }
 }

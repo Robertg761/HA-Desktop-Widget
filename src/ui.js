@@ -1217,7 +1217,7 @@ async function deleteQuickAccessPage(tabId) {
     t('Delete Page'),
     // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
     // page that shows them.
-    t('Delete "{{name}}" and its tiles?', { name: tab.name }),
+    t('Delete “{{name}}” and its tiles?', { name: tab.name }),
     { confirmText: t('Delete'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -2378,7 +2378,7 @@ function addButtonsToElement(item) {
             : uiUtils.showConfirm(
                 t('Remove from Quick Access'),
                 // Removing a tile takes it off the page it is on; the same entity on another page stays.
-                t('Remove "{{name}}" from "{{page}}"?', {
+                t('Remove “{{name}}” from “{{page}}”?', {
                   name: getQuickAccessTileLabel(item),
                   page: getActiveQuickAccessTab(state.CONFIG)?.name || '',
                 }),
@@ -2783,7 +2783,7 @@ function showRenameModal(entityId) {
           });
           refreshQuickAccessAfterTileSettingsChange();
           const toastMessage = renamed
-            ? t('Renamed to "{{name}}"', { name: newName })
+            ? t('Renamed to “{{name}}”', { name: newName })
             : t('Tile settings saved');
           uiUtils.showToast(toastMessage, 'success', 2000);
           closeTileSettingsModal();
@@ -2942,7 +2942,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast(t('Removed from "{{page}}"', { page: pageName }), 'success', 2000);
+    uiUtils.showToast(t('Removed from “{{page}}”', { page: pageName }), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -5441,7 +5441,7 @@ function showComparisonGraphModal(graphId) {
         empty.className = 'no-entities-message';
         // A search that found nothing is not a home without numeric sensors.
         empty.textContent = filter
-          ? t('No sensors match "{{query}}"', { query: search.value.trim() })
+          ? t('No sensors match “{{query}}”', { query: search.value.trim() })
           : t('No numeric sensors found');
         list.appendChild(empty);
         return;
@@ -9195,7 +9195,7 @@ function updateExistingDesktopPinPanelControl(root, entity) {
 function getDesktopPinUnsupportedMessage(entityId) {
   const domain = getEntityDomain(entityId);
   return domain
-    ? t('The "{{domain}}" domain does not have a desktop-pin profile yet.', { domain })
+    ? t('The “{{domain}}” domain does not have a desktop-pin profile yet.', { domain })
     : t('Desktop pin not supported yet');
 }
 
@@ -9768,7 +9768,7 @@ function getDesktopPinFallbackDescriptor(
       title: t('Desktop pin not supported yet'),
       // The shared support profile's reason is English-only; with an entity ID the only one it
       // gives is the missing domain profile, so the fallback words that one itself.
-      detail: t('The "{{domain}}" domain does not have a desktop-pin profile yet.', {
+      detail: t('The “{{domain}}” domain does not have a desktop-pin profile yet.', {
         domain: supportProfile.domain || 'unknown',
       }),
       showFocusMain: true,

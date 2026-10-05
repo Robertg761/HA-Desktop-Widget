@@ -414,8 +414,8 @@ function redirectToExplicitCommand(selected) {
   showHint(
     hasCommandFor(entityId)
       ? getEntityDomain(entityId) === 'alarm_control_panel'
-        ? t('To control {{name}}, type "arm" or "disarm".', { name })
-        : t('To control {{name}}, type "lock" or "unlock".', { name })
+        ? t('To control {{name}}, type “arm” or “disarm”.', { name })
+        : t('To control {{name}}, type “lock” or “unlock”.', { name })
       : t('No command is available for {{name}}.', { name })
   );
 }
@@ -613,7 +613,7 @@ function renderEmptyState(query, hasEntities) {
     return title.textContent;
   }
   title.textContent = t('No matching results');
-  detail.textContent = t('Try a device name, a command like "turn on", or a page name');
+  detail.textContent = t('Try a device name, a command like “turn on”, or a page name');
   emptyState.replaceChildren(title, detail);
   return title.textContent;
 }

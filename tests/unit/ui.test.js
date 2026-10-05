@@ -5834,7 +5834,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'Home Assistant unavailable',
         'Unsupported',
         'Desktop pin not supported yet',
-        'The "{{domain}}" domain does not have a desktop-pin profile yet.',
+        'The “{{domain}}” domain does not have a desktop-pin profile yet.',
         'Missing entity',
         'Pinned entity not found',
         'This tile could not find its entity in the latest Home Assistant data. It may have been renamed, removed, or is no longer exposed.',
@@ -5874,7 +5874,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect([text('kicker'), text('title'), text('copy')]).toEqual([
           '[xx] Unsupported',
           '[xx] Desktop pin not supported yet',
-          '[xx] The "calendar" domain does not have a desktop-pin profile yet.',
+          '[xx] The “calendar” domain does not have a desktop-pin profile yet.',
         ]);
 
         ui.renderDesktopPinnedTile('light.missing', null, { hasSnapshot: true });
@@ -8421,7 +8421,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
         'Delete Page',
-        'Delete "Bedroom" and its tiles?',
+        'Delete “Bedroom” and its tiles?',
         expect.objectContaining({ confirmText: 'Delete' })
       );
     });
@@ -8454,8 +8454,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const [, message] = uiUtils.showConfirm.mock.calls.at(-1);
-      expect(message).toMatch(/^Remove ".+" from "Night"\?$/);
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from "Night"', 'success', 2000);
+      expect(message).toMatch(/^Remove “.+” from “Night”\?$/);
+      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from “Night”', 'success', 2000);
     });
 
     it('moves focus to the page now shown after deleting a page', async () => {
@@ -9000,7 +9000,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         search.value = 'garage';
         search.dispatchEvent(new Event('input', { bubbles: true }));
 
-        expect(list.textContent).toBe('No sensors match "garage"');
+        expect(list.textContent).toBe('No sensors match “garage”');
       });
 
       it('still says there are no numeric sensors in a home that has none', async () => {
