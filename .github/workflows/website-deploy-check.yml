@@ -23,6 +23,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # The site must match main, whichever branch the run was started from.
+          ref: main
 
       - name: Use Node.js
         uses: actions/setup-node@v5
