@@ -482,6 +482,22 @@ const SWATCH_ROWS_EVEN = `(() => {
   const counts = [...rows.values()];
   return counts.every((count) => count === counts[0]);
 })()`;
+// An unavailable pop-up shows its note and what is still there to read or use: no block in its body
+// stands empty, with only its padding between the note and the footer.
+const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
+  const body = document.querySelector('.modal.entity-unavailable .modal-body');
+  if (!body?.querySelector('.dialog-unavailable-note')) return false;
+  const shown = (element) => element.getClientRects().length > 0;
+  return [...body.children].filter(shown).every((block) =>
+    [...block.querySelectorAll('*')].some((part) => shown(part) && part.children.length === 0));
+})()`;
+const openUnavailable = (open) => async (ctx) => {
+  await open(ctx);
+  await ctx.waitForExpression(
+    NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG,
+    'no empty block under the note'
+  );
+};
 // Every toast lies above or below the connection panel, so none of its words or buttons is covered.
 const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
   const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
@@ -1056,20 +1072,20 @@ const scenes = [
   {
     name: 'popup-fan-unavailable',
     config: { activeTabId: 'bedroom' },
-    setup: openDetails('fan.bedroom'),
+    setup: openUnavailable(openDetails('fan.bedroom')),
   },
   // The same for a light and a cover: the banner and the buttons, with no icon or graphic left over.
   {
     name: 'popup-light-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openArrivedDetails('light.hall'),
+    setup: openUnavailable(openArrivedDetails('light.hall')),
   },
   {
     name: 'popup-cover-unavailable',
     config: unavailablePage,
     extraStates: buildUnavailableDevices,
-    setup: openArrivedDetails('cover.side_gate'),
+    setup: openUnavailable(openArrivedDetails('cover.side_gate')),
   },
   // An entity that is gone dims on a primary card as it does in Quick Access.
   { name: 'primary-unavailable-card', config: { primaryCards: ['fan.bedroom', 'time'] } },

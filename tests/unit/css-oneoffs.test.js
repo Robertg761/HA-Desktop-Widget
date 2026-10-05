@@ -564,6 +564,25 @@ describe('stylesheet one-offs', () => {
       );
     });
 
+    // An on/off fan or light, or a cover that cannot be moved from here, hides every child of its
+    // content block while it is unavailable; the empty block's padding stood as 75px of nothing
+    // between the note and the footer. jsdom cannot match :has() inside :not(), so this reads the
+    // rule; the popup-fan-unavailable snapshot checks the layout in Chromium.
+    it('takes away a pop-up content block that has nothing left to operate while unavailable', () => {
+      const rule = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((candidate) => /:not\(:has\(input, button, select\)\)/.test(candidate.selectorText));
+      const selector = rule.selectorText.replace(/\s+/g, ' ');
+
+      expect(selector).toContain('.modal.entity-unavailable');
+      ['.brightness-content', '.fan-content', '.cover-content'].forEach((block) =>
+        expect(selector).toContain(block)
+      );
+      // The climate block keeps its readings, which are not controls.
+      expect(selector).not.toContain('.climate-content');
+      expect(rule.style.display).toBe('none');
+    });
+
     it('closes a dialog with its body padding, not with the last field and the padding', () => {
       render(
         '<div class="modal"><div class="modal-content"><div class="modal-body"><div class="form-group" id="first"></div><div class="form-group" id="last"></div></div></div></div>'

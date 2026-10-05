@@ -15732,6 +15732,14 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity .contro
   display: none;
 }
 
+/* A pop-up whose only controls were those (a fan or a light that only turns on and off, a cover
+   that cannot be moved from here) has nothing left in its content block, whose padding stood as
+   75px of empty space between the note and the footer. */
+.modal.entity-unavailable
+  :is(.brightness-content, .fan-content, .cover-content):not(:has(input, button, select)) {
+  display: none;
+}
+
 .modal.entity-unavailable :is(.modal-body, .modal-footer) :is(input, button):disabled {
   opacity: 0.45;
   cursor: not-allowed;
