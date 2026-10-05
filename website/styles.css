@@ -35,7 +35,6 @@
 :root {
   color-scheme: dark;
   --bg: #0a0c10;
-  --bg-raised: #0f1217;
   --surface: rgba(255, 255, 255, 0.028);
   --surface-2: rgba(255, 255, 255, 0.05);
   --line: rgba(255, 255, 255, 0.075);

@@ -130,7 +130,42 @@ describe('the visual snapshot shards', () => {
     });
 
     it('runs every scene when no shard and no filter are set', () => {
-      expect(selectScenes(scenes)).toEqual({ matched: scenes, selected: scenes });
+      expect(selectScenes(scenes)).toEqual({ matched: scenes, runnable: scenes, selected: scenes });
+    });
+
+    // A scene with `platforms` only runs on those. It leaves the list before the cut, so each OS
+    // splits the scenes it runs into even parts, and the scenes that empty the server address still
+    // land in its last shard.
+    it.each(['linux', 'win32', 'darwin'])('cuts the shards from the scenes %s can stage', (os) => {
+      const here = (scene) => !scene.platforms || scene.platforms.includes(os);
+      const all = selectScenes(scenes, { platform: os });
+      expect(all.matched).toEqual(scenes);
+      expect(all.runnable).toEqual(scenes.filter(here));
+      expect(all.runnable.length).toBeLessThan(scenes.length);
+      expect(all.selected).toEqual(all.runnable);
+
+      const shards = Array.from(
+        { length: shardCount },
+        (_, i) =>
+          selectScenes(scenes, { platform: os, shard: { index: i + 1, count: shardCount } })
+            .selected
+      );
+      expect(shards.flat()).toEqual(all.runnable);
+      const sizes = shards.map((shard) => shard.length);
+      expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+      shards.slice(0, -1).forEach((shard) => expect(shard.some(emptiesServer)).toBe(false));
+      expect(shards.at(-1).filter(emptiesServer)).toEqual(all.runnable.filter(emptiesServer));
+    });
+
+    // A filter that matches only another OS's scenes still matches: the run has nothing to do
+    // here, which is not the typo "No scene matches" reports.
+    it("tells a filter that matches only another OS's scenes from one that matches nothing", () => {
+      const filter = /^startup-oauth-keyring$/;
+      expect(selectScenes(scenes, { filter, platform: 'win32' })).toEqual({
+        matched: [expect.objectContaining({ name: 'startup-oauth-keyring' })],
+        runnable: [],
+        selected: [],
+      });
     });
   });
 });

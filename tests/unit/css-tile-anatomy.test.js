@@ -4,9 +4,25 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  loadAppStylesheets,
+  resolvedValue,
+} = require('../helpers/css-cascade.js');
 
 const styles = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+
+/** The declarations of the first rule with exactly this selector. */
+const ruleBody = (selector) => {
+  const start = styles.indexOf(`\n${selector} {`);
+  expect(start).toBeGreaterThan(-1);
+  return styles.slice(start, styles.indexOf('\n}', start));
+};
+/** A value with the line breaks Prettier puts in long declarations collapsed to single spaces. */
+const flat = (value) => String(value).replace(/\s+/g, ' ');
+// The default accent as the helper resolves it, as an edge and as a fill.
+const ACCENT = 'rgba(100, 181, 246';
+const ACCENT_RGB = '100, 181, 246';
 
 function render(bodyClass, html) {
   document.body.className = bodyClass;
@@ -81,6 +97,8 @@ describe('Quick Access tile anatomy', () => {
       render('', grid(tile(), 'reorganize-mode'));
       const item = document.querySelector('.control-item');
       expect(resolvedValue(item, 'height')).toBe('104px');
+      // A row a taller media tile has made deeper still takes the tile to its foot.
+      expect(resolvedValue(item, 'min-height')).toBe('100%');
       expect(resolvedValue(item.querySelector('.control-info'), 'padding-top')).toBe('0px');
       render('density-compact', grid(tile(), 'reorganize-mode'));
       expect(resolvedValue(document.querySelector('.control-item'), 'height')).toBe('96px');
@@ -198,8 +216,7 @@ describe('Quick Access tile anatomy', () => {
   });
 
   describe('the lit state of a tile', () => {
-    // The default accent as the helper resolves it, and the pin's inset highlight.
-    const ACCENT = 'rgba(100, 181, 246';
+    // The pin's inset highlight.
     const HIGHLIGHT = 'inset 0 1px 0 rgba(255, 255, 255, 0.08)';
 
     it('is the glow setting and nothing else: a media player Home Assistant calls on does not glow', () => {
@@ -243,15 +260,171 @@ describe('Quick Access tile anatomy', () => {
         render(bodyClass, grid(tile('', `data-attention='${attention}' data-active='true'`)));
         const item = document.querySelector('.control-item');
         expect(resolvedValue(item.querySelector('.control-icon'), 'color')).toBe(colour);
-        expect(resolvedValue(item.querySelector('.control-state'), 'color')).toBe(colour);
+        // The state line is the colour lifted toward the text, to stay readable on the wash.
+        expect(flat(resolvedValue(item.querySelector('.control-state'), 'color'))).toBe(
+          `color-mix(in srgb, ${colour} 70%, #f5f5f5)`
+        );
       }
     });
 
-    it('lights in its own colour, not the accent, with the glow on', () => {
-      render('active-tile-glow', grid(tile('', "data-attention='warning' data-active='true'")));
-      const background = resolvedValue(document.querySelector('.control-item'), 'background-color');
-      expect(background).toContain('#ffb74d 24%');
-      expect(background).not.toContain('rgba(100, 181, 246');
+    // A holiday's orange or red, or the Amber accent, lit an armed alarm the same way an unlocked
+    // lock or an alarm that went off was lit, so these tiles have a look the accent never gives.
+    it.each(['', 'active-tile-glow', 'theme-light', 'active-tile-glow theme-light'])(
+      'washes and edges it in its own colour and never the accent (%s)',
+      (bodyClass) => {
+        render(bodyClass, grid(tile('', "data-attention='warning' data-active='true'")));
+        const item = document.querySelector('.control-item');
+        const colour = resolvedValue(item, '--attention-color');
+        // As strong as a lit tile's wash of the accent in either theme, so a tile that needs
+        // attention is never the quieter of the two.
+        const wash = bodyClass.includes('theme-light') ? '18%' : '24%';
+        expect(resolvedValue(item, '--dash-attention-wash')).toBe(
+          resolvedValue(document.body, '--dash-tile-wash')
+        );
+
+        expect(flat(resolvedValue(item, 'background-image'))).toContain(`${colour} ${wash}`);
+        expect(String(resolvedValue(item, 'background-color'))).not.toContain(ACCENT_RGB);
+        expect(resolvedValue(item, 'border-color')).toBe(colour);
+        // The edge is two pixels: the border and an outline just inside it.
+        expect(resolvedValue(item, 'outline')).toBe(`1px solid ${colour}`);
+        expect(resolvedValue(item, 'outline-offset')).toBe('-2px');
+      }
+    );
+
+    it('keeps its own look over the solid panels and in the Readable preset', () => {
+      render(
+        'active-tile-glow opaque-panels',
+        grid(tile('', "data-attention='danger' data-active='true'"))
+      );
+      let item = document.querySelector('.control-item');
+      const image = cascadedDeclaration(item, 'background-image');
+      // The solid fill is an !important shorthand; the wash is laid back over it the same way.
+      expect(image.important).toBe(true);
+      expect(flat(resolvedValue(item, 'background-image'))).toContain('#ff8a80 24%');
+
+      render(
+        'active-tile-glow high-contrast opaque-panels',
+        grid(tile('', "data-attention='danger' data-active='true'"))
+      );
+      item = document.querySelector('.control-item');
+      // The preset's accent edge marked it as an "on" tile, the same as an armed alarm.
+      expect(resolvedValue(item, 'outline-color')).toBeNull();
+      expect(resolvedValue(item, 'outline')).toBe(
+        `1px solid ${resolvedValue(item, '--error-text')}`
+      );
+      expect(resolvedValue(item, 'outline-width')).toBe('2px');
+      expect(resolvedValue(item, 'border-color')).toBe(resolvedValue(item, '--error-text'));
+      expect(String(resolvedValue(item, 'background-color'))).not.toContain('0.26');
+    });
+
+    it('marks it with a badge that does not depend on the colour', () => {
+      const badge = ruleBody(
+        '#quick-controls .control-item[data-attention] > .control-icon::after'
+      );
+      expect(badge).toMatch(/content:\s*''/);
+      expect(badge).toMatch(/background:\s*var\(--attention-color\)/);
+      // An exclamation mark cut out of a disc, as a mask, so it is the tile's own wash.
+      expect(badge).toMatch(/mask:\s*url\("data:image\/svg\+xml,[^"]*evenodd/);
+      expect(badge).toMatch(/inset-inline-start:/);
+      // Forced colours would paint the disc Canvas on Canvas.
+      const forced = styles.slice(styles.lastIndexOf('@media (forced-colors: active)'));
+      expect(styles).toMatch(
+        /#quick-controls \.control-item\[data-attention\] > \.control-icon::after \{\s*forced-color-adjust: none;\s*background: CanvasText;/
+      );
+      expect(forced.length).toBeGreaterThan(0);
+    });
+
+    // The slot a dragged tile leaves in Reorganize is the same dashed accent slot for every tile:
+    // the status edge outranked it, and the wash lay over its fill.
+    it.each(['', 'active-tile-glow high-contrast opaque-panels'])(
+      'leaves the drop slot of a dragged tile alone (%s)',
+      (bodyClass) => {
+        render(bodyClass, grid(tile('sortable-ghost', "data-attention='danger'")));
+        const item = document.querySelector('.control-item');
+        expect(resolvedValue(item, 'outline')).toMatch(/^2px dashed /);
+        expect(resolvedValue(item, 'outline-width')).toBeNull();
+        expect(resolvedValue(item, 'background-image')).toBeNull();
+        expect(resolvedValue(item, 'border-color')).not.toBe(resolvedValue(item, '--error-text'));
+      }
+    );
+
+    it('leaves the drop slot alone in forced colours', () => {
+      render('', grid(tile('sortable-ghost', "data-attention='danger'")));
+      const item = document.querySelector('.control-item');
+      expect(resolvedValue(item, 'outline', { forcedColors: true })).toMatch(/^2px dashed /);
+    });
+
+    it('leaves the accent to the tiles that are only on', () => {
+      render('active-tile-glow', grid(tile('', "data-active='true'")));
+      const item = document.querySelector('.control-item');
+      expect(resolvedValue(item, 'background-color')).toContain(ACCENT_RGB);
+      expect(resolvedValue(item, 'outline')).toBeNull();
+    });
+  });
+
+  describe('a camera tile with a preview', () => {
+    const cameraTile = (attributes = '') =>
+      `<div class="control-item camera-preview-tile" ${attributes}>
+        <div class="camera-tile-visual"><div class="camera-tile-fallback">
+          <div class="control-icon"></div></div></div>
+        <div class="camera-tile-copy"><div class="control-name"></div>
+          <div class="control-state camera-tile-preview-status"></div></div>
+      </div>`;
+
+    it('keeps its caption at the foot, which the tile-fit centring took up under the icon', () => {
+      render('', grid(cameraTile("data-camera-preview-state='error'")));
+      expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
+        'flex-end'
+      );
+      // The other tiles keep the centring that loses only their foot when they are too full.
+      render('', grid(tile()));
+      expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
+        'safe center'
+      );
+    });
+
+    it.each([
+      ['', '32px'],
+      ['density-compact', '25px'],
+    ])(
+      'puts the icon of a tile with no picture above the caption, not over it (%s)',
+      (bodyClass, top) => {
+        render(bodyClass, grid(cameraTile("data-camera-preview-state='error'")));
+        const fallback = document.querySelector('.camera-tile-fallback');
+        expect(resolvedValue(fallback, 'place-items')).toBe('start center');
+        expect(resolvedValue(fallback, 'padding-top')).toBe(top);
+        // A plain glyph like its neighbours', not the 38px circle the dark stage seats it in.
+        const icon = fallback.querySelector('.control-icon');
+        expect(resolvedValue(icon, 'width')).toBe('auto');
+        expect(resolvedValue(icon, 'border')).toBe('0');
+      }
+    );
+
+    it('lowers that icon below the edit buttons while editing', () => {
+      for (const bodyClass of ['', 'density-compact']) {
+        render(bodyClass, grid(cameraTile(), 'reorganize-mode'));
+        expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'padding-top')).toBe(
+          '36px'
+        );
+      }
+    });
+
+    it('centres the caption under the icon of a tile with no picture, as its neighbours are', () => {
+      render('', grid(cameraTile("data-camera-preview-state='error'")));
+      for (const selector of ['.camera-tile-copy', '.camera-tile-preview-status']) {
+        expect(resolvedValue(document.querySelector(selector), 'text-align')).toBe('center');
+      }
+    });
+
+    it('leaves the picture of a camera that sent one centred under its scrim', () => {
+      render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
+      expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'place-items')).toBe(
+        'center'
+      );
+      // Over a picture the caption keeps to the start edge, on the scrim at the foot.
+      for (const selector of ['.camera-tile-copy', '.camera-tile-preview-status']) {
+        expect(resolvedValue(document.querySelector(selector), 'text-align')).toBe('start');
+      }
     });
   });
 

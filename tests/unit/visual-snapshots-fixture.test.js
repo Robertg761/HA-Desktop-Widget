@@ -90,12 +90,14 @@ describe('visual snapshot scenes', () => {
   it('leaves the scenes that change unrestored settings to the end', () => {
     const changesMore = (scene) =>
       Object.keys(scene.config || {}).some((key) => !RESETTABLE_SETTINGS.includes(key));
-    const firstIndex = scenes.findIndex(changesMore);
+    // A start-up scene runs on an app of its own, so where it sits in the list changes nothing.
+    const shared = scenes.filter((scene) => !scene.startup);
+    const firstIndex = shared.findIndex(changesMore);
 
     expect(firstIndex).toBeGreaterThan(0);
     // Everything after the first such scene changes them too, so no scene starts from a state an
     // earlier one left behind.
-    expect(scenes.slice(firstIndex).every(changesMore)).toBe(true);
+    expect(shared.slice(firstIndex).every(changesMore)).toBe(true);
   });
 
   it('gives the scenes that bring entities of their own a function that builds them', () => {
@@ -235,6 +237,17 @@ describe('visual snapshot scenes', () => {
       'media-tile',
       'pin-light',
       'pin-light-long',
+      'pin-light-onoff',
+      'pin-switch',
+      'pin-climate-200x170',
+      'pin-fan-200x170',
+      'pin-cover-200x170',
+      'pin-weather-200x170',
+      'pin-climate-240x180',
+      'pin-weather-240x180',
+      'pin-climate-range',
+      'pin-climate-range-200x170',
+      'pin-de-climate-185x158',
       'pin-de-cover',
       'pin-fr-climate',
       'pin-ar-light',
@@ -264,6 +277,19 @@ describe('visual snapshot scenes', () => {
       'format-main-de',
       'format-main-ar',
       'format-palette-fr',
+      'startup-first-run',
+      'startup-first-run-ar-system',
+      'startup-token-unreadable',
+      'startup-token-unreadable-settings',
+      'startup-token-not-saved',
+      'startup-oauth-reauth',
+      'startup-oauth-keyring',
+      'wizard-welcome-ar',
+      'wizard-welcome-minimum',
+      'wizard-welcome-s150',
+      'wizard-welcome-forced-colors',
+      'wizard-authorize-error',
+      'wizard-authorize-keyring',
     ]) {
       expect(names).toContain(required);
     }
@@ -271,6 +297,64 @@ describe('visual snapshot scenes', () => {
     expect(narrow.size.width).toBeLessThanOrEqual(345);
     expect(scenes.find((scene) => scene.name === 'forced-colors-main').media).toEqual([
       { name: 'forced-colors', value: 'active' },
+    ]);
+  });
+
+  describe('the start-ups each scene starts its own app on', () => {
+    const base = buildConfig('http://127.0.0.1:8123');
+    const startup = (name) => scenes.find((scene) => scene.name === name).startup.config(base);
+
+    it('is a first install with nothing saved but the window and the seasons off', () => {
+      const config = startup('startup-first-run');
+      expect(config.homeAssistant).toBeUndefined();
+      expect(config.ui).toEqual({ seasonal: { enabled: false } });
+      expect(startup('startup-first-run-ar-system')).toEqual(config);
+    });
+
+    it('keeps the server and dashboard of an existing setup whose token cannot be used', () => {
+      const unreadable = startup('startup-token-unreadable');
+      expect(unreadable.customTabs).toEqual(base.customTabs);
+      expect(unreadable.homeAssistant.tokenEncrypted).toBe(true);
+      expect(unreadable.homeAssistant.token).not.toBe(base.homeAssistant.token);
+
+      const notSaved = startup('startup-token-not-saved');
+      expect(notSaved.homeAssistant.url).toBe(base.homeAssistant.url);
+      expect(notSaved.homeAssistant.token).toBeUndefined();
+      expect(notSaved.tokenResetReason).toBe('not_persisted');
+
+      const oauth = startup('startup-oauth-reauth');
+      expect(oauth.homeAssistant).toEqual({ url: base.homeAssistant.url, authMethod: 'oauth' });
+      expect(startup('startup-oauth-keyring')).toEqual(oauth);
+    });
+  });
+
+  it('names only platforms Node knows', () => {
+    for (const scene of scenes.filter((entry) => entry.platforms)) {
+      for (const platform of scene.platforms) {
+        expect(['darwin', 'linux', 'win32']).toContain(platform);
+      }
+    }
+  });
+
+  it('captures the failed authorization step once on every system, by the failure it can stage', () => {
+    const failures = scenes.filter((scene) =>
+      ['wizard-authorize-error', 'wizard-authorize-keyring'].includes(scene.name)
+    );
+    expect(failures.flatMap((scene) => scene.platforms).sort()).toStrictEqual([
+      'darwin',
+      'linux',
+      'win32',
+    ]);
+  });
+
+  it('captures a browser authorization with nothing saved once on every system', () => {
+    const startups = scenes.filter((scene) =>
+      ['startup-oauth-reauth', 'startup-oauth-keyring'].includes(scene.name)
+    );
+    expect(startups.flatMap((scene) => scene.platforms).sort()).toStrictEqual([
+      'darwin',
+      'linux',
+      'win32',
     ]);
   });
 
@@ -300,16 +384,44 @@ describe('visual snapshot scenes', () => {
     }
   });
 
-  it('shows every desktop pin family it can pin, and only pins entities the fixture holds', () => {
-    const states = new Map(buildStates().map((entity) => [entity.entity_id, entity]));
+  it('shows every desktop pin family it can pin, and only pins entities the home holds', () => {
+    const fixtureStates = buildStates();
     const families = new Set();
     for (const scene of scenes.filter((entry) => entry.pin)) {
+      // A scene may pin an entity it brings itself.
+      const states = new Map(
+        [...fixtureStates, ...(scene.extraStates?.(new Date()) || [])].map((entity) => [
+          entity.entity_id,
+          entity,
+        ])
+      );
       expect(states.has(scene.pin)).toBe(true);
       families.add(resolveDesktopPinProfile(states.get(scene.pin)).family);
     }
     expect([...families].sort()).toEqual(
       [...DESKTOP_PIN_SUPPORTED_FAMILIES].filter((family) => family !== 'unsupported').sort()
     );
+  });
+
+  it('pins a light that only switches, whose pin has no brightness to show', () => {
+    const scene = scenes.find((entry) => entry.name === 'pin-light-onoff');
+    const [light] = scene.extraStates(new Date());
+
+    expect(light.entity_id).toBe(scene.pin);
+    expect(light.attributes.supported_color_modes).toEqual(['onoff']);
+  });
+
+  it('pins a heat/cool thermostat, whose two sliders crowd a pin more than one target does', () => {
+    const heatPump = buildStates().find((entity) => entity.entity_id === 'climate.heat_pump');
+    expect(heatPump.attributes).toMatchObject({
+      target_temp_low: expect.any(Number),
+      target_temp_high: expect.any(Number),
+    });
+    for (const name of ['pin-climate-range', 'pin-climate-range-200x170']) {
+      expect(scenes.find((entry) => entry.name === name).pin).toBe('climate.heat_pump');
+    }
+    // German's mode names are the longest a pin a little past the default size has to fit.
+    expect(scenes.find((entry) => entry.name === 'pin-de-climate-185x158').ui.language).toBe('de');
   });
 
   it('puts every pinned entity on a page the scene shows, since only those can be pinned', () => {

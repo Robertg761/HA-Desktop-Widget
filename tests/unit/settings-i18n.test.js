@@ -25,8 +25,8 @@ describe('index.html static Settings text', () => {
         'Search entities...': 'Entitäten suchen...',
         'Search entities': 'Entitäten suchen',
         'Card {{index}}': 'Karte {{index}}',
-        'Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).':
-          'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel <code>Ctrl+Shift+A</code>).',
+        'Toggle or control entities from anywhere. Hold {{ctrl}}, {{alt}} or {{meta}} with the key, and {{shift}} too if you like (for example <code>{{example}}</code>).':
+          'Schalte oder steuere Entitäten von überall aus. Halte {{ctrl}}, {{alt}} oder {{meta}} zur Taste gedrückt, auf Wunsch auch {{shift}} (zum Beispiel <code>{{example}}</code>).',
         'Show log file': 'Protokolldatei zeigen',
         'Shows the log file in your file manager': 'Zeigt die Protokolldatei im Dateimanager',
       },
@@ -94,10 +94,30 @@ describe('index.html static Settings text', () => {
   });
 
   test('keeps code formatting in translated help text', () => {
-    const help = document.querySelector('[data-i18n-html^="Toggle or control entities"]');
+    const help = document.getElementById('entity-hotkeys-help');
     expect(help.textContent).toBe(
-      'Schalte oder steuere Entitäten von überall aus. Modifikatortasten: Ctrl, Alt, Shift, Win, Command, Super (zum Beispiel Ctrl+Shift+A).'
+      'Schalte oder steuere Entitäten von überall aus. Halte Ctrl, Alt oder Super zur Taste gedrückt, auf Wunsch auch Shift (zum Beispiel Ctrl+Shift+A).'
     );
-    expect(help.querySelectorAll('code')).toHaveLength(1);
+    expect(help.querySelector('code').textContent).toBe('Ctrl+Shift+A');
+  });
+
+  test('names the modifiers a hotkey can start from, not Shift alone or every platform’s Meta', () => {
+    const help = document.getElementById('entity-hotkeys-help');
+    help.setAttribute(
+      'data-i18n-vars',
+      JSON.stringify({
+        ctrl: 'Control',
+        alt: 'Option',
+        meta: 'Cmd',
+        shift: 'Shift',
+        example: 'Shift+Cmd+A',
+      })
+    );
+    i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    i18n.translateDocument(document);
+
+    expect(help.textContent).toBe(
+      'Toggle or control entities from anywhere. Hold Control, Option or Cmd with the key, and Shift too if you like (for example Shift+Cmd+A).'
+    );
   });
 });

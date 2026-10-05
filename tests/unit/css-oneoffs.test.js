@@ -7,7 +7,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue, splitTopLevel } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  loadAppStylesheets,
+  resolvedValue,
+  splitTopLevel,
+} = require('../helpers/css-cascade.js');
 
 const STYLESHEET = path.resolve(__dirname, '../../styles.css');
 
@@ -70,13 +75,53 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(toast, 'margin-top')).toBeNull();
     });
 
-    it('still boxes inline error text', () => {
-      render('<p role="alert">Unable to load items</p>');
+    it('boxes a list that failed to load, which asks for it', () => {
+      render('<p class="entity-detail-error" role="alert">Unable to load items</p>');
       const message = document.querySelector('[role="alert"]');
       expect(resolvedValue(message, 'padding')).toBe('0.5rem');
       expect(resolvedValue(message, 'border')).toBe(
         `1px solid ${resolvedValue(message, '--error')}`
       );
+    });
+
+    // Said under the field, in red: announced as an alert or not, an inline error is the same red
+    // line. The box turned up only with role="alert", which a field error gets when it is raised
+    // while the field has focus, so one error looked two ways.
+    it.each([
+      ['the Support amount', '<p class="form-help donate-amount-error" role="alert">Too much</p>'],
+      [
+        'the Add page name',
+        '<div class="add-page-modal"><p class="form-help add-page-name-error" role="alert">Enter page name</p></div>',
+      ],
+      [
+        'a Settings field',
+        '<div id="settings-modal"><p class="form-help form-error field-error" role="alert">Invalid URL</p></div>',
+      ],
+      [
+        'a failed connection test',
+        '<div class="connection-test-status" data-status="error" role="alert">Could not connect</div>',
+      ],
+      [
+        'the first-run wizard',
+        '<div class="first-run-status" data-status="error" role="alert">Enter a valid URL</div>',
+      ],
+    ])('leaves the error for %s as red text, alert or not', (_name, html) => {
+      render(html);
+      const message = document.querySelector('[role="alert"]');
+      const plain = { padding: null, border: null, background: null };
+      const box = Object.fromEntries(
+        Object.keys(plain).map((property) => [property, resolvedValue(message, property)])
+      );
+      // The same element without the role looks the same.
+      message.removeAttribute('role');
+      const without = Object.fromEntries(
+        Object.keys(plain).map((property) => [property, resolvedValue(message, property)])
+      );
+      message.setAttribute('role', 'alert');
+
+      expect(box).toEqual(without);
+      expect(resolvedValue(message, 'background')).toBeNull();
+      expect(cascadedDeclaration(message, 'color').value).toBe('var(--error-text)');
     });
   });
 
@@ -446,6 +491,12 @@ describe('stylesheet one-offs', () => {
         '<div class="modal dashboard-tools-modal"><div class="modal-content"></div></div>',
       ],
       ['Add page', '<div class="modal add-page-modal"><div class="modal-content"></div></div>'],
+      // The tile pop-ups were 360px (light, fan, cover) and 400px (climate) beside the 450px
+      // media and detail dialogs, so opening one tile after another changed the width each time.
+      ...['brightness', 'fan', 'cover', 'climate'].map((name) => [
+        `${name} pop-up`,
+        `<div class="modal ${name}-modal"><div class="modal-content ${name}-modal-content"></div></div>`,
+      ]),
     ])('gives the %s dialog the shared detail width', (_, html) => {
       render(html);
       const content = document.querySelector('.modal-content');
@@ -461,6 +512,75 @@ describe('stylesheet one-offs', () => {
         {}
       );
       expect(resolvedValue(document.querySelector('.modal-body'), 'padding')).toBe('1rem');
+    });
+
+    // A body that scrolls kept its scrollbar inside the right padding, so its right margin was 9px
+    // wider than its left, and its content moved sideways when a filter made it start or stop
+    // scrolling. The scrollbar's room is kept either way, and the end padding gives it back.
+    it.each([
+      ['a pop-up', '<div class="modal"><div class="modal-content"><div class="modal-body">'],
+      [
+        'a confirmation',
+        '<div class="modal"><div class="modal-content confirm-modal-content"><div class="modal-body">',
+      ],
+      [
+        'Add page',
+        '<div class="modal add-page-modal"><div class="modal-content"><div class="modal-body">',
+      ],
+      [
+        'diagnostics',
+        '<div class="modal dashboard-tools-modal"><div class="modal-content"><div class="modal-body">',
+      ],
+    ])('keeps the scrollbar’s room in %s body, and gives it back at the end', (_, html) => {
+      render(`${html}</div></div></div>`);
+      const body = document.querySelector('.modal-body');
+      const inset = resolvedValue(body, '--modal-body-inset');
+      const scrollbar = resolvedValue(body, '--modal-scrollbar-size');
+
+      expect(resolvedValue(body, 'scrollbar-gutter')).toBe('stable');
+      expect(resolvedValue(body, 'padding')).toBe(inset);
+      expect(resolvedValue(body, 'padding-inline-end')).toBe(`calc(${inset} - ${scrollbar})`);
+      // The room kept is the scrollbar the body draws.
+      const bar = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((rule) => rule.selectorText === '.modal-body::-webkit-scrollbar');
+      expect(bar.style.width).toBe('var(--modal-scrollbar-size)');
+    });
+
+    it('lets the sticky to-do field reach the scrollbar’s room, and no further', () => {
+      render(
+        '<div class="modal"><div class="modal-content"><div class="modal-body"><form class="todo-add-form"></form></div></div></div>'
+      );
+      const form = document.querySelector('.todo-add-form');
+      const inset = resolvedValue(form, '--modal-body-inset');
+      const scrollbar = resolvedValue(form, '--modal-scrollbar-size');
+
+      expect(resolvedValue(form, 'margin-inline').replace(/\s+/g, ' ')).toBe(
+        `calc(-1 * ${inset}) calc(${scrollbar} - ${inset})`
+      );
+      // Its field ends where the rest of the body's content does.
+      expect(resolvedValue(form, 'padding-inline-end')).toBe(
+        resolvedValue(form.parentElement, 'padding-inline-end')
+      );
+    });
+
+    // An on/off fan or light, or a cover that cannot be moved from here, hides every child of its
+    // content block while it is unavailable; the empty block's padding stood as 75px of nothing
+    // between the note and the footer. jsdom cannot match :has() inside :not(), so this reads the
+    // rule; the popup-fan-unavailable snapshot checks the layout in Chromium.
+    it('takes away a pop-up content block that has nothing left to operate while unavailable', () => {
+      const rule = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .find((candidate) => /:not\(:has\(input, button, select\)\)/.test(candidate.selectorText));
+      const selector = rule.selectorText.replace(/\s+/g, ' ');
+
+      expect(selector).toContain('.modal.entity-unavailable');
+      ['.brightness-content', '.fan-content', '.cover-content'].forEach((block) =>
+        expect(selector).toContain(block)
+      );
+      // The climate block keeps its readings, which are not controls.
+      expect(selector).not.toContain('.climate-content');
+      expect(rule.style.display).toBe('none');
     });
 
     it('closes a dialog with its body padding, not with the last field and the padding', () => {
@@ -532,9 +652,64 @@ describe('stylesheet one-offs', () => {
         '<div class="light-color-swatches"><button class="light-color-swatch"></button></div>'
       );
       const swatch = document.querySelector('.light-color-swatch');
-      expect(resolvedValue(swatch, 'width')).toBe('28px');
-      expect(resolvedValue(swatch, 'height')).toBe('28px');
+      // Up to 28px, and smaller in a narrow column, but always as tall as it is wide.
+      expect(resolvedValue(swatch, 'width')).toBe('min(28px, 100%)');
+      expect(resolvedValue(swatch, 'height')).toBe('auto');
+      expect(resolvedValue(swatch, 'aspect-ratio')).toBe('1');
       expect(resolvedValue(swatch, 'justify-self')).toBe('center');
+    });
+
+    describe('the light pop-up’s colour row', () => {
+      const row = () => {
+        render(
+          '<div class="brightness-color-row"><input type="color" class="light-color-picker"><div class="light-color-swatches"><button class="light-color-swatch"></button></div></div>'
+        );
+        return {
+          row: document.querySelector('.brightness-color-row'),
+          picker: document.querySelector('.light-color-picker'),
+          swatches: document.querySelector('.light-color-swatches'),
+        };
+      };
+      const px = (value) => parseFloat(value) * (String(value).endsWith('rem') ? 16 : 1);
+
+      // A 44x36 well with Chromium's square, bevelled swatch in it stood beside six 28px circles.
+      it('sets the custom colour in a 32px well, a little larger than the swatches, filled by the colour', () => {
+        const { picker } = row();
+        expect(resolvedValue(picker, 'width')).toBe('32px');
+        expect(resolvedValue(picker, 'height')).toBe('32px');
+
+        const rules = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
+        const pseudo = (name) =>
+          rules.find((rule) => rule.selectorText === `.light-color-picker::-webkit-color-${name}`);
+        expect(pseudo('swatch-wrapper').style.padding).toMatch(/^0(px)?$/);
+        expect(pseudo('swatch').style.border).toMatch(/^0(px)?$/);
+        expect(pseudo('swatch').style.getPropertyValue('border-radius')).toBe(
+          'calc(var(--radius-md) - 4px)'
+        );
+      });
+
+      // An auto-fit grid took five columns in a narrow dialog and left the sixth swatch alone on a
+      // second row. Six stay in one row and shrink; only a row too narrow even for 24px swatches
+      // goes to two rows of three, never five and one.
+      it('keeps six swatches in a row, and goes to two rows of three only when they cannot fit', () => {
+        const { row: container, picker, swatches } = row();
+        const columns = (width) =>
+          resolvedValue(swatches, 'grid-template-columns', { container: { width } });
+
+        expect(resolvedValue(container, 'container-type')).toBe('inline-size');
+        expect(columns(400)).toBe('repeat(6, minmax(24px, 1fr))');
+        expect(columns(220)).toBe('repeat(6, minmax(24px, 1fr))');
+        expect(columns(219)).toBe('repeat(3, minmax(24px, 1fr))');
+
+        // The switch is where six 24px swatches and their gaps no longer fit beside the picker.
+        const gap = px(resolvedValue(swatches, 'gap'));
+        const needed =
+          px(resolvedValue(picker, 'width')) +
+          px(resolvedValue(container, 'gap')) +
+          6 * 24 +
+          5 * gap;
+        expect(needed).toBeCloseTo(220, 0);
+      });
     });
 
     it('lays the climate fan and preset options out on the same grid as the modes', () => {

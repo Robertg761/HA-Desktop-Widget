@@ -1155,10 +1155,6 @@
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
   },
-  "Fan only": {
-    "retiredIn": "4.0.0",
-    "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
-  },
   "Compact controls": {
     "retiredIn": "4.0.0",
     "reason": "Nothing in the interface used this text any more once 4.0 replaced the screen it belonged to"
@@ -1398,5 +1394,125 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "Use slider or a preset": {
+    "retiredIn": "4.0.0",
+    "reason": "The light pin's caption says only On or Off; the brightness block below it shows the level (re-audit R-105)."
+  },
+  "{{percent}}% airflow": {
+    "retiredIn": "4.0.0",
+    "reason": "The fan pin's status says only On; the meter below it shows the speed (re-audit R-105)."
+  },
+  "Toggle or control entities from anywhere. Modifiers: Ctrl, Alt, Shift, Win, Command, Super (for example <code>Ctrl+Shift+A</code>).": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by help that names this platform's modifier keys and leaves out Shift alone"
+  },
+  "Reorganize mode on. Drag or press Alt+arrow keys to reorder. Esc to finish.": {
+    "retiredIn": "4.0.0",
+    "reason": "Replaced by the same notice with the platform's name for the Alt key (Option on macOS)"
+  },
+  "Drying": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Heat Cool": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Fan Only": {
+    "retiredIn": "4.0.0",
+    "reason": "HVAC modes now use Home Assistant's own names (Heat/Cool, Fan only, Dry) from one shared table"
+  },
+  "Remove from Quick Access": {
+    "retiredIn": "4.0.0",
+    "reason": "The tile's remove button is named for the page the tile is on, as its dialog is"
+  },
+  "Remove {{name}} from Quick Access": {
+    "retiredIn": "4.0.0",
+    "reason": "The tile's remove button is named for the page the tile is on, as its dialog is"
+  },
+  "Last updated: {{time}}": {
+    "retiredIn": "4.0.0",
+    "reason": "The camera viewer no longer shows the camera's own last update before a picture loads"
+  },
+  "Please configure connection settings (gear icon).": {
+    "retiredIn": "4.0.0",
+    "reason": "Pins and the header no longer point at a gear icon the wizard hides and pins do not have"
+  },
+  "Please configure your Home Assistant token in Settings (gear icon).": {
+    "retiredIn": "4.0.0",
+    "reason": "Pins and the header no longer point at a gear icon the wizard hides and pins do not have"
+  },
+  "Your Home Assistant token needs to be re-entered. ": {
+    "retiredIn": "4.0.0",
+    "reason": "No caller; the token notice became the main window panel"
+  },
+  "Token encryption is not available on this system.": {
+    "retiredIn": "4.0.0",
+    "reason": "No caller; the token notice became the main window panel"
+  },
+  "The stored token could not be decrypted.": {
+    "retiredIn": "4.0.0",
+    "reason": "No caller; the token notice became the main window panel"
+  },
+  "Your encrypted token from a previous installation cannot be decrypted on this system. The encrypted token has been preserved in case you move back to a system with encryption support. Please re-enter your token in Settings to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "The encrypted token appears to be corrupted and cannot be decrypted. The encrypted token has been preserved for recovery attempts. Please re-enter your token in Settings to continue.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  " Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "No caller; the token notice became the main window panel"
+  },
+  "Choose rooms and devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
+  },
+  "My devices": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
+  },
+  "Your connection is saved. Preview a room or choose devices to create your first page. You can also do this later from the empty dashboard.": {
+    "retiredIn": "4.0.0",
+    "reason": "The starter dialog calls what it lists entities"
+  },
+  "Your Home Assistant token needs to be re-entered. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your Home Assistant token needs to be re-entered. Token encryption is not available on this system. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your Home Assistant token needs to be re-entered. The stored token could not be decrypted. Click the gear icon to open Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
+  },
+  "Your access token needs to be re-entered.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Your access token needs to be re-entered. Encryption is not available on this system.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Your access token needs to be re-entered. Token decryption failed.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings explains a token to enter again in its status line instead of a toast on opening"
+  },
+  "Your system keyring is locked or not running, so the saved Home Assistant authorization cannot be read. Unlock the keyring, then restart the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the OAuth keyring panel's title already says the keyring is locked, so its body no longer repeats it"
+  },
+  "Your system keyring is locked or not running, so the saved Home Assistant token cannot be read. Unlock the keyring, then restart the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the token panel's title already says the keyring is locked, so its body no longer repeats it"
+  },
+  "The encrypted token has been kept. After the keyring is unlocked, restarting the widget reads it again, or you can re-enter your token in Settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "The start-up token notice became the main window's token panel, which names no gear icon"
   }
 }

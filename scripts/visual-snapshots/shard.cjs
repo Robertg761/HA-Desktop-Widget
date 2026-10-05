@@ -1,6 +1,7 @@
 /**
- * Which scenes one run captures. SNAPSHOT_SCENES narrows the list first, and SNAPSHOT_SHARD=k/n
- * then keeps the k-th of n parts of what is left, so CI can split the suite across jobs.
+ * Which scenes one run captures. SNAPSHOT_SCENES narrows the list first, the scenes this OS cannot
+ * stage go next, and SNAPSHOT_SHARD=k/n then keeps the k-th of n parts of what is left, so CI can
+ * split the suite across jobs.
  *
  * A shard is a contiguous run of the list, never every n-th scene. The list is in capture order,
  * and the first-run scenes at its end empty the server address, so they have to come after every
@@ -38,12 +39,18 @@ function shardScenes(list, { index, count }) {
 }
 
 /**
- * The scenes a run captures: those whose name matches the filter, then the shard of them. Returns
- * both lists, so a run can tell a filter that matches nothing from a shard left empty.
+ * The scenes a run captures: those whose name matches the filter, then those of them this platform
+ * can stage (a scene with `platforms` runs only on those process.platform values), then the shard
+ * of them. The platform goes before the cut, so each OS splits the scenes it actually runs into
+ * even parts. Returns every step, so a run can tell a filter that matches nothing from a shard left
+ * empty.
  */
-function selectScenes(scenes, { filter = null, shard = null } = {}) {
+function selectScenes(scenes, { filter = null, shard = null, platform = null } = {}) {
   const matched = scenes.filter((scene) => !filter || filter.test(scene.name));
-  return { matched, selected: shard ? shardScenes(matched, shard) : matched };
+  const runnable = platform
+    ? matched.filter((scene) => !scene.platforms || scene.platforms.includes(platform))
+    : matched;
+  return { matched, runnable, selected: shard ? shardScenes(runnable, shard) : runnable };
 }
 
 module.exports = { parseShard, selectScenes, shardScenes };

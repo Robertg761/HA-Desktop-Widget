@@ -268,6 +268,8 @@ function createRendererHarness() {
         setupHotkeyEventListeners: jest.fn(),
         renderHotkeysTab: jest.fn(),
         assignHotkeyToEntity: jest.fn(),
+        clearEntityHotkey: jest.fn(async () => true),
+        removeEntityHotkey: jest.fn(async () => true),
         toggleHotkeys: jest.fn(),
         captureHotkey: jest.fn(),
         cleanupHotkeyEventListeners: jest.fn(),
@@ -349,9 +351,15 @@ function createRendererHarness() {
         resolveEntityId: jest.fn((entityId) => entityId),
         ...utils,
       }));
+      // The language state is what the renderer last set from main's bootstrap, as in i18n.js.
+      let localeState = {};
       jest.doMock('../../src/i18n.js', () => ({
         __esModule: true,
-        setLocaleBootstrap: jest.fn(),
+        setLocaleBootstrap: jest.fn((bootstrap) => {
+          localeState = { ...bootstrap };
+          return localeState;
+        }),
+        getLocaleState: () => localeState,
         t: jest.fn((key, vars = {}) =>
           String(messages[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_match, name) =>
             Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : `{{${name}}}`

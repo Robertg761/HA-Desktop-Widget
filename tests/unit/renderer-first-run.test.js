@@ -39,6 +39,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
   const { flushAsync } = harness;
 
+  const findButtonByText = (label) =>
+    Array.from(document.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === label
+    );
+
   const clickButton = async (label) => {
     const button = Array.from(document.querySelectorAll('button')).find(
       (candidate) => candidate.textContent === label
@@ -89,6 +94,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
         closeSettings: jest.fn(() => jest.requireActual('../../src/settings.js').closeSettings()),
         reapplySettingsPreviews: jest.fn(),
         handleProfileSyncStatusUpdate: jest.fn(),
+        revealHomeAssistantToken: jest.fn(),
         profileSyncNeedsAttention: (status) =>
           jest.requireActual('../../src/settings.js').profileSyncNeedsAttention(status),
       },
@@ -639,6 +645,24 @@ describe('Renderer first-run Home Assistant authorization', () => {
         JSON.parse(document.getElementById('command-palette-hint').getAttribute('data-i18n-vars'))
       ).toEqual({ shortcut });
     });
+
+    it.each([
+      ['darwin', { ctrl: 'Control', alt: 'Option', meta: 'Cmd', example: 'Shift+Cmd+A' }],
+      ['win32', { ctrl: 'Ctrl', alt: 'Alt', meta: 'Win', example: 'Ctrl+Shift+A' }],
+      ['linux', { ctrl: 'Ctrl', alt: 'Alt', meta: 'Super', example: 'Ctrl+Shift+A' }],
+    ])('names the entity hotkey modifiers as a %s keyboard prints them', async (platform, keys) => {
+      await loadRenderer({
+        configureApi(api) {
+          api.platform = platform;
+        },
+        bodyHtml:
+          '<main class="widget-content"></main><p id="entity-hotkeys-help" data-i18n-vars="{}"></p>',
+      });
+
+      expect(
+        JSON.parse(document.getElementById('entity-hotkeys-help').getAttribute('data-i18n-vars'))
+      ).toEqual({ ...keys, shift: 'Shift' });
+    });
   });
 
   it('starts fresh installs with an empty URL and the Home Assistant 2026.8 address hint', async () => {
@@ -704,7 +728,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     await reachAuthorizationStep('ha.local:8123');
     await clickButton('Connect');
-    await clickButton('Choose rooms and devices');
+    await clickButton('Choose rooms and entities');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
     expect(document.getElementById('first-run-onboarding').classList).toContain('hidden');
   });
@@ -726,7 +750,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     mockWebsocket.emit('message', { type: 'auth_ok' });
     mockWebsocket.emit('message', { type: 'result', id: 123, success: true, result: [] });
     await flushAsync();
-    await clickButton('Choose rooms and devices');
+    await clickButton('Choose rooms and entities');
     expect(require('../../src/ui.js').showAddPageModal).toHaveBeenCalledWith({ starter: true });
   });
 
@@ -763,7 +787,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(panel.textContent).toContain('This page is empty');
       expect(panel.textContent).toContain('Add entities to Garage for one-click control.');
       expect(panel.textContent).not.toContain('No Quick Access entities yet');
-      expect(panel.textContent).toContain('Choose rooms and devices');
+      expect(panel.textContent).toContain('Choose rooms and entities');
     });
 
     it('keeps the first-run wording when the empty page is the only one', async () => {
@@ -972,7 +996,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
       config: oauthConfig(),
     });
     await clickButton('Connect');
-    expect(document.querySelector('.first-run-title').textContent).toBe('Choose rooms and devices');
+    expect(document.querySelector('.first-run-title').textContent).toBe(
+      'Choose rooms and entities'
+    );
     expect(wizardButton('Back').hidden).toBe(true);
   });
 
@@ -1230,68 +1256,329 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
   });
 
-  it('does not add a second toast for a keyring problem the startup toast already reported', async () => {
+  describe('a system language the app has as a pack that is not downloaded', () => {
+    const arabicSystem = (api) => {
+      api.getLocaleBootstrap.mockResolvedValue({
+        languageSetting: 'auto',
+        detectedLocale: 'ar-EG',
+        requestedLocale: 'ar-EG',
+        activeLocale: 'en',
+        usingEnglishFallback: true,
+        messages: {},
+      });
+      api.getLocalePacks.mockResolvedValue([
+        { locale: 'ar', displayName: 'العربية', englishName: 'Arabic', installed: false },
+        { locale: 'fr', displayName: 'Français', englishName: 'French', installed: false },
+      ]);
+    };
+    const offer = () => document.getElementById('first-run-language-offer');
+
+    it('is offered on the welcome step, by its own name', async () => {
+      await loadRenderer({ configureApi: arabicSystem });
+
+      expect(offer().hidden).toBe(false);
+      expect(offer().textContent).toContain('HA Desktop Widget is available in العربية.');
+      const download = offer().querySelector('button');
+      expect(download.textContent).toBe('Download');
+      expect(download.getAttribute('aria-label')).toBe('Download العربية');
+    });
+
+    it('is downloaded from there, and the wizard is drawn again in it', async () => {
+      await loadRenderer({ configureApi: arabicSystem });
+      mockElectronAPI.getLocaleBootstrap.mockClear();
+
+      offer().querySelector('button').click();
+      await flushAsync();
+
+      expect(mockElectronAPI.downloadLocalePack).toHaveBeenCalledWith('ar');
+      expect(mockElectronAPI.getLocaleBootstrap).toHaveBeenCalled();
+      expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 4');
+    });
+
+    it('says so when the download fails, and lets it be tried again', async () => {
+      await loadRenderer({
+        configureApi(api) {
+          arabicSystem(api);
+          api.downloadLocalePack.mockRejectedValueOnce(new Error('offline'));
+        },
+      });
+
+      const download = offer().querySelector('button');
+      download.click();
+      await flushAsync();
+
+      expect(document.querySelector('.first-run-status').textContent).toBe(
+        'Failed to download language pack'
+      );
+      expect(download.disabled).toBe(false);
+    });
+
+    it.each([
+      ['an English system', { usingEnglishFallback: false, detectedLocale: 'en-US' }],
+      ['a language the user chose', { languageSetting: 'en', detectedLocale: 'ar-EG' }],
+      ['a language with no pack', { detectedLocale: 'ja-JP' }],
+    ])('is not offered for %s', async (_name, locale) => {
+      await loadRenderer({
+        configureApi(api) {
+          arabicSystem(api);
+          api.getLocaleBootstrap.mockResolvedValue({
+            languageSetting: 'auto',
+            activeLocale: 'en',
+            usingEnglishFallback: true,
+            messages: {},
+            ...locale,
+          });
+        },
+      });
+
+      expect(offer().hidden).toBe(true);
+      expect(offer().textContent).toBe('');
+    });
+  });
+
+  describe('a saved token this computer cannot read', () => {
+    // An existing setup: its server and pages are saved, only the token could not be used.
+    const recoveryConfig = (tokenResetReason) => ({
+      ...unconfiguredConfig(),
+      homeAssistant: {
+        url: 'http://ha.local:8123',
+        token: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+        authMethod: 'token',
+      },
+      customTabs: [{ id: 'home', name: 'Home', entityIds: ['light.desk'] }],
+      activeTabId: 'home',
+      ...(tokenResetReason ? { tokenResetReason } : {}),
+    });
+    const panel = () => document.getElementById('widget-state-panel');
+    const wizardShown = () =>
+      !!document.querySelector('#first-run-onboarding:not(.hidden)') ||
+      document.body.classList.contains('first-run-active');
+    const everythingSaid = () => [
+      ...mockUiUtils.showToast.mock.calls.map(([message]) => message),
+      ...mockUiUtils.setStatus.mock.calls.map(([, detail]) => detail),
+      panel()?.textContent || '',
+    ];
+
+    it('says why and offers to enter it again, instead of the Welcome wizard', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().querySelector('.widget-state-title').textContent).toBe(
+        'Saved token cannot be read'
+      );
+      expect(panel().querySelector('.widget-state-copy').textContent).toContain(
+        'This computer cannot decrypt the saved Home Assistant token.'
+      );
+      expect(findButtonByText('Enter token')).toBeTruthy();
+      // The header says the same, and main is told the notice was seen.
+      expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+        false,
+        expect.stringContaining('cannot decrypt the saved Home Assistant token')
+      );
+      expect(mockElectronAPI.clearTokenResetReason).toHaveBeenCalledTimes(1);
+      // The panel says it; a toast over it would say it twice.
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    });
+
+    it('never points at a gear icon, which the wizard hides and desktop pins do not have', async () => {
+      for (const reason of ['decryption_failed', 'encryption_unavailable', 'not_persisted']) {
+        await loadRenderer({ config: recoveryConfig(reason) });
+        expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
+      }
+      await loadRenderer();
+      expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
+    });
+
+    it('names a locked keyring on Linux, where unlocking it and restarting brings the token back', async () => {
+      await loadRenderer({
+        config: recoveryConfig('encryption_unavailable'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+
+      expect(panel().querySelector('.widget-state-title').textContent).toBe(
+        'System keyring is locked'
+      );
+      // The body goes on from the title instead of saying it again.
+      const copy = panel().querySelector('.widget-state-copy').textContent;
+      expect(copy).toContain('token cannot be read until the system keyring is unlocked');
+      expect(copy).not.toMatch(/keyring is locked/i);
+      expect(findButtonByText('Restart Widget')).toBeTruthy();
+      expect(findButtonByText('Enter token')).toBeTruthy();
+    });
+
+    it('says a token that was never saved was not saved, without promising a restart brings it back', async () => {
+      await loadRenderer({
+        config: recoveryConfig('not_persisted'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+
+      const copy = panel().textContent;
+      expect(copy).toContain('Access token was not saved');
+      expect(copy).toContain('start gnome-keyring or KWallet so it is remembered');
+      expect(copy).not.toMatch(/restart the widget|has been kept/i);
+      expect(findButtonByText('Restart Widget')).toBeUndefined();
+    });
+
+    it('notes a token that was not saved once, though main repeats it with every config', async () => {
+      await loadRenderer({ config: recoveryConfig('not_persisted') });
+
+      // Main keeps 'not_persisted' until a token is saved, so every broadcast carries it again.
+      triggerMockEvent('configUpdated', recoveryConfig('not_persisted'));
+      await flushAsync();
+
+      expect(mockElectronAPI.clearTokenResetReason).toHaveBeenCalledTimes(1);
+      expect(panel().textContent).toContain('Access token was not saved');
+      expect(wizardShown()).toBe(false);
+    });
+
+    it('keeps the panel when main echoes the config back without the reason', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      // Acknowledging the notice clears main's copy, and main broadcasts the config again.
+      triggerMockEvent('configUpdated', recoveryConfig());
+      await flushAsync();
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().textContent).toContain('Saved token cannot be read');
+    });
+
+    it('explains a reason that arrives once the deferred keyring check has run', async () => {
+      await loadRenderer({
+        config: { ...recoveryConfig(), secureStoragePending: true },
+        configureApi(api) {
+          api.platform = 'linux';
+          api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
+        },
+      });
+      expect(wizardShown()).toBe(false);
+
+      triggerMockEvent('configUpdated', recoveryConfig('encryption_unavailable'));
+      await flushAsync();
+
+      expect(wizardShown()).toBe(false);
+      expect(panel().textContent).toContain('System keyring is locked');
+      expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
+    });
+
+    it('opens Settings on the token field', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      findButtonByText('Enter token').click();
+      await flushAsync();
+
+      expect(mockSettings.openSettings).toHaveBeenCalledTimes(1);
+      expect(mockSettings.revealHomeAssistantToken).toHaveBeenCalledTimes(1);
+      // Settings is told why, so it can say so beside the field.
+      const hooks = mockSettings.openSettings.mock.calls[0][0];
+      expect(hooks.getConnectionState()).toEqual(
+        expect.objectContaining({
+          needsToken: true,
+          tokenReason: 'decryption_failed',
+          status: 'disconnected',
+        })
+      );
+    });
+
+    it('goes away and connects once a token is entered', async () => {
+      await loadRenderer({ config: recoveryConfig('decryption_failed') });
+
+      triggerMockEvent('configUpdated', {
+        ...recoveryConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'new-token', authMethod: 'token' },
+      });
+      await flushAsync();
+
+      expect(panel()?.textContent || '').not.toContain('Saved token cannot be read');
+      expect(mockWebsocket.connect).toHaveBeenCalled();
+      expect(wizardShown()).toBe(false);
+    });
+
+    it('starts over at Welcome once the server is cleared too', async () => {
+      // Main keeps 'not_persisted' until a token is saved, so it outlives a cleared setup.
+      await loadRenderer({
+        config: {
+          ...recoveryConfig('not_persisted'),
+          homeAssistant: { url: '', token: '', authMethod: 'token' },
+        },
+      });
+
+      expect(wizardShown()).toBe(true);
+      expect(panel()?.textContent || '').not.toContain('Access token was not saved');
+    });
+
+    it('says a missing keyring once when the config also carries the persistence warning', async () => {
+      await loadRenderer({
+        config: {
+          ...recoveryConfig('encryption_unavailable'),
+          persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
+        },
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+      triggerMockEvent('configPersistenceWarning', [
+        { code: 'home_assistant_token_not_persisted' },
+      ]);
+      await flushAsync();
+
+      // The panel names the keyring; a toast with another remedy beside it would say it twice.
+      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(panel().textContent).toContain('System keyring is locked');
+    });
+
+    it('continues startup but reports when the acknowledgement is not saved', async () => {
+      await loadRenderer({
+        config: recoveryConfig('decryption_failed'),
+        configureApi(api) {
+          api.clearTokenResetReason.mockRejectedValueOnce(new Error('config is read-only'));
+        },
+      });
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('config is read-only'),
+        'error',
+        10000
+      );
+      expect(panel().textContent).toContain('Saved token cannot be read');
+      expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('tells the header, tray and bar the connection is gone when the setup is cleared', async () => {
     await loadRenderer({
-      config: { ...unconfiguredConfig(), tokenResetReason: 'encryption_unavailable' },
+      config: {
+        ...unconfiguredConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'legacy-token', authMethod: 'token' },
+      },
       configureApi(api) {
-        api.platform = 'linux';
+        api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
       },
     });
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Your system keyring is locked or not running'),
-      'warning',
-      10000,
-      { source: 'startup-warning' }
-    );
-    mockUiUtils.showToast.mockClear();
+    let requestId = 10;
+    mockWebsocket.request.mockImplementation(() => {
+      const request = new Promise(() => {});
+      request.id = requestId++;
+      return request;
+    });
+    mockWebsocket.emit('message', { type: 'auth_ok' });
+    mockWebsocket.emit('message', { type: 'result', id: 10, success: true, result: [] });
+    expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(true, expect.any(String));
 
-    triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
+    // Settings saved with the address and token emptied.
+    triggerMockEvent('configUpdated', unconfiguredConfig());
     await flushAsync();
 
-    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
-  });
-
-  it('says a missing keyring once when the config carries both the reset notice and the persistence warning', async () => {
-    await loadRenderer({
-      config: {
-        ...unconfiguredConfig(),
-        tokenResetReason: 'encryption_unavailable',
-        persistenceWarnings: [{ code: 'home_assistant_token_not_persisted' }],
-      },
-      configureApi(api) {
-        api.platform = 'linux';
-      },
-    });
-
-    // Two toasts for one cause, with two different remedies, used to arrive together at startup.
-    const warnings = mockUiUtils.showToast.mock.calls.filter(([, type]) => type === 'warning');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0][0]).toContain('Your system keyring is locked or not running');
-  });
-
-  it('continues startup but reports when token recovery acknowledgement is not persisted', async () => {
-    await loadRenderer({
-      config: {
-        ...unconfiguredConfig(),
-        tokenResetReason: 'decryption_failed',
-      },
-      configureApi(api) {
-        api.clearTokenResetReason.mockRejectedValueOnce(new Error('config is read-only'));
-      },
-    });
-
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('config is read-only'),
-      'error',
-      10000
+    expect(mockWebsocket.close).toHaveBeenCalled();
+    expect(document.body.classList.contains('first-run-active')).toBe(true);
+    expect(mockUiUtils.setStatus).toHaveBeenLastCalledWith(
+      false,
+      'Not set up yet. Finish setup to connect to Home Assistant.'
     );
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-      expect.stringContaining('needs to be re-entered'),
-      'warning',
-      10000,
-      { source: 'startup-warning' }
-    );
-    expect(mockElectronAPI.signalRendererReady).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
   });
 
   it('names the first page only after the interface language has loaded', async () => {
@@ -1370,64 +1657,41 @@ describe('Renderer first-run Home Assistant authorization', () => {
     }
   });
 
-  it('keeps a hotkey visible and authoritative when clearing it fails', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = {
-      hotkey: 'Ctrl+Shift+L',
-      action: 'toggle',
-    };
-    await loadRenderer({
-      config,
-      bodyHtml: `
-        <main class="widget-content"></main>
-        <div id="hotkeys-list">
-          <div>
-            <input class="hotkey-input" data-entity-id="light.office" value="Ctrl+Shift+L">
-            <button class="btn-clear-hotkey">Clear</button>
-          </div>
+  // Clearing itself (the IPC, the state, the failure toast) is the shared helper's, tested in
+  // hotkeys.test.js; the list only has to hand it the row's entity and place the keyboard after.
+  const clearableRow = `
+    <main class="widget-content"></main>
+    <div id="hotkeys-list">
+      <div class="hotkey-item">
+        <div class="hotkey-input-container">
+          <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
+          <button class="btn-clear-hotkey"><svg class="entity-line-icon"><path d="M18 6 6 18"></path></svg></button>
         </div>
-      `,
-      configureApi(api) {
-        api.unregisterHotkey.mockResolvedValueOnce({
-          success: false,
-          error: 'Portal removal failed',
-        });
-      },
-    });
+      </div>
+    </div>
+  `;
 
-    document.querySelector('.btn-clear-hotkey').click();
+  it('leaves the keyboard where it was when clearing a hotkey fails', async () => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+    mockHotkeys.clearEntityHotkey.mockResolvedValueOnce(false);
+    const clear = document.querySelector('.btn-clear-hotkey');
+    clear.focus();
+
+    clear.click();
     await flushAsync();
 
-    expect(document.querySelector('.hotkey-input').value).toBe('Ctrl+Shift+L');
-    expect(mockState.CONFIG.globalHotkeys.hotkeys['light.office']).toEqual({
-      hotkey: 'Ctrl+Shift+L',
-      action: 'toggle',
-    });
-    expect(mockHotkeys.renderHotkeysTab).not.toHaveBeenCalled();
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith('Portal removal failed', 'error', 3000);
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
+    expect(document.activeElement).toBe(clear);
   });
+
   it('moves focus to the cleared row field, since the list is rebuilt and the Clear button is gone', async () => {
-    const config = unconfiguredConfig();
-    config.globalHotkeys.hotkeys['light.office'] = { hotkey: 'Ctrl+Shift+L', action: 'toggle' };
-    await loadRenderer({
-      config,
-      bodyHtml: `
-        <main class="widget-content"></main>
-        <div id="hotkeys-list">
-          <div>
-            <input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value="Ctrl+Shift+L">
-            <button class="btn-clear-hotkey">Clear</button>
-          </div>
-        </div>
-      `,
-      configureApi(api) {
-        api.unregisterHotkey.mockResolvedValueOnce({ success: true });
-      },
-    });
-    // What renderHotkeysTab does: rebuild the rows, which destroys the Clear button that had focus.
-    mockHotkeys.renderHotkeysTab.mockImplementation(() => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+    // What clearEntityHotkey does through renderHotkeysTab: rebuild the rows, which destroys the
+    // Clear button that had focus.
+    mockHotkeys.clearEntityHotkey.mockImplementationOnce(async () => {
       document.getElementById('hotkeys-list').innerHTML =
         '<div><input class="hotkey-input" data-entity-id="light.office" data-focus-key="hotkey-input:light.office" value=""></div>';
+      return true;
     });
     const clear = document.querySelector('.btn-clear-hotkey');
     clear.focus();
@@ -1435,9 +1699,34 @@ describe('Renderer first-run Home Assistant authorization', () => {
     clear.click();
     await flushAsync();
 
-    expect(mockHotkeys.renderHotkeysTab).toHaveBeenCalled();
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
     expect(document.activeElement).toBe(document.querySelector('.hotkey-input'));
   });
+
+  it('clears the row when the click lands on the icon inside the Clear button', async () => {
+    await loadRenderer({ config: unconfiguredConfig(), bodyHtml: clearableRow });
+
+    document
+      .querySelector('.btn-clear-hotkey path')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushAsync();
+
+    expect(mockHotkeys.clearEntityHotkey).toHaveBeenCalledWith('light.office');
+  });
+
+  it("sends the tile menu's Remove Hotkey to the shared clear, and Add or Edit to the recorder", async () => {
+    await loadRenderer({ config: unconfiguredConfig() });
+
+    triggerMockEvent('entityTileHotkeyRequested', { entityId: 'sensor.office_temp', remove: true });
+    triggerMockEvent('entityTileHotkeyRequested', { entityId: 'light.office', remove: false });
+    await flushAsync();
+
+    expect(mockHotkeys.removeEntityHotkey).toHaveBeenCalledWith('sensor.office_temp');
+    expect(mockHotkeys.removeEntityHotkey).toHaveBeenCalledTimes(1);
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledWith('light.office');
+    expect(mockHotkeys.assignHotkeyToEntity).toHaveBeenCalledTimes(1);
+  });
+
   // Recording itself (the dialog, the clash message, focus afterwards, the saved-while-off warning)
   // is the shared recorder's, tested in hotkeys.test.js; the list only has to start it for its row.
   it.each(['Enter', ' '])('starts the shared recorder for a row with %s', async (key) => {
@@ -1513,7 +1802,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   it.each([
     ['rejected', ''],
     ['invalid', ''],
-    ['timed out', 'timeout'],
+    ['timed out', 'snapshot-timeout'],
   ])('recovers when the initial snapshot is %s', async (failure, reason) => {
     await loadRenderer({ config: oauthConfig() });
     const socket = {};
@@ -1535,7 +1824,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(mockWebsocket.failConnection).toHaveBeenCalledTimes(1);
     const [failedSocket, failedReason = ''] = mockWebsocket.failConnection.mock.calls[0];
     expect(failedSocket).toBe(socket);
-    // Diagnostics record a snapshot request that timed out as a timeout, not a closed socket.
+    // A snapshot that timed out has its own reason: the server answered the login, so it is not
+    // "did not answer". Diagnostics still record it as a timeout, not a closed socket.
     expect(failedReason).toBe(reason);
   });
 

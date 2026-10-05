@@ -241,6 +241,225 @@ describe('dashboard restore points', () => {
   });
 });
 
+describe('Restore dashboard restore points', () => {
+  const config = (...names) => ({
+    homeAssistant: { url: 'http://test', token: 'secret' },
+    customTabs: names.map((name) => ({ id: name, name, entityIds: [] })),
+  });
+  // Each list as its layouts' page names, newest first: "A+B" is a layout of pages A and B.
+  const pages = (entries) =>
+    entries.map((entry) => entry.layout.customTabs.map((tab) => tab.name).join('+'));
+  let history;
+  let current;
+  // Saves `next` over the layout on screen, as the dashboard does after an edit.
+  const edit = (next, options) => {
+    history.rememberDashboard(current, next, options);
+    current = next;
+  };
+  const wait = (seconds) => jest.advanceTimersByTime(seconds * 1000);
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date('2026-10-05T10:00:00Z') });
+    // A fresh module is a fresh start of the app: no burst of edits in progress.
+    jest.resetModules();
+    history = require('../../src/dashboard-history.js');
+    localStorage.clear();
+    current = config('A');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    localStorage.clear();
+  });
+
+  it('makes one restore point of a burst of edits, while Undo keeps every step', () => {
+    for (let i = 1; i <= 25; i += 1) {
+      wait(10);
+      edit(config('A', `E${i}`));
+    }
+    wait(29.999);
+    edit(config('A', 'E26'));
+    expect(history.readDashboardHistory(current)).toHaveLength(20);
+    expect(pages(history.readDashboardHistory(current))[0]).toBe('A+E25');
+    expect(pages(history.readRestorePoints(current))).toEqual(['A']);
+
+    // Thirty seconds without a change end the burst; the next edit starts another.
+    wait(30);
+    edit(config('B'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['A+E26', 'A']);
+  });
+
+  it('keeps older restore points that a burst of edits pushes out of the Undo history', () => {
+    ['B', 'C', 'D'].forEach((name) => {
+      wait(60);
+      edit(config(name));
+    });
+    wait(60);
+    for (let i = 1; i <= 25; i += 1) {
+      wait(2);
+      edit(config('D', `E${i}`));
+    }
+    expect(pages(history.readDashboardHistory(current))).not.toContain('C');
+    expect(pages(history.readRestorePoints(current))).toEqual(['D', 'C', 'B', 'A']);
+  });
+
+  it('keeps the newest 20 restore points, newest first, each dated when it was saved', () => {
+    const start = Date.now();
+    for (let i = 1; i <= 25; i += 1) {
+      wait(30);
+      edit(config(`P${i}`));
+    }
+    const points = history.readRestorePoints(current);
+    expect(points).toHaveLength(20);
+    expect(pages(points)[0]).toBe('P24');
+    expect(pages(points)[19]).toBe('P5');
+    expect(points[0].at).toBe(start + 24 * 30 * 1000);
+  });
+
+  it('keeps the layout a burst of edits leaves once the dashboard has been idle for 30 s', () => {
+    edit(config('A', 'B'));
+    wait(5);
+    edit(config('A', 'B', 'C'));
+    wait(5);
+    const savedAt = Date.now();
+    edit({ ...config('A', 'B', 'C', 'D'), activeTabId: 'D' });
+    wait(29.999);
+    expect(pages(history.readRestorePoints(current))).toEqual(['A']);
+    wait(0.001);
+    const points = history.readRestorePoints(current);
+    expect(pages(points)).toEqual(['A+B+C+D', 'A']);
+    expect(points[0]).toMatchObject({ at: savedAt, activeTabId: 'D' });
+    expect(points[0]).not.toHaveProperty('undone');
+
+    // A profile sync or a settings import later replaces it without passing here, and the next
+    // edit starts from the layout they left. The finished layout is still there to go back to.
+    wait(10 * 60);
+    current = config('S');
+    edit(config('S', 'T'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['S', 'A+B+C+D', 'A']);
+
+    // The next burst starts from the layout this one left, which is not kept twice.
+    wait(30);
+    edit(config('S', 'T', 'U'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['S+T', 'S', 'A+B+C+D', 'A']);
+  });
+
+  it('keeps the layout an edit left when the app closes before the dashboard is idle', () => {
+    // Earlier tests' copies of the module listen for the close too. A server of its own keeps the
+    // layouts they hold out of this list.
+    const closing = (...names) => ({ ...config(...names), homeAssistant: { url: 'http://close' } });
+    current = closing('A');
+    edit(closing('A', 'B'));
+    wait(5);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['A+B', 'A']);
+
+    // A sync replaces it before the first edit after the restart.
+    jest.resetModules();
+    history = require('../../src/dashboard-history.js');
+    current = closing('S');
+    edit(closing('S', 'T'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['S', 'A+B', 'A']);
+  });
+
+  it('gives what a restore, an Undo or a profile replaces a restore point of its own', () => {
+    edit(config('A', 'B'));
+    wait(5);
+    // A layout picked in Restore dashboard, or a profile from Home Assistant.
+    edit(config('Z'), { wholeLayout: true });
+    wait(5);
+    edit(config('A'), { undone: true });
+    // An edit straight after an Undo is part of the Undo's burst.
+    wait(5);
+    edit(config('A', 'C'));
+    let points = history.readRestorePoints(current);
+    expect(pages(points)).toEqual(['Z', 'A+B', 'A']);
+    expect(points.map((point) => point.undone === true)).toEqual([true, false, false]);
+
+    // Once idle, the layout the burst left is kept, and an Undo of it later still says so.
+    wait(30);
+    edit(config('A'), { undone: true });
+    points = history.readRestorePoints(current);
+    expect(pages(points)).toEqual(['A+C', 'Z', 'A+B', 'A']);
+    expect(points.map((point) => point.undone === true)).toEqual([true, true, false, false]);
+  });
+
+  it('gives a layout that changed between edits, as a sync or an import does, a restore point', () => {
+    edit(config('A', 'B'));
+    wait(5);
+    // Profile sync and settings imports save the layout without remembering what they replaced.
+    current = config('S');
+    wait(5);
+    edit(config('S', 'T'));
+    // The layout the edit left is kept as well, though it was replaced within 30 s.
+    expect(pages(history.readRestorePoints(current))).toEqual(['S', 'A+B', 'A']);
+  });
+
+  it('starts a new restore point when the clock goes back', () => {
+    edit(config('B'));
+    jest.setSystemTime(Date.now() - 60 * 60 * 1000);
+    edit(config('C'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['B', 'A']);
+  });
+
+  it('starts from the Undo history after an upgrade, once, and keeps the list across restarts', () => {
+    const historyKey = 'dashboard-history:http://test';
+    localStorage.setItem(
+      historyKey,
+      JSON.stringify([
+        { at: 3000, layout: config('C'), activeTabId: 'C', undone: true },
+        { at: 2000, layout: config('B') },
+        { at: 1000, layout: config('A') },
+      ])
+    );
+    const seeded = history.readRestorePoints(current);
+    expect(seeded).toEqual(history.readDashboardHistory(current));
+    expect(seeded[0]).toMatchObject({ at: 3000, activeTabId: 'C', undone: true });
+
+    // The copy is made once: after a restart the restore points no longer follow the history.
+    localStorage.setItem(historyKey, '[]');
+    jest.resetModules();
+    history = require('../../src/dashboard-history.js');
+    expect(history.readRestorePoints(current)).toEqual(seeded);
+    edit(config('A', 'X'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['A', 'C', 'B', 'A']);
+  });
+
+  it('copies the Undo history before its first change after an upgrade', () => {
+    localStorage.setItem(
+      'dashboard-history:http://test',
+      JSON.stringify([{ at: 1000, layout: config('B') }])
+    );
+    // An Undo rewrites the history without reading the restore points first.
+    history.writeDashboardHistory(current, []);
+    expect(pages(history.readRestorePoints(current))).toEqual(['B']);
+
+    localStorage.clear();
+    localStorage.setItem(
+      'dashboard-history:http://test',
+      JSON.stringify([{ at: 1000, layout: config('B') }])
+    );
+    edit(config('C'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['A', 'B']);
+  });
+
+  it('keeps restore points per server and does not break saves when storage is corrupt', () => {
+    edit(config('B'));
+    expect(history.readRestorePoints({ homeAssistant: { url: 'http://other' } })).toEqual([]);
+    // An edit on another server straight after keeps the layout this one was left with.
+    const other = (...names) => ({ ...config(...names), homeAssistant: { url: 'http://other' } });
+    history.rememberDashboard(other('X'), other('Y'));
+    expect(pages(history.readRestorePoints(current))).toEqual(['B', 'A']);
+    expect(pages(history.readRestorePoints(other()))).toEqual(['X']);
+    localStorage.setItem('dashboard-restore-points:http://test', '{');
+    expect(history.readRestorePoints(current)).toEqual([]);
+    wait(60);
+    expect(() => edit(config('C'))).not.toThrow();
+    expect(pages(history.readRestorePoints(current))).toEqual(['B']);
+    expect(JSON.stringify(localStorage)).not.toContain('secret');
+  });
+});
+
 describe('alert conditions', () => {
   let config;
   let notify;

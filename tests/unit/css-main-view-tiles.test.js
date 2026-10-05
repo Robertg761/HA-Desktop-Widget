@@ -280,6 +280,31 @@ describe('main view tiles', () => {
       expect(cascadedDeclaration(plain, 'background').value).toBe('transparent');
     });
 
+    // A dialog's scrim lays its blur over the page, so wherever a tile was half see-through the
+    // sharp text under the blur showed through it, and that tile looked as if it sat above the
+    // dialog: the repair tile everywhere, the light unavailable tile on macOS and Windows.
+    it.each(['frosted-glass', 'theme-light', 'theme-light frosted-glass'])(
+      'give an unavailable tile and a repair tile a pane the scrim can blur (%s)',
+      (bodyClass) => {
+        render(
+          bodyClass,
+          `<div id="quick-controls">
+            <div class="control-item" data-unavailable="true"></div>
+            <div class="control-item unavailable-entity repairable"></div>
+          </div>`
+        );
+        // At full window opacity, where the tile keeps its whole fill (the cascade has no calc()).
+        document.body.style.setProperty('--dash-tile-keep', '100%');
+        const [unavailable, repair] = document.querySelectorAll('.control-item');
+        for (const tile of [unavailable, repair]) {
+          expect(parseColor(resolvedValue(tile, 'background'))[3]).toBeGreaterThanOrEqual(0.9);
+        }
+        // The repair tile still lights up under the pointer.
+        repair.setAttribute('data-hover', '');
+        expect(cascadedDeclaration(repair, 'background').value).toBe('var(--tile-bg)');
+      }
+    );
+
     it.each(['theme-light', 'frosted-glass', 'theme-light frosted-glass'])(
       'give an unavailable media player the pane of the other unavailable tiles (%s)',
       (bodyClass) => {

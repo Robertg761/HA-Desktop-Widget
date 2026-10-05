@@ -1025,7 +1025,8 @@ describe('device control and live data regressions', () => {
     [0, 22, '0°C'],
     [-5, 22, '-5°C'],
     [null, 0, '0°C'],
-    [null, null, 'Heating'],
+    // The mode, in Home Assistant's word: a thermostat in heat mode is not necessarily heating.
+    [null, null, 'Heat'],
   ])('climate current %s and target %s display %s', (current, target, expected) => {
     const climate = entity('climate.reading', 'heat', {
       current_temperature: current,

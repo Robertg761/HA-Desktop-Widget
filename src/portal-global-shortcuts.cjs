@@ -26,7 +26,7 @@ const DBUS_INTERFACE = 'org.freedesktop.DBus';
 const PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties';
 
 const PORTAL_SHORTCUTS_BACKEND = 'portal';
-const { APP_ID, isHyprland, hyprlandBinding } = require('./linux-desktop.cjs');
+const { APP_ID, isHyprland, hyprlandBinding, xkbKeysym } = require('./linux-desktop.cjs');
 const DEFAULT_PORTAL_APP_ID = APP_ID;
 const CREATE_SESSION_TIMEOUT_MS = 30000;
 // Binding may block on a compositor approval dialog the first time, so wait generously.
@@ -76,7 +76,8 @@ function getNetSessionBusAddress(env = process.env) {
   return runtimeDir ? `unix:socket=${runtimeDir}/bus` : '';
 }
 
-// Electron accelerator key names -> XKB keysym names used by portal trigger descriptions.
+// Electron accelerator key names -> XKB keysym names used by portal trigger descriptions. Punctuation,
+// the numpad and Print Screen come from the table the Hyprland binds use (xkbKeysym).
 const PORTAL_KEY_NAME_MAP = {
   space: 'space',
   spacebar: 'space',
@@ -101,7 +102,6 @@ const PORTAL_KEY_NAME_MAP = {
   end: 'End',
   pageup: 'Page_Up',
   pagedown: 'Page_Down',
-  printscreen: 'Print',
   plus: 'plus',
   minus: 'minus',
   comma: 'comma',
@@ -160,9 +160,9 @@ function acceleratorToPortalTrigger(accelerator) {
   if (/^f\d{1,2}$/i.test(key)) {
     portalKey = key.toUpperCase();
   } else if (key.length === 1) {
-    portalKey = /[a-z]/i.test(key) ? key.toLowerCase() : key;
+    portalKey = /[a-z]/i.test(key) ? key.toLowerCase() : xkbKeysym(key) || key;
   } else {
-    portalKey = PORTAL_KEY_NAME_MAP[key.toLowerCase()] || key;
+    portalKey = PORTAL_KEY_NAME_MAP[key.toLowerCase()] || xkbKeysym(key) || key;
   }
 
   return [...modifiers, portalKey].join('+');
