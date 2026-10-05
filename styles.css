@@ -11625,6 +11625,14 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   color: var(--accent-text);
 }
 
+/* The command to bind for a desktop layer can be an AppImage's whole path. It breaks anywhere rather
+   than run out of the card, and reads left to right inside an Arabic sentence. */
+#layer-toggle-note code {
+  overflow-wrap: anywhere;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 /* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
    plain text. */
 body.theme-light .form-help code {

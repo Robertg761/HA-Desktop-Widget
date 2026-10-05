@@ -169,12 +169,87 @@ function legacyPortalBindingNotice({ legacyAppId, id, accelerator = '' } = {}) {
   );
 }
 
+// The names the installed packages put on PATH: the Arch package links ha-desktop-widget, and the
+// .deb links the executable's own name (home-assistant-widget, from package.json).
+const COMMAND_NAMES = ['ha-desktop-widget'];
+
+// A word for a shell (and for a compositor's exec line, which goes through one): quoted only when
+// it needs to be, as a path with spaces does ("HA Desktop Widget-4.0.0-linux-x64.AppImage").
+function shellWord(value) {
+  const text = String(value);
+  return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/'/g, "'\\''")}'`;
+}
+
+// The arguments that pick this widget's profile, so a second launch reaches this instance and not
+// the installed one: the single-instance lock lives in the profile.
+function getProfileArgs(argv, isPackaged) {
+  const args = [];
+  argv.forEach((arg, index) => {
+    if (/^--(?:user-data-dir|isolated-profile)=/.test(arg)) args.push(arg);
+    else if (/^--(?:user-data-dir|isolated-profile)$/.test(arg) && argv[index + 1]) {
+      args.push(arg, argv[index + 1]);
+    }
+  });
+  // A run from source with --dev uses a profile of its own beside the installed widget's.
+  if (!isPackaged && argv.includes('--dev')) args.push('--dev');
+  return args;
+}
+
+/**
+ * The command a person binds to a key in their window manager to show or hide this widget, as they
+ * would type it: `ha-desktop-widget --toggle` for the Arch package, `home-assistant-widget --toggle`
+ * for the .deb, the AppImage's own path for an AppImage (nothing is on PATH for one), and the
+ * executable's path for anything else. A name on PATH is used only when it leads to this
+ * executable.
+ * @param {Object} [options]
+ * @param {string[]} [options.argv] - This process's argv, for the profile it runs on.
+ * @param {Object} [options.env]
+ * @param {string} options.execPath - process.execPath.
+ * @param {boolean} options.isPackaged - app.isPackaged.
+ * @param {string} [options.appPath] - app.getAppPath(), which a run from source needs.
+ * @param {(file: string) => string} [options.realpath]
+ * @returns {string}
+ */
+function getToggleCommand({
+  argv = process.argv,
+  env = process.env,
+  execPath,
+  isPackaged,
+  appPath = '',
+  realpath = fs.realpathSync,
+} = {}) {
+  const resolve = (file) => {
+    try {
+      return realpath(file);
+    } catch {
+      return null;
+    }
+  };
+  let launch;
+  if (env.APPIMAGE) {
+    launch = [shellWord(env.APPIMAGE)];
+  } else if (!isPackaged) {
+    launch = [shellWord(execPath), shellWord(appPath)];
+  } else {
+    const target = resolve(execPath);
+    const dirs = String(env.PATH || '')
+      .split(path.delimiter)
+      .filter((dir) => path.isAbsolute(dir));
+    const name = [...COMMAND_NAMES, path.basename(execPath)].find((candidate) =>
+      dirs.some((dir) => target && resolve(path.join(dir, candidate)) === target)
+    );
+    launch = [name || shellWord(execPath)];
+  }
+  return [...launch, ...getProfileArgs(argv, isPackaged).map(shellWord), '--toggle'].join(' ');
+}
+
 module.exports = {
   APP_ID,
   LEGACY_PORTAL_APP_IDS,
   legacyPortalBindingNotice,
   getLaunchAction,
   getHyprlandSocketCandidates,
+  getToggleCommand,
   hasIsolatedProfile,
   hasLiveHyprlandInstance,
   isGnome,

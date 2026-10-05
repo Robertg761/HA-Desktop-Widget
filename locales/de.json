@@ -1518,7 +1518,6 @@
   "Press once to show the window and again to hide it.": "Einmal drücken zum Anzeigen, erneut drücken zum Ausblenden.",
   "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Lege unten ein Popup-Tastenkürzel fest oder aktiviere Entitäts-Tastenkürzel und kopiere die Belegungen dann hier.",
   "No shortcuts are set yet.": "Noch keine Tastenkürzel festgelegt.",
-  "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Belege im Fenstermanager eine Taste mit ha-desktop-widget --toggle, das das Widget ein- oder ausblendet.",
   "Turn off blur for the widget": "Unschärfe für das Widget ausschalten",
   "Blur changes take effect immediately, without Save.": "Änderungen an der Unschärfe werden sofort wirksam, auch ohne Speichern.",
   "Shortcut status updated.": "Status der Tastenkürzel aktualisiert.",
@@ -1642,5 +1641,6 @@
   "Download portable update": "Portables Update herunterladen",
   "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Update verfügbar: v{{version}}. Dieses Paket kann sich nicht selbst aktualisieren; lade es mit „Update herunterladen“ von GitHub herunter.",
   "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portables Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten.",
-  "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portables Beta-Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten."
+  "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portables Beta-Update verfügbar: v{{version}}. Nutze „Portables Update herunterladen“, um den Portable-Build zu erhalten.",
+  "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Belege im Fenstermanager eine Taste mit <code>{{command}}</code>, das das Widget ein- oder ausblendet."
 }

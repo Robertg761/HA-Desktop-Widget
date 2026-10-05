@@ -2003,6 +2003,7 @@
     "Download portable update": "تنزيل التحديث المحمول",
     "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "تحديث متاح: v{{version}}. لا تستطيع هذه الحزمة تحديث نفسها؛ استخدم «تنزيل التحديث» للحصول عليه من GitHub.",
     "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "تحديث محمول متاح: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على الإصدار المحمول.",
-    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "يتوفر تحديث تجريبي محمول: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على النسخة المحمولة."
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "يتوفر تحديث تجريبي محمول: v{{version}}. استخدم «تنزيل التحديث المحمول» للحصول على النسخة المحمولة.",
+    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "اربط مفتاحًا في مدير النوافذ لتشغيل <code>{{command}}</code>، الذي يُظهر الأداة أو يُخفيها."
   }
 }

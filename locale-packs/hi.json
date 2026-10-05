@@ -2003,6 +2003,7 @@
     "Download portable update": "पोर्टेबल अपडेट डाउनलोड करें",
     "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "अपडेट उपलब्ध: v{{version}}। यह पैकेज खुद को अपडेट नहीं कर सकता; GitHub से पाने के लिए “अपडेट डाउनलोड करें” का उपयोग करें।",
     "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "पोर्टेबल अपडेट उपलब्ध है: v{{version}}। पोर्टेबल बिल्ड पाने के लिए “पोर्टेबल अपडेट डाउनलोड करें” का उपयोग करें।",
-    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "पोर्टेबल बीटा अपडेट उपलब्ध है: v{{version}}। पोर्टेबल बिल्ड पाने के लिए “पोर्टेबल अपडेट डाउनलोड करें” का उपयोग करें।"
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "पोर्टेबल बीटा अपडेट उपलब्ध है: v{{version}}। पोर्टेबल बिल्ड पाने के लिए “पोर्टेबल अपडेट डाउनलोड करें” का उपयोग करें।",
+    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "अपने विंडो मैनेजर में <code>{{command}}</code> चलाने के लिए एक कुंजी बाइंड करें, जो विजेट को दिखाता या छिपाता है।"
   }
 }

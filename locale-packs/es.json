@@ -2003,6 +2003,7 @@
     "Download portable update": "Descargar actualización portátil",
     "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Actualización disponible: v{{version}}. Este paquete no puede actualizarse solo; usa «Descargar actualización» para obtenerla de GitHub.",
     "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil.",
-    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización beta portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil."
+    "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Actualización beta portátil disponible: v{{version}}. Usa «Descargar actualización portátil» para obtener la versión portátil.",
+    "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Asigna una tecla en tu gestor de ventanas para ejecutar <code>{{command}}</code>, que muestra u oculta el widget."
   }
 }

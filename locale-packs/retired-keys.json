@@ -1418,5 +1418,9 @@
   "Portable beta update available: v{{version}}. Click \"Download Portable Update\" to get the Portable build.": {
     "retiredIn": "4.0.0",
     "reason": "Update buttons and the lines naming them moved to sentence case and are worded in the window"
+  },
+  "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "The note now names the command for the way the widget was installed"
   }
 }

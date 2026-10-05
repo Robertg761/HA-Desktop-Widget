@@ -29,6 +29,14 @@ Light, climate, fan, cover, and media tiles include a **Controls** button (the s
 
 See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, the Omarchy 4 bar plugin, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
 
+## Sway, niri and river
+
+On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and the AppImage file's full path for the AppImage. With the `.deb`:
+
+- Sway: `bindsym $mod+Shift+h exec home-assistant-widget --toggle`
+- niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
+
 ## Weather Effects
 
 <img src="images/Rain_Effect.png?v=20261004" alt="Rain effect" width="280"> <img src="images/Snow_Effect.png?v=20261004" alt="Snow effect" width="280">

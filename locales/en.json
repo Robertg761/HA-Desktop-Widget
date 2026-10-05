@@ -1518,7 +1518,6 @@
   "Press once to show the window and again to hide it.": "Press once to show the window and again to hide it.",
   "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.": "Set a popup hotkey or turn on entity hotkeys below, then copy the bindings here.",
   "No shortcuts are set yet.": "No shortcuts are set yet.",
-  "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.": "Bind a key in your window manager to run ha-desktop-widget --toggle, which shows or hides the widget.",
   "Turn off blur for the widget": "Turn off blur for the widget",
   "Blur changes take effect immediately, without Save.": "Blur changes take effect immediately, without Save.",
   "Shortcut status updated.": "Shortcut status updated.",
@@ -1642,5 +1641,6 @@
   "Download portable update": "Download portable update",
   "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.": "Update available: v{{version}}. This package cannot update itself; use “Download update” to get it from GitHub.",
   "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable update available: v{{version}}. Use “Download portable update” to get the Portable build.",
-  "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build."
+  "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.": "Portable beta update available: v{{version}}. Use “Download portable update” to get the Portable build.",
+  "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.": "Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
 }

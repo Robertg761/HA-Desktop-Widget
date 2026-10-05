@@ -67,6 +67,7 @@ import {
   getLocaleState,
   isolateLtr,
   t,
+  translateDocument,
 } from './i18n.js';
 import {
   compareNames,
@@ -7590,14 +7591,21 @@ function renderHotkeyImmediateNotes() {
 }
 
 // A desktop layer sits under every window, so a key to bring it forward matters on any
-// compositor; only Hyprland can list the binds, the others get the command to bind.
+// compositor; only Hyprland can list the binds, the others get the command to bind. That command
+// depends on how the widget was installed (main works it out), so the note names this one.
 function renderLayerModeGuidance() {
   const layerMode = desktopIntegrationInfo?.layerMode === true;
   const onHyprland = desktopIntegrationInfo?.hyprland === true;
   const layerNote = document.getElementById('desktop-integration-layer-note');
   if (layerNote) layerNote.hidden = !layerMode;
   const toggleNote = document.getElementById('layer-toggle-note');
-  if (toggleNote) toggleNote.hidden = !(layerMode && !onHyprland);
+  if (!toggleNote) return;
+  const command = desktopIntegrationInfo?.toggleCommand;
+  toggleNote.hidden = !(layerMode && !onHyprland && typeof command === 'string' && command);
+  if (toggleNote.hidden) return;
+  // Kept on the element, so a later language change words the note around the same command.
+  toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
+  translateDocument(toggleNote);
 }
 
 // "Frosted glass" blurs the window on Windows and macOS. On Linux Chromium cannot see what is behind

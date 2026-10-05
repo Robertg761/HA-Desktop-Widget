@@ -38,6 +38,7 @@ const {
 } = require('./src/settings-file-controller.cjs');
 const {
   getLaunchAction,
+  getToggleCommand,
   hasIsolatedProfile,
   isGnome,
   isHyprland,
@@ -9817,6 +9818,15 @@ ipcMain.handle('get-desktop-integration', (event) => {
     platform: process.platform,
     hyprland: isHyprland(),
     layerMode: isLayerShellChildProcess,
+    // What to bind to a key in Sway, niri or river to show or hide this widget.
+    toggleCommand:
+      process.platform === 'linux'
+        ? getToggleCommand({
+            execPath: process.execPath,
+            isPackaged: app.isPackaged,
+            appPath: app.getAppPath(),
+          })
+        : null,
     helperPid: isLayerShellChildProcess ? process.ppid : null,
     output: layerActualMonitor?.name || null,
     preferredOutput: config.layerShellOutputName || null,
