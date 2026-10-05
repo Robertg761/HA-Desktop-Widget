@@ -20,7 +20,13 @@ import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
 import * as utils from './src/utils.js';
-import { formatTime, setLocaleBootstrap, t, translateDocument } from './src/i18n.js';
+import {
+  formatTime,
+  getLocaleState,
+  setLocaleBootstrap,
+  t,
+  translateDocument,
+} from './src/i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './src/icons.js';
 import { lineIconMarkup, setLineIconContent } from './src/entity-icons.js';
 import { animateEnter, syncSlidingIndicator } from './src/motion.js';
@@ -1555,6 +1561,58 @@ async function renderFirstRunDesktopHelp(content) {
   }
 }
 
+// A system language the app has as a downloadable pack, not yet downloaded: Auto shows English
+// meanwhile, and the welcome step is the first thing anyone sees, so it offers the pack there.
+// Downloading it switches the wizard to that language at once.
+async function renderFirstRunLanguageOffer(offer) {
+  try {
+    const { languageSetting, usingEnglishFallback, detectedLocale } = getLocaleState();
+    if (languageSetting !== 'auto' || !usingEnglishFallback) return;
+    const packs = await window.electronAPI.getLocalePacks?.();
+    if (!Array.isArray(packs) || !offer.isConnected) return;
+    const language = String(detectedLocale || '')
+      .split('-')[0]
+      .toLowerCase();
+    const pack = packs.find(
+      (entry) => !entry.installed && String(entry.locale || '').toLowerCase() === language
+    );
+    if (!pack) return;
+    // The language's name in its own words: that is how someone who reads it will recognise it.
+    // It is set apart in its own language and direction, so a right-to-left name does not pull the
+    // sentence's full stop to its side and a screen reader says it in that language's voice.
+    const name = pack.displayName || pack.englishName || pack.locale;
+    const line = createTextElement('p', 'first-run-copy', '');
+    const [before, after = ''] = t('HA Desktop Widget is available in {{language}}.', {
+      language: '\u0000',
+    }).split('\u0000');
+    const languageName = createTextElement('bdi', '', name);
+    languageName.lang = pack.locale;
+    line.append(before, languageName, after);
+    offer.appendChild(line);
+    const download = createActionButton(t('Download'), 'btn btn-secondary btn-sm', async () => {
+      download.disabled = true;
+      download.setAttribute('aria-busy', 'true');
+      try {
+        await window.electronAPI.downloadLocalePack(pack.locale);
+        await refreshLocaleBootstrap();
+        renderCurrentMode();
+        renderWizardStep();
+      } catch (error) {
+        log.warn('Could not download the system language pack:', error);
+        if (!download.isConnected) return;
+        download.disabled = false;
+        download.setAttribute('aria-busy', 'false');
+        setWizardStatus(t('Failed to download language pack'), 'error');
+      }
+    });
+    download.setAttribute('aria-label', t('Download {{language}}', { language: name }));
+    offer.appendChild(download);
+    offer.hidden = false;
+  } catch (error) {
+    log.warn('Could not offer the system language at first run:', error);
+  }
+}
+
 // The wizard's heading and lead paragraph name and describe its dialog. They are rebuilt for every
 // step, so only one carries each id at a time.
 function createWizardText(tagName, className, id, text) {
@@ -1611,6 +1669,12 @@ function renderWizardStep() {
         )
       )
     );
+    // Filled in once the pack list is in; placed now so it always sits under the welcome text.
+    const languageOffer = document.createElement('div');
+    languageOffer.id = 'first-run-language-offer';
+    languageOffer.hidden = true;
+    content.appendChild(languageOffer);
+    void renderFirstRunLanguageOffer(languageOffer);
     void renderFirstRunDesktopHelp(content);
   } else if (stepIndex === 1) {
     content.appendChild(

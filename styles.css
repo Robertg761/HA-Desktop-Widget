@@ -9376,6 +9376,23 @@ body.theme-light:not(.high-contrast)
   line-height: 1.5;
 }
 
+/* The welcome step's offer of the system's language: one line and its Download button. */
+#first-run-language-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+#first-run-language-offer[hidden] {
+  display: none;
+}
+
+#first-run-language-offer > p {
+  flex: 1 1 12em;
+  margin: 0;
+}
+
 /* On Hyprland the wizard adds shortcut help: two paragraphs, two buttons and a result line. */
 #first-run-desktop-help {
   display: flex;

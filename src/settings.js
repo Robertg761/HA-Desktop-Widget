@@ -4653,6 +4653,20 @@ function getLanguagePackDisplayName(pack = {}) {
   );
 }
 
+// The pack for the system's language when Auto is showing English for want of it.
+function findSystemLanguagePackToDownload() {
+  const { usingEnglishFallback, detectedLocale } = getLocaleState();
+  if (!usingEnglishFallback) return null;
+  const language = String(detectedLocale || '')
+    .split('-')[0]
+    .toLowerCase();
+  return (
+    localePackListCache.find(
+      (pack) => !pack.installed && String(pack.locale || '').toLowerCase() === language
+    ) || null
+  );
+}
+
 // The card says only what the select does not: how to get more languages while some are still to
 // download, which language Auto means, and when English is standing in for a pack not installed yet.
 function updateLanguageSummaryText() {
@@ -4680,10 +4694,18 @@ function updateLanguageSummaryText() {
     });
   }
   if (fallbackSummary) {
+    // Auto stands in English for a system language whose pack is still to download; the line under
+    // "System language detected" says so, or the two lines would contradict each other.
+    const systemPack = selectedLocale === 'auto' ? findSystemLanguagePackToDownload() : null;
     const needsPack =
-      !BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en';
+      !!systemPack ||
+      (!BUILTIN_LANGUAGE_OPTIONS.has(selectedLocale) && localeState.activeLocale === 'en');
     fallbackSummary.classList.toggle('hidden', !needsPack);
-    fallbackSummary.textContent = t('Using English until the selected language pack is installed.');
+    fallbackSummary.textContent = systemPack
+      ? t('Using English until the {{language}} language pack is downloaded.', {
+          language: getLanguagePackDisplayName(systemPack),
+        })
+      : t('Using English until the selected language pack is installed.');
   }
 }
 

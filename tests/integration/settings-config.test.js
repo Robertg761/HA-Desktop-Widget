@@ -2311,6 +2311,49 @@ describe('Settings + Config Integration', () => {
         ).toBe(false);
       });
 
+      describe('on Auto, for a system language the app has as a pack', () => {
+        const arabicPack = (installed) => ({
+          ...frenchPack(installed),
+          locale: 'ar',
+          displayName: 'العربية',
+          englishName: 'Arabic',
+        });
+        const openOnAuto = async (detectedLocale, packs) => {
+          state.CONFIG.ui.language = 'auto';
+          setLocaleBootstrap({
+            languageSetting: 'auto',
+            detectedLocale,
+            requestedLocale: detectedLocale,
+            activeLocale: 'en',
+            usingEnglishFallback: detectedLocale !== 'en',
+            messages: {},
+          });
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce(packs);
+          await openWithLocaleHooks();
+          return document.getElementById('language-fallback-summary');
+        };
+        afterEach(() => {
+          setLocaleBootstrap({ languageSetting: 'auto', usingEnglishFallback: false });
+        });
+
+        test('says English is standing in until its pack is downloaded', async () => {
+          const line = await openOnAuto('ar-EG', [arabicPack(false), frenchPack(false)]);
+
+          expect(line.classList.contains('hidden')).toBe(false);
+          expect(line.textContent).toBe(
+            'Using English until the العربية language pack is downloaded.'
+          );
+        });
+
+        test.each([
+          ['an English system', 'en-US', [arabicPack(false)]],
+          ['a language with no pack', 'ja-JP', [arabicPack(false)]],
+        ])('says nothing of the kind for %s', async (_name, detected, packs) => {
+          const line = await openOnAuto(detected, packs);
+          expect(line.classList.contains('hidden')).toBe(true);
+        });
+      });
+
       test('removing a language that is not in use leaves the interface alone', async () => {
         setLocaleBootstrap({ activeLocale: 'fr', requestedLocale: 'fr', messages: {} });
         window.electronAPI.getLocalePacks.mockResolvedValueOnce([frenchPack(true), spanishPack]);

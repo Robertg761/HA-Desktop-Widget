@@ -225,9 +225,14 @@ describe('Renderer first-run Home Assistant authorization', () => {
       reconcileConfigEntityIds: jest.fn((config) => ({ changed: false, config })),
       resolveEntityId: jest.fn((entityId) => entityId),
     }));
+    let localeState = {};
     jest.doMock('../../src/i18n.js', () => ({
       __esModule: true,
-      setLocaleBootstrap: jest.fn(),
+      setLocaleBootstrap: jest.fn((bootstrap) => {
+        localeState = { ...bootstrap };
+        return localeState;
+      }),
+      getLocaleState: () => localeState,
       t: jest.fn((key, vars = {}) =>
         String(key).replace(/\{\{(\w+)\}\}/g, (_match, name) =>
           Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : `{{${name}}}`
@@ -1365,6 +1370,86 @@ describe('Renderer first-run Home Assistant authorization', () => {
       10000,
       { source: 'startup-warning' }
     );
+  });
+
+  describe('a system language the app has as a pack that is not downloaded', () => {
+    const arabicSystem = (api) => {
+      api.getLocaleBootstrap.mockResolvedValue({
+        languageSetting: 'auto',
+        detectedLocale: 'ar-EG',
+        requestedLocale: 'ar-EG',
+        activeLocale: 'en',
+        usingEnglishFallback: true,
+        messages: {},
+      });
+      api.getLocalePacks.mockResolvedValue([
+        { locale: 'ar', displayName: 'العربية', englishName: 'Arabic', installed: false },
+        { locale: 'fr', displayName: 'Français', englishName: 'French', installed: false },
+      ]);
+    };
+    const offer = () => document.getElementById('first-run-language-offer');
+
+    it('is offered on the welcome step, by its own name', async () => {
+      await loadRenderer({ configureApi: arabicSystem });
+
+      expect(offer().hidden).toBe(false);
+      expect(offer().textContent).toContain('HA Desktop Widget is available in العربية.');
+      const download = offer().querySelector('button');
+      expect(download.textContent).toBe('Download');
+      expect(download.getAttribute('aria-label')).toBe('Download العربية');
+    });
+
+    it('is downloaded from there, and the wizard is drawn again in it', async () => {
+      await loadRenderer({ configureApi: arabicSystem });
+      mockElectronAPI.getLocaleBootstrap.mockClear();
+
+      offer().querySelector('button').click();
+      await flushAsync();
+
+      expect(mockElectronAPI.downloadLocalePack).toHaveBeenCalledWith('ar');
+      expect(mockElectronAPI.getLocaleBootstrap).toHaveBeenCalled();
+      expect(document.querySelector('.first-run-step-label').textContent).toBe('Step 1 of 4');
+    });
+
+    it('says so when the download fails, and lets it be tried again', async () => {
+      await loadRenderer({
+        configureApi(api) {
+          arabicSystem(api);
+          api.downloadLocalePack.mockRejectedValueOnce(new Error('offline'));
+        },
+      });
+
+      const download = offer().querySelector('button');
+      download.click();
+      await flushAsync();
+
+      expect(document.querySelector('.first-run-status').textContent).toBe(
+        'Failed to download language pack'
+      );
+      expect(download.disabled).toBe(false);
+    });
+
+    it.each([
+      ['an English system', { usingEnglishFallback: false, detectedLocale: 'en-US' }],
+      ['a language the user chose', { languageSetting: 'en', detectedLocale: 'ar-EG' }],
+      ['a language with no pack', { detectedLocale: 'ja-JP' }],
+    ])('is not offered for %s', async (_name, locale) => {
+      await loadRenderer({
+        configureApi(api) {
+          arabicSystem(api);
+          api.getLocaleBootstrap.mockResolvedValue({
+            languageSetting: 'auto',
+            activeLocale: 'en',
+            usingEnglishFallback: true,
+            messages: {},
+            ...locale,
+          });
+        },
+      });
+
+      expect(offer().hidden).toBe(true);
+      expect(offer().textContent).toBe('');
+    });
   });
 
   describe('a saved token this computer cannot read', () => {
