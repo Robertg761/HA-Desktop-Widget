@@ -276,6 +276,28 @@ describe('entity-specific accessible names on row buttons', () => {
       expect(modal.querySelectorAll(`${chips}[aria-pressed="false"]`)).toHaveLength(4);
     });
 
+    it('write the brightness presets as the readout above them is written', () => {
+      // German spaces the sign ("80 %"); the chips were a fixed "25%" under that readout.
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+      try {
+        const modal = open(
+          {
+            entity_id: 'light.desk',
+            state: 'on',
+            attributes: { friendly_name: 'Desk lamp', brightness: 128 },
+          },
+          '.brightness-modal'
+        );
+        const labels = [...modal.querySelectorAll('.brightness-preset-btn')].map(
+          (chip) => chip.textContent
+        );
+        expect(labels).toEqual(['25\u00a0%', '50\u00a0%', '75\u00a0%', '100\u00a0%']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('mark the fan speed the fan has, and follow a pick', () => {
       const modal = open(
         {

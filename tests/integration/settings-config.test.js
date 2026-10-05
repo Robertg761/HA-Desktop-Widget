@@ -4356,6 +4356,24 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('writes the text size choices in the percent format of the language', async () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({ activeLocale: 'de', messages: {} });
+      try {
+        await settings.openSettings();
+        const labels = () =>
+          [...document.querySelectorAll('#ui-scale-select option')].map((option) => option.text);
+        // The Window opacity readout beside it already reads "95 %".
+        expect(labels()).toEqual(['100\u00a0%', '150\u00a0%']);
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        // The locale observer runs as a microtask after <html lang> changes.
+        await Promise.resolve();
+        expect(labels()).toEqual(['100%', '150%']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     test('previews appearance choices live and persists them only on Save', async () => {
       await settings.openSettings();
       const scale = document.getElementById('ui-scale-select');

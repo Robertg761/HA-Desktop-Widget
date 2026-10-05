@@ -5113,8 +5113,18 @@ function bindSeasonalSettingsUi(ui) {
   syncSeasonalControls(ui);
 }
 
+// The Text and control size choices are written as the Window opacity readout beside them is, in
+// the language's own percent format ("115 %" in German), not as the markup's fixed "115%".
+function labelUiScaleOptions() {
+  document.querySelectorAll('#ui-scale-select option').forEach((option) => {
+    const scale = Number(option.value);
+    if (Number.isFinite(scale)) option.textContent = formatPercent(Math.round(scale * 100));
+  });
+}
+
 function bindAppearanceSettingsUi() {
   const ui = state.CONFIG?.ui || {};
+  labelUiScaleOptions();
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
   const activeTileGlow = document.getElementById('active-tile-glow');
@@ -5295,6 +5305,8 @@ function relocalizeOpenSettings({ force = false } = {}) {
     syncLanguageSelectOptions();
     renderLanguagePackList();
     updateLanguageSummaryText();
+    labelUiScaleOptions();
+    updateOpacityReadout();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderProfileSyncBackups();
     renderUpdateButtonLabels();

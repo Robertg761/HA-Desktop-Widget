@@ -14559,10 +14559,12 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
               />
             </div>
             <div class="brightness-presets">
-              <button class="brightness-preset-btn" data-preset="25">25%</button>
-              <button class="brightness-preset-btn" data-preset="50">50%</button>
-              <button class="brightness-preset-btn" data-preset="75">75%</button>
-              <button class="brightness-preset-btn" data-preset="100">100%</button>
+              ${[25, 50, 75, 100]
+                .map(
+                  (preset) =>
+                    `<button class="brightness-preset-btn" data-preset="${preset}">${utils.escapeHtml(formatPercent(preset))}</button>`
+                )
+                .join('')}
             </div>
             `
                 : ''
