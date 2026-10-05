@@ -202,7 +202,9 @@ function openBrightness(id, opener) {
   popName.textContent = ENTITIES[id].name;
   syncBrightness();
   pop.hidden = false;
-  releaseBackground = inertOutside(pop);
+  // On a touch screen a long press can fire both the hold timer and the browser's contextmenu,
+  // opening the dialog twice. The page is made inert once, so closing it frees all of it again.
+  if (!releaseBackground) releaseBackground = inertOutside(pop);
   popSlider.focus();
 }
 function closeBrightness() {

@@ -174,3 +174,43 @@ describe('website demo weather transitions', () => {
     expect(vm.runInContext('fx.canvas.height', demo)).toBe(500);
   });
 });
+
+describe('website demo brightness dialog', () => {
+  it('frees the whole page on close after a long press opened it twice', () => {
+    document.body.innerHTML = `
+      <header id="top"></header>
+      <main>
+        <section id="stage">
+          <div id="bright-pop" hidden>
+            <h3 id="bright-name"></h3><span id="bright-value"></span>
+            <input id="bright-slider" type="range"><button id="bright-power"></button>
+          </div>
+          <button id="lamp">Lamp</button>
+        </section>
+      </main>
+      <footer id="bottom"></footer>`;
+    const source = fs.readFileSync(path.join(__dirname, '../../website/script.js'), 'utf8');
+    const dialog = source.slice(
+      source.indexOf('const pop = document.getElementById'),
+      source.indexOf('function applyBrightness(')
+    );
+    const demo = vm.createContext({
+      document,
+      ENTITIES: { lamp: { name: 'Lamp', on: true, bri: 40 } },
+    });
+    vm.runInContext(
+      `${dialog}; this.openBrightness = openBrightness; this.closeBrightness = closeBrightness;`,
+      demo
+    );
+    const lamp = document.getElementById('lamp');
+
+    // The hold timer and the contextmenu event both open it.
+    demo.openBrightness('lamp', lamp);
+    demo.openBrightness('lamp', lamp);
+    expect(['top', 'bottom', 'lamp'].every((id) => document.getElementById(id).inert)).toBe(true);
+
+    demo.closeBrightness();
+    expect([...document.querySelectorAll('[inert]')]).toEqual([]);
+    expect(['top', 'bottom', 'lamp'].some((id) => document.getElementById(id).inert)).toBe(false);
+  });
+});
