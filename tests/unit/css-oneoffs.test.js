@@ -491,6 +491,12 @@ describe('stylesheet one-offs', () => {
         '<div class="modal dashboard-tools-modal"><div class="modal-content"></div></div>',
       ],
       ['Add page', '<div class="modal add-page-modal"><div class="modal-content"></div></div>'],
+      // The tile pop-ups were 360px (light, fan, cover) and 400px (climate) beside the 450px
+      // media and detail dialogs, so opening one tile after another changed the width each time.
+      ...['brightness', 'fan', 'cover', 'climate'].map((name) => [
+        `${name} pop-up`,
+        `<div class="modal ${name}-modal"><div class="modal-content ${name}-modal-content"></div></div>`,
+      ]),
     ])('gives the %s dialog the shared detail width', (_, html) => {
       render(html);
       const content = document.querySelector('.modal-content');

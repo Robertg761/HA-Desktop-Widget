@@ -401,9 +401,10 @@ html {
      DIALOG WIDTH
      ============================================ */
 
-  /* A dialog that shows a thing's details or a short form (entity details, the media player, Add
-     page, diagnostics, Support). Most of them were 420 to 460px in the default 500px window,
-     depending on which cap their own rule lost to. */
+  /* A dialog that shows a thing's details or a short form (entity details, the media player, the
+     light, fan, cover and climate pop-ups, Add page, diagnostics, Support). They were 360 to 460px
+     in the default 500px window, depending on which cap their own rule lost to, so opening one
+     tile after another jumped between widths. */
   --dialog-width: min(450px, 90vw);
 
   /* ============================================
@@ -5268,8 +5269,8 @@ body.theme-light:not(.high-contrast)
 
 /* Brightness Slider Modal Styles */
 .brightness-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -5611,8 +5612,8 @@ body.theme-light:not(.high-contrast)
 
 /* Climate Control Modal */
 .climate-modal .modal-content {
-  max-width: 400px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -5882,8 +5883,8 @@ body.theme-light:not(.high-contrast)
 
 /* Fan Control Modal */
 .fan-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
@@ -6032,8 +6033,8 @@ body.theme-light:not(.high-contrast)
 
 /* Cover Control Modal */
 .cover-modal .modal-content {
-  max-width: 360px;
-  width: 90vw;
+  width: var(--dialog-width);
+  max-width: var(--dialog-width);
   padding: 0;
 }
 
