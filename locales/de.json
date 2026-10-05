@@ -919,7 +919,6 @@
   "Forward 10 seconds": "10 Sekunden vor",
   "Next track": "Nächster Titel",
   "No weather entities available. Make sure you're connected to Home Assistant.": "Keine Wetterentitäten verfügbar. Stelle sicher, dass du mit Home Assistant verbunden bist.",
-  "{{name}} ✓ (selected)": "{{name}} ✓ (ausgewählt)",
   "{{name}} (auto-detected)": "{{name}} (automatisch erkannt)",
   "None available": "Keine verfügbar",
   "✓ Selected": "✓ Ausgewählt",

@@ -13903,12 +13903,11 @@ function populateWeatherEntitiesList() {
 
     const selectedEntityId = state.CONFIG.selectedWeatherEntity;
 
-    // Update current weather name display
+    // Update current weather name display. A chosen entity is named and nothing more: its row in
+    // the list above already carries the "Selected" badge, and the label says it is the current one.
     if (currentNameEl) {
       if (selectedEntityId && state.STATES[selectedEntityId]) {
-        currentNameEl.textContent = t('{{name}} ✓ (selected)', {
-          name: utils.getEntityDisplayName(state.STATES[selectedEntityId]),
-        });
+        currentNameEl.textContent = utils.getEntityDisplayName(state.STATES[selectedEntityId]);
         currentNameEl.dataset.state = 'selected';
       } else {
         // Find the actual fallback entity being used (alphabetically first)

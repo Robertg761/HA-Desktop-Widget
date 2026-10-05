@@ -1398,5 +1398,9 @@
   "What’s new": {
     "retiredIn": "4.0.0",
     "reason": "Spelled with a straight apostrophe like the rest of the catalog"
+  },
+  "{{name}} ✓ (selected)": {
+    "retiredIn": "4.0.0",
+    "reason": "The weather picker names the chosen entity without repeating that it is selected (re-audit R-070)."
   }
 }
