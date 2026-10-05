@@ -705,22 +705,56 @@ const alertsWithMissingEntity = {
   },
 };
 
-// The edit-mode hint is a long toast; a second one stands in for a pair of warnings.
+// A command Home Assistant refuses: the mock turns down every call for the unreachable lamp, and
+// the palette reports the reason in an error toast, as the app does for any failed command. The
+// lamp's name comes from Home Assistant and is never translated, and a command row is the one with
+// no state beside it, so this finds the command in any language.
+const REFUSED_COMMAND_ROW = `[...document.querySelectorAll('.command-palette-result')].find((row) =>
+  row.querySelector('.command-palette-result-name')?.textContent.includes('Unreachable lamp') &&
+  !row.querySelector('.command-palette-result-state')?.textContent)`;
+
+async function raiseRefusedCommand(ctx) {
+  await ctx.ev(`document.activeElement?.blur?.()`);
+  await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
+  await ctx.waitForExpression(
+    `document.activeElement?.classList.contains('command-palette-input')`
+  );
+  await ctx.insertText('unreachable');
+  await ctx.waitForExpression(REFUSED_COMMAND_ROW, 'a command for the unreachable lamp');
+  await ctx.ev(`${REFUSED_COMMAND_ROW}.click()`);
+  await ctx.waitForExpression(
+    `document.querySelector('#toast-container .toast.error')`,
+    'the error toast'
+  );
+}
+
+// A problem toast leads with its status icon and ends with its close button, which sits inside the
+// toast and clear of the text, on either side in either direction.
+const PROBLEM_TOASTS_LAID_OUT = `(() => {
+  const toasts = [...document.querySelectorAll('#toast-container .toast.error, #toast-container .toast.warning')];
+  return toasts.length > 0 && toasts.every((toast) => {
+    const box = toast.getBoundingClientRect();
+    const text = toast.querySelector('.toast-message').getBoundingClientRect();
+    const close = toast.querySelector('.toast-close')?.getBoundingClientRect();
+    return !!toast.querySelector('.toast-icon svg') && !!close &&
+      close.left >= box.left && close.right <= box.right &&
+      close.top >= box.top && close.bottom <= box.bottom &&
+      (close.left >= text.right || close.right <= text.left);
+  });
+})()`;
+
+// The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
+// Both are raised by the app, so the stack has the icons, the close button and the layout the app
+// gives it, which a toast built here by hand did not.
 async function showToasts(ctx) {
   await ctx.ev(
     `document.querySelectorAll('#toast-container .toast').forEach((toast) => toast.remove())`
   );
+  await raiseRefusedCommand(ctx);
   await ctx.click('#reorganize-quick-controls-btn');
-  await ctx.waitForSelector('#toast-container .toast');
-  await ctx.ev(`(() => {
-    const toast = document.createElement('div');
-    toast.className = 'toast warning';
-    toast.innerHTML = '<span class="toast-message"></span>';
-    toast.firstChild.textContent =
-      'The system keyring is locked, so the access token cannot be saved. Unlock it and restart.';
-    document.getElementById('toast-container').appendChild(toast);
-  })()`);
+  await ctx.waitForSelector('#toast-container .toast.info');
   await ctx.sleep(500);
+  await ctx.expect(PROBLEM_TOASTS_LAID_OUT, 'the error toast with its icon and close button');
 }
 
 // The ar-* scenes fill the notifications panel by hand, the way createNotificationListItem fills
@@ -1494,21 +1528,7 @@ const scenes = [
     keepToasts: true,
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'general');
-      await ctx.ev(`document.activeElement?.blur?.()`);
-      await ctx.pressKey('k', { code: 'KeyK', keyCode: 75, modifiers: ctx.CTRL });
-      await ctx.waitForExpression(
-        `document.activeElement?.classList.contains('command-palette-input')`
-      );
-      await ctx.insertText('turn off unreachable');
-      await ctx.waitForExpression(
-        `document.querySelector('.command-palette-result.highlighted')?.textContent.includes('Turn off')`,
-        'the Turn off command'
-      );
-      await ctx.pressKey('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
-      await ctx.waitForExpression(
-        `document.querySelector('#toast-container .toast.error')`,
-        'the error toast'
-      );
+      await raiseRefusedCommand(ctx);
       // The toast stack sits above the Save and Cancel pill, clear of both buttons.
       await ctx.waitForExpression(
         `(() => {

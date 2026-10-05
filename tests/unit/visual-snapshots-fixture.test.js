@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const {
+  FAILING_ENTITIES,
   PAGE_SETS,
   RESETTABLE_SETTINGS,
   WINDOW_POSITION,
@@ -392,5 +393,20 @@ describe('visual snapshot scenes', () => {
     for (const entityId of graph.entityIds) {
       expect(known.has(entityId)).toBe(true);
     }
+  });
+
+  // The toast layout scenes once showed a warning built here by hand, with no status icon and no
+  // close button, and the app's toast layout never ran for it.
+  it('raises its toasts through the app instead of building them', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../scripts/visual-snapshots/scenes.cjs'),
+      'utf8'
+    );
+    expect(source).not.toMatch(/className\s*=\s*['"`]toast\b/);
+    // The toast scenes run a command for the lamp the mock refuses, found by its name.
+    const lamp = buildStates().find((entity) => entity.entity_id === 'light.unreachable');
+    expect(FAILING_ENTITIES).toContain(lamp.entity_id);
+    expect(lamp.attributes.friendly_name).toBe('Unreachable lamp');
+    expect(source).toContain("includes('Unreachable lamp')");
   });
 });
