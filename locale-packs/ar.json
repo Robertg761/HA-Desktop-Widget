@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -1995,6 +1995,7 @@
     "1 more tile is not shown here. Open the widget to see it.": "هناك بطاقة واحدة أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "{{count}} more tiles are not shown here. Open the widget to see them.": "هناك {{count}} بطاقات أخرى غير معروضة هنا. افتح الأداة لمشاهدتها.",
     "What's new": "الجديد",
-    "Fan only": "مروحة فقط"
+    "Fan only": "مروحة فقط",
+    "Remove tile": "إزالة البطاقة"
   }
 }

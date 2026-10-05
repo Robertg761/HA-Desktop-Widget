@@ -795,7 +795,8 @@ describe('dashboard data display', () => {
       renderTiles([entity('light.lamp', 'on', { friendly_name: 'Hue lamp 3' })]);
       await removeFirstTile();
       expect(uiUtils.showConfirm).toHaveBeenCalledWith(
-        'Remove from Quick Access',
+        // Not 'Remove from Quick Access' above a question about one page.
+        'Remove tile',
         // The page it is taken off, since the same entity on another page stays.
         'Remove "Reading light" from "Polish"?',
         { confirmText: 'Remove', confirmClass: 'btn-danger' }

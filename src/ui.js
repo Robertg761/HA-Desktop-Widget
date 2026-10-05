@@ -2366,7 +2366,8 @@ function addButtonsToElement(item) {
                 confirmClass: 'btn-danger',
               })
             : uiUtils.showConfirm(
-                t('Remove from Quick Access'),
+                // The question below names the page; the title does not claim a wider scope.
+                t('Remove tile'),
                 // Removing a tile takes it off the page it is on; the same entity on another page stays.
                 t('Remove "{{name}}" from "{{page}}"?', {
                   name: getQuickAccessTileLabel(item),

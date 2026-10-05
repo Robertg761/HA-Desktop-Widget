@@ -1636,5 +1636,6 @@
   "1 more tile is not shown here. Open the widget to see it.": "Eine weitere Kachel wird hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "{{count}} more tiles are not shown here. Open the widget to see them.": "{{count}} weitere Kacheln werden hier nicht angezeigt. Öffne das Widget, um sie zu sehen.",
   "What's new": "Neuerungen",
-  "Fan only": "Nur Ventilator"
+  "Fan only": "Nur Ventilator",
+  "Remove tile": "Kachel entfernen"
 }
