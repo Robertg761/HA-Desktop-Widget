@@ -2086,6 +2086,10 @@ const scenes = [
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
+  // A thermostat in heat_cool, whose button leads the row with Home Assistant's own name for the
+  // mode ("Heat/Cool", not the "Auto" of the auto mode), in English and in French, the longest.
+  pinScene('pin-climate-heat-cool', 'climate.heat_pump'),
+  pinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
   pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
   pinScene('pin-ar-light', 'light.desk_lamp', { ui: { language: 'ar' } }),
