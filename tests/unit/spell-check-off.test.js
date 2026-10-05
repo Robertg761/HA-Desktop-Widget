@@ -53,6 +53,11 @@ function keyName(property) {
   return null;
 }
 
+// The property a MemberExpression reads: `b` in a.b and a['b'].
+function memberName(member) {
+  return member.computed ? member.property.value : member.property.name;
+}
+
 function functionName(fn) {
   return fn?.id?.name || (fn?.key && keyName(fn)) || '(anonymous)';
 }
@@ -208,8 +213,10 @@ describe('the session spell checker', () => {
   });
 
   it('is turned off in the ready handler before anything else uses the session', () => {
-    // Chromium starts the download once the first use of the session returns to the event loop,
-    // so the call has to come first, and nothing before it may wait.
+    // Chromium starts the download once the first use of the session returns to the event loop.
+    // So the call has to come before anything that uses the session, and it has to run in the
+    // handler's own turn: put off by a timer, a callback or an await, it comes too late, because
+    // the code after it uses the session first.
     let handler = null;
     walk(parseFile('main.js'), (node) => {
       if (
@@ -226,20 +233,37 @@ describe('the session spell checker', () => {
     expect(handler).not.toBeNull();
     expect(handler.async).toBe(false);
 
+    // Electron modules that use the default session: session itself, net and protocol.
+    const SESSION_MODULES = new Set(['session', 'net', 'protocol']);
+    // The call runs in the handler's own turn, and at every start, only as a statement of the
+    // handler's body or of a try or finally block in it. Anything else around it, such as a
+    // function, an await or an if, can put it off or skip it.
+    const RUNS_IN_HANDLER_TURN = new Set(['BlockStatement', 'TryStatement', 'ExpressionStatement']);
+    const source = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+    const text = (node) => source.slice(node.start, node.end);
+    const isTurnOffCall = (node) =>
+      node?.type === 'CallExpression' &&
+      node.callee.type === 'Identifier' &&
+      node.callee.name === 'turnOffSpellChecker';
+
     const order = [];
     walk(handler.body, (node, ancestors) => {
-      if (
+      const parent = ancestors[ancestors.length - 1];
+      if (isTurnOffCall(node)) {
+        const heldBackBy = [...ancestors].reverse().find((n) => !RUNS_IN_HANDLER_TURN.has(n.type));
+        order.push(heldBackBy ? `${text(node)} inside ${heldBackBy.type}` : text(node));
+      }
+      // session.defaultSession, net.fetch or protocol.handle, or a window's webContents.session.
+      const usesSession =
         node.type === 'MemberExpression' &&
-        node.object.type === 'Identifier' &&
-        node.object.name === 'session' &&
-        node.property.name === 'defaultSession'
-      ) {
-        const call = ancestors[ancestors.length - 1];
-        order.push(
-          call.type === 'CallExpression' && call.callee.name === 'turnOffSpellChecker'
-            ? 'turnOffSpellChecker(session.defaultSession)'
-            : 'session.defaultSession'
-        );
+        ((node.object.type === 'Identifier' && SESSION_MODULES.has(node.object.name)) ||
+          memberName(node) === 'session');
+      // turnOffSpellChecker's own argument is already part of its entry.
+      if (usesSession && !(isTurnOffCall(parent) && parent.arguments[0] === node)) {
+        order.push(text(node));
+      }
+      if (node.type === 'NewExpression' && isBrowserWindow(node.callee)) {
+        order.push('new BrowserWindow()');
       }
       if (
         node.type === 'CallExpression' &&
