@@ -490,8 +490,14 @@ const {
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
 
-// package.json names the app "home-assistant-widget" (renaming it would move userData and orphan
-// every config), so app.getName() is that, not what the person knows it as.
+// package.json names the app "home-assistant-widget", and app.getName() is that, not what the
+// person knows it as, so text names the app with this instead. app.getName() itself stays: it is
+// more than a label. Before the app is ready Electron names the keyring entry that holds the key to
+// every saved token after it (the libsecret "application", the KWallet folder, the macOS keychain
+// item), and a rename there makes a new key and loses the tokens. After ready it still names each
+// tray icon's StatusNotifierItem id ("home-assistant-widget_status_icon_1"), which the Omarchy bar,
+// KDE and Waybar keep the user's pinned and hidden tray icons under. Linux notifications carry it
+// as their app name too, which only some daemons print.
 const APP_DISPLAY_NAME = 'HA Desktop Widget';
 
 let autoUpdaterInstance = null;
