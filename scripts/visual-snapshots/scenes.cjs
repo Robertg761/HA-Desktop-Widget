@@ -1417,8 +1417,14 @@ const scenes = [
     ui: { language: 'de' },
     setup: async (ctx) => {
       await openSettingsTab(ctx, 'dashboard');
-      await ctx.click('#custom-entity-icons-toggle');
+      // The section remembers whether it was open, so only open it when it is shut.
+      await ctx.ev(`(() => {
+        const section = document.getElementById('custom-entity-icons-section');
+        if (section.classList.contains('collapsed')) section.querySelector('.section-toggle').click();
+      })()`);
       await ctx.waitForSelector('#custom-entity-icons-list .custom-entity-icon-item');
+      // It opens with a transition; its list is only where it will stay once it is open.
+      await ctx.sleep(600);
       await typeInto(ctx, '#custom-entity-icons-list [data-custom-icon-input]', 'Glühbirne');
       await ctx.waitForSelector('.custom-entity-icon-choice[aria-label="Glühbirne (💡)"]');
       await revealInSettings(ctx, '#custom-entity-icons-list', 'start');
