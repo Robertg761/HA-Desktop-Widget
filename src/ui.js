@@ -14304,8 +14304,11 @@ function updateTimeDisplay() {
     const dateEl = document.getElementById('current-date');
 
     // A 12-hour clock reads "7:31 AM" like every other time label; a 24-hour one keeps "07:31".
-    if (timeEl) timeEl.textContent = formatClockTime(now, getClockFaceTimeOptions());
-    if (dateEl) dateEl.textContent = formatDate(now, getClockDateOptions());
+    // The text changes once a minute, and writing the same text again still replaces the node.
+    const time = formatClockTime(now, getClockFaceTimeOptions());
+    const date = formatDate(now, getClockDateOptions());
+    if (timeEl && timeEl.textContent !== time) timeEl.textContent = time;
+    if (dateEl && dateEl.textContent !== date) dateEl.textContent = date;
   } catch (error) {
     console.error('Error updating time display:', error);
   }

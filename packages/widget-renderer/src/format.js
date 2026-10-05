@@ -55,6 +55,8 @@ export function getClockDateOptions() {
   }
 }
 
+const clockHour12Cache = new Map();
+
 /**
  * Hour and minute options for a time of day. A 12-hour clock drops the leading zero ("7:31 AM")
  * while a 24-hour clock keeps it ("07:31"), so every time label and the large clock agree.
@@ -62,14 +64,19 @@ export function getClockDateOptions() {
  */
 export function getClockFaceTimeOptions() {
   const clock = getClockTimeOptions();
-  let hour12 = false;
-  try {
-    hour12 = !!new Intl.DateTimeFormat(getFormatLocale(), {
-      hour: 'numeric',
-      ...clock,
-    }).resolvedOptions().hour12;
-  } catch {
-    // Keep the 24-hour digits.
+  const locale = getFormatLocale();
+  // Asked on every tick of the clock, and the answer only changes with the locale or the setting.
+  const cacheKey = `${locale}|${clock.hour12}`;
+  let hour12 = clockHour12Cache.get(cacheKey);
+  if (hour12 === undefined) {
+    hour12 = false;
+    try {
+      hour12 = !!new Intl.DateTimeFormat(locale, { hour: 'numeric', ...clock }).resolvedOptions()
+        .hour12;
+    } catch {
+      // Keep the 24-hour digits.
+    }
+    clockHour12Cache.set(cacheKey, hour12);
   }
   return { hour: hour12 ? 'numeric' : '2-digit', minute: '2-digit', ...clock };
 }

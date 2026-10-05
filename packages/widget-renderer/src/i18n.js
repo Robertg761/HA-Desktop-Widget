@@ -119,19 +119,65 @@ function resolveFormatLocale() {
   return isValidLocaleTag(active) ? active : 'en';
 }
 
-export function formatDate(date, options = {}) {
+// Date's toLocaleDateString, toLocaleTimeString and toLocaleString build a new Intl.DateTimeFormat
+// on every call, which is most of what writing a time costs, and the clock, the tiles and the
+// history lists write the same few patterns over and over. So one formatter is kept per locale,
+// kind and options. Each kind fills in the fields its Date method adds when none are asked for, as
+// ECMA-402 has it (CreateDateTimeFormat with the method's "required" and "defaults").
+const dateTimeFormatCache = new Map();
+const DATE_FIELDS = ['weekday', 'year', 'month', 'day'];
+const TIME_FIELDS = ['dayPeriod', 'hour', 'minute', 'second', 'fractionalSecondDigits'];
+const DATE_TIME_KINDS = {
+  date: { required: 'date', defaults: 'date' },
+  time: { required: 'time', defaults: 'time' },
+  dateTime: { required: 'any', defaults: 'all' },
+};
+
+function withDefaultFields(options, { required, defaults }) {
+  const asks = (fields) => fields.some((field) => options[field] !== undefined);
+  if (required === 'date' && options.timeStyle !== undefined) {
+    throw new TypeError('A date cannot be formatted with timeStyle');
+  }
+  if (required === 'time' && options.dateStyle !== undefined) {
+    throw new TypeError('A time cannot be formatted with dateStyle');
+  }
+  const named =
+    options.dateStyle !== undefined ||
+    options.timeStyle !== undefined ||
+    (required !== 'time' && asks(DATE_FIELDS)) ||
+    (required !== 'date' && asks(TIME_FIELDS));
+  if (named) return options;
+  return {
+    ...options,
+    ...(defaults !== 'time' ? { year: 'numeric', month: 'numeric', day: 'numeric' } : {}),
+    ...(defaults !== 'date' ? { hour: 'numeric', minute: 'numeric', second: 'numeric' } : {}),
+  };
+}
+
+function formatDateTimeAs(kind, date, options) {
   const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleDateString(getFormatLocale(), options);
+  // The Date methods write this; a formatter throws on it.
+  if (Number.isNaN(value.getTime())) return 'Invalid Date';
+  const locale = getFormatLocale();
+  const cacheKey = `${kind}|${locale}|${JSON.stringify(options)}`;
+  let formatter = dateTimeFormatCache.get(cacheKey);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, withDefaultFields(options, DATE_TIME_KINDS[kind]));
+    dateTimeFormatCache.set(cacheKey, formatter);
+  }
+  return formatter.format(value);
+}
+
+export function formatDate(date, options = {}) {
+  return formatDateTimeAs('date', date, options);
 }
 
 export function formatTime(date, options = {}) {
-  const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleTimeString(getFormatLocale(), options);
+  return formatDateTimeAs('time', date, options);
 }
 
 export function formatDateTime(date, options = {}) {
-  const value = date instanceof Date ? date : new Date(date);
-  return value.toLocaleString(getFormatLocale(), options);
+  return formatDateTimeAs('dateTime', date, options);
 }
 
 const numberFormatCache = new Map();
