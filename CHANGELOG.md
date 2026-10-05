@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Give Restore dashboard a restore list of its own instead of the Undo history. Edits less than 30 seconds apart share one restore point, so a run of small changes no longer pushes older layouts out of the 20 it keeps. Undo still steps back one edit at a time, and the restore points kept before the upgrade are still listed.
 - Render 50 entities per page in Manage Quick Access and debounce searches across the full entity list.
 - Redesign the main window after the project website: one pane of frosted glass in a cool slate, lighter tiles and cards with 14px corners, normal-case tile names, and Plus Jakarta Sans for the clock, temperature, and sensor values. The two primary cards share one pane and Quick Access pages are a segmented control.
 - Draw tiles, the weather and clock cards, and the media card as clearly separate blocks in every window mode, over a slightly darker panel, so they no longer melt into a bright or busy wallpaper. Window opacity still makes the dashboard more see-through.
