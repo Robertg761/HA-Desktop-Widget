@@ -1063,7 +1063,9 @@ function getToastLifetime(type, message, timeout, inPin = false) {
  * over what they belong to, such as the connection panel's own message, which sits above Quick
  * Access. The layout is recomputed whenever one of them opens or closes, as well as when a toast
  * is added, so a stack that was already up does not end up covering a footer that appeared
- * afterwards, or float where one used to be.
+ * afterwards, or float where one used to be. A scroll that moves the connection panel recomputes
+ * it too: in a short window the panel's buttons can come up from below the fold to where the
+ * stack rests.
  */
 function layoutToasts() {
   if (typeof document === 'undefined') return;
@@ -1098,12 +1100,26 @@ function layoutToasts() {
   container.style.bottom = `${Math.round(Math.max(0, window.innerHeight - floor))}px`;
 }
 
+// At most once a frame, and only while a toast is showing and the scroll moved a surface whose
+// buttons the stack keeps clear of: a scroll anywhere else changes nothing for the toasts.
+let toastScrollFrame = 0;
+function layoutToastsOnScroll(event) {
+  if (toastScrollFrame || !document.querySelector('#toast-container .toast')) return;
+  if (!event.target?.querySelector?.(TOAST_SURFACE_AVOID_SELECTOR)) return;
+  toastScrollFrame = window.requestAnimationFrame(() => {
+    toastScrollFrame = 0;
+    layoutToasts();
+  });
+}
+
 let toastLayoutWired = false;
 function wireToastLayout() {
   if (toastLayoutWired || typeof window === 'undefined') return;
   toastLayoutWired = true;
   installDialogKeyRouter();
   window.addEventListener('resize', layoutToasts);
+  // Scroll events do not bubble; caught on the way down, one listener hears the dashboard's.
+  document.addEventListener('scroll', layoutToastsOnScroll, { capture: true, passive: true });
   // The wizard, the connection panel and the like announce themselves with a class on <body>.
   if (typeof MutationObserver === 'function' && document.body) {
     new MutationObserver(layoutToasts).observe(document.body, {

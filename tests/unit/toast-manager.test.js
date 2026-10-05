@@ -616,6 +616,41 @@ describe('keeping clear of what the toast belongs to', () => {
     expect(container().style.bottom).toBe('158px');
   });
 
+  // Retry and Open Settings start below the fold in a short window; scrolling brings them up to
+  // where the stack rests, and an error there stays until it is dismissed.
+  it('moves above the connection panel buttons that a scroll brings under it', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div class="widget-content"><div class="widget-state-panel"><div class="widget-state-actions"></div></div></div>'
+    );
+    const actions = document.querySelector('.widget-state-actions');
+    setRect(actions, { top: window.innerHeight + 200, bottom: window.innerHeight + 240 });
+    uiUtils.showToast('Could not run command', 'error');
+    expect(container().style.bottom).toBe('');
+
+    setRect(actions, { top: window.innerHeight - 70, bottom: window.innerHeight - 30 });
+    document.querySelector('.widget-content').dispatchEvent(new Event('scroll'));
+    jest.advanceTimersByTime(16);
+
+    expect(container().style.bottom).toBe('78px');
+  });
+
+  it('leaves the stack alone on a scroll that moves none of what it keeps clear of', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<div class="widget-content"></div><div class="widget-state-panel"><div class="widget-state-actions"></div></div>'
+    );
+    const actions = document.querySelector('.widget-state-actions');
+    setRect(actions, { top: window.innerHeight + 200, bottom: window.innerHeight + 240 });
+    uiUtils.showToast('Could not run command', 'error');
+
+    setRect(actions, { top: window.innerHeight - 70, bottom: window.innerHeight - 30 });
+    document.querySelector('.widget-content').dispatchEvent(new Event('scroll'));
+    jest.advanceTimersByTime(16);
+
+    expect(container().style.bottom).toBe('');
+  });
+
   it('leaves a surface that has scrolled out of view alone', () => {
     document.body.insertAdjacentHTML(
       'beforeend',
