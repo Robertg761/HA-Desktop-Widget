@@ -188,6 +188,37 @@ describe('the Linux tray icon', () => {
     ]);
   });
 
+  it('is the rounded app icon the dock and the launchers show, not the old square artwork', () => {
+    const files = { ...everything, [path.join(ROOT, 'icons', '512x512.png')]: true };
+    const { icon, nativeImage } = load('linux', files);
+
+    expect(nativeImage.createFromPath).toHaveBeenCalledWith(
+      path.join(ROOT, 'icons', '512x512.png')
+    );
+    expect(icon.representations.map(({ dataURL }) => dataURL)).toEqual([
+      'data:image/png;base64,512x512.png@22x22',
+      'data:image/png;base64,512x512.png@44x44',
+    ]);
+  });
+
+  it('is the same file the window and the launchers take their icon from', () => {
+    const { getAppIconPath } = require('../../src/platform.cjs');
+    expect(path.basename(getAppIconPath(path.sep, 'linux'))).toBe('512x512.png');
+  });
+
+  it('leaves Windows and macOS on their own artwork', () => {
+    const files = {
+      [path.join(ROOT, 'icon.png')]: true,
+      [path.join(ROOT, 'icons', '512x512.png')]: true,
+    };
+    for (const platform of ['win32', 'darwin']) {
+      const { nativeImage } = load(platform, files);
+      expect(nativeImage.createFromPath).not.toHaveBeenCalledWith(
+        path.join(ROOT, 'icons', '512x512.png')
+      );
+    }
+  });
+
   it('has the same size as the live value icons', () => {
     const { getTrayIconSizeForPlatform } = require('../../src/tray-entities.cjs');
     const { icon } = load('linux', everything);
