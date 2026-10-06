@@ -2106,6 +2106,8 @@
     "Copy & switch": "نسخ وتبديل",
     "Keep current": "الإبقاء على الحالي",
     "Use that file": "استخدام ذلك الملف",
-    "Download, update, or remove offline language packs. English and German are always available offline.": "قم بتنزيل حزم اللغات دون اتصال أو تحديثها أو إزالتها. الإنجليزية والألمانية متاحتان دائمًا دون اتصال."
+    "Download, update, or remove offline language packs. English and German are always available offline.": "قم بتنزيل حزم اللغات دون اتصال أو تحديثها أو إزالتها. الإنجليزية والألمانية متاحتان دائمًا دون اتصال.",
+    "1 icon matches “{{query}}”.": "أيقونة واحدة تطابق «{{query}}».",
+    "{{count}} icons match “{{query}}”.": "{{count}} من الأيقونات تطابق «{{query}}»."
   }
 }

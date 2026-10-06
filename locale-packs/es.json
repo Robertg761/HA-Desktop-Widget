@@ -2106,6 +2106,8 @@
     "Copy & switch": "Copiar y cambiar",
     "Keep current": "Mantener la actual",
     "Use that file": "Usar ese archivo",
-    "Download, update, or remove offline language packs. English and German are always available offline.": "Descarga, actualiza o elimina paquetes de idioma sin conexión. El inglés y el alemán siempre están disponibles sin conexión."
+    "Download, update, or remove offline language packs. English and German are always available offline.": "Descarga, actualiza o elimina paquetes de idioma sin conexión. El inglés y el alemán siempre están disponibles sin conexión.",
+    "1 icon matches “{{query}}”.": "1 icono coincide con «{{query}}».",
+    "{{count}} icons match “{{query}}”.": "{{count}} iconos coinciden con «{{query}}»."
   }
 }

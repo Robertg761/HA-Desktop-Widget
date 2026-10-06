@@ -2106,6 +2106,8 @@
     "Copy & switch": "कॉपी करें और बदलें",
     "Keep current": "मौजूदा रखें",
     "Use that file": "वही फ़ाइल उपयोग करें",
-    "Download, update, or remove offline language packs. English and German are always available offline.": "ऑफलाइन भाषा पैक डाउनलोड करें, अपडेट करें या हटाएं। अंग्रेज़ी और जर्मन हमेशा ऑफलाइन उपलब्ध हैं।"
+    "Download, update, or remove offline language packs. English and German are always available offline.": "ऑफलाइन भाषा पैक डाउनलोड करें, अपडेट करें या हटाएं। अंग्रेज़ी और जर्मन हमेशा ऑफलाइन उपलब्ध हैं।",
+    "1 icon matches “{{query}}”.": "“{{query}}” से 1 आइकन मेल खाता है।",
+    "{{count}} icons match “{{query}}”.": "“{{query}}” से {{count}} आइकन मेल खाते हैं।"
   }
 }

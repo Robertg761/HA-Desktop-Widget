@@ -2106,6 +2106,8 @@
     "Copy & switch": "复制并切换",
     "Keep current": "保留当前",
     "Use that file": "使用该文件",
-    "Download, update, or remove offline language packs. English and German are always available offline.": "下载、更新或移除离线语言包。英语和德语始终可离线使用。"
+    "Download, update, or remove offline language packs. English and German are always available offline.": "下载、更新或移除离线语言包。英语和德语始终可离线使用。",
+    "1 icon matches “{{query}}”.": "有 1 个图标与“{{query}}”匹配。",
+    "{{count}} icons match “{{query}}”.": "有 {{count}} 个图标与“{{query}}”匹配。"
   }
 }

@@ -2891,7 +2891,6 @@ const CUSTOM_ENTITY_ICON_PICKER_LIMIT = 120;
 
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
   if (!pickerEl) return;
-  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
 
   // Not loaded yet, or loaded with the names of the language the interface showed before.
   if (!isCustomEntityIconCatalogCurrent()) {
@@ -2965,11 +2964,15 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
       }
     );
   } else {
-    summary.textContent = t('Showing {{shown}} of {{total}} icons for “{{query}}”.', {
-      shown: formatNumber(filteredChoices.length),
-      total: formatNumber(choices.length),
-      query: filterValue,
-    });
+    // Every match is shown, so the line counts the matches. It once gave the whole catalogue as a
+    // total ("1 of 3,946 icons for “bulb”"), which read as 3,946 icons matching.
+    summary.textContent =
+      filteredChoices.length === 1
+        ? t('1 icon matches “{{query}}”.', { query: filterValue })
+        : t('{{count}} icons match “{{query}}”.', {
+            count: formatNumber(filteredChoices.length),
+            query: filterValue,
+          });
   }
   pickerEl.appendChild(summary);
 

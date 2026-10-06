@@ -3403,6 +3403,26 @@ describe('Settings + Config Integration', () => {
       });
     });
 
+    test('says one match is one icon, not one of the whole catalogue', async () => {
+      // "Showing 1 of 3,946 icons for “bulb”" read as 3,946 icons matching, and German put the
+      // plural verb beside the one icon ("1 von 3.946 Symbolen ... werden angezeigt").
+      await openSettingsWithCustomIconsExpanded();
+      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
+      iconInput.value = 'bulb';
+      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+      // Run on its own, this test is the first to ask for the catalogue, which loads meanwhile.
+      const picker = () => document.querySelector('[data-custom-icon-picker="light.living_room"]');
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (picker().querySelector('.custom-entity-icon-choice')) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      expect(picker().querySelectorAll('.custom-entity-icon-choice')).toHaveLength(1);
+      expect(picker().querySelector('.custom-entity-icon-picker-meta').textContent).toBe(
+        '1 icon matches “bulb”.'
+      );
+    });
+
     test('should match natural language keywords like tree', async () => {
       // Arrange
       await openSettingsWithCustomIconsExpanded();
@@ -3439,10 +3459,13 @@ describe('Settings + Config Integration', () => {
         '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta'
       );
       expect(ratSummary).toBeTruthy();
-      expect(ratSummary.textContent).toMatch(/Showing \d+ of [\d,]+ icons for “rat”\./);
-      const [, ratShown, ratTotal] =
-        ratSummary.textContent.match(/Showing ([\d,]+) of ([\d,]+) icons for “rat”\./) || [];
-      expect(Number(ratShown.replace(/,/g, ''))).toBeLessThan(Number(ratTotal.replace(/,/g, '')));
+      // The line counts the matches, which are all on screen, not the whole catalogue.
+      const [, ratCount] = ratSummary.textContent.match(/^(\d+) icons match “rat”\.$/) || [];
+      expect(Number(ratCount)).toBe(
+        document.querySelectorAll(
+          '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-choice'
+        ).length
+      );
 
       // Act
       iconInput.value = 'mouse';

@@ -1822,5 +1822,9 @@
   "Download, update, or remove offline language packs. English is always available offline.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded to name German, which is built in as well"
+  },
+  "Showing {{shown}} of {{total}} icons for “{{query}}”.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to count the matching icons, with a singular for one"
   }
 }

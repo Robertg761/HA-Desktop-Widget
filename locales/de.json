@@ -1334,7 +1334,6 @@
   "Discard color edits": "Farbänderungen verwerfen",
   "Keep editing": "Weiter bearbeiten",
   "Showing the first {{shown}} of {{count}} icons. Type to narrow them.": "Die ersten {{shown}} von {{count}} Symbolen werden angezeigt. Tippe, um sie einzugrenzen.",
-  "Showing {{shown}} of {{total}} icons for “{{query}}”.": "{{shown}} von {{total}} Symbolen für „{{query}}“ werden angezeigt.",
   "No icons match “{{query}}”. Try a simpler word, or paste an emoji.": "Keine Symbole passen zu „{{query}}“. Versuche ein einfacheres Wort oder füge ein Emoji ein.",
   "The sync file's {{sections}} settings are damaged. Keep this computer's settings to repair them; the damaged copy is backed up first.": "Die Einstellungen für {{sections}} in der Sync-Datei sind beschädigt. Behalte die dieses Computers, um sie zu reparieren; die beschädigte Kopie wird vorher gesichert.",
   "This computer (upload)": "Dieser Computer (hochladen)",
@@ -1644,5 +1643,7 @@
   "Copy & switch": "Kopieren & wechseln",
   "Keep current": "Aktuellen behalten",
   "Use that file": "Diese Datei verwenden",
-  "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar."
+  "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar.",
+  "1 icon matches “{{query}}”.": "1 Symbol passt zu „{{query}}“.",
+  "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“."
 }
