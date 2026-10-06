@@ -1,6 +1,7 @@
 /**
  * Languages written right to left. The renderer sets the page's `dir` from this, and the main
- * process sets it on the browser page shown after Home Assistant sign-in, so both agree.
+ * process sets it on the browser page shown after Home Assistant sign-in, so both agree. The main
+ * process also isolates the errors its messages quote in these languages (src/i18n-main.cjs).
  */
 const RTL_LANGUAGE_CODES = new Set(['ar', 'fa', 'he', 'ur']);
 
