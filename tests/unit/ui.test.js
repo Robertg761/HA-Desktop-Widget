@@ -7343,6 +7343,56 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       jest.useRealTimers();
     });
 
+    // Home Assistant reports no speed for a fan in a preset mode, or one with no speeds at all. Its
+    // meter says On, and the line under the name said On as well.
+    it('says On once on a fan pin that has no speed to show', () => {
+      const presetFan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Office fan',
+          percentage: null,
+          preset_modes: ['auto', 'sleep'],
+          preset_mode: 'auto',
+          supported_features: 9,
+        },
+      };
+      const plainFan = {
+        entity_id: 'fan.attic',
+        state: 'on',
+        attributes: { friendly_name: 'Attic fan', supported_features: 0 },
+      };
+      state.setStates({ [presetFan.entity_id]: presetFan, [plainFan.entity_id]: plainFan });
+      const read = () => {
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+        const status = control.querySelector('.desktop-pin-panel-status');
+        return {
+          status: status.hidden ? null : status.textContent,
+          meter: control.querySelector('.desktop-pin-fan-value').textContent,
+        };
+      };
+      setDesktopPinViewport(168, 148);
+      for (const fan of [presetFan, plainFan]) {
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(fan.entity_id, fan);
+        expect(read()).toEqual({ status: null, meter: 'On' });
+      }
+
+      // The line comes back with a speed, and when the fan stops.
+      ui.renderDesktopPinnedTile(presetFan.entity_id, presetFan);
+      ui.renderDesktopPinnedTile(presetFan.entity_id, {
+        ...presetFan,
+        attributes: { ...presetFan.attributes, percentage: 33, preset_mode: null },
+      });
+      expect(read()).toEqual({ status: 'On', meter: '33%' });
+      ui.renderDesktopPinnedTile(presetFan.entity_id, {
+        ...presetFan,
+        state: 'off',
+        attributes: { ...presetFan.attributes, percentage: 0, preset_mode: null },
+      });
+      expect(read()).toEqual({ status: 'Ready', meter: 'Off' });
+    });
+
     it('renders compact climate controls and sends hvac mode changes', () => {
       state.setStates({
         'climate.thermostat': {

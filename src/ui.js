@@ -6713,14 +6713,19 @@ function syncDesktopPinPanelName(root, entity) {
   root.title = displayName;
 }
 
-function getDesktopPinPanelHeaderMarkup(entity, { statusText = '', asideMarkup = '' } = {}) {
+// `keepStatus` keeps an empty status line in the markup, hidden, for a pin whose line comes and goes
+// with its state.
+function getDesktopPinPanelHeaderMarkup(
+  entity,
+  { statusText = '', asideMarkup = '', keepStatus = false } = {}
+) {
   const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
   const safeStatus = utils.escapeHtml(statusText);
   return `
     <div class="desktop-pin-panel-topline">
       <div class="desktop-pin-panel-meta">
         <div class="desktop-pin-panel-name">${displayName}</div>
-        ${safeStatus ? `<div class="desktop-pin-panel-status">${safeStatus}</div>` : ''}
+        ${safeStatus || keepStatus ? `<div class="desktop-pin-panel-status"${safeStatus ? '' : ' hidden'}>${safeStatus}</div>` : ''}
       </div>
       ${asideMarkup || ''}
     </div>
@@ -7162,13 +7167,14 @@ function getDesktopPinFanValue(entity) {
 // The meter prints the speed, so the line under the name says only whether the fan runs, as the
 // lamp pin's does. A fan running at a speed Home Assistant does not report (a preset mode leaves
 // the percentage empty) is on at no known level: its meter says On, and no speed chip is marked,
-// where it read "0%" and marked Off.
+// where it read "0%" and marked Off. The line under the name is empty then, as a switch pin's is,
+// or the pin said On twice.
 function getDesktopPinFanCopy({ percentage, isOn }, { canSetPercentage, compact }) {
   const level = !isOn ? 0 : canSetPercentage && percentage > 0 ? percentage : null;
   return {
     level,
     meterText: level > 0 ? formatPercent(level) : isOn ? t('On') : t('Off'),
-    statusText: isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
+    statusText: level === null ? '' : isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
   };
 }
 
@@ -7193,7 +7199,10 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = copy.statusText;
+  if (status) {
+    status.textContent = copy.statusText;
+    status.hidden = !copy.statusText;
+  }
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -7256,6 +7265,7 @@ function createDesktopPinFanControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: copy.statusText,
+        keepStatus: true,
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             <button class="desktop-pin-power desktop-pin-fan-power" type="button">${lineIconMarkup('power')}</button>
