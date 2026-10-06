@@ -92,7 +92,7 @@
   },
   "overrides": {
     "concurrently": {
-      "shell-quote": "1.12.0"
+      "shell-quote": "^1.12.0"
     },
     "dbus-next": {
       "usocket": "1.0.3",
