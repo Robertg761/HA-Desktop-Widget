@@ -296,11 +296,18 @@ describe('text contrast of the rules', () => {
       });
     });
 
-    // An accent near the alarm's red or the warning's amber (a holiday's orange, red or gold, the
-    // Rose, Coral or Amber preset) lit an armed alarm more colourfully than one that went off, since
-    // the accent is more saturated than the pale status colours. In the dark theme with Christmas the
-    // alarm that went off was all but grey beside the armed one.
-    const WARM_HOLIDAYS = ['new-year', 'lunar-new-year', 'halloween', 'thanksgiving', 'christmas'];
+    // An accent near the alarm's red or the warning's amber (a holiday's orange, red, pink or gold,
+    // the Rose, Coral or Amber preset) lit an armed alarm more colourfully than one that went off,
+    // since the accent is more saturated than the pale status colours. In the dark theme with
+    // Christmas the alarm that went off was all but grey beside the armed one.
+    const WARM_HOLIDAYS = [
+      'new-year',
+      'lunar-new-year',
+      'valentines',
+      'halloween',
+      'thanksgiving',
+      'christmas',
+    ];
     const WARM_ACCENTS = [
       ...SEASONAL_HOLIDAYS.filter(({ id }) => WARM_HOLIDAYS.includes(id)).map(({ id, colors }) => [
         id,

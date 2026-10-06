@@ -2281,6 +2281,12 @@ const scenes = [
     ui: { theme: 'light', seasonal: holiday('christmas') },
     config: pages('security', 'default'),
   },
+  // Valentine's pink lit the armed alarm a stronger pink-red than the one that went off.
+  {
+    name: 'tiles-security-valentines',
+    ui: { seasonal: holiday('valentines') },
+    config: pages('security', 'default'),
+  },
   { name: 'tiles-security-amber', ui: { accent: 'amber' }, config: pages('security', 'default') },
   // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
   // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.

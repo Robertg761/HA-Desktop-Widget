@@ -6527,11 +6527,11 @@ body.theme-light.active-tile-glow
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
-/* An accent near the amber or the red of the tiles below (a holiday's orange, red or gold, or the
-   Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked door
-   and an armed alarm more strongly than one that went off, since the accent is more saturated than
-   the status colours, which are pale enough to be read as text. With such an accent a lit tile takes
-   about half the wash, so the tiles that need attention stay the most colourful on the page. */
+/* An accent near the amber or the red of the tiles below (a holiday's orange, red, pink or gold, or
+   the Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked
+   door and an armed alarm more strongly than one that went off, since the accent is more saturated
+   than the status colours, which are pale enough to be read as text. With such an accent a lit tile
+   takes about half the wash, so the tiles that need attention stay the most colourful on the page. */
 body[data-accent-warm] {
   --dash-tile-wash: var(--dash-tile-wash-warm);
   --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);

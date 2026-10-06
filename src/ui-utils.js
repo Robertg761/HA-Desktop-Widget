@@ -198,9 +198,13 @@ const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
 // 0.14, the most muted of the other presets 0.56).
 const NEUTRAL_ACCENT_CHROMA = 0.25;
 // The hues of the alarm red and the warning amber of a tile that needs attention, and how close an
-// accent's hue can come to one before a tile lit in it reads as that state.
-const ATTENTION_HUES = [4, 36];
-const WARM_ACCENT_HUE_DISTANCE = 30;
+// accent's hue can come to one before a tile lit in it reads as that state. The red reaches further
+// toward pink: Valentine's #ec4899, 34 degrees from it, lit an armed alarm a stronger pink-red than
+// one that went off.
+const ATTENTION_HUES = [
+  { hue: 4, reach: 40 },
+  { hue: 36, reach: 30 },
+];
 
 /** The hue of an {r, g, b} colour in degrees, 0 to 360 (0 for a grey). */
 function hueOf({ r, g, b }) {
@@ -217,9 +221,9 @@ function hueOf({ r, g, b }) {
 /** Whether an accent's hue is close to the red or the amber of a tile that needs attention. */
 function isWarmAccent(rgb) {
   const hue = hueOf(rgb);
-  return ATTENTION_HUES.some((attentionHue) => {
-    const distance = Math.abs(hue - attentionHue) % 360;
-    return Math.min(distance, 360 - distance) <= WARM_ACCENT_HUE_DISTANCE;
+  return ATTENTION_HUES.some((attention) => {
+    const distance = Math.abs(hue - attention.hue) % 360;
+    return Math.min(distance, 360 - distance) <= attention.reach;
   });
 }
 
