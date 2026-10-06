@@ -120,18 +120,21 @@ function getAppImageCommandLinkRecord({ env = process.env, home = os.homedir() }
   return path.posix.join(stateHome, 'ha-desktop-widget', 'command-link.json');
 }
 
-function readLinkedTarget(fsModule, record) {
+// The note names the file the widget's link leads to (`target`) and, while the widget moves the
+// link to the next AppImage, the one it led to before (`previous`). Null when there is no note.
+function readLinkNote(fsModule, record) {
   try {
-    const { target } = JSON.parse(fsModule.readFileSync(record, 'utf8'));
-    return typeof target === 'string' ? target : null;
+    const { target, previous } = JSON.parse(fsModule.readFileSync(record, 'utf8'));
+    if (typeof target !== 'string') return null;
+    return typeof previous === 'string' ? { target, previous } : { target };
   } catch {
     return null;
   }
 }
 
-function noteLinkedTarget(fsModule, record, target) {
+function writeLinkNote(fsModule, record, note) {
   fsModule.mkdirSync(path.posix.dirname(record), { recursive: true, mode: 0o700 });
-  fsModule.writeFileSync(record, `${JSON.stringify({ target })}\n`, { mode: 0o600 });
+  fsModule.writeFileSync(record, `${JSON.stringify(note)}\n`, { mode: 0o600 });
 }
 
 /**
@@ -143,7 +146,8 @@ function noteLinkedTarget(fsModule, record, target) {
  * state folder was cleared or the user made the link by hand. Settings names that link, so a key
  * may be bound to it. Anything else of that name is the user's: a file, or a link to anything at
  * all, another AppImage included. Nor is one made where the name already leads somewhere else on
- * PATH (the Arch package installed as well), which the link would hide.
+ * PATH (the Arch package installed as well), which the link would hide. A move that stops part-way
+ * (a read-only ~/.local/bin, or the widget quitting in the middle) is finished at the next start.
  * @returns {boolean} Whether the link was made or moved.
  */
 function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsModule = fs } = {}) {
@@ -159,23 +163,29 @@ function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsM
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  const noted = readLinkedTarget(fsModule, record);
+  const note = readLinkNote(fsModule, record);
+  const ours = note !== null && (current === note.target || current === note.previous);
   if (current === target) {
-    // A note naming another file means the user moved the widget's link here, so it stays theirs.
-    if (noted === null) noteLinkedTarget(fsModule, record, target);
+    // A note naming other files means the user moved the widget's link here, so it stays theirs.
+    // One that names this file as one of two is from a move that stopped part-way: settle it.
+    const settled = note?.target === target && note.previous === undefined;
+    if (!settled && (note === null || ours)) writeLinkNote(fsModule, record, { target });
     return false;
   }
-  if (current !== null && current !== noted) return false;
+  if (current !== null && !ours) return false;
   const shadowed = String(env.PATH || '')
     .split(path.posix.delimiter)
     .filter((entry) => path.posix.isAbsolute(entry) && path.posix.resolve(entry) !== dir)
     .some((entry) => fsModule.existsSync(path.posix.join(entry, path.posix.basename(link))));
   if (shadowed) return false;
-  // The note goes first, so a link the widget made is never without one.
-  noteLinkedTarget(fsModule, record, target);
+  // The note goes first, so a link the widget made is never without one. Until the link has moved
+  // it names both files: had it named only the new one, a link left on the old one by a move that
+  // stopped part-way would look like one the user had moved, and stay on the old file for good.
+  writeLinkNote(fsModule, record, current === null ? { target } : { target, previous: current });
   fsModule.mkdirSync(dir, { recursive: true });
   if (current !== null) fsModule.unlinkSync(link);
   fsModule.symlinkSync(target, link);
+  if (current !== null) writeLinkNote(fsModule, record, { target });
   return true;
 }
 

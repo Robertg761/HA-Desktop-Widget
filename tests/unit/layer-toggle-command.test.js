@@ -269,6 +269,75 @@ describe("an AppImage's command, which outlasts its updates", () => {
     expect(fsModule.readlinkSync(link)).toBe(v401);
   });
 
+  // The note and the link are two files, so a move can stop between them. The note used to name
+  // the new AppImage before the link moved, and when the link could not move, every later start
+  // took the mismatch for a link the user had moved and left it on the deleted file for good.
+  describe('when moving the link stops part-way', () => {
+    const v402 = '/home/u/Applications/HA Desktop Widget-4.0.2-linux-x64.AppImage';
+    const run = (fsModule, appImage) =>
+      ensureAppImageCommandLink({ env: { APPIMAGE: appImage, PATH }, home, fsModule });
+    // The file system after an update: the widget's link on 4.0.0, which has gone, and 4.0.1.
+    function afterUpdate() {
+      const fsModule = fakeFs({ [v400]: { file: true } });
+      run(fsModule, v400);
+      fsModule.nodes.delete(v400);
+      fsModule.nodes.set(v401, { file: true });
+      return fsModule;
+    }
+    // Make the nth call of a file system method throw, as a read-only folder does, or as if the
+    // widget had quit at that point.
+    function failAt(fsModule, method, call, error) {
+      const real = fsModule[method];
+      let calls = 0;
+      fsModule[method] = (...args) => {
+        calls += 1;
+        if (calls === call) throw error;
+        return real(...args);
+      };
+      return () => {
+        fsModule[method] = real;
+      };
+    }
+
+    it.each([
+      [
+        'the old link cannot be removed: ~/.local/bin is read-only, or the widget quit first',
+        'unlinkSync',
+        1,
+        'EROFS',
+      ],
+      ['the new link cannot be made after the old one was removed', 'symlinkSync', 1, 'EACCES'],
+      ['the widget quits after the link moved, before its note says so', 'writeFileSync', 2, 'EIO'],
+    ])('finishes the move at the next start when %s', (_, method, call, code) => {
+      const fsModule = afterUpdate();
+      const error = Object.assign(new Error(code), { code });
+      const restore = failAt(fsModule, method, call, error);
+      expect(() => run(fsModule, v401)).toThrow(error);
+      restore();
+
+      run(fsModule, v401);
+      expect(fsModule.readlinkSync(link)).toBe(v401);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v401 });
+      // And it is still the widget's at the update after.
+      fsModule.nodes.set(v402, { file: true });
+      expect(run(fsModule, v402)).toBe(true);
+      expect(fsModule.readlinkSync(link)).toBe(v402);
+    });
+
+    // Another start of the build the link still leads to settles the note there.
+    it('keeps the link on the AppImage it still leads to when that one starts again', () => {
+      const fsModule = fakeFs({ [v400]: { file: true }, [v401]: { file: true } });
+      run(fsModule, v400);
+      const restore = failAt(fsModule, 'unlinkSync', 1, new Error('EROFS'));
+      expect(() => run(fsModule, v401)).toThrow('EROFS');
+      restore();
+
+      expect(run(fsModule, v400)).toBe(false);
+      expect(fsModule.readlinkSync(link)).toBe(v400);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v400 });
+    });
+  });
+
   it.each([
     ['a file of that name', { [link]: { file: true } }],
     [
@@ -294,6 +363,17 @@ describe("an AppImage's command, which outlasts its updates", () => {
         [link]: { link: '/home/u/Applications/Nightly.AppImage' },
         '/home/u/Applications/Nightly.AppImage': { file: true },
         [record]: { file: true, content: JSON.stringify({ target: v401 }) },
+      },
+    ],
+    [
+      'a link the user pointed elsewhere while a move of the widget’s own had stopped part-way',
+      {
+        [link]: { link: '/home/u/Applications/Nightly.AppImage' },
+        '/home/u/Applications/Nightly.AppImage': { file: true },
+        [record]: {
+          file: true,
+          content: JSON.stringify({ target: v401, previous: '/home/u/Applications/Old.AppImage' }),
+        },
       },
     ],
   ])('leaves %s alone, and names the AppImage itself', (_, entries) => {
