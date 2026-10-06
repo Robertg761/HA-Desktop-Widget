@@ -170,6 +170,11 @@ describe("an AppImage's command, which outlasts its updates", () => {
       writeFileSync(file, content) {
         nodes.set(file, { file: true, content: String(content) });
       },
+      renameSync(from, to) {
+        if (!nodes.has(from)) throw missing(from);
+        nodes.set(to, nodes.get(from));
+        nodes.delete(from);
+      },
       unlinkSync(file) {
         if (!nodes.delete(file)) throw missing(file);
       },
@@ -323,6 +328,25 @@ describe("an AppImage's command, which outlasts its updates", () => {
       fsModule.nodes.set(v402, { file: true });
       expect(run(fsModule, v402)).toBe(true);
       expect(fsModule.readlinkSync(link)).toBe(v402);
+    });
+
+    // Writing a file empties it first, so a disk that fills up, as it can while an update
+    // downloads, leaves an empty file behind. An empty note reads as none, and the link as the
+    // user's.
+    it('finishes the move at the next start when the disk is full as the note is written', () => {
+      const fsModule = afterUpdate();
+      const write = fsModule.writeFileSync;
+      fsModule.writeFileSync = (file) => {
+        fsModule.nodes.set(file, { file: true, content: '' });
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      };
+      expect(() => run(fsModule, v401)).toThrow('ENOSPC');
+      fsModule.writeFileSync = write;
+
+      expect(run(fsModule, v401)).toBe(true);
+      expect(fsModule.readlinkSync(link)).toBe(v401);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v401 });
+      expect(fsModule.nodes.has(`${record}.tmp`)).toBe(false);
     });
 
     // Another start of the build the link still leads to settles the note there.

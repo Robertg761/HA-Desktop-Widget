@@ -132,9 +132,14 @@ function readLinkNote(fsModule, record) {
   }
 }
 
+// Written beside the note and renamed over it. Writing the note in place empties it first, so a full
+// disk or a quit in the middle would leave an empty note, which reads as none: the link would then
+// look like the user's, and stay on the old AppImage for good.
 function writeLinkNote(fsModule, record, note) {
   fsModule.mkdirSync(path.posix.dirname(record), { recursive: true, mode: 0o700 });
-  fsModule.writeFileSync(record, `${JSON.stringify(note)}\n`, { mode: 0o600 });
+  const draft = `${record}.tmp`;
+  fsModule.writeFileSync(draft, `${JSON.stringify(note)}\n`, { mode: 0o600 });
+  fsModule.renameSync(draft, record);
 }
 
 /**
@@ -147,7 +152,8 @@ function writeLinkNote(fsModule, record, note) {
  * may be bound to it. Anything else of that name is the user's: a file, or a link to anything at
  * all, another AppImage included. Nor is one made where the name already leads somewhere else on
  * PATH (the Arch package installed as well), which the link would hide. A move that stops part-way
- * (a read-only ~/.local/bin, or the widget quitting in the middle) is finished at the next start.
+ * (a read-only ~/.local/bin, a full disk, or the widget quitting in the middle) is finished at the
+ * next start.
  * @returns {boolean} Whether the link was made or moved.
  */
 function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsModule = fs } = {}) {
