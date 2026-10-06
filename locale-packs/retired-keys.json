@@ -1818,5 +1818,9 @@
   "Removed from \"{{page}}\"": {
     "retiredIn": "4.0.0",
     "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Home Assistant can't reach it right now. Close this and try again once it's back.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the note named Close, which in the cover dialog is the action that closes the cover, and the dialog's way out says Done"
   }
 }

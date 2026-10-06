@@ -11409,7 +11409,7 @@ function showUnavailableDialogState(modal, entity) {
     <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
     <span class="dialog-unavailable-note-text">
       <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
-      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Try again once it's back."))}</span>
     </span>`;
     body.prepend(note);
   }

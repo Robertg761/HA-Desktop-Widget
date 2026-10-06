@@ -866,6 +866,23 @@ describe('device control and live data regressions', () => {
     expect(modal.querySelector('#media-volume-slider').disabled).toBe(true);
   });
 
+  // A cover's footer says Done because its action to close the cover says Close, so a note that
+  // told the reader to "Close this" pointed at the button that moves the cover.
+  test('the unavailable note names none of the dialog’s buttons', () => {
+    const cover = entity('cover.unreachable', 'unavailable', { supported_features: 11 });
+    state.setEntityState(cover);
+    ui.openEntityControls(cover);
+    jest.advanceTimersByTime(20);
+    const modal = document.querySelector('.cover-modal');
+    const note = modal.querySelector('.dialog-unavailable-note').textContent;
+    const labels = [...modal.querySelectorAll('button')]
+      .map((button) => button.textContent.trim())
+      .filter(Boolean);
+
+    expect(labels).toEqual(expect.arrayContaining(['Close', 'Done']));
+    for (const label of labels) expect(note).not.toMatch(new RegExp(`\\b${label}\\b`, 'i'));
+  });
+
   test('primary media buttons follow live playback capabilities', () => {
     document.body.insertAdjacentHTML(
       'beforeend',

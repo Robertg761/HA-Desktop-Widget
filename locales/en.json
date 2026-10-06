@@ -1148,7 +1148,6 @@
   "Done": "Done",
   "Open widget": "Open widget",
   "Home Assistant can't reach it right now.": "Home Assistant can't reach it right now.",
-  "Home Assistant can't reach it right now. Close this and try again once it's back.": "Home Assistant can't reach it right now. Close this and try again once it's back.",
   "Check for updates": "Check for updates",
   "Install update": "Install update",
   "Set hotkey": "Set hotkey",
@@ -1644,5 +1643,6 @@
   "Retry conflict check": "Retry conflict check",
   "Copy & switch": "Copy & switch",
   "Keep current": "Keep current",
-  "Use that file": "Use that file"
+  "Use that file": "Use that file",
+  "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant can't reach it right now. Try again once it's back."
 }
