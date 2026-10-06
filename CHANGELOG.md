@@ -124,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make desktop pins send the current value: a select pin steps through its options, number pins send the right number, a rejected command puts the pin back to the real state, and a thermostat pin on a Fahrenheit install reads °F.
 - Fix desktop pin resizing and placement: resizing keeps the opposite edge in place at any text size, the arrow keys resize a pin from its handles, and pins on Sway, niri, and river are placed instead of piling up in one corner.
 - Follow artwork redirects, which failed with "Redirect was cancelled" and could raise a native error box.
-- Keep the Linux keyring warning to once per session and say what is missing; Settings → General shows a notice for as long as no keyring is unlocked.
+- Keep the Linux keyring warning to once per session and say what is missing. Settings → General says so for as long as no keyring is unlocked: in a notice, or in the line above the token field while the token has to be entered again. Saving a token typed in again while there is still no keyring says that it was not saved either.
 - Stop a favorite that Home Assistant no longer reports from showing a stale "On / 50%": after a minute it becomes unavailable on its tile, pin, and tray, without raising a false alert.
 - Show waiting indicators that keep moving under reduced motion, so a waiting bar no longer looks finished, and keep error and warning toasts free of the inline error box styling.
 - Keep sensor charts clear of the reading and draw them with a uniform line, and keep a sensor with a long history fast: tile charts draw at most 240 points and still show spikes.
