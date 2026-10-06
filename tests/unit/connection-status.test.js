@@ -10,6 +10,7 @@ jest.mock('../../src/i18n.js', () => ({
   t: jest.fn((key, vars = {}) =>
     `[fr] ${key}`.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''))
   ),
+  isolateAuto: jest.fn((text) => String(text ?? '')),
 }));
 
 const {

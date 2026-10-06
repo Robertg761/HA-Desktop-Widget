@@ -30,6 +30,7 @@ import {
   formatDate,
   formatNumber,
   getLocaleState,
+  isolateAuto,
   isolateLtr,
   t,
   translateDocument,
@@ -442,11 +443,13 @@ function isConnectionServiceError(error) {
   );
 }
 
+// The reason a call failed, ready to go into a sentence: Home Assistant writes its own reasons, in
+// English or already translated, so a reason keeps its own direction in an Arabic toast.
 function describeServiceErrorMessage(error) {
   const message = error?.message || '';
   if (message === 'WebSocket request timeout') return t('Home Assistant did not respond');
   if (CONNECTION_SERVICE_ERRORS.has(message)) return t('Not connected to Home Assistant');
-  return message || t('Unknown error');
+  return isolateAuto(message || t('Unknown error'));
 }
 
 /**
@@ -457,7 +460,10 @@ function describeServiceErrorMessage(error) {
 function handleServiceError(error, entityName = null) {
   const errorMessage = describeServiceErrorMessage(error);
   const displayMessage = entityName
-    ? t('Failed to control {{entityName}}: {{errorMessage}}', { entityName, errorMessage })
+    ? t('Failed to control {{entityName}}: {{errorMessage}}', {
+        entityName: isolateAuto(entityName),
+        errorMessage,
+      })
     : t('Service call failed: {{errorMessage}}', { errorMessage });
 
   // A control used during an outage is an expected outcome, not a fault in the widget.
@@ -664,7 +670,7 @@ async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId)
 
 function showConfigPersistenceError(error) {
   const message = t('Error: {{error}}', {
-    error: error?.message || t('Unknown error'),
+    error: isolateAuto(error?.message || t('Unknown error')),
   });
   uiUtils.showToast(message, 'error', 4000);
 }

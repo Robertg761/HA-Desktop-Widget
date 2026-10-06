@@ -25,6 +25,8 @@ import {
   formatNumber,
   formatTime,
   getLocaleState,
+  isolateAuto,
+  isolateLtr,
   setLocaleBootstrap,
   t,
   translateDocument,
@@ -424,7 +426,7 @@ function noteTokenRecoveryReason() {
       log.error('Failed to acknowledge token recovery notice:', error);
       uiUtils.showToast(
         t('Could not save the token recovery acknowledgement. {{error}}', {
-          error: error?.message || t('Unknown error'),
+          error: isolateAuto(error?.message || t('Unknown error')),
         }),
         'error',
         10000
@@ -2277,7 +2279,7 @@ function applyRendererConfig(nextConfig) {
   runtimeWarnings.forEach((warning) => {
     uiUtils.showToast(
       t('Error: {{error}}', {
-        error: warning?.error || t('Unknown error'),
+        error: isolateAuto(warning?.error || t('Unknown error')),
       }),
       'warning',
       5000
@@ -2292,7 +2294,7 @@ function showConfigRecoveryNotice(recovery) {
   if (recovery.recovered) {
     const message = t(
       'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
-      { path: String(recovery.backupPath || '-') }
+      { path: isolateLtr(recovery.backupPath || '-') }
     );
     uiUtils.showToast(message, 'warning', 20000);
     return;
@@ -2301,8 +2303,8 @@ function showConfigRecoveryNotice(recovery) {
   const message = t(
     'Configuration recovery could not be completed. Backup: {{path}} Error: {{error}}',
     {
-      path: String(recovery.backupPath || '-'),
-      error: String(recovery.error || t('Unknown error')),
+      path: isolateLtr(recovery.backupPath || '-'),
+      error: isolateAuto(recovery.error || t('Unknown error')),
     }
   );
   uiUtils.showToast(message, 'error', 20000);
@@ -2484,7 +2486,7 @@ function classifyConnectionError(error) {
 
   return {
     key: normalizedMessage,
-    message: t('Connection error: {{message}}', { message: normalizedMessage }),
+    message: t('Connection error: {{message}}', { message: isolateAuto(normalizedMessage) }),
     persistUntilOnline: false,
   };
 }
@@ -3615,7 +3617,7 @@ function wireUI() {
             // The file manager opens somewhere else on the screen, or behind the widget; this says
             // that something happened, and where the file is.
             uiUtils.showToast(
-              t('Showing the log file: {{path}}', { path: result.path }),
+              t('Showing the log file: {{path}}', { path: isolateLtr(result.path) }),
               'info',
               5000
             );
@@ -3626,9 +3628,9 @@ function wireUI() {
             uiUtils.showToast(
               copied
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
-                    path: result.path,
+                    path: isolateLtr(result.path),
                   })
-                : t('Failed to open log file: {{error}}', { error: result.error }),
+                : t('Failed to open log file: {{error}}', { error: isolateAuto(result.error) }),
               'error',
               8000
             );
@@ -3636,7 +3638,7 @@ function wireUI() {
         } catch (error) {
           log.error('Error opening log file:', error);
           uiUtils.showToast(
-            t('Error opening log file: {{error}}', { error: error.message }),
+            t('Error opening log file: {{error}}', { error: isolateAuto(error.message) }),
             'error'
           );
         }

@@ -174,6 +174,8 @@ describe('Renderer one-off behaviours', () => {
       setLocaleBootstrap: jest.fn(),
       t: jest.fn((key) => key),
       translateDocument: jest.fn(),
+      isolateAuto: jest.fn((text) => String(text ?? '')),
+      isolateLtr: jest.fn((text) => String(text ?? '')),
       formatNumber: jest.fn((value) => String(value)),
     }));
     jest.doMock('../../src/icons.js', () => ({

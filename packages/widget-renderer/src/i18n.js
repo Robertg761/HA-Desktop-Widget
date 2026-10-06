@@ -59,6 +59,16 @@ export function isolateLtr(text) {
   return value && isRtlLocale(localeState.activeLocale) ? `\u2066${value}\u2069` : value;
 }
 
+// Keeps text the app did not write, such as the reason Home Assistant gives for refusing a call, in
+// its own direction inside a translated sentence. Unlike isolateLtr it takes that direction from
+// the text's first letter, since the reason can be English or already translated. Without it an
+// English reason in an Arabic toast takes the toast's direction, and its full stop moves to the
+// far end of the line.
+export function isolateAuto(text) {
+  const value = text == null ? '' : String(text);
+  return value && isRtlLocale(localeState.activeLocale) ? `\u2068${value}\u2069` : value;
+}
+
 export function t(key, vars = {}) {
   const template = localeState.messages?.[key] || key;
   return formatTemplate(template, vars);

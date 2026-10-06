@@ -388,6 +388,20 @@ describe('left-to-right values in right-to-left languages', () => {
     expect(i18n.isolateLtr('')).toBe('');
   });
 
+  it("isolates text the app did not write in its own direction, Home Assistant's or translated", () => {
+    // First strong, not left to right: Home Assistant may give its reason in English or in Arabic.
+    expect(i18n.isolateAuto('The device did not respond.')).toBe('The device did not respond.');
+    useGerman();
+    expect(i18n.isolateAuto('The device did not respond.')).toBe('The device did not respond.');
+    i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
+    expect(i18n.isolateAuto('The device did not respond.')).toBe(
+      '\u2068The device did not respond.\u2069'
+    );
+    expect(i18n.isolateAuto('لم يستجب الجهاز.')).toBe('\u2068لم يستجب الجهاز.\u2069');
+    expect(i18n.isolateAuto('')).toBe('');
+    expect(i18n.isolateAuto(undefined)).toBe('');
+  });
+
   it('keeps the unit next to every sensor history figure in Arabic', async () => {
     i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
     const modal = document.createElement('div');

@@ -1153,6 +1153,24 @@ const PROBLEM_TOAST_WRAPS = `(() => {
   return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size > 1;
 })()`;
 
+// Home Assistant's reason is English under any language the app is in. In an Arabic toast it keeps
+// its own direction, so its full stop stays right of its last word; it took the toast's direction
+// once and sat at the far left of the line (".powered on and connected to Home Assistant").
+const PROBLEM_TOAST_REASON_KEEPS_ITS_STOP = `(() => {
+  const text = document.querySelector('#toast-container .toast.error .toast-message')?.firstChild;
+  const stop = (text?.textContent || '').lastIndexOf('.');
+  if (stop < 1) return false;
+  const box = (start) => {
+    const range = document.createRange();
+    range.setStart(text, start);
+    range.setEnd(text, start + 1);
+    return range.getBoundingClientRect();
+  };
+  const word = box(stop - 1);
+  const mark = box(stop);
+  return Math.abs(mark.top - word.top) < 2 && mark.left >= word.right - 1;
+})()`;
+
 // The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
 // Both are raised by the app, so the stack has the icons, the close button and the layout the app
 // gives it, which a toast built here by hand did not.
@@ -3314,7 +3332,13 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { language: 'ar' },
     keepToasts: true,
-    setup: showToasts,
+    setup: async (ctx) => {
+      await showToasts(ctx);
+      await ctx.expect(
+        PROBLEM_TOAST_REASON_KEEPS_ITS_STOP,
+        "the reason's full stop after its words"
+      );
+    },
   },
 
   // First run shows when no server is configured. The runner only puts the keys listed above
