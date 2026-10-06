@@ -1629,12 +1629,14 @@ function createWizardText(tagName, className, id, text) {
 }
 
 // Back moves between steps, so the first step and the last have none to offer. While authorization
-// waits in the browser the same button is the way out of it.
+// waits in the browser the same button is the way out of it, and looks like every other Cancel.
 function syncWizardBackButton() {
   const backButton = firstRunWizard?.backButton;
   if (!backButton) return;
+  const cancels = !!firstRunWizard.finishInProgress;
   backButton.hidden = firstRunWizard.step === 0 || firstRunWizard.step === 3;
-  backButton.textContent = firstRunWizard.finishInProgress ? t('Cancel') : t('Back');
+  backButton.textContent = cancels ? t('Cancel') : t('Back');
+  backButton.classList.toggle('btn-neutral', cancels);
 }
 
 function renderWizardStep() {

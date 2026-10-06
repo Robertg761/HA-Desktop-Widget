@@ -1020,6 +1020,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Connect');
     expect(wizardButton('Back')).toBeUndefined();
     expect(wizardButton('Cancel').hidden).toBe(false);
+    // Drawn as every other Cancel is, not in the accent of a second action.
+    expect(wizardButton('Cancel').classList.contains('btn-neutral')).toBe(true);
 
     await clickButton('Cancel');
     const cancelError = new Error('Home Assistant authorization was cancelled');
@@ -1033,6 +1035,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
     expect(wizardButton('Connect').disabled).toBe(false);
     expect(wizardButton('Back').hidden).toBe(false);
+    expect(wizardButton('Back').classList.contains('btn-neutral')).toBe(false);
     expect(wizardButton('Cancel')).toBeUndefined();
   });
 
