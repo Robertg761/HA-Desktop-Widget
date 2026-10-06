@@ -7,8 +7,10 @@ const path = require('path');
 const vm = require('vm');
 
 const {
+  ENTITY_HOTKEY_ACTIONS,
   ENTITY_HOTKEY_DOMAINS,
   liveEntityHotkeys,
+  resolveEntityHotkeyAction,
   supportsEntityHotkey,
 } = require('../../src/entity-hotkeys.cjs');
 
@@ -25,8 +27,8 @@ describe('the entities a hotkey can act on', () => {
     'input_button.doorbell',
     'input_boolean.guest_mode',
     'fan.bedroom',
-    // A tile's menu has added hotkeys to these since 3.4.8, and a toggle opens or closes, locks or
-    // unlocks, or switches them, as a click on the tile does.
+    // A tile's menu has added hotkeys to these since 3.4.8. A toggle opens or closes, or switches
+    // them, as a click on the tile does; a lock's hotkey locks, or unlocks after asking.
     'cover.garage',
     'valve.garden',
     'lock.front',
@@ -57,6 +59,14 @@ describe('the entities a hotkey can act on', () => {
     }
   });
 
+  it('takes the domains that have actions, and only those', () => {
+    expect(ENTITY_HOTKEY_DOMAINS).toEqual(Object.keys(ENTITY_HOTKEY_ACTIONS));
+    for (const actions of Object.values(ENTITY_HOTKEY_ACTIONS)) {
+      expect(actions.length).toBeGreaterThan(0);
+      expect(Object.isFrozen(actions)).toBe(true);
+    }
+  });
+
   it('refuses anything that is not an entity id', () => {
     for (const value of ['', 'light', '.light', undefined, null, 42, { entity_id: 'light.a' }]) {
       expect(supportsEntityHotkey(value)).toBe(false);
@@ -69,6 +79,27 @@ describe('the entities a hotkey can act on', () => {
     expect(hotkeysSource).not.toMatch(/HOTKEY_SUPPORTED_DOMAINS/);
     expect(mainSource).toContain("require('./src/entity-hotkeys.cjs')");
     expect(Object.isFrozen(ENTITY_HOTKEY_DOMAINS)).toBe(true);
+  });
+});
+
+describe('the action a hotkey runs', () => {
+  it('is the one it was saved with, where its domain offers it', () => {
+    expect(resolveEntityHotkeyAction('light.desk', 'brightness_up')).toBe('brightness_up');
+    expect(resolveEntityHotkeyAction('lock.front', 'unlock')).toBe('unlock');
+    expect(resolveEntityHotkeyAction('cover.garage', 'close')).toBe('close');
+  });
+
+  // A lock offers no toggle, so a toggle saved on one by an older version, or the bare accelerator
+  // it saved before actions existed, locks. Unlocking is never what a forgotten hotkey does.
+  it('locks for a toggle saved on a lock, or for none', () => {
+    expect(resolveEntityHotkeyAction('lock.front', 'toggle')).toBe('lock');
+    expect(resolveEntityHotkeyAction('lock.front', undefined)).toBe('lock');
+  });
+
+  it("is the domain's first otherwise, what a new hotkey runs", () => {
+    expect(resolveEntityHotkeyAction('scene.movie', 'toggle')).toBe('turn_on');
+    expect(resolveEntityHotkeyAction('light.desk', 'unlock')).toBe('toggle');
+    expect(resolveEntityHotkeyAction('automation.porch', undefined)).toBe('trigger');
   });
 });
 

@@ -89,6 +89,7 @@ import desktopPinSupport from './desktop-pin-support.cjs';
 import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
+import entityHotkeys from './entity-hotkeys.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addEntityToQuickAccessView,
@@ -13377,8 +13378,7 @@ function queueOnOffToggle(entity) {
 }
 
 // Unlocking a door is the one toggle that cannot be taken back by pressing it again, so a click on
-// a tile asks first. Locking stays one click, and a hotkey the user bound to the lock does not ask:
-// it can fire while the widget is hidden, where nobody would see the question.
+// a tile asks first, and so does an Unlock hotkey (executeHotkeyAction). Locking stays one click.
 async function confirmThenUnlock(entity) {
   const name = utils.getEntityDisplayName(entity);
   const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
@@ -13389,6 +13389,25 @@ async function confirmThenUnlock(entity) {
   // The lock may have changed while the question was open.
   const live = state.STATES?.[entity.entity_id];
   if (live?.state === 'locked') toggleEntity(live);
+}
+
+// The service that opens or closes a cover or a valve (by default the other way from where it is,
+// as a click on its tile does), or null when it cannot go that way. Home Assistant's
+// ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no features is tried anyway,
+// like a cover; one that cannot go the asked way is left alone.
+function getOpenCloseService(
+  entity,
+  close = entity.state === 'open' || entity.state === 'opening'
+) {
+  if (getEntityDomain(entity.entity_id) === 'valve') {
+    const features = Number(entity.attributes?.supported_features);
+    const flag = close ? 2 : 1;
+    if (Number.isFinite(features) && (features & flag) !== flag) return null;
+    return close ? 'close_valve' : 'open_valve';
+  }
+  const capabilities = getDesktopPinCapabilities(entity);
+  if (close ? !capabilities.canClose : !capabilities.canOpen) return null;
+  return close ? 'close_cover' : 'open_cover';
 }
 
 function toggleEntity(entity, { confirmUnlock = false } = {}) {
@@ -13411,16 +13430,10 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
       case 'automation':
         service = 'toggle';
         break;
-      case 'valve': {
-        // Home Assistant's ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no
-        // features is tried anyway, like a cover; one that cannot do the other way is left alone.
-        const features = Number(entity.attributes?.supported_features);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        const flag = shouldClose ? 2 : 1;
-        if (Number.isFinite(features) && (features & flag) !== flag) return;
-        service = shouldClose ? 'close_valve' : 'open_valve';
+      case 'valve':
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'lock':
         if (entity.state === 'locked' && confirmUnlock) {
           void confirmThenUnlock(entity);
@@ -13428,15 +13441,11 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
         }
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
-      case 'cover': {
+      case 'cover':
         cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
-        const capabilities = getDesktopPinCapabilities(entity);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        if (shouldClose && !capabilities.canClose) return;
-        if (!shouldClose && !capabilities.canOpen) return;
-        service = shouldClose ? 'close_cover' : 'open_cover';
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'scene':
       case 'script':
         service = 'turn_on';
@@ -13742,6 +13751,9 @@ function executeHotkeyAction(entity, action) {
     entity = state.STATES?.[entity?.entity_id] || entity;
     if (!isEntityAvailable(entity)) return;
     const domain = entity.entity_id.split('.')[0];
+    // An action the domain does not offer (a toggle saved on a lock by an older version) runs as
+    // the domain's first, which Settings shows for it.
+    action = entityHotkeys.resolveEntityHotkeyAction(entity.entity_id, action);
 
     // Validate numeric attributes to prevent NaN
     const brightnessValue = Number(entity.attributes?.brightness);
@@ -13787,6 +13799,34 @@ function executeHotkeyAction(entity, action) {
             .catch((error) => handleServiceError(error, entityName));
         }
         break;
+      case 'lock':
+        if (domain === 'lock') {
+          websocket
+            .callService('lock', 'lock', { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      case 'unlock':
+        // It asks first, as a click on the tile does. The chord can be pressed while the widget is
+        // hidden, where nobody would see the question, so the widget comes up to ask it.
+        if (domain === 'lock' && entity.state === 'locked') {
+          window.electronAPI?.showWindow?.()?.catch?.((error) => {
+            console.warn('Could not bring the widget up to ask about unlocking:', error);
+          });
+          void confirmThenUnlock(entity);
+        }
+        break;
+      case 'open':
+      case 'close': {
+        if (domain === 'cover') cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
+        const service = getOpenCloseService(entity, action === 'close');
+        if (service) {
+          websocket
+            .callService(domain, service, { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      }
       case 'trigger':
         // For automations
         if (domain === 'automation') {

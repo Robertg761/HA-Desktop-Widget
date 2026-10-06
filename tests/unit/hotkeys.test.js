@@ -1749,16 +1749,72 @@ describe('hotkeys module', () => {
           (select) => [select.dataset.entityId, [...select.options].map((option) => option.value)]
         )
       );
-      // A cover, a valve and a lock have no turn_on or turn_off service; a toggle does what a
-      // click on the tile does.
+      // A cover and a valve toggle as a click on the tile does, or only open or only close. A lock
+      // locks or unlocks and has no toggle: a chord pressed by mistake must not open a door.
       expect(actions).toEqual({
-        'cover.garage': ['toggle'],
-        'valve.garden': ['toggle'],
-        'lock.front': ['toggle'],
+        'cover.garage': ['toggle', 'open', 'close'],
+        'valve.garden': ['toggle', 'open', 'close'],
+        'lock.front': ['lock', 'unlock'],
         'humidifier.bedroom': ['toggle', 'turn_on', 'turn_off'],
         'siren.hall': ['toggle', 'turn_on', 'turn_off'],
       });
+      const lockSelect = document.querySelector('select[data-entity-id="lock.front"]');
+      expect([...lockSelect.options].map((option) => option.textContent)).toEqual([
+        'Lock',
+        'Unlock',
+      ]);
     });
+
+    it('shows a toggle an older version saved on a lock as the Lock it now runs', () => {
+      state.CONFIG.globalHotkeys.hotkeys = {
+        'lock.front': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },
+      };
+      hotkeys.renderHotkeysTab();
+
+      expect(document.querySelector('select[data-entity-id="lock.front"]').value).toBe('lock');
+    });
+
+    it('records Lock for a new hotkey on a lock, as the tile menu opens it', async () => {
+      hotkeys.renderHotkeysTab();
+      const field = document.querySelector('.hotkey-input[data-entity-id="lock.front"]');
+      field.focus();
+      const assignment = hotkeys.assignHotkeyToEntity('lock.front');
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { code: 'KeyL', key: 'l', ctrlKey: true, bubbles: true })
+      );
+      await assignment;
+
+      expect(mockElectronAPI.registerHotkey).toHaveBeenCalledWith('lock.front', 'Ctrl+L', 'lock');
+    });
+  });
+
+  it('offers every domain a hotkey can act on exactly the actions the hotkey can run', () => {
+    const { ENTITY_HOTKEY_ACTIONS } = require('../../src/entity-hotkeys.cjs');
+    const config = getMockConfig();
+    config.globalHotkeys = { enabled: true, hotkeys: {} };
+    state.setConfig(config);
+    state.setStates(
+      Object.fromEntries(
+        Object.keys(ENTITY_HOTKEY_ACTIONS).map((domain) => [
+          `${domain}.one`,
+          { entity_id: `${domain}.one`, state: 'off', attributes: {} },
+        ])
+      )
+    );
+    hotkeys.cleanupHotkeyEventListeners();
+    document.body.innerHTML = '<input id="hotkey-entity-search" /><div id="hotkeys-list"></div>';
+    hotkeys.renderHotkeysTab();
+
+    const offered = Object.fromEntries(
+      [...document.querySelectorAll('#hotkeys-list select.hotkey-action-select')].map((select) => [
+        select.dataset.entityId.split('.')[0],
+        [...select.options].map((option) => option.value),
+      ])
+    );
+    expect(offered).toEqual(ENTITY_HOTKEY_ACTIONS);
+    for (const option of document.querySelectorAll('#hotkeys-list option')) {
+      expect(option.textContent.trim()).not.toBe('');
+    }
   });
 
   it('draws the clear button with the line X icon, not a text ×', () => {

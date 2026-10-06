@@ -88,59 +88,30 @@ function initializeHotkeys() {
 
 // Labels are translated here because the options are rebuilt on every render.
 function getActionOptionsForDomain(domain) {
-  const options = {
-    light: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-      { value: 'brightness_up', label: t('Brightness up') },
-      { value: 'brightness_down', label: t('Brightness down') },
-    ],
-    switch: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-    ],
-    scene: [{ value: 'turn_on', label: t('Activate') }],
-    script: [{ value: 'turn_on', label: t('Run') }],
-    automation: [
-      { value: 'trigger', label: t('Trigger') },
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Enable') },
-      { value: 'turn_off', label: t('Disable') },
-    ],
-    button: [{ value: 'press', label: t('Press') }],
-    input_button: [{ value: 'press', label: t('Press') }],
-    input_boolean: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-    ],
-    fan: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-      { value: 'increase_speed', label: t('Increase speed') },
-      { value: 'decrease_speed', label: t('Decrease speed') },
-    ],
-    // A toggle opens or closes, or locks or unlocks, as a click on the tile does; these domains
-    // have no turn_on or turn_off service.
-    cover: [{ value: 'toggle', label: t('Toggle') }],
-    valve: [{ value: 'toggle', label: t('Toggle') }],
-    lock: [{ value: 'toggle', label: t('Toggle') }],
-    humidifier: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-    ],
-    siren: [
-      { value: 'toggle', label: t('Toggle') },
-      { value: 'turn_on', label: t('Turn on') },
-      { value: 'turn_off', label: t('Turn off') },
-    ],
+  const labels = {
+    toggle: t('Toggle'),
+    turn_on: t('Turn on'),
+    turn_off: t('Turn off'),
+    brightness_up: t('Brightness up'),
+    brightness_down: t('Brightness down'),
+    trigger: t('Trigger'),
+    press: t('Press'),
+    increase_speed: t('Increase speed'),
+    decrease_speed: t('Decrease speed'),
+    open: t('Open'),
+    close: t('Close'),
+    lock: t('Lock'),
+    unlock: t('Unlock'),
   };
-
-  return options[domain] || options.switch;
+  // Where a domain says it another way: a scene is activated, a script run, an automation enabled.
+  const domainLabels = {
+    scene: { turn_on: t('Activate') },
+    script: { turn_on: t('Run') },
+    automation: { turn_on: t('Enable'), turn_off: t('Disable') },
+  };
+  const actions =
+    entityHotkeys.ENTITY_HOTKEY_ACTIONS[domain] || entityHotkeys.ENTITY_HOTKEY_ACTIONS.switch;
+  return actions.map((value) => ({ value, label: domainLabels[domain]?.[value] || labels[value] }));
 }
 
 // The action is a native select, like every other choice in Settings: it brings the keyboard model
@@ -253,10 +224,14 @@ function renderHotkeysTab() {
         const { entity, name } = row;
         const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entity.entity_id] || {};
         const hotkey = typeof hotkeyConfig === 'string' ? hotkeyConfig : hotkeyConfig.hotkey;
-        const action =
+        // The select shows what the hotkey runs, which for an action its domain no longer offers
+        // (a lock's toggle) is the domain's first.
+        const action = entityHotkeys.resolveEntityHotkeyAction(
+          entity.entity_id,
           typeof hotkeyConfig === 'object' && hotkeyConfig.action
             ? hotkeyConfig.action
-            : pendingActions.get(entity.entity_id) || 'toggle';
+            : pendingActions.get(entity.entity_id) || 'toggle'
+        );
         const domain = entity.entity_id.split('.')[0];
 
         // Get action options based on entity type
@@ -323,12 +298,6 @@ function createUnlistedHotkeyRow({ entityId, name, unlisted }) {
   return item;
 }
 
-function getDefaultActionForEntity(entity) {
-  const domain = entity?.entity_id?.split('.')?.[0] || '';
-  const options = getActionOptionsForDomain(domain);
-  return options[0]?.value || 'toggle';
-}
-
 async function assignHotkeyToEntity(entityId, options = {}) {
   if (recordingEntityId) return { success: false, canceled: true };
   try {
@@ -354,11 +323,10 @@ async function assignHotkeyToEntity(entityId, options = {}) {
     const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
     const currentAction =
       typeof currentConfig === 'object' && currentConfig?.action ? currentConfig.action : null;
-    const action =
-      options.action ||
-      pendingActions.get(entityId) ||
-      currentAction ||
-      getDefaultActionForEntity(entity);
+    const action = entityHotkeys.resolveEntityHotkeyAction(
+      entityId,
+      options.action || pendingActions.get(entityId) || currentAction
+    );
     const origin = document.activeElement;
     const openedFromField = !!origin?.classList?.contains('hotkey-input');
     const hotkey = await recordWithField(entityId, openedFromField ? origin : null);
