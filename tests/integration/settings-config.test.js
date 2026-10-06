@@ -4113,6 +4113,22 @@ describe('Settings + Config Integration', () => {
         expect(state.CONFIG.ui.customColors[0].name).toBe('Sea #AB34CD');
       });
 
+      test('lets the name, not the marks, fill the rename field', async () => {
+        // The field's 48 characters counted the two marks around the hex code, so a name with a
+        // code stopped taking letters two short of the limit.
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(38)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toHaveLength(48);
+        expect(field.maxLength).toBe(50);
+
+        // Without the code there are no marks to make room for.
+        field.value = 'Sea';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(field.maxLength).toBe(48);
+      });
+
       test('reads an unchanged field as no edit, so Save does not ask about it', async () => {
         i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
         await openWithCustomAccent('');
