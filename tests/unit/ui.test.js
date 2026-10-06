@@ -7072,14 +7072,20 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         };
       };
 
-      // The default pin leaves the range to its sliders: beside it the name had a few letters.
-      expect(render(168, 148)).toEqual({
-        layout: 'compact',
-        header: null,
-        boxes: 0,
-        current: 'Now 21°C',
-        sliders: 2,
-      });
+      // The default pin leaves the range to its sliders: beside it the name had a few letters. So
+      // does a smaller one, whose name has less room still.
+      for (const [width, height, layout] of [
+        [168, 148, 'compact'],
+        [150, 140, 'micro'],
+      ]) {
+        expect(render(width, height)).toEqual({
+          layout,
+          header: null,
+          boxes: 0,
+          current: 'Now 21°C',
+          sliders: 2,
+        });
+      }
       // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
       for (const [width, height, layout] of [
         [200, 170, 'balanced'],

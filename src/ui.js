@@ -6134,15 +6134,15 @@ function getDesktopPinClimateRenderProfile(entity) {
   // A heat/cool range has two sliders where a single target has one, and beside them the body has
   // no room for a Target box: at 200x170 and 280x200 the Current and Target boxes pushed the mode
   // row off the tile. So a range pin shows the room temperature as a line of its own and prints the
-  // range in the header beside the name. The default-size pin leaves the range to its sliders:
-  // printed beside the name there, it cut most names to a few letters.
+  // range in the header beside the name. A pin at the default size or smaller leaves the range to
+  // its sliders: printed beside the name there, it cut most names to a few letters.
   const isRange = climateValue.canSetRange;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
     showTargetBox: !isRange,
-    showHeaderKpi: isRange && !layoutProfile.isDenseTight,
+    showHeaderKpi: isRange && !isSmall,
     showCurrentStat: !isSmall && !isRange,
     showCompactCurrent: isSmall || isRange,
     showSliderLabels: !isSmall,
