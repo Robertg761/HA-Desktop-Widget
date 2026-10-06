@@ -1381,6 +1381,50 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('flex');
     });
 
+    // From 260x190 the row is wider, but four equal shares of it cut "Heat/Cool" at 280x200 and
+    // "Désactivé" at 260x190, and the climate pin then offered two modes where a smaller one had
+    // four. Its buttons take their labels' width as well.
+    it.each(['climate', 'fan', 'cover'])(
+      'lays out a roomy %s pin’s row by the width of its labels',
+      (family) => {
+        render('desktop-pin-mode', panel(family, 'roomy', 'data-dense-variant="standard"'));
+        const options = { viewport: { width: 280, height: 200 } };
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display', options)
+        ).toBe('flex');
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-button'), 'flex', options)
+        ).toBe('1 1 auto');
+      }
+    );
+
+    // Sized row by row, the two tracks of a heat/cool range began where each row's own label
+    // ended, 33px apart in French, though they run over the same scale.
+    it.each(['compact', 'balanced', 'roomy'])(
+      'gives the two rows of a %s heat/cool pin one label column',
+      (layout) => {
+        render(
+          'desktop-pin-mode',
+          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-climate-control"
+            data-layout="${layout}"><div class="desktop-pin-panel-shell"><div class="desktop-pin-panel-body">
+            <div class="desktop-pin-climate-range">
+              <label class="desktop-pin-panel-slider-row"><span class="desktop-pin-panel-slider-label">Chauffe</span>
+                <input type="range" class="desktop-pin-panel-slider"></label>
+              <label class="desktop-pin-panel-slider-row"><span class="desktop-pin-panel-slider-label">Froid</span>
+                <input type="range" class="desktop-pin-panel-slider"></label>
+            </div></div></div></div>`
+        );
+        const range = document.querySelector('.desktop-pin-climate-range');
+        expect(resolvedValue(range, 'display')).toBe('grid');
+        expect(resolvedValue(range, 'grid-template-columns')).toBe('max-content minmax(0, 1fr)');
+        expect(resolvedValue(range, 'margin-top')).toBe('auto');
+        for (const row of range.querySelectorAll('.desktop-pin-panel-slider-row')) {
+          expect(resolvedValue(row, 'grid-template-columns')).toBe('subgrid');
+          expect(resolvedValue(row, 'grid-column')).toBe('1 / -1');
+        }
+      }
+    );
+
     it('leaves a balanced media pin its roomier spacing, since no row of it grows', () => {
       // A media pin is balanced only from 285px wide, and nothing of it ran off the tile there.
       render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="standard"'));

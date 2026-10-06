@@ -125,6 +125,34 @@ jest.mock('../../src/websocket.js', () => ({
   request: mockRequest,
 }));
 
+// jsdom has no ResizeObserver. This one records what is observed and is told by a test when a size
+// changes, so a test can play a window that reaches its new size after the pin was drawn for it.
+const resizeObservers = [];
+window.ResizeObserver = class {
+  constructor(callback) {
+    this.callback = callback;
+    this.targets = new Set();
+    resizeObservers.push(this);
+  }
+
+  observe(target) {
+    this.targets.add(target);
+  }
+
+  unobserve(target) {
+    this.targets.delete(target);
+  }
+
+  disconnect() {
+    this.targets.clear();
+  }
+};
+const reportResize = (target) => {
+  for (const observer of resizeObservers) {
+    if (observer.targets.has(target)) observer.callback([{ target }], observer);
+  }
+};
+
 // Import modules after mocks
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
@@ -7066,6 +7094,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         return {
           layout: control.dataset.layout,
           header: control.querySelector('.desktop-pin-climate-kpi')?.textContent ?? null,
+          status: control.querySelector('.desktop-pin-panel-status')?.textContent ?? null,
           boxes: control.querySelectorAll('.desktop-pin-panel-stat').length,
           current: control.querySelector('.desktop-pin-climate-inline-copy')?.textContent ?? null,
           sliders: control.querySelectorAll('[data-climate-range]').length,
@@ -7081,12 +7110,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(render(width, height)).toEqual({
           layout,
           header: null,
+          status: 'Heat/Cool',
           boxes: 0,
           current: 'Now 21°C',
           sliders: 2,
         });
       }
       // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
+      // Beside the range, the line under the name says the mode alone: "Modus: Heizen/Kühlen" and
+      // "Mode Chaud/Froid" were cut there at 200x170.
       for (const [width, height, layout] of [
         [200, 170, 'balanced'],
         [280, 200, 'roomy'],
@@ -7094,10 +7126,90 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(render(width, height)).toEqual({
           layout,
           header: expect.stringMatching(/^19.*24/),
+          status: 'Heat/Cool',
           boxes: 0,
           current: 'Now 21°C',
           sliders: 2,
         });
+      }
+
+      // A single target has its box in the body and nothing beside the name, so it keeps the mode
+      // line in full, through a state change too.
+      const single = {
+        entity_id: 'climate.study',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Study',
+          current_temperature: 20,
+          temperature: 21,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat'],
+          supported_features: 1,
+        },
+      };
+      state.setStates({ [single.entity_id]: single });
+      setDesktopPinViewport(200, 170);
+      document.getElementById('desktop-pin-content').innerHTML = '';
+      ui.renderDesktopPinnedTile(single.entity_id, single);
+      const status = () =>
+        document.querySelector('#desktop-pin-content .desktop-pin-panel-status').textContent;
+      expect(status()).toBe('Heat mode');
+      ui.renderDesktopPinnedTile(single.entity_id, { ...single, state: 'off' });
+      expect(status()).toBe('Off mode');
+    });
+
+    // Each bound was a row of its own, sized to its own label, so the tracks of one range started at
+    // different places: in French the cooling track began 33px after the heating one and was 43px
+    // long to its 76. The labels were HVAC action states ("Refroidissement", "Calentando").
+    it('lays a pin’s heat/cool range on one grid, its bounds named by their modes', () => {
+      const i18n = require('../../src/i18n.js');
+      const range = {
+        entity_id: 'climate.hall',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Hall',
+          current_temperature: 21,
+          target_temp_low: 19,
+          target_temp_high: 24,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat_cool'],
+          supported_features: 2,
+        },
+      };
+      state.setStates({ [range.entity_id]: range });
+      const bounds = () => {
+        const grid = document.querySelector('#desktop-pin-content .desktop-pin-climate-range');
+        return [...grid.querySelectorAll(':scope > .desktop-pin-panel-slider-row')].map((row) => [
+          row.querySelector('.desktop-pin-panel-slider-label').textContent,
+          row.querySelector('input').dataset.climateRange,
+          row.querySelector('input').getAttribute('aria-label'),
+        ]);
+      };
+      try {
+        for (const [width, height] of [
+          [168, 148],
+          [200, 170],
+          [280, 200],
+        ]) {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(range.entity_id, range);
+          expect(bounds()).toEqual([
+            ['Heat', 'low', 'Heating target'],
+            ['Cool', 'high', 'Cooling target'],
+          ]);
+        }
+        i18n.setLocaleBootstrap({
+          activeLocale: 'fr',
+          messages: { Heat: 'Chauffe', Cool: 'Froid', Heating: 'Chauffage' },
+        });
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(range.entity_id, range);
+        expect(bounds().map(([label]) => label)).toEqual(['Chauffe', 'Froid']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
     });
 
@@ -7167,6 +7279,23 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         // Drawn again in a wider row (a resize), the third comes back.
         rowWidth = 190;
         render();
+        expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
+
+        // A pin is drawn for its new size before its window has that size, so a row that widens
+        // after it was drawn is fitted again: dragged bigger, a pin kept the modes of the old row.
+        rowWidth = 150;
+        render();
+        expect(modes()).toEqual(['heat_cool', 'off']);
+        rowWidth = 190;
+        const frame = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+          callback(0);
+          return 0;
+        });
+        try {
+          reportResize(document.querySelector('#desktop-pin-content .desktop-pin-climate-modes'));
+        } finally {
+          frame.mockRestore();
+        }
         expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
 
         // Never fewer than two, however narrow the row.

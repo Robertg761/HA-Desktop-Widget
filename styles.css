@@ -1782,7 +1782,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   flex: 1 1 auto;
 }
 
-.desktop-pin-panel-body > :is(.desktop-pin-panel-slider-row, .desktop-pin-panel-actions) {
+.desktop-pin-panel-body
+  > :is(.desktop-pin-panel-slider-row, .desktop-pin-climate-range, .desktop-pin-panel-actions) {
   margin-top: auto;
 }
 
@@ -2049,6 +2050,19 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-panel-slider-row {
   grid-template-columns: auto 1fr auto;
   align-items: center;
+}
+
+/* A heat/cool range's two rows share one column for their labels, so the tracks, which run over the
+   same scale, start and end at the same place (see climateRangeMarkup). */
+.desktop-pin-climate-range {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--desktop-pin-panel-gap) 6px;
+}
+
+.desktop-pin-climate-range > .desktop-pin-panel-slider-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
 /* The climate, fan, cover and numeric pins' sliders are drawn like the lamp's: a round track in a
@@ -2582,10 +2596,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Three modes, verbs or speeds share a 150px row, and a slightly bigger pin fits four into 184px.
    They take their label's width where equal shares cannot hold it ("Schließen", "Désactivé",
-   "Kühlen") and fall back to an ellipsis, with a title. */
+   "Kühlen") and fall back to an ellipsis, with a title. A roomy pin's row is wider, but four equal
+   shares of it still cut "Heat/Cool" at 280x200 and "Désactivé" at 260x190, so it is laid out the
+   same way. */
 :is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
     [data-dense-variant='tight'],
-    [data-layout='balanced']
+    [data-layout='balanced'],
+    [data-layout='roomy']
   )
   .desktop-pin-panel-actions {
   display: flex;
@@ -2594,7 +2611,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 :is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
     [data-dense-variant='tight'],
-    [data-layout='balanced']
+    [data-layout='balanced'],
+    [data-layout='roomy']
   )
   .desktop-pin-panel-button {
   flex: 1 1 auto;

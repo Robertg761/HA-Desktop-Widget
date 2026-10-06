@@ -6069,6 +6069,12 @@ function formatDesktopPinClimateModeLabel(mode) {
   return label ? t(label) : normalizedMode.replace(/_/g, ' ');
 }
 
+// The climate pin's line under its name: "Heat mode", or the mode alone where room is short.
+function formatDesktopPinClimateStatus(mode, compact) {
+  const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
+  return compact ? modeLabel : t('{{mode}} mode', { mode: modeLabel });
+}
+
 // Some short words need a different translation per context ("Cool" as a colour temperature is not
 // the HVAC mode). The context lives in the key; English, where the key is missing, shows the word.
 function translateInContext(key, fallback) {
@@ -6137,12 +6143,17 @@ function getDesktopPinClimateRenderProfile(entity) {
   // range in the header beside the name. A pin at the default size or smaller leaves the range to
   // its sliders: printed beside the name there, it cut most names to a few letters.
   const isRange = climateValue.canSetRange;
+  const showHeaderKpi = isRange && !isSmall;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
     showTargetBox: !isRange,
-    showHeaderKpi: isRange && !isSmall,
+    showHeaderKpi,
+    // The line under the name says the mode alone ("Heat/Cool", not "Heat/Cool mode") where it is
+    // short of room: in a small pin, and beside a range in the header, where "Modus: Heizen/Kühlen"
+    // and "Mode Chaud/Froid" were cut at 200x170.
+    compactStatus: isSmall || showHeaderKpi,
     showCurrentStat: !isSmall && !isRange,
     showCompactCurrent: isSmall || isRange,
     showSliderLabels: !isSmall,
@@ -6809,8 +6820,6 @@ function getDesktopPinClimateValue(entity) {
 function applyDesktopPinClimateVisualState(root, climateValue) {
   if (!root || !climateValue) return;
   const { currentTemp, targetTemp, mode, unit } = climateValue;
-  const denseVariant = root.dataset.denseVariant || 'standard';
-  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = mode || 'off';
   const hasTargetRange =
     Number.isFinite(targetTemp) &&
@@ -6855,8 +6864,7 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) {
-    const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
-    status.textContent = compactStatus ? modeLabel : t('{{mode}} mode', { mode: modeLabel });
+    status.textContent = formatDesktopPinClimateStatus(mode, root.dataset.compactStatus === 'true');
   }
 
   const slider = root.querySelector('.desktop-pin-climate-slider');
@@ -6885,10 +6893,10 @@ function createDesktopPinClimateControlElement(entity) {
     domain: 'climate',
     state: climateValue.mode,
   });
-  const climateStatus =
-    renderProfile.isDenseTight || renderProfile.isDenseMicro
-      ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
-      : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
+  const climateStatus = formatDesktopPinClimateStatus(
+    climateValue.mode,
+    renderProfile.compactStatus
+  );
   const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
       ? t('No live room temperature')
@@ -6904,6 +6912,7 @@ function createDesktopPinClimateControlElement(entity) {
   );
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.compactStatus = renderProfile.compactStatus ? 'true' : 'false';
   root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
 
   root.innerHTML = `
@@ -7056,20 +7065,40 @@ function createDesktopPinClimateControlElement(entity) {
   return root;
 }
 
-// Three modes share the default pin's row, and in some languages their names are too long for it:
-// in French "Chaud/Froid", "Désactivé" and "Chauffe" were each cut short. A row that cannot hold
-// its modes offers fewer, down to two, hiding the last one that is not the active mode (nor the one
-// with focus). The names are measured where they are drawn, so the row is fitted again each time
-// the pin is drawn (a resize, a new state) and when its font has loaded.
+// Three modes share the default pin's row and four a bigger pin's, and in some languages their
+// names are too long for it: in French "Chaud/Froid", "Désactivé" and "Chauffe" were each cut
+// short at the default size, and in German at 200x170 all four. A row that cannot hold its modes
+// offers fewer, down to two, hiding the last one that is not the active mode (nor the one with
+// focus). The names are measured where they are drawn, so the row is fitted again each time the
+// pin is drawn (a new state), when its font has loaded and when the row's width changes: a pin is
+// drawn for its new size before its window has that size, and a pin dragged from 168x148 to
+// 280x200 had fitted its four modes into the old 150px row and kept three.
 const DESKTOP_PIN_CLIMATE_MIN_FITTED_MODES = 2;
+
+const desktopPinModeRowObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Fitting changes layout, which an observer must not do while it is being delivered. Only
+        // a new width counts: what the fitting changes is the row's buttons, not its width.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            if (target.dataset.fitWidth !== String(target.clientWidth)) {
+              fitDesktopPinClimateModes(target.closest('.desktop-pin-climate-control'));
+            }
+          }
+        });
+      })
+    : null;
 
 function fitDesktopPinClimateModes(root) {
   const row = root?.querySelector?.('.desktop-pin-climate-modes');
   if (!row?.isConnected) return;
+  desktopPinModeRowObserver?.observe(row);
   const buttons = [...row.querySelectorAll('.desktop-pin-climate-mode')];
   buttons.forEach((button) => {
     button.hidden = false;
   });
+  row.dataset.fitWidth = String(row.clientWidth);
   // A window that has not been laid out has nothing to measure.
   if (!row.clientWidth) return;
   const shown = () => buttons.filter((button) => !button.hidden);
@@ -7110,6 +7139,7 @@ function updateExistingDesktopPinClimateControl(root, entity) {
   }
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.compactStatus = renderProfile.compactStatus ? 'true' : 'false';
   syncDesktopPinPanelName(root, entity);
   applyDesktopPinClimateVisualState(root, renderProfile.climateValue);
   return true;
@@ -15118,11 +15148,14 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
         <span>${formatMeasurement(capabilities.minTemp, unit)}</span>
         <span>${formatMeasurement(capabilities.maxTemp, unit)}</span>
       </span>`;
-  return ['low', 'high']
+  const rows = ['low', 'high']
     .map((bound) => {
       const low = bound === 'low';
       const label = low ? t('Heating target') : t('Cooling target');
-      const visibleLabel = pin ? (low ? t('Heating') : t('Cooling')) : label;
+      // A pin names each bound by its mode, as its mode buttons do: the HVAC action names it used
+      // ("Heating", "Cooling") are states in the packs ("Calentando", "制热中") and ran long
+      // ("Refroidissement").
+      const visibleLabel = pin ? formatDesktopPinClimateModeLabel(low ? 'heat' : 'cool') : label;
       return `<label class="${pin ? 'desktop-pin-panel-slider-row' : 'climate-slider-wrapper'}">
       <span class="${pin ? 'desktop-pin-panel-slider-label' : 'climate-temp-label'}">${utils.escapeHtml(visibleLabel)}</span>
       <input type="range" class="${pin ? 'desktop-pin-panel-slider' : 'climate-slider'}" data-climate-range="${bound}"
@@ -15133,6 +15166,10 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
     </label>`;
     })
     .join('');
+  // On a pin the two rows share one label column, so both tracks start and end where the other's
+  // do: sized row by row, the cooling track began 33px later than the heating one in French and
+  // was about 40% shorter, though both run over the same scale.
+  return pin ? `<div class="desktop-pin-climate-range">${rows}</div>` : rows;
 }
 
 function bindClimateRangeControls(root, entity, capabilities, onChange, unit = '') {

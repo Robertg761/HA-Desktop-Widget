@@ -1818,5 +1818,13 @@
   "Removed from \"{{page}}\"": {
     "retiredIn": "4.0.0",
     "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Heating": {
+    "retiredIn": "4.0.0",
+    "reason": "A heat/cool pin names its sliders by their modes (Heat, Cool)"
+  },
+  "Cooling": {
+    "retiredIn": "4.0.0",
+    "reason": "A heat/cool pin names its sliders by their modes (Heat, Cool)"
   }
 }

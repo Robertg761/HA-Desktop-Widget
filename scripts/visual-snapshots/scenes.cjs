@@ -473,6 +473,12 @@ const PIN_BUTTONS_FIT = `(() => {
   );
 })()`;
 
+// The line under a pin's name is not cut short.
+const PIN_STATUS_WHOLE = `(() => {
+  const status = document.querySelector('.desktop-pin-panel-status');
+  return !!status && status.scrollWidth <= status.clientWidth;
+})()`;
+
 async function expectPinButtonsFit(pin) {
   if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
     throw new Error('Layout check failed: a pin button is cut off or its label shortened');
@@ -481,13 +487,17 @@ async function expectPinButtonsFit(pin) {
 
 // A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
 // their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
-const resizedPinScene = (family, entityId, size, extra = {}) =>
+// `shows` is a check of the pin's own, [expression, what it says], for what the row must still hold.
+const resizedPinScene = (family, entityId, size, { shows, ...extra } = {}) =>
   pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
     ...extra,
     setup: async (ctx) => {
       const pin = await ctx.openPin(entityId);
       await resizePin(ctx, entityId, size);
       await expectPinButtonsFit(pin);
+      if (shows && !(await pin.evaluate(shows[0]))) {
+        throw new Error(`Layout check failed: ${shows[1]}`);
+      }
       return { capture: pin };
     },
   });
@@ -2661,6 +2671,29 @@ const scenes = [
   // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
   // balanced layout brought back a fourth mode that German cut to "Kü...".
   resizedPinScene('climate-range', 'climate.heat_pump', { width: 200, height: 170 }),
+  // The longer names of the mode ("Heizen/Kühlen", "Chaud/Froid") cut every mode of that pin in
+  // German and French, and the mode under the name beside the range, and four equal shares of a
+  // roomy row cut "Heat/Cool" in English, where the row has room for all four once they take their
+  // names' width.
+  ...['de', 'fr'].map((language) =>
+    resizedPinScene(
+      `${language}-climate-range`,
+      'climate.heat_pump',
+      { width: 200, height: 170 },
+      { ui: { language }, shows: [PIN_STATUS_WHOLE, 'the mode under the name is whole'] }
+    )
+  ),
+  resizedPinScene(
+    'climate-range',
+    'climate.heat_pump',
+    { width: 280, height: 200 },
+    {
+      shows: [
+        `document.querySelectorAll('.desktop-pin-climate-mode:not([hidden])').length === 4`,
+        'a roomy heat/cool pin offers all four of its modes',
+      ],
+    }
+  ),
   resizedPinScene(
     'de-climate',
     'climate.bedroom',
