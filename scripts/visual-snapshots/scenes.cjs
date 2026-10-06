@@ -2516,6 +2516,8 @@ const scenes = [
     setup: openAlarmCodeDialog,
   },
   { name: 'forced-colors-edit-mode', media: FORCED_COLORS, setup: toggleEditMode },
+  // The palette list holds no scrollbar gutter here, as the page does, and keeps its 9px margins.
+  { name: 'forced-colors-palette', media: FORCED_COLORS, setup: openPaletteEmpty },
   { name: 'forced-colors-light-main', ui: { theme: 'light' }, media: FORCED_COLORS_LIGHT },
   {
     name: 'forced-colors-light-popup-climate',

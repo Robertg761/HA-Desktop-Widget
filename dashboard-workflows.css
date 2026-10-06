@@ -279,10 +279,6 @@
   transition: opacity var(--transition-base);
 }
 
-/* The alert dialog's errors make its body scroll in the default window. Its fields keep their width
-   when they do because every dialog body holds its scrollbar's room and gives it back in its end
-   padding (.modal-body in styles.css), in forced colours too, where the scrollbar is wider. */
-
 .alert-advanced-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
