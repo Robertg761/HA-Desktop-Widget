@@ -16,6 +16,7 @@ const {
   getAppImageCommandLinkRecord,
 } = require('../../src/linux-desktop-entry.cjs');
 const { getRelaunchOptions, supportsAutoUpdater } = require('../../src/platform.cjs');
+const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 
 describe('the command that toggles the widget', () => {
   const bin = path.join(path.sep, 'usr', 'bin');
@@ -537,6 +538,23 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'Bind a key in your window manager to run home-assistant-widget --toggle, which shows or hides the widget.'
     );
     expect(note.querySelector('code').textContent).toBe('home-assistant-widget --toggle');
+  });
+
+  // The window cannot be selected, so the command, a whole path on an AppImage, could only be
+  // typed out by hand, and in Arabic it broke over two lines at the hyphen in its name.
+  it('lets the command be selected, all of it at one click, on a line of its own', () => {
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: '/home/u/.local/bin/ha-desktop-widget --toggle',
+    });
+    loadAppStylesheets(document);
+    const code = note.querySelector('code');
+    expect(resolvedValue(document.body, 'user-select')).toBe('none');
+    expect(resolvedValue(code, 'user-select')).toBe('all');
+    expect(resolvedValue(code, '-webkit-user-select')).toBe('all');
+    expect(resolvedValue(code, 'display')).toBe('inline-block');
+    expect(resolvedValue(code, 'max-width')).toBe('100%');
   });
 
   it('keeps the command when the language changes', () => {

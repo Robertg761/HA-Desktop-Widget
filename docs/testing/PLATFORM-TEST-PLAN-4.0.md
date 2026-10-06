@@ -1107,7 +1107,7 @@ Ref: MP-07, CSSA1-10
 2. Press your `--toggle` key several times.
 3. AppImage only, when a newer version is out: update from Settings > Advanced, let the new version start, and press the key again.
 
-Expected: Where there is no shortcut portal, the Global popup trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, `/home/<you>/.local/bin/ha-desktop-widget --toggle` for the AppImage). The key, bound to exactly that command, raises and lowers the widget, and with the AppImage it still does after the update.
+Expected: Where there is no shortcut portal, the Global popup trigger section says the feature is not available. Its suggestion buttons and switches are disabled, not clickable and inert. The page tells layer-mode users how to bring the widget forward: bind a key to a command it names, which is the command for your package (`ha-desktop-widget --toggle` for Arch, `home-assistant-widget --toggle` for the `.deb`, `/home/<you>/.local/bin/ha-desktop-widget --toggle` for the AppImage). The command sits on one line when it fits, in Arabic too, and one click on it selects all of it, which Ctrl+C or right-click > Copy then copies. The key, bound to exactly that command, raises and lowers the widget, and with the AppImage it still does after the update.
 
 Capture: A screenshot of the Hotkeys page.
 
