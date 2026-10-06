@@ -195,6 +195,14 @@ describe('index.html', () => {
       expect(group.style.display).toBe('none');
     });
 
+    test('the sync interval puts its select under its three-clause help', () => {
+      // Beside the select, the help was squeezed into a column 150px wide: five lines in English,
+      // six in French.
+      const row = byId('profile-sync-interval').closest('.setting-row');
+      expect(row.classList.contains('setting-row-stacked')).toBe(true);
+      expect(row.querySelector('.setting-text .form-help')).not.toBeNull();
+    });
+
     test('Need help? is a link under the Profile sync description, not a third overwrite button', () => {
       const help = byId('profile-sync-help-btn');
       expect(
