@@ -2671,7 +2671,7 @@ const scenes = [
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
   // The heat_cool thermostat in French, whose "Chaud/Froid" is the longest name for the mode. With
-  // "Désactivé" and "Chauffage" beside it, the default pin cut all three short.
+  // "Désactivé" and "Chauffe" beside it, the default pin cut all three short.
   fittedPinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
   pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
