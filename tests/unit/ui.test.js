@@ -7302,6 +7302,24 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         rowWidth = 60;
         render();
         expect(modes()).toEqual(['heat_cool', 'off']);
+
+        // A row the pin no longer shows is reported as it leaves, and is not watched any more.
+        const row = document.querySelector('#desktop-pin-content .desktop-pin-climate-modes');
+        const watched = () => resizeObservers.some((observer) => observer.targets.has(row));
+        expect(watched()).toBe(true);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        const lastFrame = jest
+          .spyOn(window, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
+        try {
+          reportResize(row);
+        } finally {
+          lastFrame.mockRestore();
+        }
+        expect(watched()).toBe(false);
       } finally {
         scrollWidth.mockRestore();
         clientWidth.mockRestore();

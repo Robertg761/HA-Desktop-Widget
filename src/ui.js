@@ -7084,10 +7084,14 @@ const desktopPinModeRowObserver =
   typeof ResizeObserver === 'function'
     ? new ResizeObserver((entries) => {
         // Fitting changes layout, which an observer must not do while it is being delivered. Only
-        // a new width counts: what the fitting changes is the row's buttons, not its width.
+        // a new width counts: what the fitting changes is the row's buttons, not its width. A row
+        // the pin has drawn again is reported once more as it leaves, and is let go: the observer
+        // would keep it otherwise.
         requestAnimationFrame(() => {
           for (const { target } of entries) {
-            if (target.dataset.fitWidth !== String(target.clientWidth)) {
+            if (!target.isConnected) {
+              desktopPinModeRowObserver.unobserve(target);
+            } else if (target.dataset.fitWidth !== String(target.clientWidth)) {
               fitDesktopPinClimateModes(target.closest('.desktop-pin-climate-control'));
             }
           }
