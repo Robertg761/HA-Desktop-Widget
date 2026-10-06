@@ -695,14 +695,15 @@ const SENSOR_SPARKLINES_CLEAR_OF_TEXT = `(() => {
 })()`;
 // Tiles in one row hang their names from the same line: a scene, a switch, a sensor and a timer
 // differ in what sits below the name, not above it. A compact sensor drops its icon, so it is left
-// out, and so are the tiles that lay themselves out.
+// out, and so are the tiles that lay themselves out. A camera with no picture to show is a tile
+// like the others; one showing a picture puts its caption on the picture's foot.
 const TILE_NAMES_ALIGNED = `(() => {
   const rows = new Map();
   for (const tile of document.querySelectorAll('#quick-controls .control-item')) {
     const name = tile.querySelector('.control-name');
     const icon = tile.querySelector('.control-icon');
     if (!name || !icon || !icon.getClientRects().length) continue;
-    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile, [data-chart-type="gauge"]')) continue;
+    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile[data-camera-preview-has-frame="true"], [data-chart-type="gauge"]')) continue;
     const box = tile.getBoundingClientRect();
     const row = Math.round(box.top);
     rows.set(row, [...(rows.get(row) || []), name.getBoundingClientRect().top - box.top]);
@@ -1328,6 +1329,11 @@ const waitForCameraTiles = (ctx) =>
       !!document.querySelector('${tile('camera.porch')}[data-camera-preview-state="unavailable"]')`,
     'the camera tiles settled on their messages'
   );
+
+async function expectCameraTilesInLine(ctx) {
+  await waitForCameraTiles(ctx);
+  await ctx.expect(TILE_NAMES_ALIGNED, "the cameras' names start on the lamp's line");
+}
 
 // A film past an hour under a title longer than the media tile has room for, on a player of its own:
 // the fixture's theater plays a short one.
@@ -2242,19 +2248,20 @@ const scenes = [
   },
   // Camera tiles with a preview and no picture to show: the fixture's snapshot fails, and the porch
   // camera is offline. Their icon sits above the name like any other tile's, in both themes and at
-  // the compact height.
+  // the compact height, and their names start on the lamp's line: held at the foot of the tile,
+  // they sat about 15px lower.
   {
     name: 'camera-tile',
     config: cameraTilesPage,
     extraStates: offlineCamera,
-    setup: waitForCameraTiles,
+    setup: expectCameraTilesInLine,
   },
   {
     name: 'camera-tile-light-compact',
     ui: { theme: 'light', density: 'compact' },
     config: cameraTilesPage,
     extraStates: offlineCamera,
-    setup: waitForCameraTiles,
+    setup: expectCameraTilesInLine,
   },
 
   // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an

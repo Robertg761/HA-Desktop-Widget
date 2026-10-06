@@ -129,7 +129,11 @@ function specificity(selector) {
   return result;
 }
 
-/** jsdom cannot parse :is() inside :not(), so `:not(:is(a, b))` becomes the equivalent `:not(a, b)`. */
+/**
+ * jsdom cannot parse :is() inside :not(), so `:not(:is(a, b))` becomes the equivalent `:not(a, b)`,
+ * and an :is() of one compound that follows a selector in there is written into it:
+ * `:not(.a:is([b]))` (a `:where()` the stylesheet uses to keep a rule's weight) becomes `:not(.a[b])`.
+ */
 function unwrapIsInsideNot(selector) {
   let result = selector;
   let index = result.indexOf(':not(:is(');
@@ -141,6 +145,14 @@ function unwrapIsInsideNot(selector) {
       result.slice(isStart + ':is('.length, close) +
       result.slice(close + 1);
     index = result.indexOf(':not(:is(');
+  }
+  index = result.indexOf(':not(');
+  while (index !== -1) {
+    const open = index + ':not'.length;
+    const close = findClosing(result, open);
+    const argument = result.slice(open + 1, close).replace(/:is\(([^(),\s]+)\)/g, '$1');
+    result = result.slice(0, open + 1) + argument + result.slice(close);
+    index = result.indexOf(':not(', open);
   }
   return result;
 }
