@@ -11924,6 +11924,11 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   cursor: text;
 }
 
+/* Its focus ring touched the help line under it with the help line's own 3px margin alone. */
+#layer-toggle-copy {
+  margin-block: 6px 4px;
+}
+
 /* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
    plain text. */
 body.theme-light .form-help code {

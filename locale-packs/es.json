@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2105,6 +2105,8 @@
     "Retry conflict check": "Reintentar comprobación de conflictos",
     "Copy & switch": "Copiar y cambiar",
     "Keep current": "Mantener la actual",
-    "Use that file": "Usar ese archivo"
+    "Use that file": "Usar ese archivo",
+    "Command copied": "Comando copiado",
+    "Select and copy the command manually.": "Selecciona y copia el comando manualmente."
   }
 }

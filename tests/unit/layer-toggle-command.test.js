@@ -526,15 +526,27 @@ describe('an APPIMAGE inherited from another AppImage', () => {
 
 describe('the note under the popup hotkey in a desktop layer', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/settings.js'), 'utf8');
-  const start = source.indexOf('function renderLayerModeGuidance()');
-  const fn = source.slice(start, source.indexOf('\n}\n', start) + 3);
+  const functionSource = (signature) => {
+    const start = source.indexOf(signature);
+    return source.slice(start, source.indexOf('\n}\n', start) + 3);
+  };
+  const fn = [
+    functionSource('function renderLayerModeGuidance()'),
+    functionSource('async function copyLayerToggleCommand('),
+  ].join('\n');
   const i18n = require('../../src/i18n.js');
+  let copyTextToClipboard;
+  let showToast;
 
   function render(info) {
     const context = vm.createContext({
       document,
+      window,
       JSON,
       translateDocument: i18n.translateDocument,
+      t: i18n.t,
+      copyTextToClipboard,
+      showToast,
       desktopIntegrationInfo: info,
     });
     vm.runInContext(fn, context);
@@ -548,6 +560,9 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'utf8'
     );
     i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    copyTextToClipboard = jest.fn(async () => true);
+    showToast = jest.fn();
+    window.getSelection().removeAllRanges();
   });
 
   it('names the command for this installation, as code to copy', () => {
@@ -594,6 +609,51 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     expect(resolvedValue(code, 'margin-inline')).toBe('1px');
   });
 
+  // The chip takes no focus, so from the keyboard the command could not be selected, and Sway, niri
+  // and river users drive their desktop from it. A button under the note copies the command.
+  describe('the Copy button', () => {
+    const command = '/home/u/.local/bin/ha-desktop-widget --toggle';
+    const layer = { layerMode: true, hyprland: false, toggleCommand: command };
+    const button = () => document.getElementById('layer-toggle-copy');
+
+    it('copies exactly the command the note names, and says so', async () => {
+      render(layer);
+      expect(button().hidden).toBe(false);
+      expect(button().textContent.trim()).toBe('Copy');
+      // A screen reader names what it copies from the note it sits under.
+      expect(button().getAttribute('aria-describedby')).toBe('layer-toggle-note');
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(copyTextToClipboard).toHaveBeenCalledTimes(1);
+      expect(copyTextToClipboard).toHaveBeenCalledWith(command);
+      expect(showToast).toHaveBeenCalledWith('Command copied', 'success');
+    });
+
+    it('copies the command main gave last, after it changed', async () => {
+      render(layer);
+      render({ ...layer, toggleCommand: 'ha-desktop-widget --toggle' });
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(copyTextToClipboard).toHaveBeenCalledWith('ha-desktop-widget --toggle');
+    });
+
+    it('selects the command for Ctrl+C when the clipboard cannot be written', async () => {
+      copyTextToClipboard = jest.fn(async () => false);
+      const note = render(layer);
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(window.getSelection().toString()).toBe(command);
+      expect(window.getSelection().anchorNode).toBe(note.querySelector('code'));
+      expect(showToast).toHaveBeenCalledWith('Select and copy the command manually.', 'info');
+    });
+  });
+
   it('keeps the command when the language changes', () => {
     render({ layerMode: true, hyprland: false, toggleCommand: "'/a b/HA.AppImage' --toggle" });
     i18n.setLocaleBootstrap({
@@ -623,7 +683,8 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'before main has said which command',
       { layerMode: true, hyprland: false, toggleCommand: null },
     ],
-  ])('is hidden %s', (_, info) => {
+  ])('is hidden %s, with its Copy button', (_, info) => {
     expect(render(info).hidden).toBe(true);
+    expect(document.getElementById('layer-toggle-copy').hidden).toBe(true);
   });
 });

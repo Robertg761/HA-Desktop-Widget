@@ -8004,12 +8004,31 @@ function renderLayerModeGuidance() {
   if (layerNote) layerNote.hidden = !layerMode;
   const toggleNote = document.getElementById('layer-toggle-note');
   if (!toggleNote) return;
+  const copyButton = document.getElementById('layer-toggle-copy');
   const command = desktopIntegrationInfo?.toggleCommand;
   toggleNote.hidden = !(layerMode && !onHyprland && typeof command === 'string' && command);
+  if (copyButton) {
+    copyButton.hidden = toggleNote.hidden;
+    copyButton.onclick = () => copyLayerToggleCommand(toggleNote, command);
+  }
   if (toggleNote.hidden) return;
   // Kept on the element, so a later language change words the note around the same command.
   toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
   translateDocument(toggleNote);
+}
+
+// A click selects the command, but it takes no focus, so from the keyboard it could not be copied
+// at all, and Sway, niri and river, where this note shows, are driven from the keyboard. The Copy
+// button under the note copies it whole.
+async function copyLayerToggleCommand(toggleNote, command) {
+  if (await copyTextToClipboard(command)) {
+    showToast(t('Command copied'), 'success');
+    return;
+  }
+  // Selected, the command is one Ctrl+C away.
+  const code = toggleNote.querySelector('code');
+  if (code) window.getSelection()?.selectAllChildren(code);
+  showToast(t('Select and copy the command manually.'), 'info');
 }
 
 // "Frosted glass" blurs the window on Windows and macOS. On Linux Chromium cannot see what is behind

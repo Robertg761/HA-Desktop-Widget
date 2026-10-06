@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -2105,6 +2105,8 @@
     "Retry conflict check": "重试冲突检查",
     "Copy & switch": "复制并切换",
     "Keep current": "保留当前",
-    "Use that file": "使用该文件"
+    "Use that file": "使用该文件",
+    "Command copied": "命令已复制",
+    "Select and copy the command manually.": "请手动选择并复制命令。"
   }
 }

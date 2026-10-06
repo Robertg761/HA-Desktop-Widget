@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2105,6 +2105,8 @@
     "Retry conflict check": "إعادة فحص التعارض",
     "Copy & switch": "نسخ وتبديل",
     "Keep current": "الإبقاء على الحالي",
-    "Use that file": "استخدام ذلك الملف"
+    "Use that file": "استخدام ذلك الملف",
+    "Command copied": "تم نسخ الأمر",
+    "Select and copy the command manually.": "حدّد الأمر وانسخه يدويًا."
   }
 }

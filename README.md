@@ -37,7 +37,7 @@ On Sway, niri and river the widget sits on the desktop under your windows, as it
 - niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
 - river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
 
-The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows: one click on the command there selects it to copy. With the AppImage:
+The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows. The Copy button under it copies the command. With the AppImage:
 
 - Sway: `bindsym $mod+Shift+h exec ~/.local/bin/ha-desktop-widget --toggle`
 - niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`

@@ -1644,5 +1644,7 @@
   "Retry conflict check": "Konfliktprüfung wiederholen",
   "Copy & switch": "Kopieren & wechseln",
   "Keep current": "Aktuellen behalten",
-  "Use that file": "Diese Datei verwenden"
+  "Use that file": "Diese Datei verwenden",
+  "Command copied": "Befehl kopiert",
+  "Select and copy the command manually.": "Markiere den Befehl und kopiere ihn manuell."
 }
