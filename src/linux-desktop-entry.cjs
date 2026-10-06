@@ -113,13 +113,30 @@ function ensureAppImageDesktopEntry({
   return true;
 }
 
+// Where the widget notes the target of the link it made. A symlink holds nothing but its target,
+// so this note is the only way to tell the widget's own link from a user's.
+function getAppImageCommandLinkRecord({ env = process.env, home = os.homedir() } = {}) {
+  const stateHome = env.XDG_STATE_HOME || path.posix.join(home, '.local', 'state');
+  return path.posix.join(stateHome, 'ha-desktop-widget', 'command-link.json');
+}
+
+function readLinkedTarget(fsModule, record) {
+  try {
+    const { target } = JSON.parse(fsModule.readFileSync(record, 'utf8'));
+    return typeof target === 'string' ? target : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Keep ~/.local/bin/ha-desktop-widget pointed at the running AppImage: the command a window-manager
- * key is bound to (getToggleCommand), which an update's new file name would otherwise break. Only
- * a link this app could have made is moved, one to an AppImage or one whose file is gone (an update
- * deleted it); a file of that name, or a link the user pointed at something else, is theirs. Nor is
- * one made where the name already leads somewhere else on PATH (the Arch package installed as
- * well), which the link would hide.
+ * key is bound to (getToggleCommand), which an update's new file name would otherwise break. The
+ * widget moves only the link it made, which it knows by the target it noted when it made it
+ * (getAppImageCommandLinkRecord), whether that file still exists or an update deleted it. Anything
+ * else of that name is the user's: a file, or a link to anything at all, another AppImage
+ * included. Nor is one made where the name already leads somewhere else on PATH (the Arch package
+ * installed as well), which the link would hide.
  * @returns {boolean} Whether the link was made or moved.
  */
 function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsModule = fs } = {}) {
@@ -127,6 +144,7 @@ function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsM
   if (!target || !path.posix.isAbsolute(target)) return false;
   const link = getAppImageCommandLink(home);
   const dir = path.posix.dirname(link);
+  const record = getAppImageCommandLinkRecord({ env, home });
   let current = null;
   try {
     if (!fsModule.lstatSync(link).isSymbolicLink()) return false;
@@ -135,12 +153,15 @@ function ensureAppImageCommandLink({ env = process.env, home = os.homedir(), fsM
     if (error?.code !== 'ENOENT') throw error;
   }
   if (current === target) return false;
-  if (current !== null && fsModule.existsSync(link) && !/\.appimage$/i.test(current)) return false;
+  if (current !== null && current !== readLinkedTarget(fsModule, record)) return false;
   const shadowed = String(env.PATH || '')
     .split(path.posix.delimiter)
     .filter((entry) => path.posix.isAbsolute(entry) && path.posix.resolve(entry) !== dir)
     .some((entry) => fsModule.existsSync(path.posix.join(entry, path.posix.basename(link))));
   if (shadowed) return false;
+  // The note goes first, so a link the widget made is never without one.
+  fsModule.mkdirSync(path.posix.dirname(record), { recursive: true, mode: 0o700 });
+  fsModule.writeFileSync(record, `${JSON.stringify({ target })}\n`, { mode: 0o600 });
   fsModule.mkdirSync(dir, { recursive: true });
   if (current !== null) fsModule.unlinkSync(link);
   fsModule.symlinkSync(target, link);
@@ -218,6 +239,7 @@ function repairStaleAppImageLaunchers({
 module.exports = {
   appArmorRestrictsUserNamespaces,
   ensureAppImageCommandLink,
+  getAppImageCommandLinkRecord,
   ensureAppImageDesktopEntry,
   repairStaleAppImageLaunchers,
 };

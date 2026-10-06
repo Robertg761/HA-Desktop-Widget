@@ -11,7 +11,10 @@ const {
   getAppImageCommandLink,
   getToggleCommand,
 } = require('../../src/linux-desktop.cjs');
-const { ensureAppImageCommandLink } = require('../../src/linux-desktop-entry.cjs');
+const {
+  ensureAppImageCommandLink,
+  getAppImageCommandLinkRecord,
+} = require('../../src/linux-desktop-entry.cjs');
 const { getRelaunchOptions, supportsAutoUpdater } = require('../../src/platform.cjs');
 
 describe('the command that toggles the widget', () => {
@@ -131,6 +134,7 @@ describe("an AppImage's command, which outlasts its updates", () => {
   const link = '/home/u/.local/bin/ha-desktop-widget';
   const v400 = '/home/u/Applications/HA Desktop Widget-4.0.0-linux-x64.AppImage';
   const v401 = '/home/u/Applications/HA Desktop Widget-4.0.1-linux-x64.AppImage';
+  const record = '/home/u/.local/state/ha-desktop-widget/command-link.json';
 
   // A file system of files and symlinks, as far as the link and the command look at it.
   function fakeFs(entries = {}) {
@@ -158,6 +162,13 @@ describe("an AppImage's command, which outlasts its updates", () => {
         return at;
       },
       mkdirSync: jest.fn(),
+      readFileSync(file) {
+        if (typeof nodes.get(file)?.content !== 'string') throw missing(file);
+        return nodes.get(file).content;
+      },
+      writeFileSync(file, content) {
+        nodes.set(file, { file: true, content: String(content) });
+      },
       unlinkSync(file) {
         if (!nodes.delete(file)) throw missing(file);
       },
@@ -181,6 +192,16 @@ describe("an AppImage's command, which outlasts its updates", () => {
 
   it('lives in ~/.local/bin under the Arch package’s name', () => {
     expect(getAppImageCommandLink(home)).toBe(link);
+  });
+
+  it('is noted where the widget keeps its state, which tells it from a link of the user’s', () => {
+    expect(getAppImageCommandLinkRecord({ env: {}, home })).toBe(record);
+    expect(getAppImageCommandLinkRecord({ env: { XDG_STATE_HOME: '/data/state' }, home })).toBe(
+      '/data/state/ha-desktop-widget/command-link.json'
+    );
+    const fsModule = fakeFs({ [v400]: { file: true } });
+    ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule });
+    expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v400 });
   });
 
   it('is the same link before and after an update renames the AppImage', () => {
@@ -224,6 +245,23 @@ describe("an AppImage's command, which outlasts its updates", () => {
       },
     ],
     ['the Arch package’s command, which the link would hide', { '/usr/bin/ha-desktop-widget': {} }],
+    // An AppImage name does not make a link the widget's: only the one it noted is.
+    [
+      'a link the user pointed at another AppImage',
+      {
+        [link]: { link: '/home/u/Applications/Nightly.AppImage' },
+        '/home/u/Applications/Nightly.AppImage': { file: true },
+      },
+    ],
+    ['a link of the user’s whose file is gone', { [link]: { link: '/home/u/Old.AppImage' } }],
+    [
+      'a link the user pointed elsewhere after the widget made its own',
+      {
+        [link]: { link: '/home/u/Applications/Nightly.AppImage' },
+        '/home/u/Applications/Nightly.AppImage': { file: true },
+        [record]: { file: true, content: JSON.stringify({ target: v401 }) },
+      },
+    ],
   ])('leaves %s alone, and names the AppImage itself', (_, entries) => {
     const fsModule = fakeFs({ [v400]: { file: true }, ...entries });
     const before = new Map(fsModule.nodes);
