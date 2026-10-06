@@ -68,7 +68,6 @@
   "Auto (System Default)": "Auto (Systemstandard)",
   "English": "Englisch",
   "Download a language pack below to enable it in the selector.": "Lade unten ein Sprachpaket herunter, um es im Auswahlmenü zu aktivieren.",
-  "Download, update, or remove offline language packs. English is always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch ist immer offline verfügbar.",
   "System language detected: {{language}}": "Erkannte Systemsprache: {{language}}",
   "Using English until the selected language pack is installed.": "Englisch wird verwendet, bis das gewählte Sprachpaket installiert ist.",
   "Installed": "Installiert",
@@ -1644,5 +1643,6 @@
   "Retry conflict check": "Konfliktprüfung wiederholen",
   "Copy & switch": "Kopieren & wechseln",
   "Keep current": "Aktuellen behalten",
-  "Use that file": "Diese Datei verwenden"
+  "Use that file": "Diese Datei verwenden",
+  "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar."
 }

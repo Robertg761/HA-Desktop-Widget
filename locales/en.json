@@ -68,7 +68,6 @@
   "Auto (System Default)": "Auto (System Default)",
   "English": "English",
   "Download a language pack below to enable it in the selector.": "Download a language pack below to enable it in the selector.",
-  "Download, update, or remove offline language packs. English is always available offline.": "Download, update, or remove offline language packs. English is always available offline.",
   "System language detected: {{language}}": "System language detected: {{language}}",
   "Using English until the selected language pack is installed.": "Using English until the selected language pack is installed.",
   "Installed": "Installed",
@@ -1644,5 +1643,6 @@
   "Retry conflict check": "Retry conflict check",
   "Copy & switch": "Copy & switch",
   "Keep current": "Keep current",
-  "Use that file": "Use that file"
+  "Use that file": "Use that file",
+  "Download, update, or remove offline language packs. English and German are always available offline.": "Download, update, or remove offline language packs. English and German are always available offline."
 }

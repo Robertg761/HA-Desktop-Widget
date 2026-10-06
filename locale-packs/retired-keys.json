@@ -1818,5 +1818,9 @@
   "Removed from \"{{page}}\"": {
     "retiredIn": "4.0.0",
     "reason": "Written with curly quotation marks, as the other English strings are"
+  },
+  "Download, update, or remove offline language packs. English is always available offline.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to name German, which is built in as well"
   }
 }

@@ -120,6 +120,16 @@ describe('index.html', () => {
       expect(builtInLanguages().length).toBeGreaterThan(1);
       builtInLanguages().forEach((option) => expect(option.lang).toBe(option.value));
     });
+
+    test('names every built-in language as always available offline', () => {
+      // "English is always available offline" sat right above German's "Built in" row.
+      const help = byId('language-packs-list')
+        .closest('.settings-details-body')
+        .querySelector('.help-text');
+      const text = english[help.getAttribute('data-i18n')];
+      const names = new Intl.DisplayNames(['en'], { type: 'language' });
+      builtInLanguages().forEach((option) => expect(text).toContain(names.of(option.value)));
+    });
   });
 
   describe('landmarks and headings', () => {
