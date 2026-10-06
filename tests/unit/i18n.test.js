@@ -227,6 +227,79 @@ describe('renderer i18n helpers', () => {
         constructor.mockRestore();
       }
     });
+
+    // Chromium tells Date and new formatters when the computer's time zone changes (a laptop that
+    // wakes up in another country). Here both follow a zone the test sets, as they would follow the
+    // system's, so the test does not depend on the zone of the machine it runs on.
+    it('writes times in the zone the computer is in now, not the one a kept formatter was built in', () => {
+      const SystemDateTimeFormat = Intl.DateTimeFormat;
+      let systemZone = 'Europe/London';
+      // What Date#getTimezoneOffset says in a zone: minutes from local time to UTC.
+      const offsetIn = (timeZone, date) => {
+        const parts = Object.fromEntries(
+          new SystemDateTimeFormat('en-US', {
+            timeZone,
+            hourCycle: 'h23',
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+          })
+            .formatToParts(date)
+            .map(({ type, value }) => [type, Number(value)])
+        );
+        const wallClock = Date.UTC(
+          parts.year,
+          parts.month - 1,
+          parts.day,
+          parts.hour,
+          parts.minute
+        );
+        return Math.round((Math.floor(date.getTime() / 60000) * 60000 - wallClock) / 60000);
+      };
+      const constructor = jest
+        .spyOn(Intl, 'DateTimeFormat')
+        .mockImplementation(
+          (locale, options) =>
+            new SystemDateTimeFormat(locale, { timeZone: systemZone, ...options })
+        );
+      const offset = jest
+        .spyOn(Date.prototype, 'getTimezoneOffset')
+        .mockImplementation(function () {
+          return offsetIn(systemZone, this);
+        });
+      try {
+        i18n.setLocaleBootstrap({
+          languageSetting: 'en-GB',
+          activeLocale: 'en',
+          requestedLocale: 'en-GB',
+          messages: {},
+        });
+        expect(i18n.getFormatLocale()).toBe('en-GB');
+        const noon = new Date(Date.UTC(2026, 6, 1, 12, 0));
+        const options = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+        expect(i18n.formatTime(noon, options)).toBe('13:00');
+        expect(i18n.formatTime(noon, options)).toBe('13:00');
+        expect(constructor).toHaveBeenCalledTimes(1);
+
+        systemZone = 'Asia/Tokyo';
+        expect(i18n.formatTime(noon, options)).toBe('21:00');
+        expect(i18n.formatDateTime(noon, { dateStyle: 'short', timeStyle: 'short' })).toBe(
+          '01/07/2026, 21:00'
+        );
+        // Phoenix and Denver are both seven hours behind UTC in winter, but only Denver moves its
+        // clocks in summer.
+        systemZone = 'America/Denver';
+        expect(i18n.formatTime(noon, options)).toBe('06:00');
+        systemZone = 'America/Phoenix';
+        expect(i18n.formatTime(noon, options)).toBe('05:00');
+      } finally {
+        constructor.mockRestore();
+        offset.mockRestore();
+        i18n.setLocaleBootstrap({ languageSetting: 'auto', requestedLocale: 'en' });
+      }
+    });
   });
 
   it('formats numbers with the active language', () => {
