@@ -1840,6 +1840,19 @@ describe('stylesheet cascade regressions', () => {
     });
   });
 
+  // layoutToasts takes the stack back to where it rests and measures it there at once. Reduced motion
+  // gives every transition 0.01ms instead of none, which still starts one, so the stack was measured
+  // where it had been moved to and left over the connection panel it was lifted clear of.
+  describe('toast stack', () => {
+    it('is placed, not moved, so it can be measured where it rests', () => {
+      render('', '<div id="toast-container" class="toast-container"></div>');
+      const stack = document.getElementById('toast-container');
+
+      expect(resolvedValue(stack, 'transition', { reducedMotion: true })).toBe('none');
+      expect(resolvedValue(stack, 'transition')).toBe('none');
+    });
+  });
+
   describe('right-to-left languages', () => {
     beforeEach(() => {
       document.documentElement.dir = 'rtl';

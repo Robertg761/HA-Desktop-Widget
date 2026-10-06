@@ -758,15 +758,31 @@ const openUnavailable = (open) => async (ctx) => {
     'no empty block under the note'
   );
 };
-// Every toast lies above or below the connection panel, so none of its words or buttons is covered.
+// Every toast on screen lies above or below the connection panel, and under the window's header,
+// so none of the panel's words or buttons is covered, and neither are the window's own. The newest
+// toast is one of them: a stack with no room beside the panel holds back its older ones instead.
 const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
   const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
+  const header = document.querySelector('.widget-header').getBoundingClientRect();
   const toasts = [...document.querySelectorAll('#toast-container .toast')];
-  return !!panel && toasts.length > 0 && toasts.every((toast) => {
+  const shown = toasts.filter((toast) => toast.getClientRects().length > 0);
+  return !!panel && shown.includes(toasts.at(-1)) && shown.every((toast) => {
     const box = toast.getBoundingClientRect();
-    return box.top >= panel.bottom || box.bottom <= panel.top;
+    return (box.top >= panel.bottom || box.bottom <= panel.top) && box.top >= header.bottom;
   });
 })()`;
+// A full stack of three while Home Assistant is away, each a command that could not reach it: one
+// from the palette, the media card's play button and a switch's tile. Three errors, because errors
+// stay until they are dismissed.
+async function raiseThreeOfflineErrors(ctx) {
+  await raiseRefusedCommand(ctx);
+  await ctx.click('#media-tile-play');
+  await ctx.click('#quick-controls .control-item[data-entity-id="switch.compound_name"]');
+  await ctx.waitForExpression(
+    `document.querySelectorAll('#toast-container .toast.error').length === 3`,
+    'three error toasts'
+  );
+}
 
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
@@ -3298,6 +3314,31 @@ const scenes = [
       await showOffline(ctx);
       await raiseRefusedCommand(ctx);
       await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
+    },
+  },
+  // In a narrow window the panel's buttons are where the stack rests, and docked above them it
+  // covered the panel's message. It goes above the whole panel, over the weather and media cards.
+  {
+    name: 'layout-offline-toast-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseRefusedCommand(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
+    },
+  },
+  // Three toasts fit neither under the panel nor between it and the header.
+  {
+    name: 'layout-offline-toasts',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseThreeOfflineErrors(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toasts clear of the panel');
     },
   },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
