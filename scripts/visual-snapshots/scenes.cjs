@@ -1347,6 +1347,17 @@ const SENSOR_GRAPHS_UNDECORATED = `(() => {
   )];
   return graphs.length > 0 && graphs.every((tile) => getComputedStyle(tile, '::after').content === 'none');
 })()`;
+// Forced colours take the status colours away, so a tile that needs attention keeps a doubled edge
+// as well as its badge: with a lit tile's single line, an armed alarm and one that went off
+// differed by the badge alone.
+const ATTENTION_EDGE_DOUBLED = `(() => {
+  const tiles = [...document.querySelectorAll('#quick-controls .control-item')];
+  const attention = tiles.filter((tile) => tile.dataset.attention);
+  const lit = tiles.filter((tile) => tile.dataset.active === 'true' && !tile.dataset.attention);
+  return attention.length > 0 && lit.length > 0 &&
+    attention.every((tile) => getComputedStyle(tile).outlineStyle === 'double') &&
+    lit.every((tile) => getComputedStyle(tile).outlineStyle === 'solid');
+})()`;
 
 async function expectCameraTilesInLine(ctx) {
   await waitForCameraTiles(ctx);
@@ -2325,6 +2336,14 @@ const scenes = [
     config: pages('security', 'default'),
   },
   { name: 'tiles-security-amber', ui: { accent: 'amber' }, config: pages('security', 'default') },
+  // In forced colours an armed alarm and one that went off had the same edge.
+  {
+    name: 'forced-colors-tiles-security',
+    media: FORCED_COLORS,
+    config: pages('security', 'default'),
+    setup: (ctx) =>
+      ctx.expect(ATTENTION_EDGE_DOUBLED, 'a tile that needs attention has a doubled edge'),
+  },
   // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
   // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.
   {

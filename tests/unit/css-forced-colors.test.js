@@ -117,6 +117,25 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(resolvedValue(timer, 'outline', FORCED)).toBe('2px dashed Highlight');
     });
 
+    // An armed alarm is lit and one that went off needs attention. Outlined with the same single
+    // line, the two differed by the small badge alone.
+    it.each(['danger', 'warning'])(
+      'doubles the edge of a tile that needs attention (%s) so it differs from a lit one',
+      (level) => {
+        render(
+          '',
+          `<div id="quick-controls"><div class="control-item" data-active="true"></div>
+            <div class="control-item" data-active="true" data-attention="${level}"></div></div>`
+        );
+        const [lit, attention] = document.querySelectorAll('.control-item');
+        const edge = resolvedValue(attention, 'outline', FORCED);
+        expect(edge).toMatch(/^\d+px double Highlight$/);
+        // The outline is drawn inside the tile, as the lit tile's is.
+        expect(resolvedValue(attention, 'outline-offset', FORCED)).toBe(`-${parseInt(edge, 10)}px`);
+        expect(resolvedValue(lit, 'outline', FORCED)).toBe('2px solid Highlight');
+      }
+    );
+
     it('lets each tab ring itself instead of ringing the sliding pill as well', () => {
       render(
         '',

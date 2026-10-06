@@ -17356,9 +17356,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 
   /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
      is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. A tile
-     that needs attention is outlined the same way and keeps its badge, drawn in the text colour. */
+     that needs attention keeps its badge, drawn in the text colour, and its edge is doubled (below):
+     with the lit tile's single line, an armed alarm and one that went off differed by the badge
+     alone. */
   #quick-controls .control-item[data-active='true'],
-  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost),
   .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
@@ -17382,6 +17383,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .timer-entity[data-state='paused'] {
     outline: 2px dashed Highlight;
     outline-offset: -2px;
+  }
+
+  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
+    outline: 5px double Highlight;
+    outline-offset: -5px;
   }
 
   #quick-controls .control-item[data-attention] > .control-icon::after {
