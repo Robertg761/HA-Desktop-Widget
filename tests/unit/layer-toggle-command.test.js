@@ -578,7 +578,20 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     expect(resolvedValue(code, 'user-select')).toBe('all');
     expect(resolvedValue(code, '-webkit-user-select')).toBe('all');
     expect(resolvedValue(code, 'display')).toBe('inline-block');
-    expect(resolvedValue(code, 'max-width')).toBe('100%');
+  });
+
+  // A command as long as the line took all of it, and the comma after it started the next line on
+  // its own. The chip leaves its margins and 1em beside it, room for any one mark, even '，'.
+  it('leaves room on the line for the mark after a command that fills it', () => {
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: "'/home/u/Applications/HA Desktop Widget-4.0.0-linux-x64.AppImage' --toggle",
+    });
+    loadAppStylesheets(document);
+    const code = note.querySelector('code');
+    expect(resolvedValue(code, 'max-width')).toBe('calc(100% - 1em - 2px)');
+    expect(resolvedValue(code, 'margin-inline')).toBe('1px');
   });
 
   it('keeps the command when the language changes', () => {

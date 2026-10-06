@@ -11910,10 +11910,12 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
    into a compositor's config. The window cannot be selected, so the command is the exception, and
    a click selects all of it. It takes a line of its own rather than break at the hyphen in
    'ha-desktop-widget', breaks anywhere only when it is longer than the line, and reads left to
-   right inside an Arabic sentence. */
+   right inside an Arabic sentence. A command that fills the line stops short of its end by the
+   chip's margins and 1em, room for the mark after it (up to a Chinese full-width comma), which
+   otherwise started the next line. */
 #layer-toggle-note code {
   display: inline-block;
-  max-width: 100%;
+  max-width: calc(100% - 1em - 2px);
   overflow-wrap: anywhere;
   direction: ltr;
   unicode-bidi: isolate;
