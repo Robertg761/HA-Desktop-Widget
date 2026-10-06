@@ -473,6 +473,12 @@ const PIN_BUTTONS_FIT = `(() => {
   );
 })()`;
 
+async function expectPinButtonsFit(pin) {
+  if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
+    throw new Error('Layout check failed: a pin button is cut off or its label shortened');
+  }
+}
+
 // A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
 // their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
 const resizedPinScene = (family, entityId, size, extra = {}) =>
@@ -481,9 +487,18 @@ const resizedPinScene = (family, entityId, size, extra = {}) =>
     setup: async (ctx) => {
       const pin = await ctx.openPin(entityId);
       await resizePin(ctx, entityId, size);
-      if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
-        throw new Error('Layout check failed: a pin button is cut off or its label shortened');
-      }
+      await expectPinButtonsFit(pin);
+      return { capture: pin };
+    },
+  });
+
+// A pin at its default size whose buttons must all fit, for a language with long names.
+const fittedPinScene = (name, entityId, extra = {}) =>
+  pinScene(name, entityId, {
+    ...extra,
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      await expectPinButtonsFit(pin);
       return { capture: pin };
     },
   });
@@ -2654,8 +2669,9 @@ const scenes = [
   pinScene('pin-de-cover', 'cover.garage_door', { ui: { language: 'de' } }),
   pinScene('pin-de-weather', 'weather.home', { ui: { language: 'de' } }),
   pinScene('pin-fr-climate', 'climate.bedroom', { ui: { language: 'fr' } }),
-  // The heat_cool thermostat in French, whose "Chaud/Froid" is the longest name for the mode.
-  pinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
+  // The heat_cool thermostat in French, whose "Chaud/Froid" is the longest name for the mode. With
+  // "Désactivé" and "Chauffage" beside it, the default pin cut all three short.
+  fittedPinScene('pin-fr-climate-heat-cool', 'climate.heat_pump', { ui: { language: 'fr' } }),
   pinScene('pin-fr-light', 'light.upstairs_hallway_ceiling', { ui: { language: 'fr' } }),
   pinScene('pin-es-fan', 'fan.office', { ui: { language: 'es' } }),
   pinScene('pin-ar-light', 'light.desk_lamp', { ui: { language: 'ar' } }),

@@ -2146,6 +2146,11 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   min-width: 0;
 }
 
+/* A climate mode the default pin's row has no room for (see fitDesktopPinClimateModes). */
+.desktop-pin-panel-button[hidden] {
+  display: none;
+}
+
 .desktop-pin-panel-button-label {
   overflow: hidden;
   text-overflow: ellipsis;
