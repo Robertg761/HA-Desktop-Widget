@@ -78,17 +78,38 @@ describe('the visual snapshot workflow', () => {
       // Also when a shard failed or ran out of time, so its captures still arrive.
       expect(merge.if).toBe('always()');
       expect([...merge.strategy.matrix.artifact].sort()).toEqual(Object.values(labels).sort());
-      const [step] = merge.steps;
-      expect(step.uses).toMatch(/^actions\/upload-artifact\/merge@/);
-      // Kept, so that re-running one failed shard can merge again with the others.
-      expect(step.with['delete-merged']).toBeUndefined();
+      const [download, merged] = merge.steps;
+      expect(download.uses).toMatch(/^actions\/download-artifact@/);
+      // Into one folder, which is what is uploaded.
+      expect(download.with['merge-multiple']).toBe(true);
+      expect(merged.uses).toMatch(/^actions\/upload-artifact@/);
+      expect(merged.with.path.replace(/\/$/, '')).toBe(download.with.path.replace(/\/$/, ''));
       for (const artifact of merge.strategy.matrix.artifact) {
-        expect(fill(step.with.name, { artifact })).toBe(`visual-snapshots-${artifact}`);
-        const pattern = new Minimatch(fill(step.with.pattern, { artifact }));
+        expect(fill(merged.with.name, { artifact })).toBe(`visual-snapshots-${artifact}`);
+        const pattern = new Minimatch(fill(download.with.pattern, { artifact }));
         const own = matrix.shard.map((shard) => fill(upload.with.name, { artifact, shard }));
         // visual-snapshots-Windows-shard-* must not take the Windows 11 shards as well.
         expect(shardArtifacts.filter((name) => pattern.match(name))).toEqual(own);
       }
+    });
+
+    // A re-run keeps the run's artifacts, and the job run again uploads under the name its first
+    // attempt used: the shard that failed, then the merge that follows it. Without overwrite each
+    // upload failed on the name it found, and the retry the docs describe never produced captures.
+    it('replaces the first attempt’s artifacts when a shard is re-run', () => {
+      const uploads = Object.values(workflow.jobs).flatMap((job) =>
+        job.steps.filter((step) => /^actions\/upload-artifact[@/]/.test(step.uses || ''))
+      );
+      expect(uploads).toHaveLength(2);
+      for (const step of uploads) {
+        expect({ name: step.name, overwrite: step.with.overwrite }).toEqual({
+          name: step.name,
+          overwrite: true,
+        });
+      }
+      // upload-artifact/merge cannot overwrite, and its delete-merged would drop the half a
+      // re-run of the other one merges with.
+      expect(uploads.some((step) => /\/merge@/.test(step.uses))).toBe(false);
     });
   });
 });
