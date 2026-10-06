@@ -35,10 +35,9 @@ describe('the visual snapshot workflow', () => {
       path.resolve(__dirname, '../../scripts/visual-snapshots/windows-desktop.ps1'),
       'utf8'
     );
-    const clear = steps[order('Clear the desktop (Windows)')];
-    const check = steps[order('Check the desktop after the snapshots (Windows)')];
-
     it('runs the desktop script before the Windows snapshots, and checks again after them', () => {
+      const clear = steps[order('Clear the desktop (Windows)')];
+      const check = steps[order('Check the desktop after the snapshots (Windows)')];
       expect(clear.if).toBe("runner.os == 'Windows'");
       expect(clear.shell).toBe('pwsh');
       expect(clear.run.trim()).toBe('./scripts/visual-snapshots/windows-desktop.ps1');
