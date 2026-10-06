@@ -3171,6 +3171,16 @@ describe('Settings + Config Integration', () => {
         return type(query);
       };
 
+      test('says one match is one icon, not one of the whole catalogue', async () => {
+        // "Showing 1 of 3,946 icons for “bulb”" read as 3,946 icons matching, and German put the
+        // plural verb beside the one icon ("1 von 3.946 Symbolen ... werden angezeigt").
+        const picker = await search('bulb');
+        expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(1);
+        expect(picker.querySelector('.custom-entity-icon-picker-meta').textContent).toBe(
+          '1 icon matches “bulb”.'
+        );
+      });
+
       test('says so in one line, with something to try, and lists no icons', async () => {
         const picker = await search('zzzzqq');
         expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
@@ -3401,26 +3411,6 @@ describe('Settings + Config Integration', () => {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
       });
-    });
-
-    test('says one match is one icon, not one of the whole catalogue', async () => {
-      // "Showing 1 of 3,946 icons for “bulb”" read as 3,946 icons matching, and German put the
-      // plural verb beside the one icon ("1 von 3.946 Symbolen ... werden angezeigt").
-      await openSettingsWithCustomIconsExpanded();
-      const iconInput = document.querySelector('[data-custom-icon-input="light.living_room"]');
-      iconInput.value = 'bulb';
-      iconInput.dispatchEvent(new Event('input', { bubbles: true }));
-      // Run on its own, this test is the first to ask for the catalogue, which loads meanwhile.
-      const picker = () => document.querySelector('[data-custom-icon-picker="light.living_room"]');
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if (picker().querySelector('.custom-entity-icon-choice')) break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-
-      expect(picker().querySelectorAll('.custom-entity-icon-choice')).toHaveLength(1);
-      expect(picker().querySelector('.custom-entity-icon-picker-meta').textContent).toBe(
-        '1 icon matches “bulb”.'
-      );
     });
 
     test('should match natural language keywords like tree', async () => {
