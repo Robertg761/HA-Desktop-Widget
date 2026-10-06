@@ -378,13 +378,15 @@ Ref: RO3-02, MP-38
 
 ### WIN11-3 Window edge and corners
 
-1. Put the widget over a dark wallpaper and then a bright one, with Frosted glass on and off.
-2. Take a screenshot and zoom in on the corners and the edge.
-3. Compare with a pinned tile, which has rounded corners.
+The main window looks one of two ways. With Frosted glass background on (and Transparency effects on in Windows), Windows draws acrylic behind it. With Frosted glass background off, the widget draws its own solid panel, as it always does on Windows 10. The project's automated Windows screenshots come from machines without a GPU, which never draw acrylic, so only a real machine shows how Windows itself draws the window's corners and edge, with acrylic or without.
 
-Expected: The widget has an edge you can see against both wallpapers, and its corners fit with the pins and with other windows. Report whether the corners are square or rounded, whether there is a border or shadow, and where the edge is hard to see.
+1. Put the widget over a dark wallpaper and then a bright one, with Frosted glass background on and then off.
+2. Take a screenshot of each and zoom in on a corner and along the edges.
+3. Compare with a pinned tile, which has rounded corners, and with an ordinary app window.
 
-Capture: Zoomed screenshots of a corner over each wallpaper.
+Expected: With Frosted glass background off, the widget gives the solid panel no rounded corners, border or shadow of its own; its edge is where the panel meets the wallpaper. That is the intended look for 4.0, not a failure, whether or not Windows rounds the window itself. With acrylic, the blurred window's edge is visible against both wallpapers. For each look, report whether the corners are square or rounded, whether Windows adds a border or shadow, and where the edge is hard to make out against the wallpaper. A later release uses these reports to decide whether the panel needs an edge.
+
+Capture: Zoomed screenshots of a corner over each wallpaper, each labeled with Frosted glass on or off, and the Windows build number.
 
 Ref: MP-28
 
@@ -524,7 +526,7 @@ Ref: RO3-02
 
 ### WIN10-2 Other checks on Windows 10
 
-Run these on Windows 10 too: WIN11-12 (installed build, language and hotkey), WIN11-1 (names, shortcuts and icon), WIN11-3 (window edge; ordinary Windows 10 windows have square corners, so the question is whether the widget has a visible edge), WIN11-5 (tray icon at each scale), WIN11-6 (start at login), WIN11-8 (hotkey recorder), WIN11-9 (folder picker) and WIN11-10 (notifications). Also run ALL-13 (icons): Windows 10's emoji font is older than Windows 11's. For high contrast, see A11Y-1; Windows 10 has its own settings page for it.
+Run these on Windows 10 too: WIN11-12 (installed build, language and hotkey), WIN11-1 (names, shortcuts and icon), WIN11-3 (window edge: Windows 10 always draws the solid panel, whose square corners and lack of a border are intended for 4.0, so the question is where its edge is hard to see), WIN11-5 (tray icon at each scale), WIN11-6 (start at login), WIN11-8 (hotkey recorder), WIN11-9 (folder picker) and WIN11-10 (notifications). Also run ALL-13 (icons): Windows 10's emoji font is older than Windows 11's. For high contrast, see A11Y-1; Windows 10 has its own settings page for it.
 
 Ref: SM2-39
 

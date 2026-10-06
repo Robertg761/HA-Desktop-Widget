@@ -15,11 +15,11 @@ name: Visual snapshots
 # windows-latest is Windows Server 2025 at the time of writing (a job's "Set up job" log names the
 # system and image a run used). windows-11-arm is the only hosted Windows 11 image (free
 # for public repositories; ARM64 rather than x64), and its captures, in
-# visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. The widget's own
-# corners are not what they show: the window is a transparent frameless one, and whether Windows
-# rounds or shades it needs a real machine (docs/testing/PLATFORM-TEST-PLAN-4.0.md, WIN11-3).
-# Neither draws acrylic: hosted runners have no GPU, so both show the solid fallback even with
-# transparency effects on. Checking acrylic still needs a real Windows 11 machine.
+# visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. Neither draws
+# acrylic: hosted runners have no GPU, so both show the solid panel even with transparency effects
+# on, which keeps square corners and no edge of its own for 4.0. Only a real Windows 11 machine
+# shows how Windows draws the corners and edge, with acrylic and without
+# (docs/testing/PLATFORM-TEST-PLAN-4.0.md, WIN11-3).
 
 on:
   workflow_dispatch:
