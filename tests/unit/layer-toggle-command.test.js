@@ -228,6 +228,40 @@ describe("an AppImage's command, which outlasts its updates", () => {
     expect(fsModule.symlinkSync).toHaveBeenCalledTimes(2);
   });
 
+  // Settings names a link that leads to the running AppImage, so its key must survive the update
+  // even when the widget lost its note (its state folder was cleared) or the user made the link.
+  it('takes a link that already leads to the AppImage as its own when it has no note', () => {
+    const fsModule = fakeFs({ [v400]: { file: true }, [link]: { link: v400 } });
+    const bound = command(fsModule, v400);
+    expect(bound).toBe(`${link} --toggle`);
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule })).toBe(
+      false
+    );
+    expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v400 });
+    expect(fsModule.symlinkSync).not.toHaveBeenCalled();
+
+    fsModule.nodes.delete(v400);
+    fsModule.nodes.set(v401, { file: true });
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v401, PATH }, home, fsModule })).toBe(true);
+    expect(fsModule.readlinkSync(link)).toBe(v401);
+    expect(command(fsModule, v401)).toBe(bound);
+  });
+
+  // A note of another target means the user moved the widget's link here, so it stays theirs.
+  it('leaves a link the user re-pointed at the running AppImage as the user’s', () => {
+    const noted = JSON.stringify({ target: v401 });
+    const fsModule = fakeFs({
+      [v400]: { file: true },
+      [link]: { link: v400 },
+      [record]: { file: true, content: noted },
+    });
+    const before = new Map(fsModule.nodes);
+    expect(ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule })).toBe(
+      false
+    );
+    expect(fsModule.nodes).toEqual(before);
+  });
+
   it('follows the AppImage that ran last, when there are two', () => {
     const fsModule = fakeFs({ [v400]: { file: true }, [v401]: { file: true } });
     ensureAppImageCommandLink({ env: { APPIMAGE: v400, PATH }, home, fsModule });

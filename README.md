@@ -43,7 +43,7 @@ The AppImage's file name includes its version. An update saves the new version u
 - niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`
 - river: `riverctl map normal Super+Shift H spawn '~/.local/bin/ha-desktop-widget --toggle'`
 
-The widget only moves the link it made itself. It leaves that name alone if something else already has it, such as a file or a link of yours there (even one to an AppImage) or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
+The widget only moves its own link: the one it made, or one that already led to the AppImage when the widget had no link of its own. It leaves that name alone if something else already has it, such as a file or a link of yours there (even one to another AppImage) or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
 
 ## Weather Effects
 
