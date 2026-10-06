@@ -67,6 +67,12 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Next');
   };
 
+  // A setup with a long-lived token, the only kind whose token a save can fail to keep.
+  const tokenConfig = () => ({
+    ...unconfiguredConfig(),
+    homeAssistant: { url: 'http://ha.local:8123', token: 'long-lived-token', authMethod: 'token' },
+  });
+
   const oauthConfig = (url = 'http://ha.local:8123') => ({
     ...unconfiguredConfig(),
     homeAssistant: {
@@ -1164,7 +1170,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   });
 
   it('shows and strips token persistence warnings delivered after a save', async () => {
-    await loadRenderer();
+    await loadRenderer({ config: tokenConfig() });
     mockUiUtils.showToast.mockClear();
 
     triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
@@ -1227,7 +1233,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   });
 
   it('says the token was not saved once per session, however often settings are saved', async () => {
-    await loadRenderer();
+    await loadRenderer({ config: tokenConfig() });
     mockUiUtils.showToast.mockClear();
 
     for (let save = 0; save < 3; save += 1) {
@@ -1242,6 +1248,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
   it('names the missing keyring on Linux instead of telling the user to re-enter the token', async () => {
     await loadRenderer({
+      config: tokenConfig(),
       configureApi(api) {
         api.platform = 'linux';
       },
@@ -1531,6 +1538,37 @@ describe('Renderer first-run Home Assistant authorization', () => {
       // The panel names the keyring; a toast with another remedy beside it would say it twice.
       expect(mockUiUtils.showToast).not.toHaveBeenCalled();
       expect(panel().textContent).toContain('System keyring is locked');
+    });
+
+    // The panel asked for the token again because no keyring could keep it. Typed in with still no
+    // keyring, the new one is not kept either, and only the save can say so.
+    it('says a token entered again was not saved either, while there is still no keyring', async () => {
+      await loadRenderer({
+        config: recoveryConfig('not_persisted'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+      mockUiUtils.showToast.mockClear();
+
+      // Main says so as it saves, before the config with the token reaches the window, and again
+      // with that config.
+      const warning = [{ code: 'home_assistant_token_not_persisted' }];
+      triggerMockEvent('configPersistenceWarning', warning);
+      triggerMockEvent('configUpdated', {
+        ...recoveryConfig('not_persisted'),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'new-token', authMethod: 'token' },
+        persistenceWarnings: warning,
+      });
+      await flushAsync();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('this token will not be remembered after you quit'),
+        'warning',
+        10000,
+        { source: 'startup-warning' }
+      );
     });
 
     it('continues startup but reports when the acknowledgement is not saved', async () => {

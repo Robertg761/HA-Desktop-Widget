@@ -2135,7 +2135,10 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
 
 // Every save reports the same unchanged condition, so the token warning is said once per
 // session. Throttled instead, it came back every few seconds for as long as the person kept
-// saving, next to the keyring toast that names the same cause.
+// saving, next to the keyring toast that names the same cause. It is not said while there is no
+// token to keep: the main window is then asking for one, and its panel names the missing keyring
+// and what to do. Once a token is entered, its save brings the warning; marking it said at start-up
+// instead kept quiet that the token just typed in was not saved either.
 let tokenPersistenceWarningShown = false;
 let latestRendererConfigRevision = -1;
 
@@ -2147,7 +2150,7 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
     return;
   }
 
-  if (tokenPersistenceWarningShown) return;
+  if (tokenPersistenceWarningShown || !isConfigured(state.CONFIG)) return;
   tokenPersistenceWarningShown = true;
   uiUtils.showToast(
     window.electronAPI?.platform === 'linux'
@@ -3513,9 +3516,6 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
-    // A saved token that cannot be used is explained in the main window with its own remedy. The
-    // persistence warning that arrives with the same config would name that cause a second time.
-    if (config.tokenResetReason) tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
