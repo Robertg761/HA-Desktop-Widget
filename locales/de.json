@@ -577,7 +577,6 @@
   "Failed to save alert setting: {{error}}": "Warnungseinstellung konnte nicht gespeichert werden: {{error}}",
   "The desktop does not provide the Global Shortcuts portal required on Wayland": "Der Desktop stellt das unter Wayland erforderliche Global-Shortcuts-Portal nicht bereit",
   "Popup hotkey feature is not available on this platform": "Die Popup-Tastenkürzel-Funktion ist auf dieser Plattform nicht verfügbar",
-  "The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.": "Das Desktop-Portal hat kein aktives Popup-Tastenkürzel zugewiesen. Weise es in den Tastenkürzel-Einstellungen des Systems zu.",
   "The previous popup hotkey could not be restored": "Das vorherige Popup-Tastenkürzel konnte nicht wiederhergestellt werden",
   "Failed to register popup hotkey": "Popup-Tastenkürzel konnte nicht registriert werden",
   "Failed to save popup hotkey: {{error}}": "Popup-Tastenkürzel konnte nicht gespeichert werden: {{error}}",
@@ -1645,5 +1644,6 @@
   "Use that file": "Diese Datei verwenden",
   "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar.",
   "1 icon matches “{{query}}”.": "1 Symbol passt zu „{{query}}“.",
-  "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“."
+  "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“.",
+  "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Das Desktop-Portal hat das Popup-Tastenkürzel nicht zugewiesen. Weise es in den Tastenkürzel-Einstellungen deines Systems zu."
 }

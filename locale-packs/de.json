@@ -2108,6 +2108,7 @@
     "Use that file": "Diese Datei verwenden",
     "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar.",
     "1 icon matches “{{query}}”.": "1 Symbol passt zu „{{query}}“.",
-    "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“."
+    "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“.",
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Das Desktop-Portal hat das Popup-Tastenkürzel nicht zugewiesen. Weise es in den Tastenkürzel-Einstellungen deines Systems zu."
   }
 }

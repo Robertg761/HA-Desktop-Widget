@@ -577,7 +577,6 @@
   "Failed to save alert setting: {{error}}": "Failed to save alert setting: {{error}}",
   "The desktop does not provide the Global Shortcuts portal required on Wayland": "The desktop does not provide the Global Shortcuts portal required on Wayland",
   "Popup hotkey feature is not available on this platform": "Popup hotkey feature is not available on this platform",
-  "The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.": "The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.",
   "The previous popup hotkey could not be restored": "The previous popup hotkey could not be restored",
   "Failed to register popup hotkey": "Failed to register popup hotkey",
   "Failed to save popup hotkey: {{error}}": "Failed to save popup hotkey: {{error}}",
@@ -1645,5 +1644,6 @@
   "Use that file": "Use that file",
   "Download, update, or remove offline language packs. English and German are always available offline.": "Download, update, or remove offline language packs. English and German are always available offline.",
   "1 icon matches “{{query}}”.": "1 icon matches “{{query}}”.",
-  "{{count}} icons match “{{query}}”.": "{{count}} icons match “{{query}}”."
+  "{{count}} icons match “{{query}}”.": "{{count}} icons match “{{query}}”.",
+  "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
 }

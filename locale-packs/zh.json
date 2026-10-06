@@ -2108,6 +2108,7 @@
     "Use that file": "使用该文件",
     "Download, update, or remove offline language packs. English and German are always available offline.": "下载、更新或移除离线语言包。英语和德语始终可离线使用。",
     "1 icon matches “{{query}}”.": "有 1 个图标与“{{query}}”匹配。",
-    "{{count}} icons match “{{query}}”.": "有 {{count}} 个图标与“{{query}}”匹配。"
+    "{{count}} icons match “{{query}}”.": "有 {{count}} 个图标与“{{query}}”匹配。",
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "桌面门户未分配弹出快捷键。请在系统的快捷键设置中分配。"
   }
 }
