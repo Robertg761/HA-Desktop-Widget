@@ -14236,10 +14236,11 @@ body.opaque-panels #settings-modal .modal-header {
 /* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
    always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
    width and nothing shifts sideways when switching pages or when a search result list grows past
-   the window; the end padding gives it back, so both margins stay 18px. */
+   the window; the end padding gives it back, so both margins stay 18px. It gives back the width
+   the scrollbar has, which forced colours make wider. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
-  padding-inline-end: 9px;
+  padding-inline-end: calc(18px - var(--modal-scrollbar-size));
   scrollbar-gutter: stable;
   /* The Save/Cancel pill floats over the bottom of the page, where the switches and selects sit.
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
