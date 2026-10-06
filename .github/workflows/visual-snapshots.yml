@@ -12,7 +12,8 @@ name: Visual snapshots
 # job joins the two into the one artifact per OS that reviewers download: visual-snapshots-Windows,
 # visual-snapshots-Windows-11-arm, visual-snapshots-macOS and visual-snapshots-Linux.
 #
-# windows-latest is Windows Server 2022. windows-11-arm is the only hosted Windows 11 image (free
+# windows-latest is Windows Server 2025 at the time of writing (a job's "Set up job" log names the
+# system and image a run used). windows-11-arm is the only hosted Windows 11 image (free
 # for public repositories; ARM64 rather than x64), and its captures, in
 # visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. The widget's own
 # corners are not what they show: the window is a transparent frameless one, and whether Windows
