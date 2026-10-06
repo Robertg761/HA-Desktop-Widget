@@ -12959,13 +12959,16 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   }
 
   /* The grey fill above also flattens the selected chip, whose accent border and tint were its
-     mark, so the chip keeps a heavier accent edge. The same goes for the selected colour, the
-     Accent and Background choice, the edit button while editing, and a pin's on or current chip. */
+     mark, so the chip keeps a heavier accent edge: the current mode, and the current brightness or
+     speed preset in the lamp and fan pop-ups. The same goes for the selected colour, the Accent and
+     Background choice, the edit button while editing, and a pin's on or current chip. */
   body.high-contrast
     :is(
       .climate-mode-btn,
       .climate-fan-mode-btn,
       .climate-preset-mode-btn,
+      .brightness-preset-btn,
+      .fan-preset-btn,
       .media-mute-toggle
     ).active,
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
@@ -17323,6 +17326,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .climate-mode-btn.active,
   .climate-fan-mode-btn.active,
   .climate-preset-mode-btn.active,
+  .brightness-preset-btn.active,
+  .fan-preset-btn.active,
   .media-mute-toggle.active,
   .entity-item.selected,
   .donate-amount-chip.selected,

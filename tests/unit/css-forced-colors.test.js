@@ -87,6 +87,8 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       'HVAC mode': '<button class="climate-mode-btn active">Heat</button>',
       'fan mode': '<button class="climate-fan-mode-btn active">Low</button>',
       'preset mode': '<button class="climate-preset-mode-btn active">Eco</button>',
+      'brightness preset': '<button class="brightness-preset-btn active">50%</button>',
+      'fan speed preset': '<button class="fan-preset-btn active">Medium</button>',
       'mute toggle': '<button class="media-mute-toggle active">Muted</button>',
       'donate amount': '<button class="donate-amount-chip selected">$5</button>',
       'segmented option': '<button class="segmented-option active">Dark</button>',

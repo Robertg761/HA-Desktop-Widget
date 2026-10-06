@@ -98,6 +98,9 @@ describe('the Readable preset', () => {
     '<button class="climate-preset-mode-btn active"></button>',
     '<button class="media-mute-toggle active"></button>',
     '<button class="donate-amount-chip selected"></button>',
+    // The lamp and fan pop-ups' current preset looked like the others.
+    '<button class="brightness-preset-btn active"></button>',
+    '<button class="fan-preset-btn active"></button>',
   ])('keeps an accent edge on a selected chip: %s', (html) => {
     render('high-contrast opaque-panels', html);
     const chip = document.querySelector('button');
