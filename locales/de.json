@@ -1642,5 +1642,7 @@
   "Retry conflict check": "Konfliktprüfung wiederholen",
   "Copy & switch": "Kopieren & wechseln",
   "Keep current": "Aktuellen behalten",
-  "Use that file": "Diese Datei verwenden"
+  "Use that file": "Diese Datei verwenden",
+  "Tray: Heat/Cool": "H/K",
+  "Tray: Fan only": "VENT"
 }

@@ -1642,5 +1642,7 @@
   "Retry conflict check": "Retry conflict check",
   "Copy & switch": "Copy & switch",
   "Keep current": "Keep current",
-  "Use that file": "Use that file"
+  "Use that file": "Use that file",
+  "Tray: Heat/Cool": "H/C",
+  "Tray: Fan only": "FAN"
 }

@@ -105,7 +105,8 @@ const STATE_LABELS = Object.freeze({
   error: 'ERR',
   heat: 'HEAT',
   cool: 'COOL',
-  heat_cool: 'AUTO',
+  // Heat/Cool and Auto are different modes, and Heat/Cool cut short is Heat.
+  heat_cool: 'H/C',
   auto: 'AUTO',
   dry: 'DRY',
   fan_only: 'FAN',
@@ -159,6 +160,9 @@ const BINARY_SENSOR_LABELS = Object.freeze({
   update: ['UPD', 'OK'],
 });
 
+// States whose name, cut to fit the bitmap, would say something else, so each has a compact form
+// of its own ("Tray: Heat/Cool"): "Heat/Cool" came out as "HEAT", the same as heat mode, and the
+// German "Nur Ventilator" as "NUR".
 const COMPACT_STATE_NAMES = new Set([
   'On',
   'Off',
@@ -176,6 +180,8 @@ const COMPACT_STATE_NAMES = new Set([
   'Armed on vacation',
   'Arming',
   'Disarmed',
+  'Heat/Cool',
+  'Fan only',
 ]);
 
 function normalizeTrayEntityOptions(value) {

@@ -223,6 +223,44 @@ describe('buildTrayEntityPresentation', () => {
     });
   });
 
+  // A thermostat that reports no temperature (a heat/cool one has only its two targets) shows its
+  // mode. Cut to fit, "Heat/Cool" read "HEAT", the same as heat mode, and with no language heat_cool
+  // read "AUTO", the same as auto.
+  it('never gives two HVAC modes the same label, in any language', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const packDir = path.resolve(__dirname, '../../locale-packs');
+    const { packs } = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+    const catalogs = {
+      none: null,
+      en: require('../../locales/en.json'),
+      ...Object.fromEntries(
+        packs.map(({ locale }) => [
+          locale,
+          JSON.parse(fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8')).messages,
+        ])
+      ),
+    };
+    const modes = ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'];
+    for (const [language, messages] of Object.entries(catalogs)) {
+      const translate = messages ? (key) => messages[key] ?? key : undefined;
+      const owners = new Map();
+      for (const mode of modes) {
+        const { candidates } = buildTrayEntityPresentation(entity('climate.hall', mode), {
+          translate,
+        });
+        for (const label of candidates) {
+          expect({ language, label, modes: [owners.get(label) ?? mode, mode] }).toEqual({
+            language,
+            label,
+            modes: [mode, mode],
+          });
+          owners.set(label, mode);
+        }
+      }
+    }
+  });
+
   it('truncates long tooltips and strips line breaks', () => {
     const presentation = buildTrayEntityPresentation(entity('sensor.cpu', '1'), {
       displayName: 'A\nvery  long\tname '.padEnd(200, 'x'),
