@@ -293,10 +293,16 @@ describe('visual snapshot scenes', () => {
       'wizard-welcome-minimum',
       'wizard-url-minimum',
       'wizard-authorize-minimum',
+      'wizard-welcome-s130',
       'wizard-welcome-s150',
+      'wizard-welcome-de',
+      'wizard-welcome-hi',
+      'wizard-welcome-zh',
       'wizard-welcome-forced-colors',
       'wizard-authorize-error',
       'wizard-authorize-keyring',
+      'wizard-authorize-pending',
+      'wizard-authorize-cancelled',
     ]) {
       expect(names).toContain(required);
     }
@@ -352,6 +358,15 @@ describe('visual snapshot scenes', () => {
       'linux',
       'win32',
     ]);
+  });
+
+  // Linux under CI has no keyring, so its wizard stops before anything waits on the server.
+  it('captures the wait for the browser, and its Cancel, where the wizard gets that far', () => {
+    for (const name of ['wizard-authorize-pending', 'wizard-authorize-cancelled']) {
+      const scene = scenes.find((entry) => entry.name === name);
+      expect([...scene.platforms].sort()).toStrictEqual(['darwin', 'win32']);
+      expect(scene.teardown).toEqual(expect.any(Function));
+    }
   });
 
   it('captures a browser authorization with nothing saved once on every system', () => {

@@ -371,6 +371,28 @@ const WIZARD_ACTIONS_IN_VIEW = `(() => {
   });
 })()`;
 
+// Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
+// first request unanswered: the wizard waits as it does while the browser is open, for as long as
+// the widget gives the server to answer (8 s). The Back button is Cancel meanwhile.
+async function waitForFirstRunAuthorization(ctx) {
+  await showFirstRunAuthorize(ctx, ctx.homeAssistantUrl);
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-status[data-status="pending"]');
+}
+
+// Back to the welcome step from a wait, which Cancel ends.
+async function cancelFirstRunAuthorization(ctx) {
+  await ctx.ev(`(() => {
+    const cancel = document.querySelector('.first-run-actions .btn-secondary:nth-child(2)');
+    if (cancel?.classList.contains('btn-neutral')) cancel.click();
+  })()`);
+  await ctx.waitForExpression(
+    `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+    'the wait to end'
+  );
+  await showFirstRunWelcome(ctx);
+}
+
 // The wizard's authorization step after an attempt on a server address nothing listens on, which
 // fails at once and opens no browser. `says` is a part of the message the failure has to show, so
 // a scene whose failure drifts to another one fails instead of capturing it.
@@ -3485,12 +3507,30 @@ const scenes = [
     },
   },
   {
+    name: 'wizard-welcome-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: showFirstRunWelcome,
+  },
+  {
     name: 'wizard-welcome-s150',
     size: DEFAULT_SIZE,
     ui: { scale: 1.5 },
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  // The longest welcome (German), a script that joins its letters (Hindi) and one that breaks lines
+  // between any two characters (Chinese).
+  ...['de', 'hi', 'zh'].map((language) => ({
+    name: `wizard-welcome-${language}`,
+    ui: { language },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  })),
   {
     name: 'wizard-welcome-forced-colors',
     media: FORCED_COLORS,
@@ -3513,6 +3553,48 @@ const scenes = [
     platforms: ['linux'],
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: (ctx) => failFirstRunAuthorization(ctx, 'so the authorization cannot be saved.'),
+    teardown: showFirstRunWelcome,
+  },
+  // Waiting for the browser, and that wait cancelled. Only Windows and macOS get as far as asking
+  // the server: Linux under CI stops at the missing keyring before anything waits.
+  {
+    name: 'wizard-authorize-pending',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.expect(
+        `(() => {
+          const [, cancel, connect] = document.querySelectorAll('.first-run-actions .btn');
+          return cancel.textContent === 'Cancel' && cancel.classList.contains('btn-neutral') &&
+            !cancel.hidden && connect.disabled;
+        })()`,
+        'Cancel drawn as every other Cancel, and Connect waiting'
+      );
+    },
+    teardown: cancelFirstRunAuthorization,
+  },
+  {
+    name: 'wizard-authorize-cancelled',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.click('.first-run-actions .btn-neutral');
+      await ctx.waitForExpression(
+        `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+        'the wait to end'
+      );
+      await ctx.expect(
+        `(() => {
+          const [, back] = document.querySelectorAll('.first-run-actions .btn');
+          const status = document.querySelector('.first-run-status');
+          return back.textContent === 'Back' && !back.classList.contains('btn-neutral') &&
+            !status.dataset.status && !!document.querySelector('.first-run-url');
+        })()`,
+        'the step as it was before Connect, with nothing to report'
+      );
+    },
     teardown: showFirstRunWelcome,
   },
 
