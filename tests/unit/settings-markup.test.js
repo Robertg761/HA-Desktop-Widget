@@ -110,6 +110,18 @@ describe('index.html', () => {
     });
   });
 
+  describe('the Language card', () => {
+    const builtInLanguages = () =>
+      [...byId('language-select').options].filter((option) => option.value !== 'auto');
+
+    test('marks each built-in language name with its own language, as the downloaded ones are', () => {
+      // Under an Arabic interface a screen reader read "English" and "Deutsch" in the Arabic voice,
+      // and the downloaded languages below them in their own.
+      expect(builtInLanguages().length).toBeGreaterThan(1);
+      builtInLanguages().forEach((option) => expect(option.lang).toBe(option.value));
+    });
+  });
+
   describe('landmarks and headings', () => {
     test('the window title is the h1 and Quick Access an h2, inside one main landmark', () => {
       const title = document.querySelector('.widget-title');
