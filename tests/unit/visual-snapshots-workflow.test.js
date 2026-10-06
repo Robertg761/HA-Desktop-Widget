@@ -59,18 +59,32 @@ describe('the visual snapshot workflow', () => {
 
     // Minimizing each process's MainWindowHandle left the console wsl.exe ran in on screen: it is
     // its host's window. The script ends the prompt and minimizes every top-level window on screen.
-    it('ends the WSL prompt and minimizes every window on screen but explorer’s', () => {
+    it('ends the WSL prompt and minimizes every window on screen but the desktop and taskbar', () => {
       const clearing = script.slice(script.indexOf('if (-not $Check) {'));
       expect(clearing).toMatch(
         /Get-Process -Name wsl\b[^\n]*\|\s*ForEach-Object\s*\{[^}]*Stop-Process/
       );
       expect(clearing).toContain('[Win32.Desktop]::ShowWindow($window.Handle, 6)');
       expect(clearing).toContain('[Win32.Desktop]::SetCursorPos(0, 0)');
-      // Every window Windows lists, shown and not cloaked; explorer's are the desktop and taskbar.
+      // Every window Windows lists, shown and not cloaked.
       expect(script).toContain('EnumWindows(');
       expect(script).toContain('IsWindowVisible(window)');
       expect(script).toContain('DWMWA_CLOAKED');
-      expect(script).toMatch(/\$explorer -notcontains \$_\.ProcessId/);
+      // Of explorer's, only the desktop and the taskbar stay: a folder window of its own covers a
+      // pin as any other window would.
+      expect(script).toMatch(
+        /\$explorer -notcontains \$_\.ProcessId -or \$desktopClasses -notcontains \$_\.ClassName/
+      );
+      const classes = script.match(/\$desktopClasses = @\(([^)]*)\)/)[1].match(/'[^']+'/g);
+      expect(classes.map((name) => name.slice(1, -1)).sort()).toEqual(
+        [
+          'NotifyIconOverflowWindow',
+          'Progman',
+          'Shell_SecondaryTrayWnd',
+          'Shell_TrayWnd',
+          'WorkerW',
+        ].sort()
+      );
       // The top-left corner is clear of the widget and the 32 px margin its screen capture takes.
       expect(WINDOW_POSITION.x - 32).toBeGreaterThan(32);
     });
@@ -79,8 +93,19 @@ describe('the visual snapshot workflow', () => {
     // still go ahead: they are informational.
     it('warns about every window still on screen, without failing the job', () => {
       const listing = script.slice(script.indexOf('$left = @(Get-StrayWindow)'));
-      expect(listing).toMatch(/foreach \(\$window in \$left\)[\s\S]*Write-Output "::warning /);
+      expect(listing).toMatch(/foreach \(\$window in \$left\)[\s\S]*Write-DesktopWarning "/);
       expect(script).not.toMatch(/\bexit [1-9]|\bthrow\b|::error /);
+    });
+
+    // A window title is put into a workflow command, where a line break ends the warning early and
+    // a '%' starts an escape. Every warning goes through the one function that escapes them.
+    it('escapes the warnings as GitHub reads workflow commands', () => {
+      const warn = script.match(/function Write-DesktopWarning[\s\S]*?\n\}/)[0];
+      expect(warn).toContain(`-replace '%', '%25' -replace "\`r", '%0D' -replace "\`n", '%0A'`);
+      expect(warn).toContain('Write-Output "::warning title=Snapshot desktop::$escaped"');
+      // '%' is replaced first, so the escapes the other two write are not escaped again.
+      expect(warn.indexOf("'%25'")).toBeLessThan(warn.indexOf("'%0D'"));
+      expect(script.match(/::warning/g)).toHaveLength(1);
     });
   });
 

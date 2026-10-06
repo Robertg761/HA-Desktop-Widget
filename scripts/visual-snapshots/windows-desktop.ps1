@@ -2,8 +2,8 @@
 # the real screen around the widget (run.cjs), so whatever else is on the desktop is in the picture,
 # and a desktop pin sits under every window, so a window over one hides the pin outright.
 #
-#   windows-desktop.ps1          end the WSL prompt, minimize every window that is not explorer's,
-#                                park the pointer, then list what is still on screen
+#   windows-desktop.ps1          end the WSL prompt, minimize every window but the desktop and the
+#                                taskbar, park the pointer, then list what is still on screen
 #   windows-desktop.ps1 -Check   only list what is on screen
 #
 # Every window still on screen becomes a warning on the run's summary page, so a reviewer knows
@@ -78,6 +78,13 @@ public static class SnapshotDesktop {
 }
 '@
 
+# A warning is a workflow command, which ends at a line break and reads '%' as the start of an
+# escape, and window titles and error messages can hold either. They are escaped as GitHub expects.
+function Write-DesktopWarning([string]$Message) {
+  $escaped = $Message -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+  Write-Output "::warning title=Snapshot desktop::$escaped"
+}
+
 # Should the list not compile on some image, the run still goes ahead, with each process's main
 # window as before.
 $canList = $true
@@ -85,13 +92,18 @@ try {
   Add-Type -TypeDefinition $windowList
 } catch {
   $canList = $false
-  Write-Output "::warning title=Snapshot desktop::Could not list the windows on screen, so only each process's main window is checked: $($_.Exception.Message -replace '\r?\n', ' ')"
+  Write-DesktopWarning "Could not list the windows on screen, so only each process's main window is checked: $($_.Exception.Message)"
 }
 
-# Every window on screen but explorer's, which are the desktop, the taskbar and their pop-ups.
+# Explorer draws the desktop and the taskbar, which belong in the captures. Its other windows do
+# not: a folder window or a dialog of its own covers a pin as any other window would.
+$desktopClasses = @('Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'NotifyIconOverflowWindow')
+
+# Every window on screen but the desktop and the taskbar.
 function Get-StrayWindow {
   $explorer = @(Get-Process -Name explorer -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
   if (-not $canList) {
+    # Without the list there are no class names, so all of explorer is left alone, as before.
     return Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $explorer -notcontains $_.Id } |
       ForEach-Object {
         [pscustomobject]@{
@@ -100,18 +112,20 @@ function Get-StrayWindow {
         }
       }
   }
-  [SnapshotDesktop]::OnScreen() | Where-Object { $explorer -notcontains $_.ProcessId } | ForEach-Object {
-    $process = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
-    $box = $_.Bounds
-    [pscustomobject]@{
-      Process = $(if ($process) { $process.ProcessName } else { "pid $($_.ProcessId)" })
-      Id = $_.ProcessId
-      Class = $_.ClassName
-      Title = $_.Title
-      Bounds = '{0},{1} {2}x{3}' -f $box.Left, $box.Top, ($box.Right - $box.Left), ($box.Bottom - $box.Top)
-      Handle = $_.Handle
+  [SnapshotDesktop]::OnScreen() |
+    Where-Object { $explorer -notcontains $_.ProcessId -or $desktopClasses -notcontains $_.ClassName } |
+    ForEach-Object {
+      $process = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
+      $box = $_.Bounds
+      [pscustomobject]@{
+        Process = $(if ($process) { $process.ProcessName } else { "pid $($_.ProcessId)" })
+        Id = $_.ProcessId
+        Class = $_.ClassName
+        Title = $_.Title
+        Bounds = '{0},{1} {2}x{3}' -f $box.Left, $box.Top, ($box.Right - $box.Left), ($box.Bottom - $box.Top)
+        Handle = $_.Handle
+      }
     }
-  }
 }
 
 if (-not $Check) {
@@ -141,6 +155,6 @@ if ($left.Count -eq 0) {
 } else {
   $left | Format-Table Process, Id, Class, Title, Bounds -AutoSize | Out-String -Width 200 | Write-Output
   foreach ($window in $left) {
-    Write-Output "::warning title=Snapshot desktop::$($window.Process) ($($window.Class)) has a window on screen at $($window.Bounds), which can be in the screen captures: $($window.Title)"
+    Write-DesktopWarning "$($window.Process) ($($window.Class)) has a window on screen at $($window.Bounds), which can be in the screen captures: $($window.Title)"
   }
 }

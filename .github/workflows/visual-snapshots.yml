@@ -160,8 +160,8 @@ jobs:
       # widget, and on Windows 11 a console in which wsl.exe asks for a WSL update. Pins sit on the
       # desktop under every window, so that console hid 13 of the Windows 11 pin captures outright.
       # The pointer, resting where the widget opens, also left a tile's tooltip in the first
-      # capture. The script ends the WSL prompt, minimizes every window that is not explorer's (the
-      # desktop and the taskbar), parks the pointer and lists what is still on screen as warnings.
+      # capture. The script ends the WSL prompt, minimizes every window but the desktop and the
+      # taskbar, parks the pointer and lists what is still on screen as warnings.
       - name: Clear the desktop (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
