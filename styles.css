@@ -16705,6 +16705,14 @@ body[data-season] .modal-content::after {
   z-index: -1;
 }
 
+/* A number sensor draws its trend line, or its gauge, along the foot of the tile, and the newest
+   reading ends in the corner where the piece sits. Both take the holiday's colour, so the gift or
+   the pumpkin hid the last part of the trend. Such a tile goes without it. */
+body[data-season]
+  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after {
+  content: none;
+}
+
 body[data-season] .status-card:not(.primary-light-card)::after {
   inset-block: auto 6px;
   inset-inline: auto 10px;

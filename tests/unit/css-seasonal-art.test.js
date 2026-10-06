@@ -6,7 +6,11 @@
 // Controls button, behind a dialog's close button, across the Settings icon rail. jsdom cannot
 // lay a pseudo-element out, so these read the declarations the stylesheet makes for them.
 
-const { loadAppStylesheets } = require('../helpers/css-cascade.js');
+const {
+  compareSpecificity,
+  loadAppStylesheets,
+  specificity,
+} = require('../helpers/css-cascade.js');
 
 const squash = (selector) => selector.replace(/\s+/g, ' ').trim();
 
@@ -86,6 +90,67 @@ describe('holiday art beside controls', () => {
     expect(declared(`${settings}::after`, 'inset-inline-start')).toBe('6px');
     // The rail blurs what is behind it, so the piece is drawn above the rail.
     expect(declared(`${settings}::after`, 'z-index')).toBe('1');
+  });
+
+  // The winning value of `property` on the element's `pseudo` (e.g. '::after'), by specificity and
+  // then source order: the rules for it are matched on the element the pseudo-element belongs to.
+  function pseudoValue(element, pseudo, property) {
+    let winner = null;
+    const visit = (rules) => {
+      for (const rule of rules) {
+        if (rule.cssRules && !rule.selectorText) {
+          if (!rule.media || !/forced-colors: active/.test(rule.media.mediaText)) {
+            visit(rule.cssRules);
+          }
+          continue;
+        }
+        const value = rule.style?.getPropertyValue(property);
+        if (!rule.selectorText || !value) continue;
+        for (const selector of rule.selectorText.split(/,(?![^(]*\))/).map(squash)) {
+          if (!selector.endsWith(pseudo)) continue;
+          const host = selector.slice(0, -pseudo.length);
+          let matches = false;
+          try {
+            matches = element.matches(host);
+          } catch {
+            // A selector jsdom cannot parse never matches here.
+          }
+          if (!matches) continue;
+          const weight = specificity(selector);
+          if (!winner || compareSpecificity(weight, winner.weight) >= 0) {
+            winner = { weight, value: value.trim() };
+          }
+        }
+      }
+    };
+    for (const sheet of document.styleSheets) visit(sheet.cssRules);
+    return winner?.value;
+  }
+
+  // Every third tile takes a gift, a pumpkin or a turkey in its bottom end corner, which is where a
+  // number sensor's trend line ends with its newest reading, in the same holiday colour.
+  it.each([
+    ['a trend line', "data-chart-type='line'", 'none'],
+    ['a gauge', "data-chart-type='gauge'", 'none'],
+    ['no graph', "data-chart-type='none'", "''"],
+  ])('leaves the sitting piece off a number sensor that draws %s', (_, chart, content) => {
+    document.body.dataset.season = 'christmas';
+    document.body.innerHTML = `<div id="quick-controls">
+      <div class="control-item"></div>
+      <div class="control-item sensor-numeric-entity" ${chart}></div>
+      <div class="control-item"></div>
+      <div class="control-item"></div>
+      <div class="control-item"></div>
+    </div>`;
+    try {
+      const [, sensor, , , lamp] = document.querySelectorAll('.control-item');
+      expect(pseudoValue(sensor, '::after', 'content')).toBe(content);
+      // The other tiles in that column keep theirs.
+      expect(pseudoValue(lamp, '::after', 'content')).toBe("''");
+    } finally {
+      delete document.body.dataset.season;
+      document.body.innerHTML = '';
+    }
   });
 
   it("gives the weather card the clock card's piece where it has none of its own", () => {

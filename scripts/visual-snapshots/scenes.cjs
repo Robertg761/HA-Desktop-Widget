@@ -1339,6 +1339,15 @@ const waitForCameraTiles = (ctx) =>
     'the camera tiles settled on their messages'
   );
 
+// A holiday sits a gift, a pumpkin or a turkey in the bottom end corner of every third tile, where
+// a number sensor's trend line ends with its newest reading, in the same colour.
+const SENSOR_GRAPHS_UNDECORATED = `(() => {
+  const graphs = [...document.querySelectorAll(
+    '#quick-controls .control-item.sensor-numeric-entity:not([data-chart-type="none"])'
+  )];
+  return graphs.length > 0 && graphs.every((tile) => getComputedStyle(tile, '::after').content === 'none');
+})()`;
+
 async function expectCameraTilesInLine(ctx) {
   await waitForCameraTiles(ctx);
   await ctx.expect(TILE_NAMES_ALIGNED, "the cameras' names start on the lamp's line");
@@ -2300,6 +2309,9 @@ const scenes = [
     name: 'tiles-security-christmas',
     ui: { seasonal: holiday('christmas') },
     config: pages('security', 'default'),
+    // The watch battery is in a column that takes a gift, which hid the end of its line.
+    setup: (ctx) =>
+      ctx.expect(SENSOR_GRAPHS_UNDECORATED, "no holiday piece on a number sensor's line"),
   },
   {
     name: 'tiles-security-christmas-light',
