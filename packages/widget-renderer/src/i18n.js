@@ -125,6 +125,28 @@ function resolveFormatLocale() {
 // kind and options. Each kind fills in the fields its Date method adds when none are asked for, as
 // ECMA-402 has it (CreateDateTimeFormat with the method's "required" and "defaults").
 const dateTimeFormatCache = new Map();
+// A formatter keeps the time zone it was built in, while the computer's can change under the
+// running app: a laptop that wakes up in another country, or a zone picked in the system settings.
+// Chromium passes the change on to Date and to formatters built after it, but not to one already
+// built, so the clock and every time kept the old zone until a restart. Asking for the zone's name
+// costs as much as building a formatter, so the cache notes the zone's UTC offsets instead, which
+// Date gives for next to nothing. The offset now keeps the clock right; those of a winter and a
+// summer day tell apart zones with other daylight-saving rules (Phoenix and Denver agree in winter).
+// When any of them changes, the cache starts over.
+const TIME_ZONE_PROBE_YEAR = new Date().getUTCFullYear();
+const WINTER_PROBE = new Date(Date.UTC(TIME_ZONE_PROBE_YEAR, 0, 15, 12));
+const SUMMER_PROBE = new Date(Date.UTC(TIME_ZONE_PROBE_YEAR, 6, 15, 12));
+let dateTimeFormatOffsets = null;
+
+function forgetFormattersFromAnotherTimeZone() {
+  const now = new Date().getTimezoneOffset();
+  const winter = WINTER_PROBE.getTimezoneOffset();
+  const summer = SUMMER_PROBE.getTimezoneOffset();
+  const kept = dateTimeFormatOffsets;
+  if (kept && kept.now === now && kept.winter === winter && kept.summer === summer) return;
+  dateTimeFormatCache.clear();
+  dateTimeFormatOffsets = { now, winter, summer };
+}
 const DATE_FIELDS = ['weekday', 'year', 'month', 'day'];
 const TIME_FIELDS = ['dayPeriod', 'hour', 'minute', 'second', 'fractionalSecondDigits'];
 const DATE_TIME_KINDS = {
@@ -158,6 +180,7 @@ function formatDateTimeAs(kind, date, options) {
   const value = date instanceof Date ? date : new Date(date);
   // The Date methods write this; a formatter throws on it.
   if (Number.isNaN(value.getTime())) return 'Invalid Date';
+  forgetFormattersFromAnotherTimeZone();
   const locale = getFormatLocale();
   const cacheKey = `${kind}|${locale}|${JSON.stringify(options)}`;
   let formatter = dateTimeFormatCache.get(cacheKey);

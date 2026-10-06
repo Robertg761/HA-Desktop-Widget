@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
+const {
+  cascadedDeclaration,
+  loadAppStylesheets,
+  resolvedValue,
+} = require('../helpers/css-cascade.js');
 
 const DEFAULT = { viewport: { width: 500, height: 600 } };
 const NARROW = { viewport: { width: 340, height: 600 } };
@@ -455,9 +459,27 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(results, 'scrollbar-gutter')).toBe('stable');
       expect(resolvedValue(results, 'padding')).toBe('6px 0');
       expect(resolvedValue(results, 'padding-inline-start')).toBe('9px');
-      // The system's own scrollbar in forced colours is wider than the 9px gutter.
-      expect(resolvedValue(results, 'scrollbar-gutter', { forcedColors: true })).toBe('auto');
-      expect(resolvedValue(results, 'padding-inline', { forcedColors: true })).toBe('6px');
+      expect(resolvedValue(results, 'padding-inline-end')).toBe('max(0px, calc(9px - 9px))');
+    });
+
+    // Forced colours draws a scrollbar wider than the 9px gutter. The page and the palette list
+    // reserved room for it two ways there (no gutter and the page's margins for one, narrower 6px
+    // margins for the other). One rule now drops the gutter for both, and each keeps its margins.
+    it.each([
+      ['the page', 'widget-content', '14px'],
+      ['the command palette', 'command-palette-results', '9px'],
+    ])('holds no gutter for %s in forced colours, and keeps its margins', (_, name, margin) => {
+      render('', `<div class="${name}"></div>`);
+      const scroller = document.querySelector(`.${name}`);
+      const forced = { forcedColors: true };
+      expect(resolvedValue(scroller, 'scrollbar-gutter', forced)).toBe('auto');
+      expect(resolvedValue(scroller, 'padding-inline-end', forced)).toBe(
+        `max(0px, calc(${margin} - 0px))`
+      );
+      expect(cascadedDeclaration(scroller, '--content-gutter', forced)).toMatchObject({
+        selector: ':is(.widget-content, .command-palette-results)',
+        value: '0px',
+      });
     });
 
     it('keeps the climate target on one line, under the current reading when it must', () => {

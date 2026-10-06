@@ -6134,15 +6134,15 @@ function getDesktopPinClimateRenderProfile(entity) {
   // A heat/cool range has two sliders where a single target has one, and beside them the body has
   // no room for a Target box: at 200x170 and 280x200 the Current and Target boxes pushed the mode
   // row off the tile. So a range pin shows the room temperature as a line of its own and prints the
-  // range in the header beside the name. The default-size pin leaves the range to its sliders:
-  // printed beside the name there, it cut most names to a few letters.
+  // range in the header beside the name. A pin at the default size or smaller leaves the range to
+  // its sliders: printed beside the name there, it cut most names to a few letters.
   const isRange = climateValue.canSetRange;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
     showTargetBox: !isRange,
-    showHeaderKpi: isRange && !layoutProfile.isDenseTight,
+    showHeaderKpi: isRange && !isSmall,
     showCurrentStat: !isSmall && !isRange,
     showCompactCurrent: isSmall || isRange,
     showSliderLabels: !isSmall,
@@ -7054,6 +7054,45 @@ function createDesktopPinClimateControlElement(entity) {
   });
 
   return root;
+}
+
+// Three modes share the default pin's row, and in some languages their names are too long for it:
+// in French "Chaud/Froid", "Désactivé" and "Chauffe" were each cut short. A row that cannot hold
+// its modes offers fewer, down to two, hiding the last one that is not the active mode (nor the one
+// with focus). The names are measured where they are drawn, so the row is fitted again each time
+// the pin is drawn (a resize, a new state) and when its font has loaded.
+const DESKTOP_PIN_CLIMATE_MIN_FITTED_MODES = 2;
+
+function fitDesktopPinClimateModes(root) {
+  const row = root?.querySelector?.('.desktop-pin-climate-modes');
+  if (!row?.isConnected) return;
+  const buttons = [...row.querySelectorAll('.desktop-pin-climate-mode')];
+  buttons.forEach((button) => {
+    button.hidden = false;
+  });
+  // A window that has not been laid out has nothing to measure.
+  if (!row.clientWidth) return;
+  const shown = () => buttons.filter((button) => !button.hidden);
+  const cut = () =>
+    shown().some((button) => {
+      const label = button.querySelector('.desktop-pin-panel-button-label');
+      return !!label && label.scrollWidth > label.clientWidth;
+    });
+  for (let index = buttons.length - 1; index >= 0; index -= 1) {
+    if (shown().length <= DESKTOP_PIN_CLIMATE_MIN_FITTED_MODES || !cut()) return;
+    const button = buttons[index];
+    if (button.dataset.active === 'true' || button === document.activeElement) continue;
+    button.hidden = true;
+  }
+}
+
+function fitDesktopPinRows(container) {
+  container?.querySelectorAll?.('.desktop-pin-climate-control').forEach(fitDesktopPinClimateModes);
+}
+
+// The pin's font swaps in after the first layout, and its names may be wider or narrower in it.
+if (typeof document !== 'undefined' && typeof document.fonts?.addEventListener === 'function') {
+  document.fonts.addEventListener('loadingdone', () => fitDesktopPinRows(document));
 }
 
 function updateExistingDesktopPinClimateControl(root, entity) {
@@ -10023,6 +10062,7 @@ function renderDesktopPinTileInto({
     existingControl.dataset.localeKey === localeKey &&
     updateExistingDesktopPinPanelControl(existingControl, entity)
   ) {
+    fitDesktopPinRows(container);
     return;
   }
   container.innerHTML = '';
@@ -10030,6 +10070,7 @@ function renderDesktopPinTileInto({
   control.dataset.localeKey = localeKey;
   if (!interactive) control.style.pointerEvents = 'none';
   container.appendChild(control);
+  fitDesktopPinRows(container);
 }
 
 let desktopPinLocaleMessages = null;

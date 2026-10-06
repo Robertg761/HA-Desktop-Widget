@@ -7072,14 +7072,20 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         };
       };
 
-      // The default pin leaves the range to its sliders: beside it the name had a few letters.
-      expect(render(168, 148)).toEqual({
-        layout: 'compact',
-        header: null,
-        boxes: 0,
-        current: 'Now 21°C',
-        sliders: 2,
-      });
+      // The default pin leaves the range to its sliders: beside it the name had a few letters. So
+      // does a smaller one, whose name has less room still.
+      for (const [width, height, layout] of [
+        [168, 148, 'compact'],
+        [150, 140, 'micro'],
+      ]) {
+        expect(render(width, height)).toEqual({
+          layout,
+          header: null,
+          boxes: 0,
+          current: 'Now 21°C',
+          sliders: 2,
+        });
+      }
       // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
       for (const [width, height, layout] of [
         [200, 170, 'balanced'],
@@ -7092,6 +7098,85 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           current: 'Now 21°C',
           sliders: 2,
         });
+      }
+    });
+
+    it('offers fewer modes where their names do not fit the pin’s row, down to two', () => {
+      const i18n = require('../../src/i18n.js');
+      const heatPump = {
+        entity_id: 'climate.heat_pump',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Heat pump',
+          current_temperature: 21.5,
+          target_temp_low: 19.5,
+          target_temp_high: 24.5,
+          hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'fan_only'],
+          min_temp: 7,
+          max_temp: 30,
+          supported_features: 2,
+        },
+      };
+      state.setStates({ [heatPump.entity_id]: heatPump });
+      // jsdom lays nothing out, so this does what the stylesheet does: a name is 6 px a letter and
+      // its button 4 px more, 3 px apart, and a row too narrow for every button cuts each name.
+      let rowWidth = 150;
+      const nameWidth = (element) => element.textContent.trim().length * 6;
+      const rowHolds = (row) => {
+        const shown = [...row.querySelectorAll('.desktop-pin-climate-mode')].filter(
+          (button) => !button.hidden
+        );
+        const widths = shown.map((button) => nameWidth(button) + 4);
+        return widths.reduce((sum, width) => sum + width, 3 * (shown.length - 1)) <= rowWidth;
+      };
+      const isName = (element) => element.classList.contains('desktop-pin-panel-button-label');
+      const scrollWidth = jest
+        .spyOn(Element.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function () {
+          return isName(this) ? nameWidth(this) : 0;
+        });
+      const clientWidth = jest
+        .spyOn(Element.prototype, 'clientWidth', 'get')
+        .mockImplementation(function () {
+          if (this.classList.contains('desktop-pin-climate-modes')) return rowWidth;
+          if (!isName(this)) return 0;
+          return rowHolds(this.closest('.desktop-pin-climate-modes'))
+            ? nameWidth(this)
+            : nameWidth(this) - 1;
+        });
+      const modes = () =>
+        [...document.querySelectorAll('#desktop-pin-content .desktop-pin-climate-mode')]
+          .filter((button) => !button.hidden)
+          .map((button) => button.dataset.action);
+      const render = () => ui.renderDesktopPinnedTile(heatPump.entity_id, heatPump);
+      try {
+        setDesktopPinViewport(168, 148);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        render();
+        // "Heat/Cool", "Off" and "Heat" fit the default pin.
+        expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
+
+        // "Chaud/Froid", "Désactivé" and "Chauffe" do not, and the active mode stays.
+        i18n.setLocaleBootstrap({
+          activeLocale: 'fr',
+          messages: { 'Heat/Cool': 'Chaud/Froid', Off: 'Désactivé', Heat: 'Chauffe' },
+        });
+        render();
+        expect(modes()).toEqual(['heat_cool', 'off']);
+
+        // Drawn again in a wider row (a resize), the third comes back.
+        rowWidth = 190;
+        render();
+        expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
+
+        // Never fewer than two, however narrow the row.
+        rowWidth = 60;
+        render();
+        expect(modes()).toEqual(['heat_cool', 'off']);
+      } finally {
+        scrollWidth.mockRestore();
+        clientWidth.mockRestore();
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
     });
 

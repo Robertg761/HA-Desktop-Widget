@@ -181,7 +181,10 @@ jobs:
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 
       # Only the merge job reads this one. It is kept for a day so that re-running one failed half
-      # can merge again with the other half from the first attempt.
+      # can merge again with the other half from the first attempt. A re-run keeps the run's
+      # artifacts, so a half run again finds its first attempt's captures under this name (this
+      # step runs after a failure too). The new captures replace them: without overwrite, the
+      # upload failed on the name it found.
       - name: Upload snapshots
         if: always()
         uses: actions/upload-artifact@v6
@@ -190,11 +193,16 @@ jobs:
           path: visual-snapshots/
           if-no-files-found: warn
           retention-days: 1
+          overwrite: true
 
   # One artifact per OS, as before the suite was split. The scene files of the two halves have
   # different names, so they merge into one folder without overwriting each other. It runs after a
   # half has failed too, so that half's captures, the -failed ones included, still arrive. That
   # takes always() and not !cancelled(): a job that runs out of time ends as cancelled.
+  #
+  # Re-running a failed half re-runs this job as well, and the first attempt's
+  # visual-snapshots-<OS> is still on the run. upload-artifact/merge has no overwrite, so it failed
+  # on that name. The halves are downloaded into one folder and uploaded with overwrite instead.
   merge:
     needs: snapshots
     if: always()
@@ -205,9 +213,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Download the halves
+        uses: actions/download-artifact@v7
+        with:
+          pattern: visual-snapshots-${{ matrix.artifact }}-shard-*
+          path: visual-snapshots
+          merge-multiple: true
+
+      # An OS whose halves both stopped before uploading anything has nothing to merge, and the
+      # job says so, as upload-artifact/merge did.
       - name: Merge the halves
-        uses: actions/upload-artifact/merge@v6
+        uses: actions/upload-artifact@v6
         with:
           name: visual-snapshots-${{ matrix.artifact }}
-          pattern: visual-snapshots-${{ matrix.artifact }}-shard-*
+          path: visual-snapshots/
+          if-no-files-found: error
           retention-days: 14
+          overwrite: true
