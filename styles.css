@@ -6531,8 +6531,10 @@ body.theme-light.active-tile-glow
    the Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked
    door and an armed alarm more strongly than one that went off, since the accent is more saturated
    than the status colours, which are pale enough to be read as text. With such an accent a lit tile
-   takes about half the wash, so the tiles that need attention stay the most colourful on the page. */
-body[data-accent-warm] {
+   takes about half the wash, so the tiles that need attention stay the most colourful on the page.
+   The Readable preset draws its own blue accent whatever the chosen one is, so it keeps the whole
+   wash. */
+body[data-accent-warm]:not(.high-contrast) {
   --dash-tile-wash: var(--dash-tile-wash-warm);
   --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
 }
