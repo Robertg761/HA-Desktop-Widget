@@ -1,9 +1,11 @@
 const {
   cascadedDeclaration,
+  compareSpecificity,
   contrastRatio,
   loadAppStylesheets,
   parseColor,
   resolvedValue,
+  specificity,
 } = require('../helpers/css-cascade.js');
 
 // Each case is a body class list. Dark solid is a Windows panel without acrylic; frosted is
@@ -636,5 +638,68 @@ describe('panel veil', () => {
         'transparent'
       );
     }
+  });
+});
+
+describe('the header and the page tabs under a dialog', () => {
+  beforeAll(() => {
+    loadAppStylesheets(document);
+  });
+
+  afterEach(() => {
+    document.body.className = '';
+    document.body.innerHTML = '';
+  });
+
+  // On native glass they sit on the window's half-clear tint alone, and the blur a dialog's scrim
+  // lays over half-clear pixels is half clear too: on Windows and macOS their sharp text showed
+  // through the scrim. jsdom cannot match :has(), so this finds the rule and plays its condition
+  // out by hand: the body it names, a dialog or the palette shown in it, and the rows it paints.
+  it('gives them a nearly opaque pane on native glass while a dialog or the palette is up', () => {
+    const rule = [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules])
+      .find(
+        (candidate) =>
+          /:has\(/.test(candidate.selectorText || '') &&
+          /\.widget-header/.test(candidate.selectorText)
+      );
+    expect(rule).toBeDefined();
+    const [, host, shown, rows] = rule.selectorText
+      .replace(/\s+/g, ' ')
+      .match(/^(.*?):has\((.*)\) (.*)$/);
+    const applies = (bodyClass, overlays) => {
+      render(
+        bodyClass,
+        `<div class="widget-header"></div>
+        <div class="widget-content"><div class="section-header quick-access-header"></div></div>
+        ${overlays}`
+      );
+      return document.body.matches(host) && !!document.body.querySelector(shown);
+    };
+
+    const native = 'native-glass frosted-glass';
+    expect(applies(native, '<div class="modal"></div>')).toBe(true);
+    expect(applies(native, '<div class="command-palette-overlay"></div>')).toBe(true);
+    expect(applies(`theme-light ${native}`, '<div class="modal"></div>')).toBe(true);
+    // Closed, a dialog or the palette is only hidden, and the rows keep their glass.
+    expect(
+      applies(
+        native,
+        '<div class="modal hidden"></div><div class="command-palette-overlay hidden"></div>'
+      )
+    ).toBe(false);
+    // The Linux tint and the solid panel are nearly opaque already, and the scrim blurs them.
+    expect(applies('software-glass frosted-glass', '<div class="modal"></div>')).toBe(false);
+    expect(applies('', '<div class="modal"></div>')).toBe(false);
+
+    for (const selector of ['.widget-header', '.quick-access-header']) {
+      expect(document.querySelector(selector).matches(rows)).toBe(true);
+    }
+    expect(rule.style.getPropertyValue('background-color')).toBe('rgba(var(--window-bg-rgb), 0.9)');
+    // It sets the colour under the glass rows' veil layer, and has to outrank the rule that does.
+    render(native, '<div class="widget-header"></div>');
+    const veil = cascadedDeclaration(document.querySelector('.widget-header'), 'background');
+    expect(veil.value).toBe('var(--panel-veil-layer)');
+    expect(compareSpecificity(specificity(rule.selectorText), veil.specificity)).toBeGreaterThan(0);
   });
 });
