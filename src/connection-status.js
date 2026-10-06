@@ -1,4 +1,4 @@
-import { isolateAuto, t } from './i18n.js';
+import { t } from './i18n.js';
 
 /**
  * Shared rendering for the Home Assistant connection status lines (settings
@@ -164,7 +164,7 @@ function describeHomeAssistantOAuthFailure(error) {
   return (
     describeHomeAssistantOAuthError(error?.result?.code) ||
     t('Could not connect to Home Assistant. {{error}}', {
-      error: isolateAuto(error?.message || t('Unknown error')),
+      error: error?.message || t('Unknown error'),
     })
   );
 }
@@ -184,9 +184,7 @@ function describeHomeAssistantOAuthRefreshError(homeAssistant = {}) {
   }
   return (
     describeHomeAssistantOAuthError(code) ||
-    t('Could not connect to Home Assistant. {{error}}', {
-      error: isolateAuto(homeAssistant.oauthLastError),
-    })
+    t('Could not connect to Home Assistant. {{error}}', { error: homeAssistant.oauthLastError })
   );
 }
 

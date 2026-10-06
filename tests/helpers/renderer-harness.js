@@ -367,7 +367,6 @@ function createRendererHarness() {
         ),
         translateDocument: jest.fn(),
         // The marks are added only in a right-to-left language, which these tests do not run in.
-        isolateAuto: jest.fn((text) => String(text ?? '')),
         isolateLtr: jest.fn((text) => String(text ?? '')),
         formatNumber: jest.fn((value) => String(value)),
         formatTime: jest.fn(

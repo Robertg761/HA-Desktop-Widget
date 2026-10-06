@@ -211,7 +211,6 @@ describe('Renderer stale favorite state handling', () => {
       setLocaleBootstrap: jest.fn(),
       t: jest.fn((key) => key),
       translateDocument: jest.fn(),
-      isolateAuto: jest.fn((text) => String(text ?? '')),
       isolateLtr: jest.fn((text) => String(text ?? '')),
       formatNumber: jest.fn((value) => String(value)),
     }));

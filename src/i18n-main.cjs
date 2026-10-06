@@ -3,7 +3,7 @@ const path = require('path');
 const nodeCrypto = require('crypto');
 const { fileURLToPath, pathToFileURL } = require('url');
 const { fetchChecked } = require('./net-fetch.cjs');
-const { isRtlLocale } = require('../packages/widget-renderer/src/rtl-locales.cjs');
+const { isolateQuotedText } = require('../packages/widget-renderer/src/rtl-locales.cjs');
 
 function normalizeLocaleCode(locale) {
   if (!locale || typeof locale !== 'string') return '';
@@ -110,23 +110,6 @@ function formatTemplate(template, vars = {}) {
     const value = Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : '';
     return value == null ? '' : String(value);
   });
-}
-
-// The error and the warning a message quotes are text the app did not write: an OS error such as
-// "EACCES: permission denied, open '…/config.json'", or the reason a helper gave. Under a
-// right-to-left language each keeps its own direction, as isolateAuto does in the renderer;
-// otherwise an English error takes the Arabic sentence's direction, and the quote or full stop it
-// ends with moves to the far end of the line. First strong rather than left to right, since the
-// quoted text can be translated already.
-const QUOTED_TEXT_VARS = ['error', 'warning'];
-
-function isolateQuotedText(vars) {
-  const isolated = { ...vars };
-  QUOTED_TEXT_VARS.forEach((name) => {
-    const value = vars[name] == null ? '' : String(vars[name]);
-    if (value) isolated[name] = `\u2068${value}\u2069`;
-  });
-  return isolated;
 }
 
 function compareVersions(a = '', b = '') {
@@ -645,7 +628,9 @@ function createLocalizationService(options = {}) {
     // lookup has no use for.
     const { activeLocale, messages } = resolveActiveMessages(languageSetting);
     const template = messages?.[key] || key;
-    return formatTemplate(template, isRtlLocale(activeLocale) ? isolateQuotedText(vars) : vars);
+    // The errors a message quotes keep their own direction in a right-to-left language, by the
+    // same rule as the renderer's messages.
+    return formatTemplate(template, isolateQuotedText(activeLocale, vars));
   }
 
   return {

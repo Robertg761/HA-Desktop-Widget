@@ -66,7 +66,6 @@ import {
   getFormatLocale,
   getLanguageDisplayName,
   getLocaleState,
-  isolateAuto,
   isolateLtr,
   t,
   translateDocument,
@@ -4942,7 +4941,7 @@ function bindProfileSyncSettingsUi() {
         log.error('Failed to clear saved profile sync passphrase:', error);
         showToast(
           t('Failed to clear saved passphrase: {{error}}', {
-            error: isolateAuto(error?.message || t('Unknown error')),
+            error: error?.message || t('Unknown error'),
           }),
           'error',
           3400
@@ -7125,7 +7124,7 @@ async function persistSettings() {
       } catch (error) {
         log.error('Settings saved, but the sync passphrase could not be cleared:', error);
         const warningMessage = t('Error: {{error}}', {
-          error: isolateAuto(error?.message || t('Unknown error')),
+          error: error?.message || t('Unknown error'),
         });
         showToast(warningMessage, 'warning', 5000);
       }
@@ -8250,7 +8249,7 @@ async function initializePopupHotkey() {
           }
           toggleModeCheckbox.checked = previousValue;
           const failureMessage = t('Error: {{error}}', {
-            error: isolateAuto(error?.message || t('Unknown error')),
+            error: error?.message || t('Unknown error'),
           });
           showToast(failureMessage, 'error', 3000);
         } finally {
@@ -8310,7 +8309,7 @@ async function initializePopupHotkey() {
           }
           hideOnReleaseCheckbox.checked = previousValue;
           const failureMessage = t('Error: {{error}}', {
-            error: isolateAuto(error?.message || t('Unknown error')),
+            error: error?.message || t('Unknown error'),
           });
           showToast(failureMessage, 'error', 3000);
         } finally {

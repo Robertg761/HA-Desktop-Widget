@@ -25,7 +25,6 @@ import {
   formatNumber,
   formatTime,
   getLocaleState,
-  isolateAuto,
   isolateLtr,
   setLocaleBootstrap,
   t,
@@ -426,7 +425,7 @@ function noteTokenRecoveryReason() {
       log.error('Failed to acknowledge token recovery notice:', error);
       uiUtils.showToast(
         t('Could not save the token recovery acknowledgement. {{error}}', {
-          error: isolateAuto(error?.message || t('Unknown error')),
+          error: error?.message || t('Unknown error'),
         }),
         'error',
         10000
@@ -2279,7 +2278,7 @@ function applyRendererConfig(nextConfig) {
   runtimeWarnings.forEach((warning) => {
     uiUtils.showToast(
       t('Error: {{error}}', {
-        error: isolateAuto(warning?.error || t('Unknown error')),
+        error: warning?.error || t('Unknown error'),
       }),
       'warning',
       5000
@@ -2304,7 +2303,7 @@ function showConfigRecoveryNotice(recovery) {
     'Configuration recovery could not be completed. Backup: {{path}} Error: {{error}}',
     {
       path: isolateLtr(recovery.backupPath || '-'),
-      error: isolateAuto(recovery.error || t('Unknown error')),
+      error: String(recovery.error || t('Unknown error')),
     }
   );
   uiUtils.showToast(message, 'error', 20000);
@@ -2486,7 +2485,7 @@ function classifyConnectionError(error) {
 
   return {
     key: normalizedMessage,
-    message: t('Connection error: {{message}}', { message: isolateAuto(normalizedMessage) }),
+    message: t('Connection error: {{message}}', { message: normalizedMessage }),
     persistUntilOnline: false,
   };
 }
@@ -3630,7 +3629,7 @@ function wireUI() {
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
                     path: isolateLtr(result.path),
                   })
-                : t('Failed to open log file: {{error}}', { error: isolateAuto(result.error) }),
+                : t('Failed to open log file: {{error}}', { error: result.error }),
               'error',
               8000
             );
@@ -3638,7 +3637,7 @@ function wireUI() {
         } catch (error) {
           log.error('Error opening log file:', error);
           uiUtils.showToast(
-            t('Error opening log file: {{error}}', { error: isolateAuto(error.message) }),
+            t('Error opening log file: {{error}}', { error: error.message }),
             'error'
           );
         }

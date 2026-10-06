@@ -10,7 +10,7 @@
  * Settings was ever opened were never seen.
  */
 
-import { isolateAuto, t } from './i18n.js';
+import { t } from './i18n.js';
 
 const IDLE = Object.freeze({ status: 'idle' });
 
@@ -161,7 +161,7 @@ function describeUpdateState(update) {
     case 'downloaded':
       return {
         text: update.installError
-          ? t('Error: {{error}}', { error: isolateAuto(update.installError) })
+          ? t('Error: {{error}}', { error: update.installError })
           : update.version
             ? t('Update v{{version}} ready to install', { version: update.version })
             : t('Update ready to install'),
@@ -172,7 +172,7 @@ function describeUpdateState(update) {
       };
     case 'error':
       return {
-        text: t('Error: {{error}}', { error: isolateAuto(update.error || t('Unknown error')) }),
+        text: t('Error: {{error}}', { error: update.error || t('Unknown error') }),
         tone: 'error',
         busy: false,
         installLabel: null,
