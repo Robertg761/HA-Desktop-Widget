@@ -1505,15 +1505,70 @@ describe('stylesheet cascade regressions', () => {
       }
     );
 
-    it('gives a light preset chip its whole width, so "100%" clears an outline', () => {
+    // A quarter of the default pin's row is about 35px, and Windows draws "100%" about 2px wider
+    // than Linux: with no padding and equal columns it touched the outline of the Readable preset
+    // and forced colours there. A chip never gets less than its label and padding; the others give
+    // it the room. The micro layout keeps its equal quarters.
+    it.each(['compact', 'balanced', 'roomy'])(
+      'keeps "100%" clear of its chip’s outline in a %s lamp pin',
+      (layout) => {
+        render(
+          'desktop-pin-mode high-contrast opaque-panels',
+          `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="${layout}">
+            <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">100%</button></div></div>`
+        );
+        const chip = document.querySelector('.desktop-pin-light-preset');
+        expect(resolvedValue(chip, 'padding-inline')).toBe('2px');
+        expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+        expect(
+          resolvedValue(
+            document.querySelector('.desktop-pin-light-presets'),
+            'grid-template-columns'
+          )
+        ).toBe('repeat(4, minmax(min-content, 1fr))');
+      }
+    );
+
+    it('keeps the micro lamp pin’s presets to equal quarters', () => {
       render(
-        'desktop-pin-mode high-contrast opaque-panels',
-        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
-          <button class="desktop-pin-light-preset">100%</button></div>`
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="micro">
+          <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">100%</button></div></div>`
       );
-      const chip = document.querySelector('.desktop-pin-light-preset');
-      expect(resolvedValue(chip, 'padding-inline')).toBe('0');
-      expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-presets'), 'grid-template-columns')
+      ).toBe('repeat(4, minmax(0, 1fr))');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'padding-inline')
+      ).toBe('0');
+    });
+
+    // 195x160 up to 259x189: with the roomier base spacing and its status line, a lamp whose name
+    // takes two lines put its presets 4px past the bottom of a 200x170 pin.
+    it('keeps a balanced lamp pin to the default pin spacing', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="balanced">
+          <div class="desktop-pin-light-shell"><div class="desktop-pin-light-topline">
+            <div class="desktop-pin-light-meta"><div class="desktop-pin-light-name"></div>
+            <div class="desktop-pin-light-status">On</div></div></div>
+          <div class="desktop-pin-light-brightness"></div>
+          <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">25%</button></div>
+          </div></div>`
+      );
+      const options = { viewport: { width: 200, height: 170 } };
+      const control = document.querySelector('.desktop-pin-light-control');
+      expect(resolvedValue(control, '--desktop-pin-panel-pad', options)).toBe('8px');
+      expect(resolvedValue(control, '--desktop-pin-panel-gap', options)).toBe('6px');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-status'), 'display', options)
+      ).toBe('none');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-presets'), 'gap', options)
+      ).toBe('4px');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'min-height', options)
+      ).toBe('24px');
     });
 
     it.each(THEME_CASES)('marks the lamp preset at the current level (%s)', (_, theme) => {

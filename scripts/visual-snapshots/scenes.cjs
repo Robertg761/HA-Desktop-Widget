@@ -459,17 +459,30 @@ async function resizePin(ctx, entityId, size) {
   await ctx.sleep(900);
 }
 
-// Every button of a pin lies inside its window, and none has its label cut short.
+// Every button of a pin lies inside its window, and none has its label cut short. A lamp's presets
+// have no label of their own, so their text has to keep 2px clear of the edge on either side: on
+// Windows "100%" touched the outline the Readable preset and forced colours draw.
 const PIN_BUTTONS_FIT = `(() => {
   const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
   const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  const textClear = (button) => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const style = getComputedStyle(button);
+    const inner =
+      button.getBoundingClientRect().width -
+      parseFloat(style.borderLeftWidth) -
+      parseFloat(style.borderRightWidth);
+    return range.getBoundingClientRect().width + 4 <= inner + 0.5;
+  };
   return (
     buttons.length > 0 &&
     buttons.every((button) => {
       const box = button.getBoundingClientRect();
       return box.bottom <= innerHeight && box.right <= innerWidth;
     }) &&
-    labels.every((label) => label.scrollWidth <= label.clientWidth)
+    labels.every((label) => label.scrollWidth <= label.clientWidth) &&
+    [...document.querySelectorAll('.desktop-pin-light-preset')].every(textClear)
   );
 })()`;
 
@@ -2667,6 +2680,9 @@ const scenes = [
   resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
   resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
   resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  // A lamp whose name takes two lines, with its status line under it, put its presets 4px past the
+  // bottom of a 200x170 pin.
+  resizedPinScene('light-long', 'light.upstairs_hallway_ceiling', { width: 200, height: 170 }),
   resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
   // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
   // balanced layout brought back a fourth mode that German cut to "Kü...".
@@ -2716,13 +2732,14 @@ const scenes = [
   pinScene('pin-large-weather', 'weather.home', { ui: { scale: 1.5 } }),
   pinScene('pin-theme-light-climate', 'climate.bedroom', { ui: { theme: 'light' } }),
   // The Readable preset reaches pin windows too: the power chip, the panel chips and the sliders.
-  pinScene('readable-pin-light', 'light.desk_lamp', { ui: READABLE }),
+  // Its outline is where the lamp's "100%" preset ran into its edge on Windows.
+  fittedPinScene('readable-pin-light', 'light.desk_lamp', { ui: READABLE }),
   pinScene('readable-pin-climate', 'climate.bedroom', { ui: READABLE }),
   pinScene('readable-pin-cover', 'cover.garage_door', { ui: READABLE }),
   pinScene('readable-pin-fan', 'fan.office', { ui: READABLE }),
-  // The pin's own track, thumb and fill in system colours.
+  // The pin's own track, thumb and fill in system colours, and the presets' outline.
   pinScene('forced-colors-pin-climate', 'climate.bedroom', { media: FORCED_COLORS }),
-  pinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
+  fittedPinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
 
   // The fixture turns seasonal themes off so the scenes above do not change with the date; these
   // force a holiday on. They also switch the themes on explicitly: CI machines often ask for

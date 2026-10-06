@@ -1474,9 +1474,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   z-index: 1;
 }
 
+/* The chips share the row equally while their labels fit. One whose label is wider than its share
+   keeps the label and its padding, and the others give it the room: "100%" in a quarter of the
+   default pin's row is drawn about 2px wider on Windows than on Linux, and there it touched the
+   outline the Readable preset and forced colours draw. The micro layout keeps its equal quarters. */
 .desktop-pin-light-presets {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(min-content, 1fr));
   gap: 6px;
 }
 
@@ -1493,9 +1497,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   border-radius: var(--radius-lg);
   min-height: 28px;
   min-width: 0;
-  /* No padding or tracking: a chip is a quarter of a 152px row, about 35px, and "100%" with them
-     ran into the outline the Readable preset and forced colours draw. */
-  padding-inline: 0;
+  /* No tracking, and the least padding that keeps a label off the outline the Readable preset and
+     forced colours draw: a chip is a quarter of a 152px row, about 35px. */
+  padding-inline: 2px;
   line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
@@ -1598,67 +1602,83 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-presets {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 3px;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-preset {
   /* 24px, the least a pointer is asked to hit (the compact layout's presets are the same). */
   min-height: 24px;
+  padding-inline: 0;
   font-size: var(--font-size-2xs);
   border-radius: var(--radius-md);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness {
+/* A lamp pin dragged a little bigger (the balanced layout, up to the roomy 260x190) keeps the
+   default pin's spacing, as the other pins do: with the roomier base values, the status line and a
+   name on two lines ("Upstairs hallway ceiling light") pushed the presets 4px off a 200x170 pin and
+   onto its rounded bottom edge at 240x180. Its extra room widens the slider and the presets. */
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-brightness {
   gap: 7px;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-glyph {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-glyph {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-meter-value {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-meter-value {
   font-size: clamp(16px, 4.3vw, 20px);
   letter-spacing: -0.03em;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-topline {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-topline {
   gap: 8px;
 }
 
 .desktop-pin-panel-control[data-layout='compact'] .desktop-pin-power,
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-power {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-power {
   width: 24px;
   height: 24px;
   font-size: var(--font-size-base);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-status {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-status {
   display: none;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness-head {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-brightness-head {
   gap: 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider,
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-slider,
 .desktop-pin-panel-control[data-layout='compact'] .desktop-pin-panel-slider {
   --desktop-pin-slider-track-size: 7px;
   --desktop-pin-slider-thumb-size: 14px;
 }
 
-.desktop-pin-light-control[data-layout='compact']
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
   .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
   margin: 6px 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-presets {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-presets {
   gap: 4px;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-preset {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-preset {
   min-height: 24px;
   font-size: var(--font-size-xs);
 }
@@ -2504,13 +2524,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
    mode or speed, the slider's labels and the climate's current reading, so it keeps the same
    spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
    keep those, and so does a media pin, which is balanced only from 285px wide (narrower, it is
-   tight) and has no row that grows. The :where() keeps these rules' weight. */
+   tight) and has no row that grows. The lamp pin's balanced layout is the default one's too (see
+   .desktop-pin-light-brightness below). The :where() keeps these rules' weight. */
 .desktop-pin-panel-control:is(
   [data-layout='compact'],
   [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
   [data-dense-variant='tight']
 ),
-.desktop-pin-light-control[data-layout='compact'] {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced']) {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
   --desktop-pin-panel-meter-radius: 12px;
