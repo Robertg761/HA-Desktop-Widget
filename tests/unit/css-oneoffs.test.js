@@ -959,6 +959,25 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(status, 'position')).toBe('absolute');
       expect(resolvedValue(status, 'min-height')).toBeNull();
     });
+
+    // When the whole card scrolled, a short window put step 3's Back and Connect below its fold.
+    it('scrolls the step’s text in a card too short for it, and keeps the buttons in view', () => {
+      render(
+        `<div class="first-run-panel"><div class="first-run-content"></div>
+          <div class="first-run-status" role="status"></div><div class="first-run-actions"></div></div>`
+      );
+      const card = document.querySelector('.first-run-panel');
+      const text = document.querySelector('.first-run-content');
+
+      expect(resolvedValue(card, 'display')).toBe('flex');
+      expect(resolvedValue(card, 'flex-direction')).toBe('column');
+      expect(resolvedValue(text, 'overflow-y')).toBe('auto');
+      expect(resolvedValue(text, 'min-height')).toBe('0');
+      expect(resolvedValue(text, 'flex')).toBe('0 1 auto');
+      for (const kept of ['.first-run-status', '.first-run-actions']) {
+        expect(resolvedValue(document.querySelector(kept), 'flex')).toBe('none');
+      }
+    });
   });
 
   describe('entity pick lists', () => {

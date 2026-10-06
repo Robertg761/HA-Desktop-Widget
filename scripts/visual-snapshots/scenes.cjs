@@ -341,10 +341,8 @@ const startupScenes = [
   },
 ];
 
-// The wizard's authorization step after an attempt on a server address nothing listens on, which
-// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
-// a scene whose failure drifts to another one fails instead of capturing it.
-async function failFirstRunAuthorization(ctx, says) {
+// The wizard's authorization step, about to open `address`.
+async function showFirstRunAuthorize(ctx, address) {
   await showFirstRunWelcome(ctx);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-content input');
@@ -355,9 +353,29 @@ async function failFirstRunAuthorization(ctx, says) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
   })()`);
-  await ctx.insertText('127.0.0.1:9');
+  await ctx.insertText(address);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-url');
+}
+
+// Every button the wizard shows lies inside its card and the window. When the whole card scrolled,
+// a short window left step 3's Back and Connect below the fold of a scroller inside the window.
+const WIZARD_ACTIONS_IN_VIEW = `(() => {
+  const card = document.querySelector('.first-run-panel').getBoundingClientRect();
+  const shown = [...document.querySelectorAll('.first-run-actions .btn')].filter(
+    (button) => button.getClientRects().length > 0
+  );
+  return shown.length > 0 && shown.every((button) => {
+    const box = button.getBoundingClientRect();
+    return box.top >= card.top && box.bottom <= card.bottom && box.bottom <= window.innerHeight;
+  });
+})()`;
+
+// The wizard's authorization step after an attempt on a server address nothing listens on, which
+// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
+// a scene whose failure drifts to another one fails instead of capturing it.
+async function failFirstRunAuthorization(ctx, says) {
+  await showFirstRunAuthorize(ctx, '127.0.0.1:9');
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-status[data-status="error"]');
   await ctx.expect(
@@ -3425,7 +3443,40 @@ const scenes = [
     name: 'wizard-welcome-minimum',
     size: MINIMUM_SIZE,
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
-    setup: showFirstRunWelcome,
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  },
+  // The steps with the most to say, in the smallest window: their text scrolls, their buttons stay.
+  {
+    name: 'wizard-url-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const field = text.querySelector('input').getBoundingClientRect();
+          const shown = text.getBoundingClientRect();
+          return field.top >= shown.top && field.bottom <= shown.bottom;
+        })()`,
+        'the whole field in view'
+      );
+    },
+  },
+  {
+    name: 'wizard-authorize-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+    },
   },
   {
     name: 'wizard-welcome-s150',

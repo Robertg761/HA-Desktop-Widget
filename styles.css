@@ -9552,7 +9552,12 @@ body.theme-light:not(.high-contrast)
   background: rgba(244, 246, 250, 0.72);
 }
 
+/* When a step does not fit (the smallest window is 360px tall, or the text is large and an error
+   sits under it), only the step's text scrolls; the status line and the buttons stay in view
+   under it. When the whole card scrolled, step 3's Back and Connect sat below its fold. */
 .first-run-panel {
+  display: flex;
+  flex-direction: column;
   max-height: 100%;
   overflow-y: auto;
   width: min(100%, 460px);
@@ -9563,6 +9568,21 @@ body.theme-light:not(.high-contrast)
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
     rgba(var(--settings-modal-panel-rgb), 0.86);
   box-shadow: var(--shadow-xl);
+}
+
+/* The scroller keeps 4px around what it holds, so the field's and the buttons' focus rings are not
+   cut off at its edges; the negative margin leaves the card's layout as it was. */
+.first-run-content {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: -4px;
+  padding: 4px;
+}
+
+.first-run-status,
+.first-run-actions {
+  flex: none;
 }
 
 .first-run-step-label {
@@ -9611,7 +9631,9 @@ body.theme-light:not(.high-contrast)
 }
 
 /* In a short window (the smallest is 360px) the card's own padding and the space around it left
-   the welcome step scrolling inside the card, its buttons cut off at the bottom. */
+   the welcome step scrolling inside the card, its buttons cut off at the bottom. An 8px rhythm
+   between the lines, and 12px above the buttons, lets the URL step fit too, field and all; only
+   step 3, which has the most to say, still scrolls its text. */
 @media (max-height: 480px) {
   .first-run-onboarding {
     padding: var(--space-3);
@@ -9619,6 +9641,17 @@ body.theme-light:not(.high-contrast)
 
   .first-run-panel {
     padding: var(--space-4);
+  }
+
+  .first-run-step-label,
+  .first-run-title,
+  .first-run-copy,
+  .first-run-security-note {
+    margin-bottom: var(--space-3);
+  }
+
+  .first-run-actions {
+    margin-top: var(--space-4);
   }
 }
 

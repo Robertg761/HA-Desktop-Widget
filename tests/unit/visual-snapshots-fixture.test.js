@@ -291,6 +291,8 @@ describe('visual snapshot scenes', () => {
       'startup-oauth-keyring',
       'wizard-welcome-ar',
       'wizard-welcome-minimum',
+      'wizard-url-minimum',
+      'wizard-authorize-minimum',
       'wizard-welcome-s150',
       'wizard-welcome-forced-colors',
       'wizard-authorize-error',
