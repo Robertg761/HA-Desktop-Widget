@@ -490,7 +490,7 @@ Ref: RO3-24, MP-83
 
 ### WIN11-12 Installed build: language, edit menu and hotkey
 
-Run this on the Setup or Portable build from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
+Run this on the Setup or Portable build from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (system default).
 
 1. In Windows Settings > Time & language > Language & region, add Español (México) under Preferred languages and move it to the top. Quit the app from the tray and start it again. If the next step still names your old language, sign out and back in.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
@@ -641,7 +641,7 @@ Ref: MP-73
 
 ### MAC-10 Installed build: language, edit menu and hotkey
 
-Run this on the `.dmg` or `.zip` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default). If you have an Intel Mac and an Apple silicon Mac, run it on both, because each loads its own copy of the hotkey library.
+Run this on the `.dmg` or `.zip` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (system default). If you have an Intel Mac and an Apple silicon Mac, run it on both, because each loads its own copy of the hotkey library.
 
 1. In System Settings > General > Language & Region, add Español (México) under Preferred Languages and drag it to the top. Quit the app from the menu-bar item and open it again.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
@@ -763,7 +763,7 @@ Ref: MP-29
 
 ### LNX-9 Installed build: language, edit menu and hotkey
 
-Run this on the AppImage or the `.deb` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (System Default).
+Run this on the AppImage or the `.deb` from the Releases page, not a build from source. 4.0 leaves files out of the package that earlier versions shipped, and this check is how a missing one would show. Keep Settings > General > Language on Auto (system default).
 
 1. Quit the app. Start it from a terminal with Mexican Spanish as the system language: `LANGUAGE=es_MX LANG=es_MX.UTF-8 ./"HA Desktop Widget-<version>-linux-x64.AppImage" --user-data-dir=$HOME/hadw-test`, or `LANGUAGE=es_MX LANG=es_MX.UTF-8 home-assistant-widget --user-data-dir=$HOME/hadw-test` for the `.deb`.
 2. Open Settings > General > Language & localization and read the line about the system language. Under Offline language packs, download Spanish.
