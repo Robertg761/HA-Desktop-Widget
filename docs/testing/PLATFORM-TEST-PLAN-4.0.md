@@ -378,7 +378,7 @@ Ref: RO3-02, MP-38
 
 ### WIN11-3 Window edge and corners
 
-The main window looks one of two ways. With Frosted glass background on (and Transparency effects on in Windows), Windows draws acrylic behind it. With Frosted glass background off, the widget draws its own solid panel, as it always does on Windows 10. The project's automated Windows screenshots come from machines without a GPU, which never draw acrylic, so only a real machine shows how Windows itself draws the window's corners and edge, with acrylic or without.
+The main window looks one of two ways. With Frosted glass background on, and Transparency effects on in Windows, Windows draws acrylic behind it. With Frosted glass background off, the widget draws its own solid panel, as it always does on Windows 10. The project's automated Windows screenshots come from machines without a GPU, which never draw acrylic. Only a real machine shows how Windows itself draws the window's corners and edge, with acrylic or without.
 
 1. Put the widget over a dark wallpaper and then a bright one, with Frosted glass background on and then off.
 2. Take a screenshot of each and zoom in on a corner and along the edges.
