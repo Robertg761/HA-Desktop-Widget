@@ -1663,6 +1663,12 @@ const scenes = [
     setup: async (ctx) => {
       await openHotkeysFor(ctx, '');
       await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+      // A lock's hotkey locks or unlocks; a toggle unlocked a door with nobody asked.
+      await ctx.expect(
+        `[...document.querySelector('#hotkeys-list .hotkey-action-select[data-entity-id="lock.back_door"]').options]
+          .map((option) => option.value).join() === 'lock,unlock'`,
+        'Lock and Unlock for the lock, and no Toggle'
+      );
     },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
