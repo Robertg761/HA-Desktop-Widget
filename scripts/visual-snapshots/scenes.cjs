@@ -1774,7 +1774,6 @@ const scenes = [
     },
   },
   { name: 'dialog-restore-dashboard', setup: openRestoreDashboard },
-  // The language packs on the General page, one row each.
   {
     name: 'settings-language-packs',
     setup: async (ctx) => {
