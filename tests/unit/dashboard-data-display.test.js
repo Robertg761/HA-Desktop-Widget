@@ -520,6 +520,28 @@ describe('dashboard data display', () => {
       expect(document.getElementById('media-tile-time-total').textContent).toBe('1:30:00');
     });
 
+    // The stylesheet puts h:mm:ss times under the title, where the bar between them has room.
+    it('marks a track past an hour, whose times are h:mm:ss', () => {
+      const track = (duration) =>
+        entity('media_player.den', 'playing', {
+          media_title: 'Track',
+          media_duration: duration,
+          media_position: 30,
+        });
+      show(track(3599));
+      const seek = document.querySelector('.media-tile-seek');
+      expect([
+        seek.dataset.longTimes,
+        document.getElementById('media-tile-time-total').textContent,
+      ]).toEqual(['false', '59:59']);
+      state.setEntityState(track(3600));
+      ui.updateMediaTile();
+      expect([
+        seek.dataset.longTimes,
+        document.getElementById('media-tile-time-total').textContent,
+      ]).toEqual(['true', '1:00:00']);
+    });
+
     it('does not fetch the track id as if it were a picture', () => {
       show(
         entity('media_player.den', 'playing', {

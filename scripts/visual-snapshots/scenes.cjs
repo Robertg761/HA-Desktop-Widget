@@ -1329,6 +1329,31 @@ const waitForCameraTiles = (ctx) =>
     'the camera tiles settled on their messages'
   );
 
+// A film past an hour under a title longer than the media tile has room for, on a player of its own:
+// the fixture's theater plays a short one.
+const longFilm = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'media_player.cinema',
+      state: 'playing',
+      attributes: {
+        friendly_name: 'Cinema',
+        media_title: 'The Assassination of Jesse James by the Coward Robert Ford',
+        media_artist: "Director's cut",
+        volume_level: 0.5,
+        media_duration: 6750,
+        media_position: 4350,
+        media_position_updated_at: stamp,
+        supported_features: 152463,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'media_player.cinema', parent_id: null, user_id: null },
+    },
+  ];
+};
+
 // A radio stream with a programme name longer than the media tile has room for: no length, so its
 // seek row is hidden.
 const radioStream = (now) => {
@@ -2894,19 +2919,46 @@ const scenes = [
     setup: expectTilesLaidOut,
   },
   { name: 'layout-main-wide', size: WIDE_SIZE, setup: expectTilesLaidOut },
-  // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them.
-  {
-    name: 'layout-media-long',
+  // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them. Beside the
+  // title the bar between two such times was a 36 to 52px stub in the default window, so the seek
+  // row goes under the title there, and the bar has to be readable, with a title of any length.
+  ...[
+    ['layout-media-long', 'media_player.theater', null, 'The Long Goodbye'],
+    ['layout-media-long-title', 'media_player.cinema', longFilm, 'Jesse James'],
+  ].map(([name, player, extraStates, title]) => ({
+    name,
     size: DEFAULT_SIZE,
-    config: { primaryMediaPlayer: 'media_player.theater' },
-  },
+    config: { primaryMediaPlayer: player },
+    ...(extraStates ? { extraStates } : {}),
+    setup: async (ctx) => {
+      await ctx.waitForExpression(
+        `document.querySelector('#media-tile .media-tile-seek')?.dataset.longTimes === 'true' &&
+          document.getElementById('media-tile-title')?.textContent.includes(${JSON.stringify(title)})`,
+        'the film on the media tile'
+      );
+      await ctx.expect(
+        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width >= 60`,
+        'the seek bar between h:mm:ss times is at least 60px wide'
+      );
+      // The short title fits whole; the long one is cut by its ellipsis inside the tile.
+      await ctx.expect(
+        extraStates
+          ? MEDIA_TRACK_CUT_OFF
+          : `(() => {
+              const title = document.getElementById('media-tile-title');
+              return title.scrollWidth <= title.clientWidth;
+            })()`,
+        'the film title is whole, or cut inside the tile'
+      );
+    },
+  })),
   {
     name: 'layout-media-long-narrow',
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
-  // A stream has no length and its seek row is hidden. The row keeps only the width of its hidden
-  // times, so the bar in it stays at its shortest, and the programme name has the rest of the row.
+  // A stream has no length and its seek row is hidden. The programme name takes the row up to the
+  // controls: kept for the hidden times, the column left about 130px blank beside a cut name.
   {
     name: 'layout-media-stream',
     size: DEFAULT_SIZE,
@@ -2919,8 +2971,12 @@ const scenes = [
         'the stream on the media tile'
       );
       await ctx.expect(
-        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width < 40`,
-        'the hidden seek row of a stream takes no share of the row'
+        `(() => {
+          const info = document.getElementById('media-tile-info').getBoundingClientRect();
+          const controls = document.querySelector('#media-tile .media-tile-controls').getBoundingClientRect();
+          return controls.left - info.right <= 12;
+        })()`,
+        'the hidden seek row of a stream leaves the programme name the row'
       );
     },
   },

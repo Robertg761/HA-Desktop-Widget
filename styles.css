@@ -3604,12 +3604,43 @@ body.first-run-active .widget-content > * {
 }
 
 /* A radio stream, a TV input or an idle player has no length, and its seek row is hidden. The
-   column keeps the width of its hidden times so the controls stay put, but no share of the row:
-   beside an empty column that share only cut the station's or the programme's name shorter. The
-   narrow layouts below put the row on a line of its own. */
+   title takes its column as well: kept at the width of its hidden times, the column left about
+   130px of the row blank beside a station's or a programme's name cut short. The controls stay at
+   the row's end. The narrow layouts below put the row on a line of its own, which stays. */
 @media (min-width: 421px) {
   .media-tile-content:has(> .media-tile-seek[data-empty='true']) {
-    grid-template-columns: minmax(0, 1fr) min-content auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) .media-tile-seek {
+    display: none;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) .media-tile-controls {
+    grid-column: 2;
+  }
+}
+
+/* A film or a podcast runs past an hour, and its two h:mm:ss times leave the bar between them a
+   36px stub beside the title in the window the app opens at, where any more for the bar cut the
+   title shorter. Below 640px the seek row goes under the title, as in the narrow layouts, so the
+   bar has the row beside the controls and the title keeps the whole width. */
+@media (min-width: 421px) and (max-width: 639px) {
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-info {
+    grid-column: 1 / -1;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-seek {
+    grid-column: 1;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-controls {
+    grid-column: 2;
+    grid-row: 2;
   }
 }
 
@@ -3665,7 +3696,9 @@ body.first-run-active .widget-content > * {
   justify-self: stretch;
 }
 
-/* No length to show (radio, an idle player): hidden rather than removed, so the controls stay put. */
+/* No length to show (radio, an idle player): hidden. Where the row has a line of its own (the narrow
+   layouts) it keeps its place, so the controls stay put; beside the title it gives the title its
+   column (above). */
 .media-tile-seek[data-empty='true'] {
   visibility: hidden;
 }

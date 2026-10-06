@@ -14420,8 +14420,12 @@ function updateMediaSeekBar(entity) {
     const { duration, currentPosition } = getMediaTimeline(entity);
 
     // A radio stream, an idle player or a TV input has no length to measure against, and an empty
-    // "0:00 ▬ 0:00" row says nothing. It stays in the layout, hidden, so the controls do not move.
-    if (seek) seek.dataset.empty = duration > 0 ? 'false' : 'true';
+    // "0:00 ▬ 0:00" row says nothing, so the stylesheet hides it. A film or a podcast that runs
+    // past an hour has h:mm:ss times, which take the row a seek bar needs beside the title.
+    if (seek) {
+      seek.dataset.empty = duration > 0 ? 'false' : 'true';
+      seek.dataset.longTimes = duration >= 3600 ? 'true' : 'false';
+    }
 
     const format = (seconds) => utils.formatDuration(Math.max(0, Math.floor(seconds)) * 1000);
     if (timeCurrent) timeCurrent.textContent = format(currentPosition);
