@@ -751,6 +751,18 @@ const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
   return [...body.children].filter(shown).every((block) =>
     [...block.querySelectorAll('*')].some((part) => shown(part) && part.children.length === 0));
 })()`;
+// The thermostat's modes, fan speeds and presets lie in rows with none left alone on the last row.
+const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-buttons, .climate-option-buttons)'
+)].every((grid) => {
+  const rows = new Map();
+  [...grid.children].filter((chip) => chip.getClientRects().length > 0).forEach((chip) => {
+    const top = Math.round(chip.getBoundingClientRect().top);
+    rows.set(top, (rows.get(top) || 0) + 1);
+  });
+  const counts = [...rows.values()];
+  return counts.length < 2 || counts.at(-1) > 1;
+})`;
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -2982,6 +2994,7 @@ const scenes = [
         })()`,
         'the target range is one line inside its card'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
     },
   },
   {
@@ -2994,6 +3007,7 @@ const scenes = [
         `document.getElementById('climate-target-value').getClientRects().length === 1`,
         'the target range is one line'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
     },
   },
   {

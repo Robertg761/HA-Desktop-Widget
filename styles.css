@@ -5917,6 +5917,15 @@ body.theme-light:not(.high-contrast)
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Five chips make three and two, six two rows of three and nine three of three. The dialog is wide
+   enough for four 80px chips a row, which left a heat pump's fan-only mode alone under Off, and
+   two chips under four, or one under eight. */
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(5):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(6):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(9):last-child) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .climate-mode-btn,
 .climate-fan-mode-btn,
 .climate-preset-mode-btn {

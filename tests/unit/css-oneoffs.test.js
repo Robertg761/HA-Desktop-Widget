@@ -726,6 +726,32 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(document.querySelector('.climate-fan-mode-btn'), 'flex')).toBeNull();
     });
 
+    // The dialog holds four 80px chips a row, so five left a heat pump's fan-only mode alone on
+    // the second row, six put two under four, and nine one under eight. jsdom cannot match
+    // :has(> ...), so the rule is picked as the browser picks it: the last one naming the count.
+    it.each([
+      [4, 'repeat(2, minmax(0, 1fr))'],
+      [5, 'repeat(3, minmax(0, 1fr))'],
+      [6, 'repeat(3, minmax(0, 1fr))'],
+      [9, 'repeat(3, minmax(0, 1fr))'],
+      [7, undefined],
+      [8, undefined],
+    ])('lays %i climate chips out in full rows', (count, columns) => {
+      const counted = `:has(> :nth-child(${count}):last-child)`;
+      const rules = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .filter((rule) =>
+          ['.climate-mode-buttons', '.climate-option-buttons'].every((grid) =>
+            rule.selectorText
+              ?.split(/,\s*(?=:is\()/)
+              .some((selector) => selector.includes(grid) && selector.endsWith(counted))
+          )
+        );
+      expect(rules.at(-1)?.style.getPropertyValue('grid-template-columns') || undefined).toBe(
+        columns
+      );
+    });
+
     it('sets the mode labels in the weight of the chips beside them', () => {
       render(
         '<span class="climate-mode-label">Heat Cool</span><button class="climate-fan-mode-btn">Auto</button>'
