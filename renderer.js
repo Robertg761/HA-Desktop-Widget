@@ -446,13 +446,15 @@ function getTokenRecoveryPanel() {
     onClick: openTokenSettings,
   };
   if (tokenRecoveryReason === 'encryption_unavailable' && linux) {
-    // The encrypted token is still on disk: unlocking the keyring and restarting brings it back.
-    // The title names the locked keyring, so the message starts with what that means for the token.
+    // The encrypted token is still on disk: starting or unlocking the keyring and restarting brings
+    // it back. Electron cannot tell a locked keyring from one that is not running, so neither the
+    // title nor the message says which. The title names the keyring, so the message starts with
+    // what that means for the token.
     return {
       tone: 'error',
-      title: t('System keyring is locked'),
+      title: t('System keyring is unavailable'),
       message: t(
-        'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.'
+        'The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.'
       ),
       actions: [
         { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
@@ -1198,7 +1200,7 @@ function getOAuthStatePanel() {
     if (!pending && !error && isKeyringUnavailable()) {
       return {
         tone: 'error',
-        title: t('System keyring is locked'),
+        title: t('System keyring is unavailable'),
         message: describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant),
         actions: [
           { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },

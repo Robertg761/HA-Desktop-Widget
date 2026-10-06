@@ -1191,7 +1191,6 @@
   "Both computers changed {{sections}}, so the newer change was kept and the other was backed up.": "Both computers changed {{sections}}, so the newer change was kept and the other was backed up.",
   "Waiting for your choice below.": "Waiting for your choice below.",
   "Profile sync complete.": "Profile sync complete.",
-  "System keyring is locked": "System keyring is locked",
   "Restart Widget": "Restart Widget",
   "Add to Omarchy Bar": "Add to Omarchy Bar",
   "Could not add Home Assistant to the Omarchy bar": "Could not add Home Assistant to the Omarchy bar",
@@ -1561,9 +1560,7 @@
   "Choose rooms and entities": "Choose rooms and entities",
   "My entities": "My entities",
   "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.",
-  "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.",
   "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.",
-  "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.",
   "Resize only": "Resize only",
   "Not connected to Home Assistant. Changes can't be sent right now.": "Not connected to Home Assistant. Changes can't be sent right now.",
   "Can't reach the widget. Changes can't be sent right now.": "Can't reach the widget. Changes can't be sent right now.",
@@ -1644,5 +1641,8 @@
   "Copy & switch": "Copy & switch",
   "Keep current": "Keep current",
   "Use that file": "Use that file",
-  "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant can't reach it right now. Try again once it's back."
+  "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant can't reach it right now. Try again once it's back.",
+  "System keyring is unavailable": "System keyring is unavailable",
+  "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.",
+  "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget."
 }

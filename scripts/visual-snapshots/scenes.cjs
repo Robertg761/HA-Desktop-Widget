@@ -326,7 +326,8 @@ const startupScenes = [
   },
   // Browser authorization with no saved authorization to restore it from. Windows and macOS find
   // none and ask to reconnect. Linux under CI has no keyring, so it stops before looking and asks
-  // for the keyring to be unlocked: that is the panel it captures, under a name that says so.
+  // for the keyring to be started or unlocked: that is the panel it captures, under a name that
+  // says so.
   {
     name: 'startup-oauth-reauth',
     platforms: ['win32', 'darwin'],
@@ -337,7 +338,7 @@ const startupScenes = [
     name: 'startup-oauth-keyring',
     platforms: ['linux'],
     startup: { config: oauthWithNothingSaved },
-    setup: (ctx) => showTokenPanel(ctx, 'System keyring is locked'),
+    setup: (ctx) => showTokenPanel(ctx, 'System keyring is unavailable'),
   },
 ];
 

@@ -2106,6 +2106,9 @@
     "Copy & switch": "Copiar y cambiar",
     "Keep current": "Mantener la actual",
     "Use that file": "Usar ese archivo",
-    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant no puede acceder a él ahora mismo. Vuelve a intentarlo cuando vuelva a estar disponible."
+    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant no puede acceder a él ahora mismo. Vuelve a intentarlo cuando vuelva a estar disponible.",
+    "System keyring is unavailable": "El llavero del sistema no está disponible",
+    "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "El token guardado de Home Assistant no se puede leer hasta que el llavero del sistema esté en ejecución y desbloqueado. Inícialo o desbloquéalo y reinicia el widget.",
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "La autorización guardada de Home Assistant no se puede leer hasta que el llavero del sistema esté en ejecución y desbloqueado. Inícialo o desbloquéalo y reinicia el widget."
   }
 }

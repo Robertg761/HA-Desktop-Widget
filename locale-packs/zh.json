@@ -2106,6 +2106,9 @@
     "Copy & switch": "复制并切换",
     "Keep current": "保留当前",
     "Use that file": "使用该文件",
-    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant 目前无法连接到它。请待其恢复后再试。"
+    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant 目前无法连接到它。请待其恢复后再试。",
+    "System keyring is unavailable": "系统密钥环不可用",
+    "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "在系统密钥环运行并解锁之前，无法读取已保存的 Home Assistant 令牌。请启动或解锁密钥环，然后重新启动小组件。",
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "在系统密钥环运行并解锁之前，无法读取已保存的 Home Assistant 授权。请启动或解锁密钥环，然后重新启动小组件。"
   }
 }

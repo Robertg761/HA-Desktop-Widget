@@ -2106,6 +2106,9 @@
     "Copy & switch": "نسخ وتبديل",
     "Keep current": "الإبقاء على الحالي",
     "Use that file": "استخدام ذلك الملف",
-    "Home Assistant can't reach it right now. Try again once it's back.": "لا يستطيع Home Assistant الوصول إليه حاليًا. حاول مرة أخرى عند عودته."
+    "Home Assistant can't reach it right now. Try again once it's back.": "لا يستطيع Home Assistant الوصول إليه حاليًا. حاول مرة أخرى عند عودته.",
+    "System keyring is unavailable": "سلسلة مفاتيح النظام غير متاحة",
+    "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "لا يمكن قراءة رمز Home Assistant المحفوظ حتى تعمل سلسلة مفاتيح النظام ويُفتح قفلها. شغّلها أو افتح قفلها، ثم أعد تشغيل الأداة.",
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "لا يمكن قراءة تفويض Home Assistant المحفوظ حتى تعمل سلسلة مفاتيح النظام ويُفتح قفلها. شغّلها أو افتح قفلها، ثم أعد تشغيل الأداة."
   }
 }

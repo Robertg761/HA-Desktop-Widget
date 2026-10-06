@@ -1399,7 +1399,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
     });
 
-    it('names a locked keyring on Linux, where unlocking it and restarting brings the token back', async () => {
+    // A keyring that is not running is as unreadable as a locked one, and Electron cannot tell
+    // them apart, so neither is named as the cause.
+    it('names an unavailable keyring on Linux, where starting or unlocking it brings the token back', async () => {
       await loadRenderer({
         config: recoveryConfig('encryption_unavailable'),
         configureApi(api) {
@@ -1407,13 +1409,13 @@ describe('Renderer first-run Home Assistant authorization', () => {
         },
       });
 
-      expect(panel().querySelector('.widget-state-title').textContent).toBe(
-        'System keyring is locked'
-      );
+      const title = panel().querySelector('.widget-state-title').textContent;
+      expect(title).toBe('System keyring is unavailable');
       // The body goes on from the title instead of saying it again.
       const copy = panel().querySelector('.widget-state-copy').textContent;
-      expect(copy).toContain('token cannot be read until the system keyring is unlocked');
-      expect(copy).not.toMatch(/keyring is locked/i);
+      expect(copy).toContain('token cannot be read until the system keyring is running and unlocked');
+      expect(copy).toContain('Start or unlock it');
+      expect(`${title} ${copy}`).not.toMatch(/keyring is locked/i);
       expect(findButtonByText('Restart Widget')).toBeTruthy();
       expect(findButtonByText('Enter token')).toBeTruthy();
     });
@@ -1470,7 +1472,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       await flushAsync();
 
       expect(wizardShown()).toBe(false);
-      expect(panel().textContent).toContain('System keyring is locked');
+      expect(panel().textContent).toContain('System keyring is unavailable');
       expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
     });
 
@@ -1537,7 +1539,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
       // The panel names the keyring; a toast with another remedy beside it would say it twice.
       expect(mockUiUtils.showToast).not.toHaveBeenCalled();
-      expect(panel().textContent).toContain('System keyring is locked');
+      expect(panel().textContent).toContain('System keyring is unavailable');
     });
 
     // The panel asked for the token again because no keyring could keep it. Typed in with still no

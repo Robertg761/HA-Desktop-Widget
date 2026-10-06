@@ -2106,6 +2106,9 @@
     "Copy & switch": "Kopieren & wechseln",
     "Keep current": "Aktuellen behalten",
     "Use that file": "Diese Datei verwenden",
-    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant kann es gerade nicht erreichen. Versuche es erneut, sobald es wieder da ist."
+    "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant kann es gerade nicht erreichen. Versuche es erneut, sobald es wieder da ist.",
+    "System keyring is unavailable": "Systemschlüsselbund ist nicht verfügbar",
+    "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "Das gespeicherte Home Assistant-Token kann erst gelesen werden, wenn der Systemschlüsselbund läuft und entsperrt ist. Starte oder entsperre ihn und starte das Widget dann neu.",
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "Die gespeicherte Home Assistant-Autorisierung kann erst gelesen werden, wenn der Systemschlüsselbund läuft und entsperrt ist. Starte oder entsperre ihn und starte das Widget dann neu."
   }
 }

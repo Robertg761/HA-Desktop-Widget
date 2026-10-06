@@ -232,7 +232,7 @@ describe('the connection panel on the dashboard', () => {
       oauthAuthorizationId: undefined,
     });
 
-  describe('an authorization the locked keyring keeps from being read', () => {
+  describe('an authorization a locked or stopped keyring keeps from being read', () => {
     it('goes on from its title instead of saying it again', async () => {
       await harness.load({
         config: {
@@ -244,9 +244,12 @@ describe('the connection panel on the dashboard', () => {
         },
       });
 
-      expect(title()).toBe('System keyring is locked');
-      expect(copy()).toContain('authorization cannot be read until the system keyring is unlocked');
-      expect(copy()).not.toMatch(/keyring is locked/i);
+      expect(title()).toBe('System keyring is unavailable');
+      expect(copy()).toContain(
+        'authorization cannot be read until the system keyring is running and unlocked'
+      );
+      // Which of the two it is cannot be told, so neither is claimed.
+      expect(`${title()} ${copy()}`).not.toMatch(/keyring is locked/i);
     });
   });
 

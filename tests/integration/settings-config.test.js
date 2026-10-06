@@ -5247,7 +5247,7 @@ describe('Settings + Config Integration', () => {
       test.each([
         [
           'encryption_unavailable',
-          'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.',
+          'The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.',
         ],
         [
           'not_persisted',
