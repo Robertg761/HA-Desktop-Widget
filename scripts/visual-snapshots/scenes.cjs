@@ -434,7 +434,8 @@ async function openRemoveConfirmation(ctx) {
 
 // On native glass (the Windows and macOS runners) the header and the page tabs sit on the window's
 // half-clear tint, and the scrim's blur over them let their sharp text through. While a dialog is up
-// they take a nearly opaque pane. Elsewhere the window under them is nearly opaque already.
+// they take a nearly opaque pane, which fades in with the dialog. Elsewhere the window under them is
+// nearly opaque already.
 const CHROME_UNDER_SCRIM_OPAQUE = `!document.body.classList.contains('native-glass') ||
   [...document.querySelectorAll('.widget-header, .quick-access-header')].every((row) => {
     const alpha = getComputedStyle(row).backgroundColor.match(/rgba?\\(([^)]*)\\)/)?.[1].split(',')[3];
@@ -1650,7 +1651,7 @@ const scenes = [
     name: 'dialog-confirm-remove',
     setup: async (ctx) => {
       await openRemoveConfirmation(ctx);
-      await ctx.expect(
+      await ctx.waitForExpression(
         CHROME_UNDER_SCRIM_OPAQUE,
         'the header and the page tabs blur under the scrim'
       );
