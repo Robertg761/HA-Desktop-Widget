@@ -1893,6 +1893,6 @@
   },
   "Could not persist custom colors. Try Save in settings.": {
     "retiredIn": "4.0.0",
-    "reason": "Written with Settings capitalized, as the panel is named elsewhere"
+    "reason": "Reworded as a plain sentence that names the Settings panel with its capital"
   }
 }

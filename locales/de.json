@@ -1646,5 +1646,5 @@
   "Pinned tile": "Angeheftete Kachel",
   "Color temperature": "Farbtemperatur",
   "Light color": "Lichtfarbe",
-  "Could not persist custom colors. Try Save in Settings.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern“ in den Einstellungen."
+  "Could not save custom colors. Press Save in Settings to try again.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern“ in den Einstellungen."
 }

@@ -1646,5 +1646,5 @@
   "Pinned tile": "Pinned tile",
   "Color temperature": "Color temperature",
   "Light color": "Light color",
-  "Could not persist custom colors. Try Save in Settings.": "Could not persist custom colors. Try Save in Settings."
+  "Could not save custom colors. Press Save in Settings to try again.": "Could not save custom colors. Press Save in Settings to try again."
 }

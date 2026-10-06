@@ -2126,6 +2126,6 @@
     "Pinned tile": "Vignette épinglée",
     "Color temperature": "Température de couleur",
     "Light color": "Couleur de l'éclairage",
-    "Could not persist custom colors. Try Save in Settings.": "Impossible de conserver les couleurs personnalisées. Essayez Enregistrer dans les paramètres."
+    "Could not save custom colors. Press Save in Settings to try again.": "Impossible de conserver les couleurs personnalisées. Essayez Enregistrer dans les paramètres."
   }
 }

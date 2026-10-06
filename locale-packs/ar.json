@@ -2126,6 +2126,6 @@
     "Pinned tile": "بطاقة مثبّتة",
     "Color temperature": "درجة حرارة اللون",
     "Light color": "لون الإضاءة",
-    "Could not persist custom colors. Try Save in Settings.": "تعذّر حفظ الألوان المخصصة. جرّب «حفظ» في الإعدادات."
+    "Could not save custom colors. Press Save in Settings to try again.": "تعذّر حفظ الألوان المخصصة. جرّب «حفظ» في الإعدادات."
   }
 }
