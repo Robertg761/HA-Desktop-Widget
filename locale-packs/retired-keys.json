@@ -1830,5 +1830,65 @@
   "The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded to call it the popup hotkey, as the Hotkeys page does"
+  },
+  "Edit Comparison Graph": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Comparison Graph": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Auto (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Extra Large": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Line chart (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Static icon (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Live stream while visible (Higher usage)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Snapshot every 30 seconds (Efficient)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Snapshot every 5 seconds (Frequent)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Auto (System Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Save & Exit Reorganize Mode (ESC)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "New View": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Restart Widget": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Pinned Tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Light Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
   }
 }

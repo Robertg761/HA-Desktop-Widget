@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "下载、更新或移除离线语言包。英语和德语始终可离线使用。",
     "1 icon matches “{{query}}”.": "有 1 个图标与“{{query}}”匹配。",
     "{{count}} icons match “{{query}}”.": "有 {{count}} 个图标与“{{query}}”匹配。",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "桌面门户未分配弹出快捷键。请在系统的快捷键设置中分配。"
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "桌面门户未分配弹出快捷键。请在系统的快捷键设置中分配。",
+    "Edit comparison graph": "编辑对比图表",
+    "Comparison graph": "对比图表",
+    "Auto (default)": "自动（默认）",
+    "Extra large": "特大",
+    "Line chart (default)": "折线图（默认）",
+    "Static icon (default)": "静态图标（默认）",
+    "Live stream while visible (higher usage)": "可见时实时串流（占用较高）",
+    "Snapshot every 30 seconds (efficient)": "每 30 秒快照一次（省流）",
+    "Snapshot every 5 seconds (frequent)": "每 5 秒快照一次（频繁）",
+    "Auto (system default)": "自动（系统默认）",
+    "Save and exit reorganize mode (Esc)": "保存并退出整理模式（Esc）",
+    "New view": "新建视图",
+    "Restart widget": "重新启动小组件",
+    "Pinned tile": "已固定的磁贴",
+    "Color temperature": "色温",
+    "Light color": "灯光颜色"
   }
 }

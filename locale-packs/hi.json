@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "ऑफलाइन भाषा पैक डाउनलोड करें, अपडेट करें या हटाएं। अंग्रेज़ी और जर्मन हमेशा ऑफलाइन उपलब्ध हैं।",
     "1 icon matches “{{query}}”.": "“{{query}}” से 1 आइकन मेल खाता है।",
     "{{count}} icons match “{{query}}”.": "“{{query}}” से {{count}} आइकन मेल खाते हैं।",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "डेस्कटॉप पोर्टल ने पॉपअप हॉटकी असाइन नहीं की। इसे अपने सिस्टम की शॉर्टकट सेटिंग्स में असाइन करें।"
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "डेस्कटॉप पोर्टल ने पॉपअप हॉटकी असाइन नहीं की। इसे अपने सिस्टम की शॉर्टकट सेटिंग्स में असाइन करें।",
+    "Edit comparison graph": "तुलना ग्राफ़ संपादित करें",
+    "Comparison graph": "तुलना ग्राफ़",
+    "Auto (default)": "स्वतः (डिफ़ॉल्ट)",
+    "Extra large": "बहुत बड़ा",
+    "Line chart (default)": "लाइन चार्ट (डिफ़ॉल्ट)",
+    "Static icon (default)": "स्थिर आइकन (डिफ़ॉल्ट)",
+    "Live stream while visible (higher usage)": "दिखाई देने पर लाइव स्ट्रीम (अधिक खपत)",
+    "Snapshot every 30 seconds (efficient)": "हर 30 सेकंड में स्नैपशॉट (कुशल)",
+    "Snapshot every 5 seconds (frequent)": "हर 5 सेकंड में स्नैपशॉट (बार-बार)",
+    "Auto (system default)": "ऑटो (सिस्टम डिफ़ॉल्ट)",
+    "Save and exit reorganize mode (Esc)": "सहेजें और पुनर्व्यवस्थित मोड से बाहर निकलें (Esc)",
+    "New view": "नया व्यू",
+    "Restart widget": "विजेट पुनः आरंभ करें",
+    "Pinned tile": "पिन की गई टाइल",
+    "Color temperature": "रंग तापमान",
+    "Light color": "लाइट का रंग"
   }
 }

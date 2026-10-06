@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar.",
     "1 icon matches “{{query}}”.": "1 Symbol passt zu „{{query}}“.",
     "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“.",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Das Desktop-Portal hat das Popup-Tastenkürzel nicht zugewiesen. Weise es in den Tastenkürzel-Einstellungen deines Systems zu."
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Das Desktop-Portal hat das Popup-Tastenkürzel nicht zugewiesen. Weise es in den Tastenkürzel-Einstellungen deines Systems zu.",
+    "Edit comparison graph": "Vergleichsdiagramm bearbeiten",
+    "Comparison graph": "Vergleichsdiagramm",
+    "Auto (default)": "Auto (Standard)",
+    "Extra large": "Extra groß",
+    "Line chart (default)": "Liniendiagramm (Standard)",
+    "Static icon (default)": "Statisches Symbol (Standard)",
+    "Live stream while visible (higher usage)": "Livestream bei Sichtbarkeit (höherer Verbrauch)",
+    "Snapshot every 30 seconds (efficient)": "Schnappschuss alle 30 Sekunden (sparsam)",
+    "Snapshot every 5 seconds (frequent)": "Schnappschuss alle 5 Sekunden (häufig)",
+    "Auto (system default)": "Auto (Systemstandard)",
+    "Save and exit reorganize mode (Esc)": "Speichern und Neu-Anordnen beenden (Esc)",
+    "New view": "Neue Ansicht",
+    "Restart widget": "Widget neu starten",
+    "Pinned tile": "Angeheftete Kachel",
+    "Color temperature": "Farbtemperatur",
+    "Light color": "Lichtfarbe"
   }
 }

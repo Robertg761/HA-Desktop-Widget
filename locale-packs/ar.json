@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "قم بتنزيل حزم اللغات دون اتصال أو تحديثها أو إزالتها. الإنجليزية والألمانية متاحتان دائمًا دون اتصال.",
     "1 icon matches “{{query}}”.": "أيقونة واحدة تطابق «{{query}}».",
     "{{count}} icons match “{{query}}”.": "{{count}} من الأيقونات تطابق «{{query}}».",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "لم تعيّن بوابة سطح المكتب اختصار النافذة المنبثقة. عيّنه في إعدادات اختصارات النظام."
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "لم تعيّن بوابة سطح المكتب اختصار النافذة المنبثقة. عيّنه في إعدادات اختصارات النظام.",
+    "Edit comparison graph": "تعديل الرسم البياني للمقارنة",
+    "Comparison graph": "رسم بياني للمقارنة",
+    "Auto (default)": "تلقائي (افتراضي)",
+    "Extra large": "كبير جدًا",
+    "Line chart (default)": "رسم خطي (افتراضي)",
+    "Static icon (default)": "أيقونة ثابتة (افتراضي)",
+    "Live stream while visible (higher usage)": "بث مباشر أثناء الظهور (استهلاك أعلى)",
+    "Snapshot every 30 seconds (efficient)": "لقطة كل 30 ثانية (اقتصادي)",
+    "Snapshot every 5 seconds (frequent)": "لقطة كل 5 ثوانٍ (متكرر)",
+    "Auto (system default)": "تلقائي (افتراضي النظام)",
+    "Save and exit reorganize mode (Esc)": "حفظ والخروج من وضع إعادة الترتيب (Esc)",
+    "New view": "عرض جديد",
+    "Restart widget": "إعادة تشغيل الأداة",
+    "Pinned tile": "بطاقة مثبّتة",
+    "Color temperature": "درجة حرارة اللون",
+    "Light color": "لون الإضاءة"
   }
 }

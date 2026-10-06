@@ -40,7 +40,8 @@ describe('index.html', () => {
 
   describe('sentence case', () => {
     // Names that keep their capitals inside a sentence-case label.
-    const PROPER_NAMES = /Home Assistant|Quick Access|HA Desktop Widget|GitHub|Hyprland|Omarchy/g;
+    const PROPER_NAMES =
+      /Home Assistant|Quick Access|HA Desktop Widget|GitHub|Hyprland|Omarchy|Secret Service/g;
     const titleCased = (text) =>
       text
         .replace(PROPER_NAMES, '')
@@ -69,9 +70,13 @@ describe('index.html', () => {
     // names and abbreviations. A sentence that names a setting or a key ("Press Enter or Space to
     // record a hotkey") has lower-case words in it and passes.
     const JOINING_WORDS = /^(a|an|and|at|by|for|from|in|of|on|or|the|to|with|&)$/;
+    // Settings is the panel's name where a label sends the reader there ("Open Settings",
+    // "Reconnect with Home Assistant in Settings", "Settings > Advanced"), so it keeps its capital.
+    const PANEL_NAME = /\bSettings(?: > \p{Lu}\p{L}*)+|(?<=\b(?:in|Open|Reopen) )Settings\b/gu;
     const isTitleCaseClause = (clause) => {
       const words = clause
         .replace(PROPER_NAMES, ' ')
+        .replace(PANEL_NAME, ' ')
         .split(/\s+/)
         .filter((word) => /\p{L}/u.test(word) && !JOINING_WORDS.test(word))
         .filter((word) => !/^\p{Lu}{2,}\b/u.test(word));
@@ -84,20 +89,65 @@ describe('index.html', () => {
           .matchAll(/\bt\(\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g),
       ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
 
-    test.each(['src/settings.js', 'src/hotkeys.js'])(
-      'the labels %s builds as it runs are written in it',
-      (file) => {
-        // "Retry Conflict Check" and "Keep Current" sat beside "Sync up" and "Cancel", and the light
-        // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list.
-        const titleCase = translatedLiterals(file).filter((text) =>
-          text
-            .replace(/\{\{\w+\}\}/g, ' ')
-            .split(/[.,:;!?·•()]|\s[–—-]\s/)
-            .some(isTitleCaseClause)
+    test.each([
+      'src/settings.js',
+      'src/hotkeys.js',
+      'src/ui.js',
+      'renderer.js',
+      'packages/widget-renderer/src/quick-access-tabs.js',
+    ])('the labels %s builds as it runs are written in it', (file) => {
+      // "Retry Conflict Check" and "Keep Current" sat beside "Sync up" and "Cancel", the light
+      // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list, and the graph editor
+      // "Edit Comparison Graph" above its "Delete graph" button.
+      const titleCase = translatedLiterals(file).filter((text) =>
+        text
+          .replace(/\{\{\w+\}\}/g, ' ')
+          .split(/[.,:;!?·•()]|\s[–—-]\s/)
+          .some(isTitleCaseClause)
+      );
+      expect(titleCase).toEqual([]);
+    });
+
+    // The choices a select offers are labels as well, so a capital after the first word is Title
+    // Case ("Auto (Default)", "Extra Large") unless it is a name.
+    const optionLabelLiterals = (file) =>
+      [
+        ...fs
+          .readFileSync(path.resolve(__dirname, '../..', file), 'utf8')
+          .matchAll(/\blabel:\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g),
+      ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
+
+    test('the choices the tile, camera and chart settings offer are written in it', () => {
+      // "Auto (Default)" and "Line chart (Default)" sat under the "Tile settings" title, beside
+      // "Reset to default".
+      const sources = fs
+        .readdirSync(path.resolve(__dirname, '../../src'))
+        .filter((file) => file.endsWith('.js'))
+        .map((file) => `src/${file}`)
+        .concat(
+          fs
+            .readdirSync(path.resolve(__dirname, '../../packages/widget-renderer/src'))
+            .filter((file) => file.endsWith('.js'))
+            .map((file) => `packages/widget-renderer/src/${file}`)
         );
-        expect(titleCase).toEqual([]);
-      }
-    );
+      const labels = sources.flatMap(optionLabelLiterals);
+      expect(labels).toEqual(expect.arrayContaining(['Static icon (default)', 'Gauge']));
+      expect(labels.filter(titleCased)).toEqual([]);
+    });
+
+    test('the choices of the Settings selects are written in it, holidays apart', () => {
+      // The language list opened on "Auto (System Default)".
+      const HOLIDAYS = /New Year|Valentine's Day|St\. Patrick's Day/g;
+      const options = [...document.querySelectorAll('#settings-modal option[data-i18n]')].map(
+        (option) =>
+          (english[option.getAttribute('data-i18n')] || option.textContent.trim()).replace(
+            HOLIDAYS,
+            ''
+          )
+      );
+      expect(options.length).toBeGreaterThan(20);
+      expect(options.filter(titleCased)).toEqual([]);
+    });
   });
 
   describe('the Hotkeys page', () => {

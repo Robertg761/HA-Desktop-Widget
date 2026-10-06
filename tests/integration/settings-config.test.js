@@ -271,7 +271,7 @@ function createSettingsModalDOM() {
 
       <label for="language-select">Language Mode</label>
       <select id="language-select">
-        <option value="auto">Auto (System Default)</option>
+        <option value="auto">Auto (system default)</option>
         <option value="en">English</option>
       </select>
       <div id="language-select-help">Download a language pack below to enable it in the selector.</div>

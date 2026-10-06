@@ -457,7 +457,7 @@ function getTokenRecoveryPanel() {
         'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.'
       ),
       actions: [
-        { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+        { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
         { ...enterToken, className: 'btn btn-secondary' },
       ],
     };
@@ -1203,7 +1203,7 @@ function getOAuthStatePanel() {
         title: t('System keyring is locked'),
         message: describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant),
         actions: [
-          { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+          { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
           {
             label: t('Reconnect with Home Assistant'),
             className: 'btn btn-secondary',

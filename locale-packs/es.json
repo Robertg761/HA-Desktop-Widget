@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "Descarga, actualiza o elimina paquetes de idioma sin conexión. El inglés y el alemán siempre están disponibles sin conexión.",
     "1 icon matches “{{query}}”.": "1 icono coincide con «{{query}}».",
     "{{count}} icons match “{{query}}”.": "{{count}} iconos coinciden con «{{query}}».",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "El portal del escritorio no asignó el atajo de ventana emergente. Asígnalo en la configuración de atajos de tu sistema."
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "El portal del escritorio no asignó el atajo de ventana emergente. Asígnalo en la configuración de atajos de tu sistema.",
+    "Edit comparison graph": "Editar el gráfico comparativo",
+    "Comparison graph": "Gráfico comparativo",
+    "Auto (default)": "Auto (predeterminado)",
+    "Extra large": "Muy grande",
+    "Line chart (default)": "Gráfico de líneas (predeterminado)",
+    "Static icon (default)": "Icono estático (predeterminado)",
+    "Live stream while visible (higher usage)": "Transmisión en vivo mientras está visible (mayor consumo)",
+    "Snapshot every 30 seconds (efficient)": "Instantánea cada 30 segundos (eficiente)",
+    "Snapshot every 5 seconds (frequent)": "Instantánea cada 5 segundos (frecuente)",
+    "Auto (system default)": "Automático (predeterminado del sistema)",
+    "Save and exit reorganize mode (Esc)": "Guardar y salir del modo de reorganización (Esc)",
+    "New view": "Nueva vista",
+    "Restart widget": "Reiniciar widget",
+    "Pinned tile": "Panel anclado",
+    "Color temperature": "Temperatura de color",
+    "Light color": "Color de la luz"
   }
 }

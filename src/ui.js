@@ -208,11 +208,11 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
   'extra-large',
 ]);
 const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
-  { value: 'auto', label: 'Auto (Default)' },
+  { value: 'auto', label: 'Auto (default)' },
   { value: 'small', label: 'Small' },
   { value: 'normal', label: 'Normal' },
   { value: 'large', label: 'Large' },
-  { value: 'extra-large', label: 'Extra Large' },
+  { value: 'extra-large', label: 'Extra large' },
 ];
 const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
@@ -2225,7 +2225,7 @@ function toggleReorganizeMode() {
       if (btn) {
         setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
-        btn.title = t('Save & Exit Reorganize Mode (ESC)');
+        btn.title = t('Save and exit reorganize mode (Esc)');
       }
 
       // Initialize SortableJS for drag-and-drop
@@ -5285,7 +5285,7 @@ async function addComparisonGraphTile() {
   const config = ensureQuickAccessConfig();
   const activeTab = getActiveQuickAccessTab(config);
   const nextConfig = addComparisonGraph(config, {
-    name: t('Comparison Graph'),
+    name: t('Comparison graph'),
     entityIds: [],
     tabId: activeTab?.id,
   });
@@ -5314,7 +5314,7 @@ function showComparisonGraphModal(graphId) {
   let pendingSave = Promise.resolve();
   const modal = createEntityDetailModal({
     className: 'comparison-graph-modal',
-    title: t('Edit Comparison Graph'),
+    title: t('Edit comparison graph'),
     beforeClose: () => pendingSave,
   });
   const body = modal.querySelector('.modal-body');
@@ -9880,7 +9880,7 @@ function getDesktopPinFallbackDescriptor(
   const fallbackName =
     customName ||
     (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '') ||
-    t('Pinned Tile');
+    t('Pinned tile');
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
   const normalizedConnectionIssue =
     typeof connectionIssue === 'string' ? connectionIssue.trim() : '';
@@ -9889,7 +9889,7 @@ function getDesktopPinFallbackDescriptor(
   if (!entityId) {
     return {
       state: 'no-entity',
-      label: t('Pinned Tile'),
+      label: t('Pinned tile'),
       kicker: t('Pin setup'),
       title: t('No entity selected'),
       detail: t('Choose an entity in the main widget and pin it again.'),
@@ -10042,7 +10042,7 @@ function renderDesktopPinTileInto({
       const liveEntity = entity || state.STATES?.[entityId];
       label.textContent = liveEntity
         ? utils.getEntityDisplayName(liveEntity)
-        : entityId || t('Pinned Tile');
+        : entityId || t('Pinned tile');
     }
   }
 
@@ -14637,7 +14637,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       ? `
             <div class="brightness-color-temp">
               <div class="brightness-control-heading">
-                <span>${utils.escapeHtml(t('Color Temperature'))}</span>
+                <span>${utils.escapeHtml(t('Color temperature'))}</span>
                 <span id="light-color-temp-value">${reportedColorTemp === null ? '—' : formatKelvin(reportedColorTemp)}</span>
               </div>
               <input
@@ -14648,7 +14648,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                 value="${currentColorTemp}"
                 id="light-color-temp-slider"
                 class="light-color-temp-slider${reportedColorTemp === null ? ' is-unset' : ''}"
-                aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
+                aria-label="${escapeHtmlAttribute(t('Color temperature'))}"
                 ${reportedColorTemp === null ? '' : `aria-valuetext="${escapeHtmlAttribute(formatKelvin(reportedColorTemp))}"`}
               />
               <div class="brightness-slider-labels">
@@ -14670,7 +14670,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                   value="${escapeHtmlAttribute(currentColorHex)}"
                   id="light-color-picker"
                   class="light-color-picker"
-                  aria-label="${escapeHtmlAttribute(t('Light Color'))}"
+                  aria-label="${escapeHtmlAttribute(t('Light color'))}"
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
@@ -15763,7 +15763,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? formatPercent(currentSpeed) : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
-            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
+            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan speed') : t('State'))}</div>
 
             ${
               capabilities.canSetPercentage
@@ -15776,7 +15776,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
                 value="${percentToSpeed(currentSpeed)}"
                 id="fan-slider"
                 class="fan-slider"
-                aria-label="${escapeHtmlAttribute(t('Fan Speed'))}"
+                aria-label="${escapeHtmlAttribute(t('Fan speed'))}"
                 aria-valuetext="${escapeHtmlAttribute(formatPercent(currentSpeed))}"
               />
             </div>

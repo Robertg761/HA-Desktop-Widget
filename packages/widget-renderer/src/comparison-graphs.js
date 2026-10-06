@@ -1,7 +1,7 @@
 import { getFavoriteEntityUnion } from './quick-access-tabs.js';
 
 const COMPARISON_GRAPH_ID_PREFIX = 'graph:';
-const DEFAULT_COMPARISON_GRAPH_NAME = 'Comparison Graph';
+const DEFAULT_COMPARISON_GRAPH_NAME = 'Comparison graph';
 const MAX_COMPARISON_GRAPH_SERIES = 7;
 
 // How many grid columns the graph tile occupies. One column would be too narrow to read a

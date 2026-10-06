@@ -2109,6 +2109,22 @@
     "Download, update, or remove offline language packs. English and German are always available offline.": "Téléchargez, mettez à jour ou supprimez des packs de langue hors ligne. L'anglais et l'allemand sont toujours disponibles hors ligne.",
     "1 icon matches “{{query}}”.": "1 icône correspond à « {{query}} ».",
     "{{count}} icons match “{{query}}”.": "{{count}} icônes correspondent à « {{query}} ».",
-    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Le portail du bureau n'a pas attribué le raccourci d'affichage. Attribuez-le dans les paramètres de raccourcis de votre système."
+    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings.": "Le portail du bureau n'a pas attribué le raccourci d'affichage. Attribuez-le dans les paramètres de raccourcis de votre système.",
+    "Edit comparison graph": "Modifier le graphique comparatif",
+    "Comparison graph": "Graphique comparatif",
+    "Auto (default)": "Auto (par défaut)",
+    "Extra large": "Très grande",
+    "Line chart (default)": "Courbe (par défaut)",
+    "Static icon (default)": "Icône statique (par défaut)",
+    "Live stream while visible (higher usage)": "Flux en direct lorsque visible (consommation élevée)",
+    "Snapshot every 30 seconds (efficient)": "Instantané toutes les 30 secondes (économe)",
+    "Snapshot every 5 seconds (frequent)": "Instantané toutes les 5 secondes (fréquent)",
+    "Auto (system default)": "Auto (langue du système)",
+    "Save and exit reorganize mode (Esc)": "Enregistrer et quitter le mode réorganisation (Échap)",
+    "New view": "Nouvelle vue",
+    "Restart widget": "Redémarrer le widget",
+    "Pinned tile": "Vignette épinglée",
+    "Color temperature": "Température de couleur",
+    "Light color": "Couleur de l'éclairage"
   }
 }

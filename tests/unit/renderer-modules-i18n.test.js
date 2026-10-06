@@ -37,7 +37,7 @@ const GERMAN = {
   'Partly cloudy': 'Teilweise bewölkt',
   All: 'Alle',
   'View {{index}}': 'Ansicht {{index}}',
-  'New View': 'Neue Ansicht',
+  'New view': 'Neue Ansicht',
   'just now': 'gerade eben',
 };
 

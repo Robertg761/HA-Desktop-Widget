@@ -154,7 +154,7 @@ function addQuickAccessView(config, name, options = {}) {
     ...normalized.customTabs,
     {
       id: rawId,
-      name: normalizeTabName(name, t('New View')),
+      name: normalizeTabName(name, t('New view')),
       entityIds: [],
     },
   ];
