@@ -1343,7 +1343,7 @@ function persistCustomColorsImmediately() {
     })
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
-      showToast(t('Could not persist custom colors. Try Save in settings.'), 'warning', 3000);
+      showToast(t('Could not persist custom colors. Try Save in Settings.'), 'warning', 3000);
     });
 }
 

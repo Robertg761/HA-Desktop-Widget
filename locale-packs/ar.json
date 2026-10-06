@@ -2125,6 +2125,7 @@
     "Restart widget": "إعادة تشغيل الأداة",
     "Pinned tile": "بطاقة مثبّتة",
     "Color temperature": "درجة حرارة اللون",
-    "Light color": "لون الإضاءة"
+    "Light color": "لون الإضاءة",
+    "Could not persist custom colors. Try Save in Settings.": "تعذّر حفظ الألوان المخصصة. جرّب «حفظ» في الإعدادات."
   }
 }

@@ -2125,6 +2125,7 @@
     "Restart widget": "重新启动小组件",
     "Pinned tile": "已固定的磁贴",
     "Color temperature": "色温",
-    "Light color": "灯光颜色"
+    "Light color": "灯光颜色",
+    "Could not persist custom colors. Try Save in Settings.": "无法保存自定义颜色。请尝试在设置中点击保存。"
   }
 }

@@ -2125,6 +2125,7 @@
     "Restart widget": "Widget neu starten",
     "Pinned tile": "Angeheftete Kachel",
     "Color temperature": "Farbtemperatur",
-    "Light color": "Lichtfarbe"
+    "Light color": "Lichtfarbe",
+    "Could not persist custom colors. Try Save in Settings.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern“ in den Einstellungen."
   }
 }

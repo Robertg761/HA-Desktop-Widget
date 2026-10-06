@@ -638,7 +638,6 @@
   "Turn on Frosted glass background before enabling subtle weather effects.": "Turn on Frosted glass background before enabling subtle weather effects.",
   "The main process rejected the settings update": "The main process rejected the settings update",
   "Custom {{color}}": "Custom {{color}}",
-  "Could not persist custom colors. Try Save in settings.": "Could not persist custom colors. Try Save in settings.",
   "Enter a valid color before saving.": "Enter a valid color before saving.",
   "Color already saved. Selected existing custom color.": "Color already saved. Selected existing custom color.",
   "Custom color saved.": "Custom color saved.",
@@ -1646,5 +1645,6 @@
   "Restart widget": "Restart widget",
   "Pinned tile": "Pinned tile",
   "Color temperature": "Color temperature",
-  "Light color": "Light color"
+  "Light color": "Light color",
+  "Could not persist custom colors. Try Save in Settings.": "Could not persist custom colors. Try Save in Settings."
 }

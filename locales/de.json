@@ -638,7 +638,6 @@
   "Turn on Frosted glass background before enabling subtle weather effects.": "Aktiviere „Milchglas-Hintergrund“, bevor du dezente Wettereffekte einschaltest.",
   "The main process rejected the settings update": "Der Hauptprozess hat die Einstellungsänderung abgelehnt",
   "Custom {{color}}": "Eigene Farbe {{color}}",
-  "Could not persist custom colors. Try Save in settings.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern“ in den Einstellungen.",
   "Enter a valid color before saving.": "Gib vor dem Speichern eine gültige Farbe ein.",
   "Color already saved. Selected existing custom color.": "Farbe bereits gespeichert. Vorhandene eigene Farbe ausgewählt.",
   "Custom color saved.": "Eigene Farbe gespeichert.",
@@ -1646,5 +1645,6 @@
   "Restart widget": "Widget neu starten",
   "Pinned tile": "Angeheftete Kachel",
   "Color temperature": "Farbtemperatur",
-  "Light color": "Lichtfarbe"
+  "Light color": "Lichtfarbe",
+  "Could not persist custom colors. Try Save in Settings.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern“ in den Einstellungen."
 }
