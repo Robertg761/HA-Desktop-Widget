@@ -716,15 +716,17 @@ function readCustomColorNameField(input) {
   return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
 }
 
-// The longest name a custom colour takes (the field's maxlength in index.html).
-const CUSTOM_COLOR_NAME_MAX_LENGTH = 48;
-
 // The marks around a hex code are never saved, but maxlength counts them, so in Arabic a name with
-// a hex code stopped taking letters two short of the limit. The limit is the name's, so the field
-// allows one more character for each mark it holds.
+// a hex code stopped taking letters two short of the limit. The field allows one more character for
+// each mark it holds. The name's own limit is the maxlength in index.html, noted on the field before
+// the first change so that the markup stays the one place it is written.
 function fitCustomColorNameLimit(input) {
+  input.dataset.nameMaxLength ||= String(input.maxLength);
+  const limit = Number(input.dataset.nameMaxLength);
+  // A field without a maxlength (-1) takes a name of any length, marks or not.
+  if (limit < 0) return;
   const marks = (input.value.match(/[\u2066-\u2069]/g) || []).length;
-  input.maxLength = CUSTOM_COLOR_NAME_MAX_LENGTH + marks;
+  input.maxLength = limit + marks;
 }
 
 function showCustomColorName(input, theme) {

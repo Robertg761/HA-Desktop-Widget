@@ -434,7 +434,7 @@ function createSettingsModalDOM() {
             <button type="button" id="save-custom-color-btn">Save Custom Color</button>
             <div id="custom-color-hex-error" class="hidden"></div>
             <div id="custom-theme-management" class="hidden">
-              <input id="custom-color-name-input" type="text" />
+              <input id="custom-color-name-input" type="text" maxlength="48" />
               <button type="button" id="rename-custom-color-btn">Rename</button>
               <button type="button" id="remove-custom-color-btn">Remove</button>
             </div>
@@ -4140,6 +4140,19 @@ describe('Settings + Config Integration', () => {
         field.value = 'Sea';
         field.dispatchEvent(new Event('input', { bubbles: true }));
         expect(field.maxLength).toBe(48);
+      });
+
+      test("takes the name's limit from the field's maxlength in the markup", async () => {
+        // A second copy of the limit in settings.js reset a raised maxlength to 48 on every show.
+        document.getElementById('custom-color-name-input').setAttribute('maxlength', '60');
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(50)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.maxLength).toBe(62);
+        field.value = 'Sea';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(field.maxLength).toBe(60);
       });
 
       test('reads an unchanged field as no edit, so Save does not ask about it', async () => {
