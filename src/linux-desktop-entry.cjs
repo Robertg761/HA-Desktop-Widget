@@ -132,9 +132,9 @@ function readLinkNote(fsModule, record) {
   }
 }
 
-// Written beside the note and renamed over it. Writing the note in place empties it first, so a full
-// disk or a quit in the middle would leave an empty note, which reads as none: the link would then
-// look like the user's, and stay on the old AppImage for good.
+// Written beside the note and renamed over it. Writing the note in place empties it first, so a
+// full disk or a quit in the middle would leave an empty note, which reads as none: the link would
+// then look like the user's, and stay on the old AppImage for good.
 function writeLinkNote(fsModule, record, note) {
   fsModule.mkdirSync(path.posix.dirname(record), { recursive: true, mode: 0o700 });
   const draft = `${record}.tmp`;
