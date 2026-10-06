@@ -155,30 +155,28 @@ jobs:
             }
           Start-Sleep -Seconds 2
 
-      # The runner's agent keeps a console window (hosted-compute-agent) on the desktop. It covered
-      # the lower third of every Windows 11 pin capture and sat behind the widget in the others. The
-      # pointer rests in the middle of the screen, where the widget opens, so the first capture also
-      # showed the native tooltip of the tile under it. Minimize what is open and park the pointer in
-      # the top-left corner, clear of the widget and its pins. The run never moves the real pointer:
-      # scenes click through the page, not the mouse.
+      # The runner's own windows were in the screen captures: the agent's console behind the
+      # widget, and on Windows 11 a console in which wsl.exe asks for a WSL update. Pins sit on the
+      # desktop under every window, so that console hid 13 of the Windows 11 pin captures outright.
+      # The pointer, resting where the widget opens, also left a tile's tooltip in the first
+      # capture. The script ends the WSL prompt, minimizes every window that is not explorer's (the
+      # desktop and the taskbar), parks the pointer and lists what is still on screen as warnings.
       - name: Clear the desktop (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          Add-Type -Namespace Win32 -Name Desktop -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);'
-          # explorer's own window is the desktop and the taskbar, which stay.
-          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.ProcessName -ne 'explorer' } |
-            ForEach-Object {
-              Write-Output "Minimizing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
-              # SW_MINIMIZE
-              [Win32.Desktop]::ShowWindow($_.MainWindowHandle, 6) | Out-Null
-            }
-          [Win32.Desktop]::SetCursorPos(0, 0) | Out-Null
+        run: ./scripts/visual-snapshots/windows-desktop.ps1
 
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 20
         if: runner.os != 'Linux'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
+
+      # A window that opens during the run is in the captures from then on, so the desktop is
+      # listed again, also after a failed run.
+      - name: Check the desktop after the snapshots (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/visual-snapshots/windows-desktop.ps1 -Check
 
       # Only the merge job reads this one. It is kept for a day so that re-running one failed half
       # can merge again with the other half from the first attempt. A re-run keeps the run's
