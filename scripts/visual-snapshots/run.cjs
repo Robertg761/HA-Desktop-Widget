@@ -27,6 +27,9 @@
  *                         can split the suite across jobs (see shard.cjs)
  *   SNAPSHOT_REDUCED_MOTION  set to 1 to run with the OS's reduced-motion setting on, as the
  *                         Windows and macOS runners do
+ *   SNAPSHOT_CLEAR_DESKTOP  set to 1 on a Windows runner to clear the screen around the app before
+ *                         each screen capture (desktop-keeper.cjs); it ends wsl.exe and minimizes
+ *                         every other window, so leave it unset on your own computer
  */
 
 const { spawn, execFileSync } = require('child_process');
@@ -51,6 +54,7 @@ const {
 } = require('./fixture.cjs');
 const { scenes } = require('./scenes.cjs');
 const { parseShard, selectScenes } = require('./shard.cjs');
+const { leftWindowOnScreen, startDesktopKeeper } = require('./desktop-keeper.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const OUT_DIR = path.resolve(process.argv[2] || path.join(ROOT, 'visual-snapshots'));
@@ -75,6 +79,14 @@ const OMARCHY_PALETTE = [
 ].join('\n');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The Windows runner's desktop is cleared again before each screen capture (desktop-keeper.cjs),
+// around the app that is running now. The captures taken with a window still over it are named at
+// the end of the run.
+let desktopKeeper = null;
+let runningAppPid = 0;
+const desktopClearedBefore = [];
+const desktopCoveredIn = [];
 
 async function waitFor(check, { timeoutMs = 30000, intervalMs = 250, label = 'condition' } = {}) {
   const deadline = Date.now() + timeoutMs;
@@ -218,6 +230,7 @@ async function launchApp(profileDir, extraEnv = {}) {
     ],
     { cwd: ROOT, env, stdio: 'inherit' }
   );
+  runningAppPid = app.pid;
   try {
     const target = await waitFor(
       async () =>
@@ -302,13 +315,54 @@ async function capture(name, source, { keepToasts = false } = {}) {
   const bounds = await source.evaluate(
     '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
   );
+  if (desktopKeeper) {
+    const said = await desktopKeeper.sweep(runningAppPid);
+    if (said.length) {
+      console.log(`Clearing the desktop before ${name}: ${said.join('; ')}`);
+      desktopClearedBefore.push(name);
+      if (leftWindowOnScreen(said)) desktopCoveredIn.push(name);
+    }
+  }
   captureScreen(`${base}-screen.png`, bounds);
+}
+
+function reportDesktopKeeper() {
+  if (desktopClearedBefore.length) {
+    console.log(
+      `The desktop was cleared again before ${desktopClearedBefore.length} screen capture(s), from ${desktopClearedBefore[0]} on`
+    );
+  }
+  if (!desktopCoveredIn.length) return;
+  const message = `${desktopCoveredIn.length} screen capture(s) may have a window over the app: ${desktopCoveredIn.join(', ')}`;
+  console.warn(
+    process.env.GITHUB_ACTIONS === 'true' ? `::warning title=Snapshot desktop::${message}` : message
+  );
+}
+
+/**
+ * Save a Home Assistant authorization in a profile, as a finished browser pairing does, with the
+ * safe storage the app will read it with (save-oauth-authorization.cjs). Electron writes the key
+ * Windows encrypts with when it quits, so the helper must be let to finish.
+ */
+async function saveOAuthAuthorization(profileDir, baseUrl) {
+  const env = { ...process.env, SNAPSHOT_OAUTH_URL: baseUrl };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const helper = spawn(
+    require('electron'),
+    [path.join(__dirname, 'save-oauth-authorization.cjs'), `--user-data-dir=${profileDir}`],
+    { cwd: ROOT, env, stdio: 'inherit' }
+  );
+  const exited = new Promise((resolve) => helper.on('exit', resolve));
+  const code = await Promise.race([exited, sleep(30000).then(() => 'timeout')]);
+  if (code === 'timeout') helper.kill('SIGKILL');
+  if (code !== 0) throw new Error(`Saving an authorization failed (${code})`);
 }
 
 /**
  * Start the app on the profile a start-up scene describes, capture it and stop it. `startup.config`
- * turns the fixture's settings into the config.json the app starts from, and `startup.env` adds to
- * the app's environment (the system language, on Linux).
+ * turns the fixture's settings into the config.json the app starts from, `startup.env` adds to the
+ * app's environment (the system language, on Linux), and `startup.savedAuthorization` saves a
+ * browser authorization beside it.
  */
 async function captureStartupScene(scene, baseConfig) {
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-snapshot-'));
@@ -318,6 +372,9 @@ async function captureStartupScene(scene, baseConfig) {
       path.join(profileDir, 'config.json'),
       JSON.stringify(scene.startup.config(baseConfig), null, 2)
     );
+    if (scene.startup.savedAuthorization) {
+      await saveOAuthAuthorization(profileDir, baseConfig.homeAssistant.url);
+    }
     launched = await launchApp(profileDir, scene.startup.env);
     const { cdp } = launched;
     await waitFor(() => cdp.evaluate(`document.readyState === 'complete'`), {
@@ -382,12 +439,15 @@ async function main() {
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
   const failures = [];
+  desktopKeeper = startDesktopKeeper({ spawn });
   try {
     if (shared.length) await captureSharedScenes(shared, { server, baseConfig, failures });
     for (const scene of startups) {
       await captureStartupScene(scene, baseConfig).catch(() => failures.push(scene.name));
     }
   } finally {
+    desktopKeeper?.close();
+    reportDesktopKeeper();
     server.closeAllConnections?.();
     server.close();
     await sleep(500);

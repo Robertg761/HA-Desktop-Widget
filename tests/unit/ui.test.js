@@ -5513,6 +5513,83 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal.querySelectorAll('.climate-mode-btn[aria-pressed="true"]')).toHaveLength(1);
     });
 
+    // A heat pump's five modes take two rows, and in the default window the one that was on,
+    // Heat/Cool, began under the fold: only the top of its icon showed.
+    describe('the mode that is on when the climate dialog opens', () => {
+      const heatPump = {
+        entity_id: 'climate.heat_pump',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Heat pump',
+          current_temperature: 21.5,
+          target_temp_low: 19.5,
+          target_temp_high: 24.5,
+          hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'fan_only'],
+          min_temp: 7,
+          max_temp: 30,
+          supported_features: 2,
+        },
+      };
+      // jsdom scrolls nothing, so the reveal stands in for the browser's: it scrolls the body down
+      // by `scrolled` px, which moves the readings up by as much.
+      let revealed;
+      const reveal = (scrolled, readingsTop) =>
+        jest.fn(function revealMode() {
+          revealed.push(this);
+          const body = this.closest('.modal-body');
+          body.scrollTop = scrolled;
+          body.getBoundingClientRect = () => ({ top: 70, bottom: 536 });
+          body.querySelector('.climate-temp-display').getBoundingClientRect = () => ({
+            top: readingsTop - scrolled,
+          });
+        });
+      beforeEach(() => {
+        revealed = [];
+        state.setStates({ [heatPump.entity_id]: heatPump });
+      });
+      afterEach(() => {
+        delete HTMLElement.prototype.scrollIntoView;
+      });
+
+      it('scrolls the body just far enough to show it', () => {
+        HTMLElement.prototype.scrollIntoView = reveal(35, 110);
+
+        ui.executeEntityPrimaryAction(heatPump);
+
+        const body = document.querySelector('.climate-modal .modal-body');
+        expect(revealed).toEqual([body.querySelector('.climate-mode-btn[data-mode="heat_cool"]')]);
+        expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+        expect(body.scrollTop).toBe(35);
+      });
+
+      it('opens at the top where showing it would scroll the readings away', () => {
+        HTMLElement.prototype.scrollIntoView = reveal(120, 110);
+
+        ui.executeEntityPrimaryAction(heatPump);
+
+        expect(revealed).toHaveLength(1);
+        expect(document.querySelector('.climate-modal .modal-body').scrollTop).toBe(0);
+      });
+
+      it('leaves a dialog rebuilt in place where the one it replaces was scrolled', () => {
+        HTMLElement.prototype.scrollIntoView = reveal(35, 110);
+        ui.executeEntityPrimaryAction(heatPump);
+        revealed = [];
+
+        // A new control (a humidity reading) rebuilds the dialog.
+        state.setStates({
+          [heatPump.entity_id]: {
+            ...heatPump,
+            attributes: { ...heatPump.attributes, current_humidity: 40 },
+          },
+        });
+
+        expect(document.querySelectorAll('.climate-modal')).toHaveLength(1);
+        expect(document.getElementById('climate-humidity-value')).toBeTruthy();
+        expect(revealed).toEqual([]);
+      });
+    });
+
     it('rolls back an optimistic climate temperature when the service rejects', async () => {
       jest.useFakeTimers();
       try {

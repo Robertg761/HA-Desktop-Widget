@@ -60,6 +60,8 @@ function collectDynamicI18nOwnershipViolations() {
     'install-update-text',
     'confirm-title',
     'confirm-message',
+    // Its command is in boxes of its own, which the page's translation pass would rebuild as text.
+    'layer-toggle-note',
   ];
 
   return dynamicIds.filter((id) => {

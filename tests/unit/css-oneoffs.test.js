@@ -463,6 +463,27 @@ describe('stylesheet one-offs', () => {
       expect(button).not.toMatch(/btn-primary/);
     });
 
+    // At a fixed 220px beside its button, French cut the hint to "Choisissez un dossier
+    // synchronis...". Until a folder is chosen the field is as wide as its hint, so where the two do
+    // not fit one row the button goes under it; a chosen folder keeps the field as it was.
+    it('sizes the empty sync folder field to its hint', () => {
+      render(`<div id="settings-modal"><div class="form-group"><div class="profile-sync-file-row">
+        <input id="profile-sync-folder-path" type="text" class="form-control" readonly
+          placeholder="Choisissez un dossier synchronisé...">
+        <button type="button" class="btn btn-secondary">Choisir un dossier...</button>
+      </div></div></div>`);
+      const field = document.getElementById('profile-sync-folder-path');
+      expect(resolvedValue(field, 'field-sizing')).toBe('content');
+      expect(resolvedValue(field, 'width')).toBe('auto');
+      expect(resolvedValue(field, 'flex-basis')).toBe('auto');
+
+      // jsdom cannot tell when a field has text, so the selector that keeps this to the empty
+      // field is read from the stylesheet.
+      expect(fs.readFileSync(STYLESHEET, 'utf8')).toMatch(
+        /\.profile-sync-file-row > input\[readonly\]:placeholder-shown \{[^}]*field-sizing: content;/
+      );
+    });
+
     it('closes the bracket after an inline code chip without a gap, and shows the chip on light', () => {
       render('<p class="form-help">Press <code>Ctrl+Shift+A</code>)</p>', {
         bodyClass: 'theme-light',

@@ -281,7 +281,8 @@ function resolveTranslation(key, vars = {}) {
 
 // Language packs are downloaded, so their text never becomes markup. The only formatting these
 // strings need is <code>…</code>, which is rebuilt as real elements; anything else stays text.
-function setTextWithCodeSpans(element, text) {
+// Exported for the text that JavaScript writes itself rather than data-i18n-html.
+export function setTextWithCodeSpans(element, text) {
   const ownerDocument = element.ownerDocument || document;
   const nodes = [];
   const pattern = /<code>([\s\S]*?)<\/code>/g;

@@ -167,9 +167,15 @@ jobs:
         shell: pwsh
         run: ./scripts/visual-snapshots/windows-desktop.ps1
 
+      # The runner's windows can open after the desktop was cleared: on Windows 11 the WSL console
+      # opened minutes into the run and sat under every pin captured after it. On Windows the run
+      # clears the screen around the app again before each capture and names any capture a window
+      # was still over (desktop-keeper.cjs). macOS ignores the setting.
       - name: Take snapshots (Windows, macOS)
         timeout-minutes: 20
         if: runner.os != 'Linux'
+        env:
+          SNAPSHOT_CLEAR_DESKTOP: '1'
         run: node scripts/visual-snapshots/run.cjs visual-snapshots
 
       # A window that opens during the run is in the captures from then on, so the desktop is

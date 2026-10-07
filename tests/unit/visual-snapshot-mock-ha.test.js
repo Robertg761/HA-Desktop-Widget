@@ -409,17 +409,22 @@ describe('visual snapshot mock Home Assistant state changes', () => {
 });
 
 describe('visual snapshot mock Home Assistant sign-in', () => {
-  // The wizard asks this before it opens a browser. Unanswered, the wizard waits as it does for the
-  // browser, which is how a scene captures that wait and its Cancel.
-  test('leaves the request a sign-in starts with unanswered, and answers the rest', async () => {
+  // The wizard asks for the providers before it opens a browser, and a start-up trades its saved
+  // authorization for a token. Unanswered, the wizard waits as it does for the browser, and the
+  // start-up stays on its restoring panel, which is how scenes capture those.
+  test.each([
+    ['a sign-in starts with', 'GET', '/auth/providers'],
+    ['a saved authorization is restored with', 'POST', '/auth/token'],
+  ])('leaves the request %s unanswered, and answers the rest', async (_, method, requestPath) => {
     const server = await startMockHomeAssistant({ token: 'token', states: [] });
     const { port } = server.address();
     const received = new Promise((resolve) => server.once('request', resolve));
     let answered = false;
-    const held = http.get({ port, host: '127.0.0.1', path: '/auth/providers' }, () => {
+    const held = http.request({ port, host: '127.0.0.1', path: requestPath, method }, () => {
       answered = true;
     });
     held.on('error', () => {});
+    held.end(method === 'POST' ? 'grant_type=refresh_token' : undefined);
     try {
       await received;
       const status = await new Promise((resolve, reject) => {

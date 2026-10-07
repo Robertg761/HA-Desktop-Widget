@@ -67,8 +67,8 @@ import {
   getLanguageDisplayName,
   getLocaleState,
   isolateLtr,
+  setTextWithCodeSpans,
   t,
-  translateDocument,
 } from './i18n.js';
 import {
   compareNames,
@@ -8046,9 +8046,35 @@ function renderLayerModeGuidance() {
     copyButton.onclick = () => copyLayerToggleCommand(toggleNote, command);
   }
   if (toggleNote.hidden) return;
-  // Kept on the element, so a later language change words the note around the same command.
-  toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
-  translateDocument(toggleNote);
+  // JS owns this note, so it has no data-i18n-html: the page's translation pass, which runs again
+  // on every config change, would rebuild the command as one run of text without its word boxes.
+  // A language change reaches it through relocalizeOpenSettings, which renders it again.
+  setTextWithCodeSpans(
+    toggleNote,
+    t(
+      'Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.',
+      { command }
+    )
+  );
+  boxLayerToggleCommandWords(toggleNote.querySelector('code'));
+}
+
+// The command runs on with the sentence in boxes, so it wraps only between them and never at a
+// hyphen inside a word ('ha-desktop-widget', '--toggle'). As one box it took a line of its own,
+// and once a long path wrapped the box was as wide as the line: the comma after it sat at the far
+// end, away from '--toggle'. So a path, which can be longer than the line, is a box to each word.
+// A command on PATH ('ha-desktop-widget --toggle') is short and stays one box, which moves to the
+// next line whole rather than leave '--toggle' to start a line like a second command. The text,
+// and so what a selection copies, stays the command.
+function boxLayerToggleCommandWords(code) {
+  if (!code) return;
+  const command = code.textContent;
+  const boxes = (command.includes('/') ? command.split(' ') : [command]).map((word) => {
+    const box = document.createElement('span');
+    box.textContent = word;
+    return box;
+  });
+  code.replaceChildren(...boxes.flatMap((box, index) => (index ? [' ', box] : [box])));
 }
 
 // A click selects the command, but it takes no focus, so from the keyboard it could not be copied

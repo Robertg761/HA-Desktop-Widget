@@ -210,7 +210,7 @@ async function openAlarmCodeDialog(ctx) {
 // same place, however the scenes were selected.
 async function showFirstRunWelcome(ctx) {
   await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
-  const back = `document.querySelector('.first-run-actions .btn-secondary:nth-child(2)')`;
+  const back = `document.querySelector('.first-run-step-actions .btn-secondary')`;
   await ctx.ev(`(async () => {
     const back = ${back};
     // The URL and authorization steps are the most there is to step back from.
@@ -242,8 +242,9 @@ const unreadableToken = (base) => ({
     tokenEncrypted: true,
   },
 });
-// Browser authorization set up, and no authorization saved beside it.
-const oauthWithNothingSaved = (base) => ({
+// Browser authorization set up. The authorization itself is saved beside the config only where a
+// scene says so (startup.savedAuthorization).
+const oauthSetUp = (base) => ({
   ...base,
   homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
 });
@@ -331,14 +332,29 @@ const startupScenes = [
   {
     name: 'startup-oauth-reauth',
     platforms: ['win32', 'darwin'],
-    startup: { config: oauthWithNothingSaved },
+    startup: { config: oauthSetUp },
     setup: (ctx) => showTokenPanel(ctx, 'Home Assistant authorization expired'),
   },
   {
     name: 'startup-oauth-keyring',
     platforms: ['linux'],
-    startup: { config: oauthWithNothingSaved },
+    startup: { config: oauthSetUp },
     setup: (ctx) => showTokenPanel(ctx, 'System keyring is unavailable'),
+  },
+  // Every start of a browser-authorized setup, while it trades its saved authorization for a token.
+  // The mock Home Assistant leaves that request unanswered, so the panel stays. Linux under CI has no
+  // keyring to save an authorization in.
+  {
+    name: 'startup-oauth-restoring',
+    platforms: ['win32', 'darwin'],
+    startup: { config: oauthSetUp, savedAuthorization: true },
+    setup: async (ctx) => {
+      await showTokenPanel(ctx, 'Waiting for live Home Assistant data...');
+      await ctx.expect(
+        `document.querySelector('#widget-state-panel').textContent.includes('Restoring Home Assistant authorization...')`,
+        'the panel says the authorization is being restored'
+      );
+    },
   },
 ];
 
@@ -372,6 +388,16 @@ const WIZARD_ACTIONS_IN_VIEW = `(() => {
   });
 })()`;
 
+// Back and Next (Connect) sit on one row, whether or not Full settings has a row of its own above
+// them. In the smallest window German's labels wrapped Connect alone under Back.
+const WIZARD_STEP_ACTIONS_TOGETHER = `(() => {
+  const next = document.querySelector('.first-run-actions .btn-primary');
+  const [back, connect] = [next?.previousElementSibling, next].map((button) =>
+    button?.getBoundingClientRect()
+  );
+  return !!back && !!connect && back.height > 0 && Math.abs(back.top - connect.top) < 1;
+})()`;
+
 // Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
 // first request unanswered: the wizard waits as it does while the browser is open, for as long as
 // the widget gives the server to answer (8 s). The Back button is Cancel meanwhile.
@@ -384,7 +410,7 @@ async function waitForFirstRunAuthorization(ctx) {
 // Back to the welcome step from a wait, which Cancel ends.
 async function cancelFirstRunAuthorization(ctx) {
   await ctx.ev(`(() => {
-    const cancel = document.querySelector('.first-run-actions .btn-secondary:nth-child(2)');
+    const cancel = document.querySelector('.first-run-step-actions .btn-secondary');
     if (cancel?.classList.contains('btn-neutral')) cancel.click();
   })()`);
   await ctx.waitForExpression(
@@ -525,6 +551,13 @@ const PIN_BUTTONS_FIT = `(() => {
     labels.every((label) => label.scrollWidth <= label.clientWidth) &&
     [...document.querySelectorAll('.desktop-pin-light-preset')].every(textClear)
   );
+})()`;
+
+// A lamp's presets keep at least the 8px the compact layout pads them with from the pin's bottom
+// edge, clear of its rounded corners. The first roomy size in Arabic put them 3px from it.
+const PIN_PRESETS_CLEAR_OF_EDGE = `(() => {
+  const presets = document.querySelector('.desktop-pin-light-presets')?.getBoundingClientRect();
+  return !!presets && innerHeight - presets.bottom >= 8;
 })()`;
 
 // The line under a pin's name is not cut short.
@@ -843,6 +876,17 @@ const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
 const CLIMATE_LABELS_IN_CHIPS = `[...document.querySelectorAll(
   '.climate-modal :is(.climate-mode-btn, .climate-fan-mode-btn, .climate-preset-mode-btn)'
 )].every((chip) => (chip.querySelector('.climate-mode-label') || chip).scrollWidth <= chip.clientWidth)`;
+// The mode that is on lies whole inside the dialog's body when it opens. A heat pump's five modes
+// take two rows, and in the default window its Heat/Cool began under the fold, showing only the top
+// of its icon.
+const shownInClimateBody = (selector) => `(() => {
+  const body = document.querySelector('.climate-modal .modal-body')?.getBoundingClientRect();
+  const box = document.querySelector('.climate-modal ${selector}')?.getBoundingClientRect();
+  return !!body && !!box && box.top >= body.top && box.bottom <= body.bottom;
+})()`;
+const CLIMATE_ACTIVE_MODE_SHOWN = shownInClimateBody('.climate-mode-btn.active');
+// It is not shown at the cost of the readings: where both do not fit, the dialog opens on those.
+const CLIMATE_READINGS_SHOWN = shownInClimateBody('.climate-temp-display');
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -1008,6 +1052,18 @@ const selectShowsItsValue = (selector) => `(() => {
   context.font = style.font;
   const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   return context.measureText(text).width <= room;
+})()`;
+
+// So does the hint an empty field shows: French cut the sync folder's to "Choisissez un dossier
+// synchronis...".
+const fieldShowsItsHint = (selector) => `(() => {
+  const field = document.querySelector(${JSON.stringify(selector)});
+  if (!field?.placeholder || field.value) return false;
+  const style = getComputedStyle(field);
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = style.font;
+  const room = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return context.measureText(field.placeholder).width <= room;
 })()`;
 
 // The search field and the count of matches under it are inside the visible part of the page.
@@ -1434,12 +1490,19 @@ const waitForCameraTiles = (ctx) =>
   );
 
 // A holiday sits a gift, a pumpkin or a turkey in the bottom end corner of every third tile, where
-// a number sensor's trend line ends with its newest reading, in the same colour.
+// a number sensor's trend line ends with its newest reading, in the same colour, and Easter an egg
+// in a bottom corner of the others. No piece of either kind is on the lower half of such a tile.
 const SENSOR_GRAPHS_UNDECORATED = `(() => {
   const graphs = [...document.querySelectorAll(
     '#quick-controls .control-item.sensor-numeric-entity:not([data-chart-type="none"])'
   )];
-  return graphs.length > 0 && graphs.every((tile) => getComputedStyle(tile, '::after').content === 'none');
+  const onTheGraph = (tile, pseudo) => {
+    const piece = getComputedStyle(tile, pseudo);
+    return piece.content !== 'none' &&
+      parseFloat(piece.top) + parseFloat(piece.height) / 2 > tile.clientHeight / 2;
+  };
+  return graphs.length > 0 &&
+    graphs.every((tile) => !onTheGraph(tile, '::before') && !onTheGraph(tile, '::after'));
 })()`;
 // Forced colours take the status colours away, so a tile that needs attention keeps a doubled edge
 // as well as its badge: with a lit tile's single line, an armed alarm and one that went off
@@ -1914,6 +1977,10 @@ const scenes = [
           .map(selectShowsItsValue)
           .join(' && '),
         'the sync app and scope show their whole value'
+      );
+      await ctx.expect(
+        fieldShowsItsHint('#profile-sync-folder-path'),
+        'the folder field shows its whole hint'
       );
     },
   },
@@ -2859,8 +2926,23 @@ const scenes = [
   resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
   resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
   // A lamp whose name takes two lines, with its status line under it, put its presets 4px past the
-  // bottom of a 200x170 pin.
-  resizedPinScene('light-long', 'light.upstairs_hallway_ceiling', { width: 200, height: 170 }),
+  // bottom of a 200x170 pin, and at the first roomy size the status line and the Brightness caption
+  // were 5px taller each in Arabic, which put them 3px from it.
+  resizedPinScene(
+    'light-long',
+    'light.upstairs_hallway_ceiling',
+    { width: 200, height: 170 },
+    { shows: [[PIN_PRESETS_CLEAR_OF_EDGE, 'the presets clear of the bottom edge']] }
+  ),
+  resizedPinScene(
+    'ar-light-long',
+    'light.upstairs_hallway_ceiling',
+    { width: 260, height: 190 },
+    {
+      ui: { language: 'ar' },
+      shows: [[PIN_PRESETS_CLEAR_OF_EDGE, 'the presets clear of the bottom edge']],
+    }
+  ),
   resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
   // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
   // balanced layout brought back a fourth mode that German cut to "Kü...".
@@ -2946,9 +3028,12 @@ const scenes = [
     name: 'new-year-light',
     ui: { theme: 'light', seasonal: holiday('new-year') },
   },
+  // The office temperature is in the third column, whose egg sat on the end of its trend line.
   {
     name: 'easter-light',
     ui: { theme: 'light', seasonal: holiday('easter') },
+    setup: (ctx) =>
+      ctx.expect(SENSOR_GRAPHS_UNDECORATED, "no holiday piece on a number sensor's line"),
   },
   // Where holiday art meets controls: the cobweb behind a dialog's close button, the egg and the
   // bunny in the Settings header and rail, and the pumpkins under a tile row that reaches the
@@ -3231,6 +3316,8 @@ const scenes = [
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
       await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+      await ctx.expect(CLIMATE_ACTIVE_MODE_SHOWN, 'the mode that is on is in view');
+      await ctx.expect(CLIMATE_READINGS_SHOWN, 'the readings are in view too');
     },
   },
   {
@@ -3245,6 +3332,7 @@ const scenes = [
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
       await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+      await ctx.expect(CLIMATE_READINGS_SHOWN, 'the dialog opens on the readings');
     },
   },
   // German names the heat pump's modes at their longest; the picture is of the modes, which sit
@@ -3725,6 +3813,18 @@ const scenes = [
         })()`,
         'no empty status line under text that is cut off'
       );
+    },
+  },
+  // German's labels are the longest, and the three buttons take two rows here.
+  {
+    name: 'wizard-authorize-minimum-de',
+    size: MINIMUM_SIZE,
+    ui: { language: 'de' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+      await ctx.expect(WIZARD_STEP_ACTIONS_TOGETHER, 'Back and Connect on one row');
     },
   },
   {

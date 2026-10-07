@@ -68,19 +68,26 @@ describe('index.html', () => {
     // titles, the profile sync buttons and the hotkey actions. A label is Title Case when every word
     // of it starts with a capital ("Keep Current", "Brightness Up"), apart from short joining words,
     // names and abbreviations. A sentence that names a setting or a key ("Press Enter or Space to
-    // record a hotkey") has lower-case words in it and passes.
+    // record a hotkey") has lower-case words in it and passes. A name counts as a word that keeps
+    // its capitals, so "Home Assistant Alert" is Title Case and "Open Home Assistant" is not.
     const JOINING_WORDS = /^(a|an|and|at|by|for|from|in|of|on|or|the|to|with|&)$/;
     // Settings is the panel's name where a label sends the reader there ("Open Settings",
     // "Reconnect with Home Assistant in Settings", "Settings > Advanced"), so it keeps its capital.
     const PANEL_NAME = /\bSettings(?: > \p{Lu}\p{L}*)+|(?<=\b(?:in|Open|Reopen) )Settings\b/gu;
+    const NAME = '\u0000';
     const isTitleCaseClause = (clause) => {
       const words = clause
-        .replace(PROPER_NAMES, ' ')
-        .replace(PANEL_NAME, ' ')
+        .replace(PROPER_NAMES, ` ${NAME} `)
+        .replace(PANEL_NAME, ` ${NAME} `)
         .split(/\s+/)
-        .filter((word) => /\p{L}/u.test(word) && !JOINING_WORDS.test(word))
+        .filter((word) => word === NAME || (/\p{L}/u.test(word) && !JOINING_WORDS.test(word)))
         .filter((word) => !/^\p{Lu}{2,}\b/u.test(word));
-      return words.length > 1 && words.every((word) => /^\p{Lu}/u.test(word));
+      const own = words.filter((word) => word !== NAME);
+      return (
+        own.length > 0 &&
+        words.slice(1).some((word) => word !== NAME) &&
+        own.every((word) => /^\p{Lu}/u.test(word))
+      );
     };
     const translatedLiterals = (file) =>
       [
@@ -89,16 +96,22 @@ describe('index.html', () => {
           .matchAll(/\bt\(\s*(?:'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)")/g),
       ].map((match) => (match[1] ?? match[2]).replace(/\\(.)/g, '$1'));
 
+    // Every file the window's script is built from, the alerts' desktop notifications included.
+    const rendererSources = (dir) =>
+      fs
+        .readdirSync(path.resolve(__dirname, '../..', dir))
+        .filter((file) => file.endsWith('.js'))
+        .map((file) => `${dir}/${file}`);
+
     test.each([
-      'src/settings.js',
-      'src/hotkeys.js',
-      'src/ui.js',
+      ...rendererSources('src'),
+      ...rendererSources('packages/widget-renderer/src'),
       'renderer.js',
-      'packages/widget-renderer/src/quick-access-tabs.js',
     ])('the labels %s builds as it runs are written in it', (file) => {
       // "Retry Conflict Check" and "Keep Current" sat beside "Sync up" and "Cancel", the light
-      // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list, and the graph editor
-      // "Edit Comparison Graph" above its "Delete graph" button.
+      // actions read "Toggle, Turn on, Turn off, Brightness Up" in one list, the graph editor
+      // "Edit Comparison Graph" above its "Delete graph" button, and an alert's notification was
+      // titled "Home Assistant Alert".
       const titleCase = translatedLiterals(file).filter((text) =>
         text
           .replace(/\{\{\w+\}\}/g, ' ')

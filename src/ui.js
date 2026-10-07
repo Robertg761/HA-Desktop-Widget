@@ -15584,6 +15584,18 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
     const presetModeButtons = modal.querySelectorAll('.climate-preset-mode-btn');
     // After the mode, fan-mode and preset buttons exist, so they are disabled too.
     showUnavailableDialogState(modal, climateEntity);
+    // The readings and the mode that is on are what the dialog is opened for. Five modes take two
+    // rows, and in the default window the second row (a heat pump's Heat/Cool and Fan only) began
+    // under the fold, so the body scrolls just far enough to show it. Where that would scroll the
+    // readings out of view too (a narrow window, larger text), the dialog opens at its top as
+    // before. A dialog rebuilt in place keeps the scroll of the one it replaces.
+    const activeMode = replaces ? null : modeButtonsContainer?.querySelector('.active');
+    if (activeMode?.scrollIntoView) {
+      const body = modal.querySelector('.modal-body');
+      activeMode.scrollIntoView({ block: 'nearest' });
+      const readings = modal.querySelector('.climate-temp-display')?.getBoundingClientRect();
+      if (body && readings && readings.top < body.getBoundingClientRect().top) body.scrollTop = 0;
+    }
     let confirmedTargetTemp = targetTemp;
     let confirmedMode = currentMode;
     let confirmedFanMode = currentFanMode;

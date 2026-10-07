@@ -1235,12 +1235,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-light-status {
   margin-top: 3px;
-  font-family: var(--desktop-pin-display-font);
-  font-size: var(--desktop-pin-caption-size);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1342,15 +1336,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 16px rgba(0, 0, 0, 0.15);
-}
-
-.desktop-pin-light-brightness-label {
-  font-family: var(--desktop-pin-display-font);
-  font-size: var(--desktop-pin-caption-size);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
 }
 
 .desktop-pin-light-meter-value {
@@ -1865,10 +1850,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   -webkit-line-clamp: 2;
 }
 
+/* The small capitals over and under a pin's readings. Their line height is set, not the font's: a
+   lamp pin's two captions had the font's own, and Arabic's fallback font made each 5px taller than
+   in English, which put a roomy lamp's presets 3px from the rounded bottom edge. */
 .desktop-pin-panel-status,
 .desktop-pin-panel-stat-label,
 .desktop-pin-panel-slider-label,
-.desktop-pin-panel-caption {
+.desktop-pin-panel-caption,
+.desktop-pin-light-status,
+.desktop-pin-light-brightness-label {
   font-family: var(--desktop-pin-display-font);
   color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   font-size: var(--desktop-pin-caption-size);
@@ -6022,6 +6012,9 @@ body.theme-light:not(.high-contrast)
 
 .climate-mode-btn {
   flex-direction: column;
+  /* The dialog opens scrolled to the mode that is on where that is under the fold. Without a
+     margin the chip ended on the footer's rule. */
+  scroll-margin-block: var(--space-2);
 }
 
 .climate-fan-mode-btn,
@@ -9836,8 +9829,16 @@ body.theme-light:not(.high-contrast)
   flex-wrap: wrap;
 }
 
-.first-run-actions .btn:first-child {
+.first-run-actions > .btn:first-child {
   margin-inline-end: auto;
+}
+
+/* Back and Next keep to one row at the end, and take the next row together when the three buttons
+   do not fit one. */
+.first-run-step-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-inline-start: auto;
 }
 
 /* Back is hidden on the first and last steps; a button's own display would otherwise win. */
@@ -12074,20 +12075,26 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 /* The command to bind for a desktop layer can be an AppImage's whole path, which the user copies
    into a compositor's config. The window cannot be selected, so the command is the exception, and
-   a click selects all of it. It takes a line of its own rather than break at the hyphen in
-   'ha-desktop-widget', breaks anywhere only when it is longer than the line, and reads left to
-   right inside an Arabic sentence. A command that fills the line stops short of its end by the
-   chip's margins and 1em, room for the mark after it (up to a Chinese full-width comma), which
-   otherwise started the next line. */
+   a click selects all of it. It reads left to right inside an Arabic sentence, and runs on with the
+   sentence, so the comma after it follows its last word: as one box, a command that wrapped was as
+   wide as the line and its comma sat at the line's far end. Each line of it is a chip of its own. */
 #layer-toggle-note code {
-  display: inline-block;
-  max-width: calc(100% - 1em - 2px);
-  overflow-wrap: anywhere;
+  box-decoration-break: clone;
   direction: ltr;
   unicode-bidi: isolate;
   user-select: all;
   -webkit-user-select: all;
   cursor: text;
+}
+
+/* Its words are boxes (settings.js), so it wraps between them and not at the hyphen in
+   'ha-desktop-widget' or '--toggle'. Only a box longer than the line breaks inside, and it leaves
+   room for the chip's padding and margin, which every line of the chip repeats (3px and 1px a
+   side): without it a path with no space ran past the end of the line. */
+#layer-toggle-note code > span {
+  display: inline-block;
+  max-width: calc(100% - 8px);
+  overflow-wrap: anywhere;
 }
 
 /* Its focus ring touched the help line under it with the help line's own 3px margin alone. */
@@ -15435,6 +15442,15 @@ body.theme-light
   background: var(--surface-2);
 }
 
+/* Until a folder is chosen the field is as wide as its hint, so where the hint and the button do not
+   fit one row the button goes under the field: at 220px French cut the hint to "Choisissez un
+   dossier synchronis...". */
+#settings-modal .profile-sync-file-row > input[readonly]:placeholder-shown {
+  flex-basis: auto;
+  width: auto;
+  field-sizing: content;
+}
+
 /* Backup names are long; give them the whole line and put Restore under them. A closed
    select cuts its text, so it gets an ellipsis and room for the arrow. */
 #settings-modal .profile-sync-backup-row > select {
@@ -16798,9 +16814,13 @@ body[data-season] .modal-content::after {
 
 /* A number sensor draws its trend line, or its gauge, along the foot of the tile, and the newest
    reading ends in the corner where the piece sits. Both take the holiday's colour, so the gift or
-   the pumpkin hid the last part of the trend. Such a tile goes without it. */
+   the pumpkin hid the last part of the trend. Such a tile goes without it, and without Easter's
+   egg, which sits in a bottom corner of the other tiles: in the third column the purple egg sat on
+   the end of the purple line. */
 body[data-season]
-  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after {
+  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after,
+body[data-season='easter']
+  .control-item.sensor-numeric-entity:not([data-chart-type='none'])::before {
   content: none;
 }
 

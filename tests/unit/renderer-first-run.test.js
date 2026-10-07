@@ -1008,6 +1008,22 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(wizardButton('Back').hidden).toBe(true);
   });
 
+  // The three buttons wrap where they do not fit one row. In the smallest window in German that left
+  // Connect alone on the second row, away from Back; the two now wrap together.
+  it('keeps Back and Next in one group after Full settings, so they wrap together', async () => {
+    await loadRenderer();
+    await clickButton('Next');
+
+    const back = wizardButton('Back');
+    const group = back.parentElement;
+    expect(group.classList.contains('first-run-step-actions')).toBe(true);
+    expect([...group.children]).toEqual([back, wizardButton('Next')]);
+    expect([...document.querySelector('.first-run-actions').children]).toEqual([
+      wizardButton('Full settings'),
+      group,
+    ]);
+  });
+
   it('turns Back into Cancel while authorization waits, and Cancel keeps the step', async () => {
     let rejectPairing;
     await loadRenderer({
