@@ -1474,9 +1474,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   z-index: 1;
 }
 
+/* The chips share the row equally while their labels fit. One whose label is wider than its share
+   keeps the label and its padding, and the others give it the room: "100%" in a quarter of the
+   default pin's row is drawn about 2px wider on Windows than on Linux, and there it touched the
+   outline the Readable preset and forced colours draw. The micro layout keeps its equal quarters. */
 .desktop-pin-light-presets {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(min-content, 1fr));
   gap: 6px;
 }
 
@@ -1493,9 +1497,9 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   border-radius: var(--radius-lg);
   min-height: 28px;
   min-width: 0;
-  /* No padding or tracking: a chip is a quarter of a 152px row, about 35px, and "100%" with them
-     ran into the outline the Readable preset and forced colours draw. */
-  padding-inline: 0;
+  /* No tracking, and the least padding that keeps a label off the outline the Readable preset and
+     forced colours draw: a chip is a quarter of a 152px row, about 35px. */
+  padding-inline: 2px;
   line-height: 1.2;
   font-family: var(--desktop-pin-display-font);
   font-size: var(--font-size-xs);
@@ -1598,67 +1602,83 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-presets {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 3px;
 }
 
 .desktop-pin-light-control[data-layout='micro'] .desktop-pin-light-preset {
   /* 24px, the least a pointer is asked to hit (the compact layout's presets are the same). */
   min-height: 24px;
+  padding-inline: 0;
   font-size: var(--font-size-2xs);
   border-radius: var(--radius-md);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness {
+/* A lamp pin dragged a little bigger (the balanced layout, up to the roomy 260x190) keeps the
+   default pin's spacing, as the other pins do: with the roomier base values, the status line and a
+   name on two lines ("Upstairs hallway ceiling light") pushed the presets 4px off a 200x170 pin and
+   onto its rounded bottom edge at 240x180. Its extra room widens the slider and the presets. */
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-brightness {
   gap: 7px;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-glyph {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-glyph {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-meter-value {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-meter-value {
   font-size: clamp(16px, 4.3vw, 20px);
   letter-spacing: -0.03em;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-topline {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-topline {
   gap: 8px;
 }
 
 .desktop-pin-panel-control[data-layout='compact'] .desktop-pin-power,
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-power {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-power {
   width: 24px;
   height: 24px;
   font-size: var(--font-size-base);
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-status {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-status {
   display: none;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-brightness-head {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-brightness-head {
   gap: 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-slider,
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-slider,
 .desktop-pin-panel-control[data-layout='compact'] .desktop-pin-panel-slider {
   --desktop-pin-slider-track-size: 7px;
   --desktop-pin-slider-thumb-size: 14px;
 }
 
-.desktop-pin-light-control[data-layout='compact']
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
   .desktop-pin-light-brightness-track.desktop-pin-panel-progress {
   margin: 6px 0;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-presets {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-presets {
   gap: 4px;
 }
 
-.desktop-pin-light-control[data-layout='compact'] .desktop-pin-light-preset {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced'])
+  .desktop-pin-light-preset {
   min-height: 24px;
   font-size: var(--font-size-xs);
 }
@@ -2049,6 +2069,23 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 .desktop-pin-panel-slider-row {
   grid-template-columns: auto 1fr auto;
   align-items: center;
+}
+
+/* A heat/cool range's two rows share one column for their labels, so the tracks, which run over the
+   same scale, start and end at the same place (see climateRangeMarkup). The pin's spare height is
+   shared out above, between and under the two rows, as it was when each was a row of the body:
+   held a fixed gap apart, the thumbs of a roomy pin sat 10px apart under a wide empty band. */
+.desktop-pin-climate-range {
+  display: grid;
+  flex-grow: 1;
+  align-content: space-evenly;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--desktop-pin-panel-gap) 6px;
+}
+
+.desktop-pin-climate-range > .desktop-pin-panel-slider-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
 /* The climate, fan, cover and numeric pins' sliders are drawn like the lamp's: a round track in a
@@ -2490,13 +2527,14 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
    mode or speed, the slider's labels and the climate's current reading, so it keeps the same
    spacing and buttons; with the roomier base values its bottom row ran off the tile. Roomy pins
    keep those, and so does a media pin, which is balanced only from 285px wide (narrower, it is
-   tight) and has no row that grows. The :where() keeps these rules' weight. */
+   tight) and has no row that grows. The lamp pin's balanced layout is the default one's too (see
+   .desktop-pin-light-brightness below). The :where() keeps these rules' weight. */
 .desktop-pin-panel-control:is(
   [data-layout='compact'],
   [data-layout='balanced']:where(:not(.desktop-pin-media-control)),
   [data-dense-variant='tight']
 ),
-.desktop-pin-light-control[data-layout='compact'] {
+.desktop-pin-light-control:is([data-layout='compact'], [data-layout='balanced']) {
   --desktop-pin-panel-pad: 8px;
   --desktop-pin-panel-gap: 6px;
   --desktop-pin-panel-meter-radius: 12px;
@@ -2582,10 +2620,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 /* Three modes, verbs or speeds share a 150px row, and a slightly bigger pin fits four into 184px.
    They take their label's width where equal shares cannot hold it ("Schließen", "Désactivé",
-   "Kühlen") and fall back to an ellipsis, with a title. */
+   "Kühlen") and fall back to an ellipsis, with a title. A roomy pin's row is wider, but four equal
+   shares of it still cut "Heat/Cool" at 280x200 and "Désactivé" at 260x190, so it is laid out the
+   same way. */
 :is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
     [data-dense-variant='tight'],
-    [data-layout='balanced']
+    [data-layout='balanced'],
+    [data-layout='roomy']
   )
   .desktop-pin-panel-actions {
   display: flex;
@@ -2594,7 +2635,8 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 :is(.desktop-pin-cover-control, .desktop-pin-climate-control, .desktop-pin-fan-control):is(
     [data-dense-variant='tight'],
-    [data-layout='balanced']
+    [data-layout='balanced'],
+    [data-layout='roomy']
   )
   .desktop-pin-panel-button {
   flex: 1 1 auto;
@@ -3565,12 +3607,43 @@ body.first-run-active .widget-content > * {
 }
 
 /* A radio stream, a TV input or an idle player has no length, and its seek row is hidden. The
-   column keeps the width of its hidden times so the controls stay put, but no share of the row:
-   beside an empty column that share only cut the station's or the programme's name shorter. The
-   narrow layouts below put the row on a line of its own. */
+   title takes its column as well: kept at the width of its hidden times, the column left about
+   130px of the row blank beside a station's or a programme's name cut short. The controls stay at
+   the row's end. The narrow layouts below put the row on a line of its own, which stays. */
 @media (min-width: 421px) {
   .media-tile-content:has(> .media-tile-seek[data-empty='true']) {
-    grid-template-columns: minmax(0, 1fr) min-content auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) .media-tile-seek {
+    display: none;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-empty='true']) .media-tile-controls {
+    grid-column: 2;
+  }
+}
+
+/* A film or a podcast runs past an hour, and its two h:mm:ss times leave the bar between them a
+   36px stub beside the title in the window the app opens at, where any more for the bar cut the
+   title shorter. Below 640px the seek row goes under the title, as in the narrow layouts, so the
+   bar has the row beside the controls and the title keeps the whole width. */
+@media (min-width: 421px) and (max-width: 639px) {
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-info {
+    grid-column: 1 / -1;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-seek {
+    grid-column: 1;
+  }
+
+  .media-tile-content:has(> .media-tile-seek[data-long-times='true']) .media-tile-controls {
+    grid-column: 2;
+    grid-row: 2;
   }
 }
 
@@ -3626,7 +3699,9 @@ body.first-run-active .widget-content > * {
   justify-self: stretch;
 }
 
-/* No length to show (radio, an idle player): hidden rather than removed, so the controls stay put. */
+/* No length to show (radio, an idle player): hidden. Where the row has a line of its own (the narrow
+   layouts) it keeps its place, so the controls stay put; beside the title it gives the title its
+   column (above). */
 .media-tile-seek[data-empty='true'] {
   visibility: hidden;
 }
@@ -5917,6 +5992,15 @@ body.theme-light:not(.high-contrast)
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Five chips make three and two, six two rows of three and nine three of three. The dialog is wide
+   enough for four 80px chips a row, which left a heat pump's fan-only mode alone under Off, and
+   two chips under four, or one under eight. */
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(5):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(6):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(9):last-child) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .climate-mode-btn,
 .climate-fan-mode-btn,
 .climate-preset-mode-btn {
@@ -5924,7 +6008,10 @@ body.theme-light:not(.high-contrast)
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-3);
+  /* Three chips a row in a narrow window are about 72px wide. A centred label looks the same with
+     4px at its sides as with 8px; the 4px only lets "Heat/Cool" stay on one line where a longer
+     combined mode wraps after its slash. */
+  padding: var(--space-3) var(--space-2);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -6455,12 +6542,14 @@ body.theme-light.active-tile-glow
   filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.45));
 }
 
-/* An accent near the amber or the red of the tiles below (a holiday's orange, red or gold, or the
-   Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked door
-   and an armed alarm more strongly than one that went off, since the accent is more saturated than
-   the status colours, which are pale enough to be read as text. With such an accent a lit tile takes
-   about half the wash, so the tiles that need attention stay the most colourful on the page. */
-body[data-accent-warm] {
+/* An accent near the amber or the red of the tiles below (a holiday's orange, red, pink or gold, or
+   the Rose, Coral or Amber preset; see applyAccentColor) lit every lamp that is on like an unlocked
+   door and an armed alarm more strongly than one that went off, since the accent is more saturated
+   than the status colours, which are pale enough to be read as text. With such an accent a lit tile
+   takes about half the wash, so the tiles that need attention stay the most colourful on the page.
+   The Readable preset draws its own blue accent whatever the chosen one is, so it keeps the whole
+   wash. */
+body[data-accent-warm]:not(.high-contrast) {
   --dash-tile-wash: var(--dash-tile-wash-warm);
   --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
 }
@@ -6624,11 +6713,16 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
    hidden; expanding a preview reuses the same image element and stream connection. */
 #quick-controls .control-item.camera-preview-tile {
   min-height: 104px;
-  padding: 0;
   align-items: stretch;
-  justify-content: flex-end;
   isolation: isolate;
   background: linear-gradient(145deg, rgba(25, 31, 40, 0.96), rgba(11, 14, 20, 0.98));
+}
+
+/* A picture fills the tile, and the caption sits on its scrim at the foot. Until the first frame
+   the tile is laid out like any other (see below). */
+#quick-controls .control-item.camera-preview-tile[data-camera-preview-has-frame='true'] {
+  padding: 0;
+  justify-content: flex-end;
 }
 
 .camera-tile-visual {
@@ -6841,15 +6935,11 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 
 /* Until a camera has sent a frame, its tile is a plain pane like its neighbours rather than a
    black video slab: the dark stage and the bottom scrim only exist to seat a picture and the
-   caption over it. */
+   caption over it. The stage's soft glow is the pane's. */
 #quick-controls .control-item.camera-preview-tile:not([data-camera-preview-has-frame='true']) {
-  background: var(--tile-bg);
-}
-
-#quick-controls
-  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
-  .camera-tile-visual {
-  background: radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb), 0.1), transparent 60%);
+  background:
+    radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb), 0.1), transparent 60%),
+    var(--tile-bg);
 }
 
 #quick-controls
@@ -6858,16 +6948,23 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   display: none;
 }
 
-/* Without a picture the camera icon is the tile's icon, a plain glyph like its neighbours', in the
-   band between the label in the corner and the caption at the foot. Centred over the whole tile in
-   the circle it has on the dark stage, it sat on the end of the name. The caption under it is
-   centred too, as their name and state are: a centred glyph over a caption at the start edge made
-   the tile look unfinished beside them. Over a picture the caption keeps to the start edge. */
+/* Without a picture the tile is laid out like its neighbours: its icon, a plain glyph, in the flow
+   of the tile, and the name and status hung under it at the same offset as theirs, so a row of
+   tiles shares one line for its names. Held at the foot of the tile, with the icon placed above
+   it, the camera's name sat about 15px below the lamp's beside it. The stage and the placeholder
+   that hold the icon over a picture give way to their contents, so the stage has no box for the
+   viewer's transition to grow from, and the tile stands in for it (nameCameraPreviewTransition in
+   camera.js). The caption is centred, as their name and state are; over a picture it keeps to the
+   start edge. */
 #quick-controls
   .camera-preview-tile:not([data-camera-preview-has-frame='true'])
-  .camera-tile-fallback {
-  place-items: start center;
-  padding-top: var(--camera-tile-icon-top, 32px);
+  :is(.camera-tile-visual, .camera-tile-fallback) {
+  display: contents;
+}
+
+#quick-controls .camera-preview-tile:not([data-camera-preview-has-frame='true']) .camera-tile-copy {
+  flex: 1;
+  padding: var(--qa-tile-info-offset) 0 0;
 }
 
 #quick-controls
@@ -6880,6 +6977,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   .camera-tile-fallback
   .control-icon {
+  align-self: center;
   width: auto;
   height: auto;
   border: 0;
@@ -6903,6 +7001,21 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   background: var(--tile-bg);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   box-shadow: none;
+}
+
+/* With no picture the label ("Snapshot", "Live") names what is not there, and at its full width
+   the pill reached past the middle of the tile, into the icon above the name. Only its light stays
+   in the corner, beside the status line that says what the camera is doing. */
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-preview-badge {
+  padding: 3px;
+}
+
+#quick-controls
+  .camera-preview-tile:not([data-camera-preview-has-frame='true'])
+  .camera-tile-preview-badge-label {
+  display: none;
 }
 
 /* The caption colours above are for a picture. A tile with none shows its status on a plain pane,
@@ -6939,7 +7052,7 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   .camera-preview-tile[data-camera-preview-state='unavailable']:not(
     [data-camera-preview-has-frame='true']
   )
-  > :is(.camera-tile-visual, .camera-tile-copy, .camera-tile-preview-badge) {
+  :is(.camera-tile-fallback .control-icon, .camera-tile-copy, .camera-tile-preview-badge) {
   opacity: 0.55;
 }
 
@@ -6954,27 +7067,17 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
 
 body.density-compact #quick-controls .control-item.camera-preview-tile {
   min-height: 78px;
-  padding: 0;
 }
 
-body.density-compact #quick-controls .camera-preview-tile .camera-tile-copy {
+body.density-compact
+  #quick-controls
+  .camera-preview-tile[data-camera-preview-has-frame='true']
+  .camera-tile-copy {
   padding: 24px 8px 7px;
 }
 
 body.density-compact #quick-controls .camera-preview-tile .camera-tile-preview-status {
   font-size: var(--font-size-2xs);
-}
-
-/* Where the icon of a tile with no picture starts: under the label in the corner, and in compact
-   density in the shorter band between it and the caption. While editing, the buttons take the
-   label's place and run lower, in either density (the body in that selector outranks the compact
-   one). */
-body.density-compact #quick-controls .camera-preview-tile {
-  --camera-tile-icon-top: 25px;
-}
-
-body #quick-controls.reorganize-mode .camera-preview-tile {
-  --camera-tile-icon-top: 36px;
 }
 
 .camera-expanded-preview {
@@ -9601,15 +9704,52 @@ body.theme-light:not(.high-contrast)
   line-height: 1.5;
 }
 
-/* In a short window (the smallest is 360px) the card's own padding and the space around it left
-   the welcome step scrolling inside the card, its buttons cut off at the bottom. */
+/* A short window: the smallest is 360px tall, and large text makes the default one as short.
+   The card's own padding and the space around it left the welcome step scrolling inside the card,
+   its buttons cut off at the bottom, and step 3 has more to say than fits even without them. When
+   the whole card scrolled, step 3's Back and Connect sat below its fold. So here only the step's
+   text scrolls, and the status line and the buttons stay in view under it. An 8px rhythm between
+   the lines, and 12px above the buttons, lets the URL step fit whole, field and all. */
 @media (max-height: 480px) {
   .first-run-onboarding {
     padding: var(--space-3);
   }
 
   .first-run-panel {
+    display: flex;
+    flex-direction: column;
     padding: var(--space-4);
+  }
+
+  /* The scroller keeps 4px around what it holds, so the field's and the buttons' focus rings are
+     not cut off at its edges; the negative margin leaves the card's layout as it was. */
+  .first-run-content {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin: -4px;
+    padding: 4px;
+  }
+
+  .first-run-status,
+  .first-run-actions {
+    flex: none;
+  }
+
+  .first-run-step-label,
+  .first-run-title,
+  .first-run-copy {
+    margin-bottom: var(--space-3);
+  }
+
+  /* The last line of step 3. Its margin no longer merges with the status line's below it, as it
+     does outside the scroller, so the status line's 8px is the gap. */
+  .first-run-security-note {
+    margin-bottom: 0;
+  }
+
+  .first-run-actions {
+    margin-top: var(--space-4);
   }
 }
 
@@ -9671,6 +9811,21 @@ body.theme-light:not(.high-contrast)
   margin-top: var(--space-3);
   overflow: visible;
   clip-path: none;
+}
+
+/* In a short window a step too tall for the card gives the empty line's room, gap and all, to its
+   text before the text gives up any of its own. The card fills the window then and its buttons sit
+   at its foot, so the reserved line held nothing in place and only cut the text short: the minimum
+   window showed a blank band above Back and Connect while step 3's note was cut off. Where the card
+   still fits, the line keeps its room. */
+@media (max-height: 480px) {
+  .first-run-content:has(.first-run-label, .first-run-security-note)
+    + .first-run-status.connection-status-empty {
+    flex: 0 1000 auto;
+    height: calc(1.4em + var(--space-3));
+    min-height: 0;
+    margin-top: 0;
+  }
 }
 
 .first-run-actions {
@@ -9928,6 +10083,11 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   /* The stack itself must not eat clicks on the widget behind it; individual
      toasts opt back in below so they can be click-dismissed. */
   pointer-events: none;
+  /* layoutToasts (src/ui-utils.js) takes the stack back to where it rests and measures it there
+     at once. Under reduced motion the stylesheet gives every transition 0.01ms instead of none,
+     which still starts one: the measurement read the place it was moved to before, and the stack
+     was left over the connection panel it had been lifted clear of. It is placed, not animated. */
+  transition: none;
 }
 
 .toast {
@@ -10087,6 +10247,12 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 .toast.toast-closing {
   animation: toastSlideOut var(--duration-base) var(--ease-in-out) forwards;
   pointer-events: none;
+}
+
+/* An older toast with no room beside the connection panel waits out of sight (layoutToasts in
+   src/ui-utils.js) and comes back once there is room. */
+.toast.toast-held {
+  display: none;
 }
 
 @keyframes toastSlideOut {
@@ -11906,12 +12072,27 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   color: var(--accent-text);
 }
 
-/* The command to bind for a desktop layer can be an AppImage's whole path. It breaks anywhere rather
-   than run out of the card, and reads left to right inside an Arabic sentence. */
+/* The command to bind for a desktop layer can be an AppImage's whole path, which the user copies
+   into a compositor's config. The window cannot be selected, so the command is the exception, and
+   a click selects all of it. It takes a line of its own rather than break at the hyphen in
+   'ha-desktop-widget', breaks anywhere only when it is longer than the line, and reads left to
+   right inside an Arabic sentence. A command that fills the line stops short of its end by the
+   chip's margins and 1em, room for the mark after it (up to a Chinese full-width comma), which
+   otherwise started the next line. */
 #layer-toggle-note code {
+  display: inline-block;
+  max-width: calc(100% - 1em - 2px);
   overflow-wrap: anywhere;
   direction: ltr;
   unicode-bidi: isolate;
+  user-select: all;
+  -webkit-user-select: all;
+  cursor: text;
+}
+
+/* Its focus ring touched the help line under it with the help line's own 3px margin alone. */
+#layer-toggle-copy {
+  margin-block: 6px 4px;
 }
 
 /* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
@@ -12887,13 +13068,16 @@ body.opaque-panels .status-card.primary-entity-card .control-item {
   }
 
   /* The grey fill above also flattens the selected chip, whose accent border and tint were its
-     mark, so the chip keeps a heavier accent edge. The same goes for the selected colour, the
-     Accent and Background choice, the edit button while editing, and a pin's on or current chip. */
+     mark, so the chip keeps a heavier accent edge: the current mode, and the current brightness or
+     speed preset in the lamp and fan pop-ups. The same goes for the selected colour, the Accent and
+     Background choice, the edit button while editing, and a pin's on or current chip. */
   body.high-contrast
     :is(
       .climate-mode-btn,
       .climate-fan-mode-btn,
       .climate-preset-mode-btn,
+      .brightness-preset-btn,
+      .fan-preset-btn,
       .media-mute-toggle
     ).active,
   body.high-contrast :is(.color-target-option.active, .section-btn.reorganize-active),
@@ -14216,10 +14400,11 @@ body.opaque-panels #settings-modal .modal-header {
 /* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
    always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
    width and nothing shifts sideways when switching pages or when a search result list grows past
-   the window; the end padding gives it back, so both margins stay 18px. */
+   the window; the end padding gives it back, so both margins stay 18px. It gives back the width
+   the scrollbar has, which forced colours make wider. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
-  padding-inline-end: 9px;
+  padding-inline-end: calc(18px - var(--modal-scrollbar-size));
   scrollbar-gutter: stable;
   /* The Save/Cancel pill floats over the bottom of the page, where the switches and selects sit.
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
@@ -14577,12 +14762,11 @@ textarea::selection {
 }
 
 /* Every row select is at least one width, so their left edges line up down a page (Time format,
-   Date format, Sync app, scope and interval) instead of each starting where its own text ends; the
-   width fits the longest English option. A select whose choices are longer, as the sync scope and
-   sync app are in German, French and Spanish, grows to fit them and so drops under its label, where
-   it has the whole row: at a fixed width it cut the value it showed to "Tous les paramètres
-   synchr...". Only a value longer than the row ends in an ellipsis, rather than running under the
-   chevron. */
+   Date format, Sync app and scope) instead of each starting where its own text ends; the width fits
+   the longest English option. A select whose choices are longer, as the sync scope and sync app are
+   in German, French and Spanish, grows to fit them and so drops under its label, where it has the
+   whole row: at a fixed width it cut the value it showed to "Tous les paramètres synchr...". Only a
+   value longer than the row ends in an ellipsis, rather than running under the chevron. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
@@ -14610,6 +14794,13 @@ textarea::selection {
 .setting-row-stacked > .setting-text {
   flex: none;
   min-width: 0;
+}
+
+/* A select under its label keeps the width of its choices, as one that wrapped there does. The sync
+   interval is stacked because of its help: beside a select, three lines of it were squeezed into a
+   column 150px wide, six in French. */
+#settings-modal .setting-row-stacked > select {
+  align-self: flex-start;
 }
 
 .setting-row-action {
@@ -15656,10 +15847,13 @@ body.density-compact #quick-controls {
 }
 
 /* A tile too full for its height loses its bottom edge, not both ends: with plain centring the icon
-   above and the state below were cut off equally. A camera tile with a preview keeps its caption at
-   the foot, where the picture's scrim is: centred, the name slid up under the camera icon. */
+   above and the state below were cut off equally. A camera tile showing a picture keeps its caption
+   at the foot, where the picture's scrim is: centred, the name slid up under the camera icon. Until
+   the first frame it is laid out like the others. The :where() keeps these rules' weight. */
 #quick-controls
-  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile) {
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(
+    .camera-preview-tile:where([data-camera-preview-has-frame='true'])
+  ) {
   justify-content: safe center;
 }
 
@@ -15680,8 +15874,8 @@ body.density-compact #quick-controls {
 
 /* Icon, name and state hang from the top. Centring the name block in what is left under the icon
    put it 6 to 14px apart across a row: a scene has no state line, a timer's is taller, a sensor
-   makes room for its sparkline, and a two-line name moved both ends. Cameras with a preview, graphs,
-   media players and the gauge (whose arc stands in for the icon) lay themselves out. */
+   makes room for its sparkline, and a two-line name moved both ends. Cameras (see their caption),
+   graphs, media players and the gauge (whose arc stands in for the icon) lay themselves out. */
 #quick-controls
   .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
     [data-chart-type='gauge']
@@ -15696,9 +15890,9 @@ body.density-compact #quick-controls {
    gave it. A number sensor keeps its own padding (none on the tile, the sparkline's band on its
    info block). */
 #quick-controls
-  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(.camera-preview-tile):not(
-    .sensor-numeric-entity
-  ) {
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(
+    .camera-preview-tile:where([data-camera-preview-has-frame='true'])
+  ):not(.sensor-numeric-entity) {
   padding-bottom: 8px;
 }
 
@@ -15810,7 +16004,9 @@ body.density-compact
 /* Compact rows: the value carries the tile, so the icon steps aside. */
 body.density-compact
   #quick-controls
-  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  .control-item:not(.comparison-graph-tile):not(
+    .camera-preview-tile:where([data-camera-preview-has-frame='true'])
+  ) {
   padding-top: 6px;
   padding-bottom: 6px;
 }
@@ -16248,7 +16444,9 @@ body.density-compact #quick-controls.reorganize-mode {
 
 body.density-compact
   #quick-controls.reorganize-mode
-  .control-item:not(.comparison-graph-tile):not(.camera-preview-tile) {
+  .control-item:not(.comparison-graph-tile):not(
+    .camera-preview-tile:where([data-camera-preview-has-frame='true'])
+  ) {
   padding-top: 32px;
 }
 
@@ -16596,6 +16794,14 @@ body[data-season] .modal-content::after {
   transform-origin: bottom center;
   pointer-events: none;
   z-index: -1;
+}
+
+/* A number sensor draws its trend line, or its gauge, along the foot of the tile, and the newest
+   reading ends in the corner where the piece sits. Both take the holiday's colour, so the gift or
+   the pumpkin hid the last part of the trend. Such a tile goes without it. */
+body[data-season]
+  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after {
+  content: none;
 }
 
 body[data-season] .status-card:not(.primary-light-card)::after {
@@ -17241,9 +17447,10 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
 
   /* Selected and "on" states are a Highlight outline in place of the accent fill. A running timer
      is solid and a paused one dashed, as the tint and its colour tell them apart otherwise. A tile
-     that needs attention is outlined the same way and keeps its badge, drawn in the text colour. */
+     that needs attention keeps its badge, drawn in the text colour, and its edge is doubled (below):
+     with the lit tile's single line, an armed alarm and one that went off differed by the badge
+     alone. */
   #quick-controls .control-item[data-active='true'],
-  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost),
   .timer-entity[data-state='active'],
   .segmented-option.active,
   .tab-link.active,
@@ -17251,6 +17458,8 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .climate-mode-btn.active,
   .climate-fan-mode-btn.active,
   .climate-preset-mode-btn.active,
+  .brightness-preset-btn.active,
+  .fan-preset-btn.active,
   .media-mute-toggle.active,
   .entity-item.selected,
   .donate-amount-chip.selected,
@@ -17265,6 +17474,11 @@ body:is(.high-contrast, .opaque-panels) #settings-modal .seasonal-option.is-disa
   .timer-entity[data-state='paused'] {
     outline: 2px dashed Highlight;
     outline-offset: -2px;
+  }
+
+  #quick-controls .control-item[data-attention]:not(:focus-visible, .sortable-ghost) {
+    outline: 5px double Highlight;
+    outline-offset: -5px;
   }
 
   #quick-controls .control-item[data-attention] > .control-icon::after {

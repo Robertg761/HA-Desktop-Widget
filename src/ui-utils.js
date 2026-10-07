@@ -198,9 +198,13 @@ const rgbString = ({ r, g, b }) => `rgb(${r}, ${g}, ${b})`;
 // 0.14, the most muted of the other presets 0.56).
 const NEUTRAL_ACCENT_CHROMA = 0.25;
 // The hues of the alarm red and the warning amber of a tile that needs attention, and how close an
-// accent's hue can come to one before a tile lit in it reads as that state.
-const ATTENTION_HUES = [4, 36];
-const WARM_ACCENT_HUE_DISTANCE = 30;
+// accent's hue can come to one before a tile lit in it reads as that state. The red reaches further
+// toward pink: Valentine's #ec4899, 34 degrees from it, lit an armed alarm a stronger pink-red than
+// one that went off.
+const ATTENTION_HUES = [
+  { hue: 4, reach: 40 },
+  { hue: 36, reach: 30 },
+];
 
 /** The hue of an {r, g, b} colour in degrees, 0 to 360 (0 for a grey). */
 function hueOf({ r, g, b }) {
@@ -217,9 +221,9 @@ function hueOf({ r, g, b }) {
 /** Whether an accent's hue is close to the red or the amber of a tile that needs attention. */
 function isWarmAccent(rgb) {
   const hue = hueOf(rgb);
-  return ATTENTION_HUES.some((attentionHue) => {
-    const distance = Math.abs(hue - attentionHue) % 360;
-    return Math.min(distance, 360 - distance) <= WARM_ACCENT_HUE_DISTANCE;
+  return ATTENTION_HUES.some((attention) => {
+    const distance = Math.abs(hue - attention.hue) % 360;
+    return Math.min(distance, 360 - distance) <= attention.reach;
   });
 }
 
@@ -937,7 +941,7 @@ function openModal(modal, { display = 'flex' } = {}) {
 // ---------------------------------------------------------------------------------------------
 // Toasts. One manager owns the stack: it keeps the container clear of the buttons of whatever
 // raised them, folds repeats into one toast, caps the stack, keeps problems on screen until they
-// are read, and pauses the clock while a toast is being looked at.
+// are read, and pauses the clock while a toast is being looked at or is held back out of sight.
 // ---------------------------------------------------------------------------------------------
 
 const TOAST_FOOTER_GAP_PX = 8;
@@ -957,15 +961,17 @@ const TOAST_TYPES = new Set(['success', 'error', 'warning', 'info']);
 // Where a toast must not sit: the controls its surface is waiting on. Dialogs come first, because
 // anything behind an open dialog is covered by its backdrop and no longer matters.
 const TOAST_DIALOG_AVOID_SELECTOR = '.modal:not(.hidden):not(.modal-closing) .modal-footer';
-const TOAST_SURFACE_AVOID_SELECTOR = [
-  '.first-run-onboarding:not(.hidden) .first-run-actions',
-  '.widget-state-panel .widget-state-actions',
-].join(', ');
+const TOAST_WIZARD_AVOID_SELECTOR = '.first-run-onboarding:not(.hidden) .first-run-actions';
+// The connection panel is kept clear whole, not only its buttons: its title and message are the one
+// explanation of a dashboard that has stopped working.
+const TOAST_STATE_PANEL_SELECTOR = '.widget-state-panel';
+// A scroll that moves one of these can bring it to where the stack rests, or take it away.
+const TOAST_SCROLLED_SURFACES = `${TOAST_WIZARD_AVOID_SELECTOR}, ${TOAST_STATE_PANEL_SELECTOR}`;
 
 // While one of these is on screen Escape is not for the toasts: it ends a mode.
 const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
 
-// Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
+// Timing per toast: how long is left, what is stopping its clock, and the live timer.
 const toastTiming = new WeakMap();
 // Names each message, so the close button can say which one it closes.
 let toastMessageCounter = 0;
@@ -1044,6 +1050,17 @@ function scheduleToastDismiss(toast, delay) {
   }
 }
 
+// The clock stops while anything holds the toast: the pointer or the keyboard focus on it, or no
+// room for it on screen. Each reason is kept apart, so the pointer leaving a toast that has just
+// been held back out of sight does not start its clock again.
+function holdToastClock(toast, reason, holding) {
+  const timing = toastTiming.get(toast);
+  if (!timing) return;
+  if (holding) timing.holds.add(reason);
+  else timing.holds.delete(reason);
+  setToastPaused(toast, timing.holds.size > 0);
+}
+
 function setToastPaused(toast, paused) {
   const timing = toastTiming.get(toast);
   if (!timing || timing.paused === paused) return;
@@ -1077,58 +1094,129 @@ function getToastLifetime(type, message, timeout, inPin = false) {
 }
 
 /**
- * Keep the toast stack clear of the controls its surface is waiting on.
+ * Keep the toast stack clear of what its surface is waiting on.
  *
  * Toasts sit at the bottom of the window, which is also where a dialog keeps its footer buttons
- * (Close, Save, Turn On), where the first-run wizard keeps Next, and, in a short window, where the
- * connection panel keeps Retry. A stack that would cover one of those where it rests is lifted
- * above it. One that would not stays down: lifting it above buttons higher up the window put it
- * over what they belong to, such as the connection panel's own message, which sits above Quick
- * Access. The layout is recomputed whenever one of them opens or closes, as well as when a toast
- * is added, so a stack that was already up does not end up covering a footer that appeared
- * afterwards, or float where one used to be. A scroll that moves the connection panel recomputes
- * it too: in a short window the panel's buttons can come up from below the fold to where the
+ * (Close, Save, Turn On) and where the first-run wizard keeps Next. A stack that would cover one of
+ * those where it rests is lifted above it. The connection panel is kept clear whole (see
+ * layoutToastsBesidePanel). The layout is recomputed whenever one of them opens or closes, as well
+ * as when a toast is added, so a stack that was already up does not end up covering a footer that
+ * appeared afterwards, or float where one used to be. A scroll that moves the connection panel
+ * recomputes it too: in a short window the panel can come up from below the fold to where the
  * stack rests.
  */
 function layoutToasts() {
   if (typeof document === 'undefined') return;
   const container = document.getElementById('toast-container');
   if (!container) return;
+  placeToastStack(container);
+  // A toast held back is not on screen to be read, so its clock waits for it to come back. This runs
+  // after the stack is placed, because placing it lets every held toast back before it holds some
+  // again.
+  getLiveToasts(container).forEach((toast) =>
+    holdToastClock(toast, 'out-of-sight', toast.classList.contains('toast-held'))
+  );
+}
+
+function placeToastStack(container) {
   container.style.removeProperty('bottom');
+  // Held back beside the connection panel, a toast comes back whenever the stack is laid out again.
+  container
+    .querySelectorAll('.toast-held')
+    .forEach((toast) => toast.classList.remove('toast-held'));
   if (!container.querySelector('.toast')) return;
-  const boxes = (selector) =>
+  const footers = visibleToastObstacles(TOAST_DIALOG_AVOID_SELECTOR);
+  if (footers.length || document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
+    dockToastsAbove(container, footers);
+    return;
+  }
+  const [panel] = visibleToastObstacles(TOAST_STATE_PANEL_SELECTOR);
+  if (panel) {
+    layoutToastsBesidePanel(container, panel);
+    return;
+  }
+  dockToastsAbove(container, visibleToastObstacles(TOAST_WIZARD_AVOID_SELECTOR));
+}
+
+function visibleToastObstacles(selector) {
+  return (
     Array.from(document.querySelectorAll(selector))
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => element.getBoundingClientRect())
       // A surface scrolled out of view has nothing for a toast to cover.
-      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight);
-  let avoid = boxes(TOAST_DIALOG_AVOID_SELECTOR);
-  if (!avoid.length && !document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
-    avoid = boxes(TOAST_SURFACE_AVOID_SELECTOR);
-  }
-  if (!avoid.length) return;
-  // Where the stack rests, then from the lowest control up: each one it would cover, or come
-  // closer to than the gap, moves it above that control.
+      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight)
+  );
+}
+
+// From where the stack rests, then from the lowest control up: each one it would cover, or come
+// closer to than the gap, moves it above that control. One that it would not cover leaves it down:
+// lifting it above buttons higher up the window put it over what they belong to.
+function dockToastsAbove(container, obstacles) {
+  if (!obstacles.length) return;
   const rest = container.getBoundingClientRect();
   const height = rest.bottom - rest.top;
   let floor = rest.bottom;
-  avoid
+  obstacles
     .sort((a, b) => b.bottom - a.bottom)
     .forEach((rect) => {
       if (rect.top < floor && rect.bottom + TOAST_FOOTER_GAP_PX > floor - height) {
         floor = rect.top - TOAST_FOOTER_GAP_PX;
       }
     });
-  if (floor === rest.bottom) return;
+  if (floor !== rest.bottom) placeToastFloor(container, floor);
+}
+
+function placeToastFloor(container, floor) {
   container.style.bottom = `${Math.round(Math.max(0, window.innerHeight - floor))}px`;
 }
 
-// At most once a frame, and only while a toast is showing and the scroll moved a surface whose
-// buttons the stack keeps clear of: a scroll anywhere else changes nothing for the toasts.
+/**
+ * The connection panel sits above Quick Access, so in the default window the stack rests below it,
+ * over the dimmed tiles. Where it would cover the panel instead (a narrow window, a full stack), it
+ * goes above the panel, over the weather and media cards, which say nothing new while Home
+ * Assistant is away, as long as it fits there under the window's header. A stack too tall for
+ * either place holds back its oldest toasts until it fits; they come back once there is room again,
+ * when the panel goes or the window grows, with the time they had left when they went (never less
+ * than the short moment a toast gets after the pointer leaves it). Docked
+ * above the panel's buttons, as the stack once was, it covered the panel's own message, and an
+ * error toast stays until it is dismissed. Only a single toast with no room on either side still
+ * does that, to keep Retry within reach.
+ */
+function layoutToastsBesidePanel(container, panel) {
+  const header = document.querySelector('.widget-header')?.getBoundingClientRect();
+  const ceiling = (header?.bottom > 0 ? header.bottom : 0) + TOAST_FOOTER_GAP_PX;
+  // Oldest first, never the newest, and never one the keyboard focus is in: hiding that one would
+  // drop the focus to the page, out of the toast the user had tabbed to.
+  const holdable = getLiveToasts(container)
+    .slice(0, -1)
+    .filter((toast) => !toast.contains(document.activeElement));
+  for (let held = 0; ; held += 1) {
+    const rest = container.getBoundingClientRect();
+    const height = rest.bottom - rest.top;
+    const clear =
+      rest.top >= panel.bottom + TOAST_FOOTER_GAP_PX ||
+      rest.bottom + TOAST_FOOTER_GAP_PX <= panel.top;
+    if (clear) return;
+    const floor = panel.top - TOAST_FOOTER_GAP_PX;
+    if (floor - height >= ceiling) {
+      placeToastFloor(container, floor);
+      return;
+    }
+    if (held >= holdable.length) break;
+    holdable[held].classList.add('toast-held');
+  }
+  dockToastsAbove(
+    container,
+    visibleToastObstacles(`${TOAST_STATE_PANEL_SELECTOR} .widget-state-actions`)
+  );
+}
+
+// At most once a frame, and only while a toast is showing and the scroll moved a surface the stack
+// keeps clear of: a scroll anywhere else changes nothing for the toasts.
 let toastScrollFrame = 0;
 function layoutToastsOnScroll(event) {
   if (toastScrollFrame || !document.querySelector('#toast-container .toast')) return;
-  if (!event.target?.querySelector?.(TOAST_SURFACE_AVOID_SELECTOR)) return;
+  if (!event.target?.querySelector?.(TOAST_SCROLLED_SURFACES)) return;
   toastScrollFrame = window.requestAnimationFrame(() => {
     toastScrollFrame = 0;
     layoutToasts();
@@ -1195,8 +1283,9 @@ function dismissNewestToastForEscape(event) {
  * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
  * button, which is the keyboard's way to them; errors stay until dismissed (in a pin window, as
  * long as a warning) and warnings stay long enough to read. Every toast pauses while the pointer
- * or keyboard focus is on it, is dismissed by click or by Escape, and is folded into an identical
- * toast already showing. At most three stay on screen at once (one in a pin window).
+ * or keyboard focus is on it, or while it is held back out of sight beside the connection panel.
+ * Each is dismissed by click or by Escape, and is folded into an identical toast already showing.
+ * At most three stay on screen at once (one in a pin window).
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -1261,7 +1350,12 @@ function showToast(
     body.textContent = text;
     toast.appendChild(body);
 
-    toastTiming.set(toast, { remaining: lifetime, startedAt: Date.now(), timer: null });
+    toastTiming.set(toast, {
+      remaining: lifetime,
+      startedAt: Date.now(),
+      timer: null,
+      holds: new Set(),
+    });
 
     if (passive) {
       toast.classList.add('toast-passive');
@@ -1288,28 +1382,16 @@ function showToast(
       }
       // Reading takes longer than the clock allows for: hold it while it is under the pointer
       // or focused, then give it a moment more.
-      const hold = { hovered: false, focused: false };
-      const update = () => setToastPaused(toast, hold.hovered || hold.focused);
-      toast.addEventListener('pointerenter', () => {
-        hold.hovered = true;
-        update();
-      });
-      toast.addEventListener('pointerleave', () => {
-        hold.hovered = false;
-        update();
-      });
+      toast.addEventListener('pointerenter', () => holdToastClock(toast, 'pointer', true));
+      toast.addEventListener('pointerleave', () => holdToastClock(toast, 'pointer', false));
       toast.addEventListener('focusin', (event) => {
         const timing = toastTiming.get(toast);
         if (timing && event.relatedTarget && !toast.contains(event.relatedTarget)) {
           timing.returnTo = event.relatedTarget;
         }
-        hold.focused = true;
-        update();
+        holdToastClock(toast, 'focus', true);
       });
-      toast.addEventListener('focusout', () => {
-        hold.focused = false;
-        update();
-      });
+      toast.addEventListener('focusout', () => holdToastClock(toast, 'focus', false));
     }
 
     container.appendChild(toast);

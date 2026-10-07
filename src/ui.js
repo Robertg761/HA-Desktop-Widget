@@ -89,6 +89,7 @@ import desktopPinSupport from './desktop-pin-support.cjs';
 import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
+import entityHotkeys from './entity-hotkeys.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addEntityToQuickAccessView,
@@ -207,11 +208,11 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
   'extra-large',
 ]);
 const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
-  { value: 'auto', label: 'Auto (Default)' },
+  { value: 'auto', label: 'Auto (default)' },
   { value: 'small', label: 'Small' },
   { value: 'normal', label: 'Normal' },
   { value: 'large', label: 'Large' },
-  { value: 'extra-large', label: 'Extra Large' },
+  { value: 'extra-large', label: 'Extra large' },
 ];
 const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
@@ -2219,7 +2220,7 @@ function toggleReorganizeMode() {
       if (btn) {
         setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
-        btn.title = t('Save & Exit Reorganize Mode (ESC)');
+        btn.title = t('Save and exit reorganize mode (Esc)');
       }
 
       // Initialize SortableJS for drag-and-drop
@@ -5279,7 +5280,7 @@ async function addComparisonGraphTile() {
   const config = ensureQuickAccessConfig();
   const activeTab = getActiveQuickAccessTab(config);
   const nextConfig = addComparisonGraph(config, {
-    name: t('Comparison Graph'),
+    name: t('Comparison graph'),
     entityIds: [],
     tabId: activeTab?.id,
   });
@@ -5308,7 +5309,7 @@ function showComparisonGraphModal(graphId) {
   let pendingSave = Promise.resolve();
   const modal = createEntityDetailModal({
     className: 'comparison-graph-modal',
-    title: t('Edit Comparison Graph'),
+    title: t('Edit comparison graph'),
     beforeClose: () => pendingSave,
   });
   const body = modal.querySelector('.modal-body');
@@ -6069,6 +6070,12 @@ function formatDesktopPinClimateModeLabel(mode) {
   return label ? t(label) : normalizedMode.replace(/_/g, ' ');
 }
 
+// The climate pin's line under its name: "Heat mode", or the mode alone where room is short.
+function formatDesktopPinClimateStatus(mode, compact) {
+  const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
+  return compact ? modeLabel : t('{{mode}} mode', { mode: modeLabel });
+}
+
 // Some short words need a different translation per context ("Cool" as a colour temperature is not
 // the HVAC mode). The context lives in the key; English, where the key is missing, shows the word.
 function translateInContext(key, fallback) {
@@ -6137,12 +6144,17 @@ function getDesktopPinClimateRenderProfile(entity) {
   // range in the header beside the name. A pin at the default size or smaller leaves the range to
   // its sliders: printed beside the name there, it cut most names to a few letters.
   const isRange = climateValue.canSetRange;
+  const showHeaderKpi = isRange && !isSmall;
   return {
     ...layoutProfile,
     climateValue,
     maxModes,
     showTargetBox: !isRange,
-    showHeaderKpi: isRange && !isSmall,
+    showHeaderKpi,
+    // The line under the name says the mode alone ("Heat/Cool", not "Heat/Cool mode") where it is
+    // short of room: in a small pin, and beside a range in the header, where "Modus: Heizen/Kühlen"
+    // and "Mode Chaud/Froid" were cut at 200x170.
+    compactStatus: isSmall || showHeaderKpi,
     showCurrentStat: !isSmall && !isRange,
     showCompactCurrent: isSmall || isRange,
     showSliderLabels: !isSmall,
@@ -6702,14 +6714,19 @@ function syncDesktopPinPanelName(root, entity) {
   root.title = displayName;
 }
 
-function getDesktopPinPanelHeaderMarkup(entity, { statusText = '', asideMarkup = '' } = {}) {
+// `keepStatus` keeps an empty status line in the markup, hidden, for a pin whose line comes and goes
+// with its state.
+function getDesktopPinPanelHeaderMarkup(
+  entity,
+  { statusText = '', asideMarkup = '', keepStatus = false } = {}
+) {
   const displayName = utils.escapeHtml(utils.getEntityDisplayName(entity));
   const safeStatus = utils.escapeHtml(statusText);
   return `
     <div class="desktop-pin-panel-topline">
       <div class="desktop-pin-panel-meta">
         <div class="desktop-pin-panel-name">${displayName}</div>
-        ${safeStatus ? `<div class="desktop-pin-panel-status">${safeStatus}</div>` : ''}
+        ${safeStatus || keepStatus ? `<div class="desktop-pin-panel-status"${safeStatus ? '' : ' hidden'}>${safeStatus}</div>` : ''}
       </div>
       ${asideMarkup || ''}
     </div>
@@ -6809,8 +6826,6 @@ function getDesktopPinClimateValue(entity) {
 function applyDesktopPinClimateVisualState(root, climateValue) {
   if (!root || !climateValue) return;
   const { currentTemp, targetTemp, mode, unit } = climateValue;
-  const denseVariant = root.dataset.denseVariant || 'standard';
-  const compactStatus = denseVariant === 'tight' || denseVariant === 'micro';
   root.dataset.state = mode || 'off';
   const hasTargetRange =
     Number.isFinite(targetTemp) &&
@@ -6855,8 +6870,7 @@ function applyDesktopPinClimateVisualState(root, climateValue) {
 
   const status = root.querySelector('.desktop-pin-panel-status');
   if (status) {
-    const modeLabel = formatDesktopPinClimateModeLabel(mode || 'off');
-    status.textContent = compactStatus ? modeLabel : t('{{mode}} mode', { mode: modeLabel });
+    status.textContent = formatDesktopPinClimateStatus(mode, root.dataset.compactStatus === 'true');
   }
 
   const slider = root.querySelector('.desktop-pin-climate-slider');
@@ -6885,10 +6899,10 @@ function createDesktopPinClimateControlElement(entity) {
     domain: 'climate',
     state: climateValue.mode,
   });
-  const climateStatus =
-    renderProfile.isDenseTight || renderProfile.isDenseMicro
-      ? formatDesktopPinClimateModeLabel(climateValue.mode || 'off')
-      : t('{{mode}} mode', { mode: formatDesktopPinClimateModeLabel(climateValue.mode || 'off') });
+  const climateStatus = formatDesktopPinClimateStatus(
+    climateValue.mode,
+    renderProfile.compactStatus
+  );
   const currentSummary = utils.escapeHtml(
     climateValue.currentTemp == null
       ? t('No live room temperature')
@@ -6904,6 +6918,7 @@ function createDesktopPinClimateControlElement(entity) {
   );
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.compactStatus = renderProfile.compactStatus ? 'true' : 'false';
   root.dataset.capabilitySignature = getDesktopPinCapabilitySignature(entity);
 
   root.innerHTML = `
@@ -7056,20 +7071,44 @@ function createDesktopPinClimateControlElement(entity) {
   return root;
 }
 
-// Three modes share the default pin's row, and in some languages their names are too long for it:
-// in French "Chaud/Froid", "Désactivé" and "Chauffe" were each cut short. A row that cannot hold
-// its modes offers fewer, down to two, hiding the last one that is not the active mode (nor the one
-// with focus). The names are measured where they are drawn, so the row is fitted again each time
-// the pin is drawn (a resize, a new state) and when its font has loaded.
+// Three modes share the default pin's row and four a bigger pin's, and in some languages their
+// names are too long for it: in French "Chaud/Froid", "Désactivé" and "Chauffe" were each cut
+// short at the default size, and in German at 200x170 all four. A row that cannot hold its modes
+// offers fewer, down to two, hiding the last one that is not the active mode (nor the one with
+// focus). The names are measured where they are drawn, so the row is fitted again each time the
+// pin is drawn (a new state), when its font has loaded and when the row's width changes: a pin is
+// drawn for its new size before its window has that size, and a pin dragged from 168x148 to
+// 280x200 had fitted its four modes into the old 150px row and kept three.
 const DESKTOP_PIN_CLIMATE_MIN_FITTED_MODES = 2;
+
+const desktopPinModeRowObserver =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+        // Fitting changes layout, which an observer must not do while it is being delivered. Only
+        // a new width counts: what the fitting changes is the row's buttons, not its width. A row
+        // the pin has drawn again is reported once more as it leaves, and is let go: the observer
+        // would keep it otherwise.
+        requestAnimationFrame(() => {
+          for (const { target } of entries) {
+            if (!target.isConnected) {
+              desktopPinModeRowObserver.unobserve(target);
+            } else if (target.dataset.fitWidth !== String(target.clientWidth)) {
+              fitDesktopPinClimateModes(target.closest('.desktop-pin-climate-control'));
+            }
+          }
+        });
+      })
+    : null;
 
 function fitDesktopPinClimateModes(root) {
   const row = root?.querySelector?.('.desktop-pin-climate-modes');
   if (!row?.isConnected) return;
+  desktopPinModeRowObserver?.observe(row);
   const buttons = [...row.querySelectorAll('.desktop-pin-climate-mode')];
   buttons.forEach((button) => {
     button.hidden = false;
   });
+  row.dataset.fitWidth = String(row.clientWidth);
   // A window that has not been laid out has nothing to measure.
   if (!row.clientWidth) return;
   const shown = () => buttons.filter((button) => !button.hidden);
@@ -7110,6 +7149,7 @@ function updateExistingDesktopPinClimateControl(root, entity) {
   }
   root.dataset.layout = renderProfile.layout;
   root.dataset.denseVariant = renderProfile.denseVariant;
+  root.dataset.compactStatus = renderProfile.compactStatus ? 'true' : 'false';
   syncDesktopPinPanelName(root, entity);
   applyDesktopPinClimateVisualState(root, renderProfile.climateValue);
   return true;
@@ -7132,13 +7172,14 @@ function getDesktopPinFanValue(entity) {
 // The meter prints the speed, so the line under the name says only whether the fan runs, as the
 // lamp pin's does. A fan running at a speed Home Assistant does not report (a preset mode leaves
 // the percentage empty) is on at no known level: its meter says On, and no speed chip is marked,
-// where it read "0%" and marked Off.
+// where it read "0%" and marked Off. The line under the name is empty then, as a switch pin's is,
+// or the pin said On twice.
 function getDesktopPinFanCopy({ percentage, isOn }, { canSetPercentage, compact }) {
   const level = !isOn ? 0 : canSetPercentage && percentage > 0 ? percentage : null;
   return {
     level,
     meterText: level > 0 ? formatPercent(level) : isOn ? t('On') : t('Off'),
-    statusText: isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
+    statusText: level === null ? '' : isOn ? t('On') : compact ? t('Ready') : t('Ready to start'),
   };
 }
 
@@ -7163,7 +7204,10 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   if (spinner) spinner.dataset.active = isOn ? 'true' : 'false';
 
   const status = root.querySelector('.desktop-pin-panel-status');
-  if (status) status.textContent = copy.statusText;
+  if (status) {
+    status.textContent = copy.statusText;
+    status.hidden = !copy.statusText;
+  }
 
   const slider = root.querySelector('.desktop-pin-fan-slider');
   if (slider && slider.value !== String(percentage)) {
@@ -7226,6 +7270,7 @@ function createDesktopPinFanControlElement(entity) {
     <div class="desktop-pin-panel-shell">
       ${getDesktopPinPanelHeaderMarkup(entity, {
         statusText: copy.statusText,
+        keepStatus: true,
         asideMarkup: `
           <div class="desktop-pin-panel-aside">
             <button class="desktop-pin-power desktop-pin-fan-power" type="button">${lineIconMarkup('power')}</button>
@@ -9874,7 +9919,7 @@ function getDesktopPinFallbackDescriptor(
   const fallbackName =
     customName ||
     (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '') ||
-    t('Pinned Tile');
+    t('Pinned tile');
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
   const normalizedConnectionIssue =
     typeof connectionIssue === 'string' ? connectionIssue.trim() : '';
@@ -9883,7 +9928,7 @@ function getDesktopPinFallbackDescriptor(
   if (!entityId) {
     return {
       state: 'no-entity',
-      label: t('Pinned Tile'),
+      label: t('Pinned tile'),
       kicker: t('Pin setup'),
       title: t('No entity selected'),
       detail: t('Choose an entity in the main widget and pin it again.'),
@@ -10036,7 +10081,7 @@ function renderDesktopPinTileInto({
       const liveEntity = entity || state.STATES?.[entityId];
       label.textContent = liveEntity
         ? utils.getEntityDisplayName(liveEntity)
-        : entityId || t('Pinned Tile');
+        : entityId || t('Pinned tile');
     }
   }
 
@@ -11408,7 +11453,7 @@ function showUnavailableDialogState(modal, entity) {
     <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
     <span class="dialog-unavailable-note-text">
       <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
-      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Try again once it's back."))}</span>
     </span>`;
     body.prepend(note);
   }
@@ -13377,8 +13422,7 @@ function queueOnOffToggle(entity) {
 }
 
 // Unlocking a door is the one toggle that cannot be taken back by pressing it again, so a click on
-// a tile asks first. Locking stays one click, and a hotkey the user bound to the lock does not ask:
-// it can fire while the widget is hidden, where nobody would see the question.
+// a tile asks first, and so does an Unlock hotkey (executeHotkeyAction). Locking stays one click.
 async function confirmThenUnlock(entity) {
   const name = utils.getEntityDisplayName(entity);
   const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
@@ -13389,6 +13433,25 @@ async function confirmThenUnlock(entity) {
   // The lock may have changed while the question was open.
   const live = state.STATES?.[entity.entity_id];
   if (live?.state === 'locked') toggleEntity(live);
+}
+
+// The service that opens or closes a cover or a valve (by default the other way from where it is,
+// as a click on its tile does), or null when it cannot go that way. Home Assistant's
+// ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no features is tried anyway,
+// like a cover; one that cannot go the asked way is left alone.
+function getOpenCloseService(
+  entity,
+  close = entity.state === 'open' || entity.state === 'opening'
+) {
+  if (getEntityDomain(entity.entity_id) === 'valve') {
+    const features = Number(entity.attributes?.supported_features);
+    const flag = close ? 2 : 1;
+    if (Number.isFinite(features) && (features & flag) !== flag) return null;
+    return close ? 'close_valve' : 'open_valve';
+  }
+  const capabilities = getDesktopPinCapabilities(entity);
+  if (close ? !capabilities.canClose : !capabilities.canOpen) return null;
+  return close ? 'close_cover' : 'open_cover';
 }
 
 function toggleEntity(entity, { confirmUnlock = false } = {}) {
@@ -13411,16 +13474,10 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
       case 'automation':
         service = 'toggle';
         break;
-      case 'valve': {
-        // Home Assistant's ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no
-        // features is tried anyway, like a cover; one that cannot do the other way is left alone.
-        const features = Number(entity.attributes?.supported_features);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        const flag = shouldClose ? 2 : 1;
-        if (Number.isFinite(features) && (features & flag) !== flag) return;
-        service = shouldClose ? 'close_valve' : 'open_valve';
+      case 'valve':
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'lock':
         if (entity.state === 'locked' && confirmUnlock) {
           void confirmThenUnlock(entity);
@@ -13428,15 +13485,11 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
         }
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
-      case 'cover': {
+      case 'cover':
         cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
-        const capabilities = getDesktopPinCapabilities(entity);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        if (shouldClose && !capabilities.canClose) return;
-        if (!shouldClose && !capabilities.canOpen) return;
-        service = shouldClose ? 'close_cover' : 'open_cover';
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'scene':
       case 'script':
         service = 'turn_on';
@@ -13742,6 +13795,9 @@ function executeHotkeyAction(entity, action) {
     entity = state.STATES?.[entity?.entity_id] || entity;
     if (!isEntityAvailable(entity)) return;
     const domain = entity.entity_id.split('.')[0];
+    // An action the domain does not offer (a toggle saved on a lock by an older version) runs as
+    // the domain's first, which Settings shows for it.
+    action = entityHotkeys.resolveEntityHotkeyAction(entity.entity_id, action);
 
     // Validate numeric attributes to prevent NaN
     const brightnessValue = Number(entity.attributes?.brightness);
@@ -13787,6 +13843,34 @@ function executeHotkeyAction(entity, action) {
             .catch((error) => handleServiceError(error, entityName));
         }
         break;
+      case 'lock':
+        if (domain === 'lock') {
+          websocket
+            .callService('lock', 'lock', { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      case 'unlock':
+        // It asks first, as a click on the tile does. The chord can be pressed while the widget is
+        // hidden, where nobody would see the question, so the widget comes up to ask it.
+        if (domain === 'lock' && entity.state === 'locked') {
+          window.electronAPI?.showWindow?.()?.catch?.((error) => {
+            console.warn('Could not bring the widget up to ask about unlocking:', error);
+          });
+          void confirmThenUnlock(entity);
+        }
+        break;
+      case 'open':
+      case 'close': {
+        if (domain === 'cover') cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
+        const service = getOpenCloseService(entity, action === 'close');
+        if (service) {
+          websocket
+            .callService(domain, service, { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      }
       case 'trigger':
         // For automations
         if (domain === 'automation') {
@@ -14380,8 +14464,12 @@ function updateMediaSeekBar(entity) {
     const { duration, currentPosition } = getMediaTimeline(entity);
 
     // A radio stream, an idle player or a TV input has no length to measure against, and an empty
-    // "0:00 ▬ 0:00" row says nothing. It stays in the layout, hidden, so the controls do not move.
-    if (seek) seek.dataset.empty = duration > 0 ? 'false' : 'true';
+    // "0:00 ▬ 0:00" row says nothing, so the stylesheet hides it. A film or a podcast that runs
+    // past an hour has h:mm:ss times, which take the row a seek bar needs beside the title.
+    if (seek) {
+      seek.dataset.empty = duration > 0 ? 'false' : 'true';
+      seek.dataset.longTimes = duration >= 3600 ? 'true' : 'false';
+    }
 
     const format = (seconds) => utils.formatDuration(Math.max(0, Math.floor(seconds)) * 1000);
     if (timeCurrent) timeCurrent.textContent = format(currentPosition);
@@ -14631,7 +14719,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       ? `
             <div class="brightness-color-temp">
               <div class="brightness-control-heading">
-                <span>${utils.escapeHtml(t('Color Temperature'))}</span>
+                <span>${utils.escapeHtml(t('Color temperature'))}</span>
                 <span id="light-color-temp-value">${reportedColorTemp === null ? '—' : formatKelvin(reportedColorTemp)}</span>
               </div>
               <input
@@ -14642,7 +14730,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                 value="${currentColorTemp}"
                 id="light-color-temp-slider"
                 class="light-color-temp-slider${reportedColorTemp === null ? ' is-unset' : ''}"
-                aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
+                aria-label="${escapeHtmlAttribute(t('Color temperature'))}"
                 ${reportedColorTemp === null ? '' : `aria-valuetext="${escapeHtmlAttribute(formatKelvin(reportedColorTemp))}"`}
               />
               <div class="brightness-slider-labels">
@@ -14664,7 +14752,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                   value="${escapeHtmlAttribute(currentColorHex)}"
                   id="light-color-picker"
                   class="light-color-picker"
-                  aria-label="${escapeHtmlAttribute(t('Light Color'))}"
+                  aria-label="${escapeHtmlAttribute(t('Light color'))}"
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
@@ -15118,11 +15206,14 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
         <span>${formatMeasurement(capabilities.minTemp, unit)}</span>
         <span>${formatMeasurement(capabilities.maxTemp, unit)}</span>
       </span>`;
-  return ['low', 'high']
+  const rows = ['low', 'high']
     .map((bound) => {
       const low = bound === 'low';
       const label = low ? t('Heating target') : t('Cooling target');
-      const visibleLabel = pin ? (low ? t('Heating') : t('Cooling')) : label;
+      // A pin names each bound by its mode, as its mode buttons do: the HVAC action names it used
+      // ("Heating", "Cooling") are states in the packs ("Calentando", "制热中") and ran long
+      // ("Refroidissement").
+      const visibleLabel = pin ? formatDesktopPinClimateModeLabel(low ? 'heat' : 'cool') : label;
       return `<label class="${pin ? 'desktop-pin-panel-slider-row' : 'climate-slider-wrapper'}">
       <span class="${pin ? 'desktop-pin-panel-slider-label' : 'climate-temp-label'}">${utils.escapeHtml(visibleLabel)}</span>
       <input type="range" class="${pin ? 'desktop-pin-panel-slider' : 'climate-slider'}" data-climate-range="${bound}"
@@ -15133,6 +15224,10 @@ function climateRangeMarkup(capabilities, { pin = false, unit = '' } = {}) {
     </label>`;
     })
     .join('');
+  // On a pin the two rows share one label column, so both tracks start and end where the other's
+  // do: sized row by row, the cooling track began 33px later than the heating one in French and
+  // was about 40% shorter, though both run over the same scale.
+  return pin ? `<div class="desktop-pin-climate-range">${rows}</div>` : rows;
 }
 
 function bindClimateRangeControls(root, entity, capabilities, onChange, unit = '') {
@@ -15423,6 +15518,16 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       return titleCase(normalizedMode.replace(/[_-]+/g, ' '));
     }
 
+    // A combined mode ("Heizen/Kühlen", "Chaud/Froid") is one word to the line breaker, and in a
+    // narrow window it ran past both edges of its chip. A break after each slash lets it wrap the
+    // way "Nur Ventilator" does; <wbr> leaves the text and the accessible name as they were.
+    function setChipLabel(element, label) {
+      label.split('/').forEach((part, index, parts) => {
+        if (index > 0) element.append(document.createElement('wbr'));
+        element.append(index < parts.length - 1 ? `${part}/` : part);
+      });
+    }
+
     if (modeButtonsContainer) {
       availableModes.forEach((mode) => {
         const modeValue = String(mode ?? '');
@@ -15440,7 +15545,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
 
         const label = document.createElement('span');
         label.className = 'climate-mode-label';
-        label.textContent = modeLabel;
+        setChipLabel(label, modeLabel);
         button.appendChild(label);
 
         modeButtonsContainer.appendChild(button);
@@ -15458,7 +15563,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
         button.dataset.mode = modeValue;
         button.title = modeLabel;
         button.setAttribute('aria-pressed', String(modeValue === currentValue));
-        button.textContent = modeLabel;
+        setChipLabel(button, modeLabel);
         container.appendChild(button);
       });
     }
@@ -15757,7 +15862,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? formatPercent(currentSpeed) : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
-            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
+            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan speed') : t('State'))}</div>
 
             ${
               capabilities.canSetPercentage
@@ -15770,7 +15875,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
                 value="${percentToSpeed(currentSpeed)}"
                 id="fan-slider"
                 class="fan-slider"
-                aria-label="${escapeHtmlAttribute(t('Fan Speed'))}"
+                aria-label="${escapeHtmlAttribute(t('Fan speed'))}"
                 aria-valuetext="${escapeHtmlAttribute(formatPercent(currentSpeed))}"
               />
             </div>

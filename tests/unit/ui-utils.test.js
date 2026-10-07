@@ -2305,13 +2305,22 @@ describe('UI Utilities', () => {
         uiUtils.applyAccentThemeFromColor(holiday.colors.accent);
         return warm();
       }).map((holiday) => holiday.id);
+      // Valentine's pink is 34 degrees from the alarm red, and lit an armed alarm more strongly
+      // than one that went off.
       expect(holidays).toEqual([
         'new-year',
         'lunar-new-year',
+        'valentines',
         'halloween',
         'thanksgiving',
         'christmas',
       ]);
+
+      // Short of the pink, a fuchsia or a violet is not taken for the alarm.
+      for (const color of ['#d946ef', '#c026d3', '#8b5cf6']) {
+        uiUtils.applyAccentThemeFromColor(color);
+        expect({ color, warm: warm() }).toEqual({ color, warm: false });
+      }
 
       // A grey has no hue, whatever its channels say, and a seasonal accent is flagged as well.
       uiUtils.applyAccentThemeFromColor('#8a7f7c');

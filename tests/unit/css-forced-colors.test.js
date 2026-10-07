@@ -87,6 +87,8 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       'HVAC mode': '<button class="climate-mode-btn active">Heat</button>',
       'fan mode': '<button class="climate-fan-mode-btn active">Low</button>',
       'preset mode': '<button class="climate-preset-mode-btn active">Eco</button>',
+      'brightness preset': '<button class="brightness-preset-btn active">50%</button>',
+      'fan speed preset': '<button class="fan-preset-btn active">Medium</button>',
       'mute toggle': '<button class="media-mute-toggle active">Muted</button>',
       'donate amount': '<button class="donate-amount-chip selected">$5</button>',
       'segmented option': '<button class="segmented-option active">Dark</button>',
@@ -114,6 +116,25 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       const timer = document.querySelector('.timer-entity');
       expect(resolvedValue(timer, 'outline', FORCED)).toBe('2px dashed Highlight');
     });
+
+    // An armed alarm is lit and one that went off needs attention. Outlined with the same single
+    // line, the two differed by the small badge alone.
+    it.each(['danger', 'warning'])(
+      'doubles the edge of a tile that needs attention (%s) so it differs from a lit one',
+      (level) => {
+        render(
+          '',
+          `<div id="quick-controls"><div class="control-item" data-active="true"></div>
+            <div class="control-item" data-active="true" data-attention="${level}"></div></div>`
+        );
+        const [lit, attention] = document.querySelectorAll('.control-item');
+        const edge = resolvedValue(attention, 'outline', FORCED);
+        expect(edge).toMatch(/^\d+px double Highlight$/);
+        // The outline is drawn inside the tile, as the lit tile's is.
+        expect(resolvedValue(attention, 'outline-offset', FORCED)).toBe(`-${parseInt(edge, 10)}px`);
+        expect(resolvedValue(lit, 'outline', FORCED)).toBe('2px solid Highlight');
+      }
+    );
 
     it('lets each tab ring itself instead of ringing the sliding pill as well', () => {
       render(
@@ -414,6 +435,19 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
       expect(bar?.style.width).toBe('var(--modal-scrollbar-size)');
       expect(bar?.style.height).toBe('var(--modal-scrollbar-size)');
     });
+  });
+
+  // Settings keeps its own 18px margins rather than the dialogs' inset, and gave back a 9px
+  // scrollbar's room whatever its width, so here its right margin was 3px wider than its left.
+  it('gives Settings back as much end padding as its scrollbar takes, in either width', () => {
+    render(
+      '',
+      '<div id="settings-modal" class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+    );
+    const body = document.querySelector('.modal-body');
+
+    expect(resolvedValue(body, 'padding-inline-end')).toBe('calc(18px - 9px)');
+    expect(resolvedValue(body, 'padding-inline-end', FORCED)).toBe('calc(18px - 12px)');
   });
 
   // Forced colours throw away the Readable preset's palette, yet a rule they discard still outranks

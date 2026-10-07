@@ -1381,6 +1381,53 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('flex');
     });
 
+    // From 260x190 the row is wider, but four equal shares of it cut "Heat/Cool" at 280x200 and
+    // "Désactivé" at 260x190, and the climate pin then offered two modes where a smaller one had
+    // four. Its buttons take their labels' width as well.
+    it.each(['climate', 'fan', 'cover'])(
+      'lays out a roomy %s pin’s row by the width of its labels',
+      (family) => {
+        render('desktop-pin-mode', panel(family, 'roomy', 'data-dense-variant="standard"'));
+        const options = { viewport: { width: 280, height: 200 } };
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-actions'), 'display', options)
+        ).toBe('flex');
+        expect(
+          resolvedValue(document.querySelector('.desktop-pin-panel-button'), 'flex', options)
+        ).toBe('1 1 auto');
+      }
+    );
+
+    // Sized row by row, the two tracks of a heat/cool range began where each row's own label
+    // ended, 33px apart in French, though they run over the same scale. Held a fixed gap apart in
+    // that column, they no longer took their share of the pin's spare height, and a roomy pin
+    // had its two thumbs close together under an empty band.
+    it.each(['compact', 'balanced', 'roomy'])(
+      'gives the two rows of a %s heat/cool pin one label column and their share of its height',
+      (layout) => {
+        render(
+          'desktop-pin-mode',
+          `<div class="control-item desktop-pin-control desktop-pin-panel-control desktop-pin-climate-control"
+            data-layout="${layout}"><div class="desktop-pin-panel-shell"><div class="desktop-pin-panel-body">
+            <div class="desktop-pin-climate-range">
+              <label class="desktop-pin-panel-slider-row"><span class="desktop-pin-panel-slider-label">Chauffe</span>
+                <input type="range" class="desktop-pin-panel-slider"></label>
+              <label class="desktop-pin-panel-slider-row"><span class="desktop-pin-panel-slider-label">Froid</span>
+                <input type="range" class="desktop-pin-panel-slider"></label>
+            </div></div></div></div>`
+        );
+        const range = document.querySelector('.desktop-pin-climate-range');
+        expect(resolvedValue(range, 'display')).toBe('grid');
+        expect(resolvedValue(range, 'grid-template-columns')).toBe('max-content minmax(0, 1fr)');
+        expect(resolvedValue(range, 'flex-grow')).toBe('1');
+        expect(resolvedValue(range, 'align-content')).toBe('space-evenly');
+        for (const row of range.querySelectorAll('.desktop-pin-panel-slider-row')) {
+          expect(resolvedValue(row, 'grid-template-columns')).toBe('subgrid');
+          expect(resolvedValue(row, 'grid-column')).toBe('1 / -1');
+        }
+      }
+    );
+
     it('leaves a balanced media pin its roomier spacing, since no row of it grows', () => {
       // A media pin is balanced only from 285px wide, and nothing of it ran off the tile there.
       render('desktop-pin-mode', panel('media', 'balanced', 'data-dense-variant="standard"'));
@@ -1461,15 +1508,70 @@ describe('stylesheet cascade regressions', () => {
       }
     );
 
-    it('gives a light preset chip its whole width, so "100%" clears an outline', () => {
+    // A quarter of the default pin's row is about 35px, and Windows draws "100%" about 2px wider
+    // than Linux: with no padding and equal columns it touched the outline of the Readable preset
+    // and forced colours there. A chip never gets less than its label and padding; the others give
+    // it the room. The micro layout keeps its equal quarters.
+    it.each(['compact', 'balanced', 'roomy'])(
+      'keeps "100%" clear of its chip’s outline in a %s lamp pin',
+      (layout) => {
+        render(
+          'desktop-pin-mode high-contrast opaque-panels',
+          `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="${layout}">
+            <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">100%</button></div></div>`
+        );
+        const chip = document.querySelector('.desktop-pin-light-preset');
+        expect(resolvedValue(chip, 'padding-inline')).toBe('2px');
+        expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+        expect(
+          resolvedValue(
+            document.querySelector('.desktop-pin-light-presets'),
+            'grid-template-columns'
+          )
+        ).toBe('repeat(4, minmax(min-content, 1fr))');
+      }
+    );
+
+    it('keeps the micro lamp pin’s presets to equal quarters', () => {
       render(
-        'desktop-pin-mode high-contrast opaque-panels',
-        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="compact">
-          <button class="desktop-pin-light-preset">100%</button></div>`
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="micro">
+          <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">100%</button></div></div>`
       );
-      const chip = document.querySelector('.desktop-pin-light-preset');
-      expect(resolvedValue(chip, 'padding-inline')).toBe('0');
-      expect(resolvedValue(chip, 'letter-spacing')).toBe('0');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-presets'), 'grid-template-columns')
+      ).toBe('repeat(4, minmax(0, 1fr))');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'padding-inline')
+      ).toBe('0');
+    });
+
+    // 195x160 up to 259x189: with the roomier base spacing and its status line, a lamp whose name
+    // takes two lines put its presets 4px past the bottom of a 200x170 pin.
+    it('keeps a balanced lamp pin to the default pin spacing', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="balanced">
+          <div class="desktop-pin-light-shell"><div class="desktop-pin-light-topline">
+            <div class="desktop-pin-light-meta"><div class="desktop-pin-light-name"></div>
+            <div class="desktop-pin-light-status">On</div></div></div>
+          <div class="desktop-pin-light-brightness"></div>
+          <div class="desktop-pin-light-presets"><button class="desktop-pin-light-preset">25%</button></div>
+          </div></div>`
+      );
+      const options = { viewport: { width: 200, height: 170 } };
+      const control = document.querySelector('.desktop-pin-light-control');
+      expect(resolvedValue(control, '--desktop-pin-panel-pad', options)).toBe('8px');
+      expect(resolvedValue(control, '--desktop-pin-panel-gap', options)).toBe('6px');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-status'), 'display', options)
+      ).toBe('none');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-presets'), 'gap', options)
+      ).toBe('4px');
+      expect(
+        resolvedValue(document.querySelector('.desktop-pin-light-preset'), 'min-height', options)
+      ).toBe('24px');
     });
 
     it.each(THEME_CASES)('marks the lamp preset at the current level (%s)', (_, theme) => {
@@ -1837,6 +1939,19 @@ describe('stylesheet cascade regressions', () => {
       expect(
         resolvedValue(document.querySelector('.command-palette-result-domain'), 'white-space')
       ).toBe('nowrap');
+    });
+  });
+
+  // layoutToasts takes the stack back to where it rests and measures it there at once. Reduced motion
+  // gives every transition 0.01ms instead of none, which still starts one, so the stack was measured
+  // where it had been moved to and left over the connection panel it was lifted clear of.
+  describe('toast stack', () => {
+    it('is placed, not moved, so it can be measured where it rests', () => {
+      render('', '<div id="toast-container" class="toast-container"></div>');
+      const stack = document.getElementById('toast-container');
+
+      expect(resolvedValue(stack, 'transition', { reducedMotion: true })).toBe('none');
+      expect(resolvedValue(stack, 'transition')).toBe('none');
     });
   });
 

@@ -515,9 +515,10 @@ describe('alerts module', () => {
 
     describe('alert messages read like the tiles', () => {
       it('rounds a numeric reading to its sensor precision and adds its unit', () => {
+        // Below the threshold when the widget starts: a condition that already held then is not news.
         mockState.STATES['sensor.load'] = {
           entity_id: 'sensor.load',
-          state: '0.7160215353965759',
+          state: '0.31',
           attributes: { friendly_name: 'Load', unit_of_measurement: 'kW' },
         };
         mockState.CONFIG.entityAlerts.alerts['sensor.load'] = {
@@ -531,7 +532,7 @@ describe('alerts module', () => {
 
         mockState.STATES['sensor.garage'] = {
           entity_id: 'sensor.garage',
-          state: '31.43',
+          state: '29.8',
           attributes: {
             friendly_name: 'Garage temperature',
             unit_of_measurement: '°C',
@@ -627,6 +628,8 @@ describe('alerts module', () => {
         );
         expect(global.Notification.lastNotification.title).toBe('Home Assistant-Warnung');
 
+        // It is 22.5 °C when the widget starts, so the threshold is news only once it is crossed.
+        alerts.checkEntityAlerts('sensor.temperature', '19');
         alerts.checkEntityAlerts('sensor.temperature', '21.5');
         expect(showToast).toHaveBeenLastCalledWith(
           expect.stringMatching(/ist jetzt 21,5\u00a0°C$/),
@@ -644,6 +647,8 @@ describe('alerts module', () => {
         };
         alerts.initializeEntityAlerts();
 
+        // The light is on when the widget starts; turning it on again is what the alert is about.
+        alerts.checkEntityAlerts('light.living_room', 'off');
         alerts.checkEntityAlerts('light.living_room', 'on');
 
         expect(showToast).toHaveBeenCalledWith(expect.stringContaining('is now On'), 'info', 4000);
@@ -671,6 +676,7 @@ describe('alerts module', () => {
         alerts.initializeEntityAlerts();
 
         // First trigger
+        alerts.checkEntityAlerts('light.living_room', 'off');
         alerts.checkEntityAlerts('light.living_room', 'on');
         expect(showToast).toHaveBeenCalledTimes(1);
 

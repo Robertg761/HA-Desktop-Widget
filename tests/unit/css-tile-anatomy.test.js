@@ -371,11 +371,11 @@ describe('Quick Access tile anatomy', () => {
           <div class="control-state camera-tile-preview-status"></div></div>
       </div>`;
 
-    it('keeps its caption at the foot, which the tile-fit centring took up under the icon', () => {
-      render('', grid(cameraTile("data-camera-preview-state='error'")));
-      expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
-        'flex-end'
-      );
+    it('keeps the caption of a tile showing a picture at its foot, on the scrim', () => {
+      render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
+      const item = document.querySelector('.control-item');
+      expect(resolvedValue(item, 'justify-content')).toBe('flex-end');
+      expect(resolvedValue(item, 'padding')).toBe('0');
       // The other tiles keep the centring that loses only their foot when they are too full.
       render('', grid(tile()));
       expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
@@ -383,30 +383,75 @@ describe('Quick Access tile anatomy', () => {
       );
     });
 
+    // Held at the foot of the tile with its icon placed above it, the caption of a camera with no
+    // picture sat about 15px below the name of the lamp beside it, and its icon 20px below the
+    // lamp's. Without a picture the tile has the anatomy of any other: the same padding and gap
+    // around an icon in its flow, and the name hung at the same offset under it.
     it.each([
-      ['', '32px'],
-      ['density-compact', '25px'],
+      ['the default window', '', '', undefined],
+      ['compact density', 'density-compact', '', undefined],
+      ['edit mode', '', 'reorganize-mode', undefined],
+      ['edit mode in compact density', 'density-compact', 'reorganize-mode', undefined],
+      ['a narrow window', '', '', { width: 340, height: 600 }],
+      ['a short window', '', '', { width: 500, height: 400 }],
     ])(
-      'puts the icon of a tile with no picture above the caption, not over it (%s)',
-      (bodyClass, top) => {
-        render(bodyClass, grid(cameraTile("data-camera-preview-state='error'")));
-        const fallback = document.querySelector('.camera-tile-fallback');
-        expect(resolvedValue(fallback, 'place-items')).toBe('start center');
-        expect(resolvedValue(fallback, 'padding-top')).toBe(top);
+      'lays out a tile with no picture like its neighbours in %s',
+      (_, bodyClass, gridClass, viewport) => {
+        render(
+          bodyClass,
+          grid(tile() + cameraTile("data-camera-preview-state='error'"), gridClass)
+        );
+        const [standard, camera] = document.querySelectorAll('.control-item');
+        const options = { viewport };
+        for (const property of [
+          'padding',
+          'padding-top',
+          'padding-bottom',
+          'gap',
+          'justify-content',
+          'min-height',
+        ]) {
+          expect({ property, camera: resolvedValue(camera, property, options) }).toEqual({
+            property,
+            camera: resolvedValue(standard, property, options),
+          });
+        }
+        // The stage and the placeholder give way, so the icon is in the tile's flow.
+        for (const selector of ['.camera-tile-visual', '.camera-tile-fallback']) {
+          expect(resolvedValue(camera.querySelector(selector), 'display', options)).toBe(
+            'contents'
+          );
+        }
         // A plain glyph like its neighbours', not the 38px circle the dark stage seats it in.
-        const icon = fallback.querySelector('.control-icon');
-        expect(resolvedValue(icon, 'width')).toBe('auto');
-        expect(resolvedValue(icon, 'border')).toBe('0');
+        const icon = camera.querySelector('.control-icon');
+        expect(resolvedValue(icon, 'align-self', options)).toBe('center');
+        expect(resolvedValue(icon, 'border', options)).toBe('0');
+        expect(resolvedValue(icon, 'margin-bottom', options)).toBe(
+          resolvedValue(standard.querySelector('.control-icon'), 'margin-bottom', options)
+        );
+        // The name hangs from the same offset under it.
+        const copy = camera.querySelector('.camera-tile-copy');
+        expect(resolvedValue(copy, 'flex', options)).toBe('1');
+        expect(resolvedValue(copy, 'padding', options)).toBe(
+          `${resolvedValue(standard.querySelector('.control-info'), 'padding-top', options)} 0 0`
+        );
       }
     );
 
-    it('lowers that icon below the edit buttons while editing', () => {
-      for (const bodyClass of ['', 'density-compact']) {
-        render(bodyClass, grid(cameraTile(), 'reorganize-mode'));
-        expect(resolvedValue(document.querySelector('.camera-tile-fallback'), 'padding-top')).toBe(
-          '36px'
+    // At its full width the pill reached past the middle of a 150px tile, into the icon now above
+    // the name. With nothing to show, "Snapshot" names what is not there; the light stays.
+    it('keeps only the light of the badge on a tile with no picture', () => {
+      const badge = `<div class="camera-tile-preview-badge"><span class="camera-tile-preview-dot"></span>
+        <span class="camera-tile-preview-badge-label">Snapshot</span></div>`;
+      const label = (attributes) => {
+        render(
+          '',
+          grid(cameraTile(attributes).replace('<div class="camera-tile-copy">', `${badge}$&`))
         );
-      }
+        return resolvedValue(document.querySelector('.camera-tile-preview-badge-label'), 'display');
+      };
+      expect(label("data-camera-preview-state='error'")).toBe('none');
+      expect(label("data-camera-preview-has-frame='true'")).not.toBe('none');
     });
 
     it('centres the caption under the icon of a tile with no picture, as its neighbours are', () => {

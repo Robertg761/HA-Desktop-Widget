@@ -35,6 +35,7 @@ const os = require('os');
 const path = require('path');
 const { startMockHomeAssistant } = require('./mock-home-assistant.cjs');
 const {
+  DROP_FOCUS,
   FAILING_ENTITIES,
   RESET_SETTINGS_VIEW,
   RESETTABLE_SETTINGS,
@@ -436,6 +437,8 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
     const NOTIFICATIONS = 'persistent_notification/subscribe';
     const ctx = {
       ...pageContext(cdp),
+      /** The mock Home Assistant's address, for a scene that types it into the wizard. */
+      homeAssistantUrl: baseConfig.homeAssistant.url,
       /**
        * Give the app the persistent notifications the fixture lists, as Home Assistant would send
        * them to its open subscription. They are not there from the start, because their bell
@@ -534,6 +537,7 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
       // Before the dialogs close: Settings keeps the scroll position it is closed at.
       await cdp.evaluate(RESET_SETTINGS_VIEW);
       await closeDialogs();
+      await cdp.evaluate(DROP_FOCUS);
     }
 
     async function prepare(scene) {

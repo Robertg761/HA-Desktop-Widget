@@ -326,7 +326,8 @@ const startupScenes = [
   },
   // Browser authorization with no saved authorization to restore it from. Windows and macOS find
   // none and ask to reconnect. Linux under CI has no keyring, so it stops before looking and asks
-  // for the keyring to be unlocked: that is the panel it captures, under a name that says so.
+  // for the keyring to be started or unlocked: that is the panel it captures, under a name that
+  // says so.
   {
     name: 'startup-oauth-reauth',
     platforms: ['win32', 'darwin'],
@@ -337,14 +338,12 @@ const startupScenes = [
     name: 'startup-oauth-keyring',
     platforms: ['linux'],
     startup: { config: oauthWithNothingSaved },
-    setup: (ctx) => showTokenPanel(ctx, 'System keyring is locked'),
+    setup: (ctx) => showTokenPanel(ctx, 'System keyring is unavailable'),
   },
 ];
 
-// The wizard's authorization step after an attempt on a server address nothing listens on, which
-// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
-// a scene whose failure drifts to another one fails instead of capturing it.
-async function failFirstRunAuthorization(ctx, says) {
+// The wizard's authorization step, about to open `address`.
+async function showFirstRunAuthorize(ctx, address) {
   await showFirstRunWelcome(ctx);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-content input');
@@ -355,9 +354,51 @@ async function failFirstRunAuthorization(ctx, says) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
   })()`);
-  await ctx.insertText('127.0.0.1:9');
+  await ctx.insertText(address);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-url');
+}
+
+// Every button the wizard shows lies inside its card and the window. When the whole card scrolled,
+// a short window left step 3's Back and Connect below the fold of a scroller inside the window.
+const WIZARD_ACTIONS_IN_VIEW = `(() => {
+  const card = document.querySelector('.first-run-panel').getBoundingClientRect();
+  const shown = [...document.querySelectorAll('.first-run-actions .btn')].filter(
+    (button) => button.getClientRects().length > 0
+  );
+  return shown.length > 0 && shown.every((button) => {
+    const box = button.getBoundingClientRect();
+    return box.top >= card.top && box.bottom <= card.bottom && box.bottom <= window.innerHeight;
+  });
+})()`;
+
+// Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
+// first request unanswered: the wizard waits as it does while the browser is open, for as long as
+// the widget gives the server to answer (8 s). The Back button is Cancel meanwhile.
+async function waitForFirstRunAuthorization(ctx) {
+  await showFirstRunAuthorize(ctx, ctx.homeAssistantUrl);
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-status[data-status="pending"]');
+}
+
+// Back to the welcome step from a wait, which Cancel ends.
+async function cancelFirstRunAuthorization(ctx) {
+  await ctx.ev(`(() => {
+    const cancel = document.querySelector('.first-run-actions .btn-secondary:nth-child(2)');
+    if (cancel?.classList.contains('btn-neutral')) cancel.click();
+  })()`);
+  await ctx.waitForExpression(
+    `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+    'the wait to end'
+  );
+  await showFirstRunWelcome(ctx);
+}
+
+// The wizard's authorization step after an attempt on a server address nothing listens on, which
+// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
+// a scene whose failure drifts to another one fails instead of capturing it.
+async function failFirstRunAuthorization(ctx, says) {
+  await showFirstRunAuthorize(ctx, '127.0.0.1:9');
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-status[data-status="error"]');
   await ctx.expect(
@@ -459,18 +500,47 @@ async function resizePin(ctx, entityId, size) {
   await ctx.sleep(900);
 }
 
-// Every button of a pin lies inside its window, and none has its label cut short.
+// Every button of a pin lies inside its window, and none has its label cut short. A lamp's presets
+// have no label of their own, so their text has to keep 2px clear of the edge on either side: on
+// Windows "100%" touched the outline the Readable preset and forced colours draw.
 const PIN_BUTTONS_FIT = `(() => {
   const buttons = [...document.querySelectorAll('.desktop-pin-panel-button, .desktop-pin-light-preset')];
   const labels = [...document.querySelectorAll('.desktop-pin-panel-button-label')];
+  const textClear = (button) => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const style = getComputedStyle(button);
+    const inner =
+      button.getBoundingClientRect().width -
+      parseFloat(style.borderLeftWidth) -
+      parseFloat(style.borderRightWidth);
+    return range.getBoundingClientRect().width + 4 <= inner + 0.5;
+  };
   return (
     buttons.length > 0 &&
     buttons.every((button) => {
       const box = button.getBoundingClientRect();
       return box.bottom <= innerHeight && box.right <= innerWidth;
     }) &&
-    labels.every((label) => label.scrollWidth <= label.clientWidth)
+    labels.every((label) => label.scrollWidth <= label.clientWidth) &&
+    [...document.querySelectorAll('.desktop-pin-light-preset')].every(textClear)
   );
+})()`;
+
+// The line under a pin's name is not cut short.
+const PIN_STATUS_WHOLE = `(() => {
+  const status = document.querySelector('.desktop-pin-panel-status');
+  return !!status && status.scrollWidth <= status.clientWidth;
+})()`;
+
+// A heat/cool range's two sliders are as far apart as the cooling one is from the modes under it:
+// the pin's spare height goes around each row alike.
+const RANGE_ROWS_SPREAD = `(() => {
+  const [heat, cool] = [
+    ...document.querySelectorAll('.desktop-pin-climate-range > .desktop-pin-panel-slider-row'),
+  ].map((row) => row.getBoundingClientRect());
+  const modes = document.querySelector('.desktop-pin-climate-modes')?.getBoundingClientRect();
+  return !!cool && !!modes && Math.abs(cool.top - heat.bottom - (modes.top - cool.bottom)) <= 1;
 })()`;
 
 async function expectPinButtonsFit(pin) {
@@ -481,13 +551,17 @@ async function expectPinButtonsFit(pin) {
 
 // A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
 // their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
-const resizedPinScene = (family, entityId, size, extra = {}) =>
+// `shows` lists checks of the pin's own, [expression, what it says], for what it must still hold.
+const resizedPinScene = (family, entityId, size, { shows = [], ...extra } = {}) =>
   pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
     ...extra,
     setup: async (ctx) => {
       const pin = await ctx.openPin(entityId);
       await resizePin(ctx, entityId, size);
       await expectPinButtonsFit(pin);
+      for (const [expression, says] of shows) {
+        if (!(await pin.evaluate(expression))) throw new Error(`Layout check failed: ${says}`);
+      }
       return { capture: pin };
     },
   });
@@ -672,14 +746,15 @@ const SENSOR_SPARKLINES_CLEAR_OF_TEXT = `(() => {
 })()`;
 // Tiles in one row hang their names from the same line: a scene, a switch, a sensor and a timer
 // differ in what sits below the name, not above it. A compact sensor drops its icon, so it is left
-// out, and so are the tiles that lay themselves out.
+// out, and so are the tiles that lay themselves out. A camera with no picture to show is a tile
+// like the others; one showing a picture puts its caption on the picture's foot.
 const TILE_NAMES_ALIGNED = `(() => {
   const rows = new Map();
   for (const tile of document.querySelectorAll('#quick-controls .control-item')) {
     const name = tile.querySelector('.control-name');
     const icon = tile.querySelector('.control-icon');
     if (!name || !icon || !icon.getClientRects().length) continue;
-    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile, [data-chart-type="gauge"]')) continue;
+    if (tile.matches('.media-player-entity, .comparison-graph-tile, .camera-preview-tile[data-camera-preview-has-frame="true"], [data-chart-type="gauge"]')) continue;
     const box = tile.getBoundingClientRect();
     const row = Math.round(box.top);
     rows.set(row, [...(rows.get(row) || []), name.getBoundingClientRect().top - box.top]);
@@ -751,6 +826,23 @@ const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
   return [...body.children].filter(shown).every((block) =>
     [...block.querySelectorAll('*')].some((part) => shown(part) && part.children.length === 0));
 })()`;
+// The thermostat's modes, fan speeds and presets lie in rows with none left alone on the last row.
+const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-buttons, .climate-option-buttons)'
+)].every((grid) => {
+  const rows = new Map();
+  [...grid.children].filter((chip) => chip.getClientRects().length > 0).forEach((chip) => {
+    const top = Math.round(chip.getBoundingClientRect().top);
+    rows.set(top, (rows.get(top) || 0) + 1);
+  });
+  const counts = [...rows.values()];
+  return counts.length < 2 || counts.at(-1) > 1;
+})`;
+// Every mode and option label lies inside its chip. Three chips a row in a narrow window are about
+// 72px wide, and German's "Heizen/Kühlen" ran 85px, past both of its chip's edges.
+const CLIMATE_LABELS_IN_CHIPS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-btn, .climate-fan-mode-btn, .climate-preset-mode-btn)'
+)].every((chip) => (chip.querySelector('.climate-mode-label') || chip).scrollWidth <= chip.clientWidth)`;
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -758,15 +850,31 @@ const openUnavailable = (open) => async (ctx) => {
     'no empty block under the note'
   );
 };
-// Every toast lies above or below the connection panel, so none of its words or buttons is covered.
+// Every toast on screen lies above or below the connection panel, and under the window's header,
+// so none of the panel's words or buttons is covered, and neither are the window's own. The newest
+// toast is one of them: a stack with no room beside the panel holds back its older ones instead.
 const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
   const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
+  const header = document.querySelector('.widget-header').getBoundingClientRect();
   const toasts = [...document.querySelectorAll('#toast-container .toast')];
-  return !!panel && toasts.length > 0 && toasts.every((toast) => {
+  const shown = toasts.filter((toast) => toast.getClientRects().length > 0);
+  return !!panel && shown.includes(toasts.at(-1)) && shown.every((toast) => {
     const box = toast.getBoundingClientRect();
-    return box.top >= panel.bottom || box.bottom <= panel.top;
+    return (box.top >= panel.bottom || box.bottom <= panel.top) && box.top >= header.bottom;
   });
 })()`;
+// A full stack of three while Home Assistant is away, each a command that could not reach it: one
+// from the palette, the media card's play button and a switch's tile. Three errors, because errors
+// stay until they are dismissed.
+async function raiseThreeOfflineErrors(ctx) {
+  await raiseRefusedCommand(ctx);
+  await ctx.click('#media-tile-play');
+  await ctx.click('#quick-controls .control-item[data-entity-id="switch.compound_name"]');
+  await ctx.waitForExpression(
+    `document.querySelectorAll('#toast-container .toast.error').length === 3`,
+    'three error toasts'
+  );
+}
 
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
@@ -1153,6 +1261,25 @@ const PROBLEM_TOAST_WRAPS = `(() => {
   return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size > 1;
 })()`;
 
+// The mock's reason is English, as Home Assistant's usually is, whatever language the app is in. In
+// an Arabic toast it keeps its own direction, so its full stop stays right of its last word; it took
+// the toast's direction once and sat at the far left of the line (".powered on and connected to
+// Home Assistant").
+const PROBLEM_TOAST_REASON_KEEPS_ITS_STOP = `(() => {
+  const text = document.querySelector('#toast-container .toast.error .toast-message')?.firstChild;
+  const stop = (text?.textContent || '').lastIndexOf('.');
+  if (stop < 1) return false;
+  const box = (start) => {
+    const range = document.createRange();
+    range.setStart(text, start);
+    range.setEnd(text, start + 1);
+    return range.getBoundingClientRect();
+  };
+  const word = box(stop - 1);
+  const mark = box(stop);
+  return Math.abs(mark.top - word.top) < 2 && mark.left >= word.right - 1;
+})()`;
+
 // The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
 // Both are raised by the app, so the stack has the icons, the close button and the layout the app
 // gives it, which a toast built here by hand did not.
@@ -1305,6 +1432,56 @@ const waitForCameraTiles = (ctx) =>
       !!document.querySelector('${tile('camera.porch')}[data-camera-preview-state="unavailable"]')`,
     'the camera tiles settled on their messages'
   );
+
+// A holiday sits a gift, a pumpkin or a turkey in the bottom end corner of every third tile, where
+// a number sensor's trend line ends with its newest reading, in the same colour.
+const SENSOR_GRAPHS_UNDECORATED = `(() => {
+  const graphs = [...document.querySelectorAll(
+    '#quick-controls .control-item.sensor-numeric-entity:not([data-chart-type="none"])'
+  )];
+  return graphs.length > 0 && graphs.every((tile) => getComputedStyle(tile, '::after').content === 'none');
+})()`;
+// Forced colours take the status colours away, so a tile that needs attention keeps a doubled edge
+// as well as its badge: with a lit tile's single line, an armed alarm and one that went off
+// differed by the badge alone.
+const ATTENTION_EDGE_DOUBLED = `(() => {
+  const tiles = [...document.querySelectorAll('#quick-controls .control-item')];
+  const attention = tiles.filter((tile) => tile.dataset.attention);
+  const lit = tiles.filter((tile) => tile.dataset.active === 'true' && !tile.dataset.attention);
+  return attention.length > 0 && lit.length > 0 &&
+    attention.every((tile) => getComputedStyle(tile).outlineStyle === 'double') &&
+    lit.every((tile) => getComputedStyle(tile).outlineStyle === 'solid');
+})()`;
+
+async function expectCameraTilesInLine(ctx) {
+  await waitForCameraTiles(ctx);
+  await ctx.expect(TILE_NAMES_ALIGNED, "the cameras' names start on the lamp's line");
+}
+
+// A film past an hour under a title longer than the media tile has room for, on a player of its own:
+// the fixture's theater plays a short one.
+const longFilm = (now) => {
+  const stamp = now.toISOString();
+  return [
+    {
+      entity_id: 'media_player.cinema',
+      state: 'playing',
+      attributes: {
+        friendly_name: 'Cinema',
+        media_title: 'The Assassination of Jesse James by the Coward Robert Ford',
+        media_artist: "Director's cut",
+        volume_level: 0.5,
+        media_duration: 6750,
+        media_position: 4350,
+        media_position_updated_at: stamp,
+        supported_features: 152463,
+      },
+      last_changed: stamp,
+      last_updated: stamp,
+      context: { id: 'media_player.cinema', parent_id: null, user_id: null },
+    },
+  ];
+};
 
 // A radio stream with a programme name longer than the media tile has room for: no length, so its
 // seek row is hidden.
@@ -1617,6 +1794,12 @@ const scenes = [
     setup: async (ctx) => {
       await openHotkeysFor(ctx, '');
       await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+      // A lock's hotkey locks or unlocks; a toggle unlocked a door with nobody asked.
+      await ctx.expect(
+        `[...document.querySelector('#hotkeys-list .hotkey-action-select[data-entity-id="lock.back_door"]').options]
+          .map((option) => option.value).join() === 'lock,unlock'`,
+        'Lock and Unlock for the lock, and no Toggle'
+      );
     },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
@@ -2194,19 +2377,20 @@ const scenes = [
   },
   // Camera tiles with a preview and no picture to show: the fixture's snapshot fails, and the porch
   // camera is offline. Their icon sits above the name like any other tile's, in both themes and at
-  // the compact height.
+  // the compact height, and their names start on the lamp's line: held at the foot of the tile,
+  // they sat about 15px lower.
   {
     name: 'camera-tile',
     config: cameraTilesPage,
     extraStates: offlineCamera,
-    setup: waitForCameraTiles,
+    setup: expectCameraTilesInLine,
   },
   {
     name: 'camera-tile-light-compact',
     ui: { theme: 'light', density: 'compact' },
     config: cameraTilesPage,
     extraStates: offlineCamera,
-    setup: waitForCameraTiles,
+    setup: expectCameraTilesInLine,
   },
 
   // What a dashboard says about security and state: a locked, an unlocked and a jammed lock, an
@@ -2227,13 +2411,30 @@ const scenes = [
     name: 'tiles-security-christmas',
     ui: { seasonal: holiday('christmas') },
     config: pages('security', 'default'),
+    // The watch battery is in a column that takes a gift, which hid the end of its line.
+    setup: (ctx) =>
+      ctx.expect(SENSOR_GRAPHS_UNDECORATED, "no holiday piece on a number sensor's line"),
   },
   {
     name: 'tiles-security-christmas-light',
     ui: { theme: 'light', seasonal: holiday('christmas') },
     config: pages('security', 'default'),
   },
+  // Valentine's pink lit the armed alarm a stronger pink-red than the one that went off.
+  {
+    name: 'tiles-security-valentines',
+    ui: { seasonal: holiday('valentines') },
+    config: pages('security', 'default'),
+  },
   { name: 'tiles-security-amber', ui: { accent: 'amber' }, config: pages('security', 'default') },
+  // In forced colours an armed alarm and one that went off had the same edge.
+  {
+    name: 'forced-colors-tiles-security',
+    media: FORCED_COLORS,
+    config: pages('security', 'default'),
+    setup: (ctx) =>
+      ctx.expect(ATTENTION_EDGE_DOUBLED, 'a tile that needs attention has a doubled edge'),
+  },
   // With the accent glow off nothing lights up for being on: the lamp and the playing TV stay plain,
   // and so does a TV Home Assistant calls 'on'. Only what needs attention is coloured.
   {
@@ -2657,10 +2858,40 @@ const scenes = [
   resizedPinScene('cover', 'cover.garage_door', { width: 200, height: 170 }),
   resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
   resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
+  // A lamp whose name takes two lines, with its status line under it, put its presets 4px past the
+  // bottom of a 200x170 pin.
+  resizedPinScene('light-long', 'light.upstairs_hallway_ceiling', { width: 200, height: 170 }),
   resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
   // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
   // balanced layout brought back a fourth mode that German cut to "Kü...".
   resizedPinScene('climate-range', 'climate.heat_pump', { width: 200, height: 170 }),
+  // The longer names of the mode ("Heizen/Kühlen", "Chaud/Froid") cut every mode of that pin in
+  // German and French, and the mode under the name beside the range, and four equal shares of a
+  // roomy row cut "Heat/Cool" in English, where the row has room for all four once they take their
+  // names' width. The roomy pin's two sliders share its spare height with the modes: a fixed gap
+  // apart, they sat close together under an empty band.
+  ...['de', 'fr'].map((language) =>
+    resizedPinScene(
+      `${language}-climate-range`,
+      'climate.heat_pump',
+      { width: 200, height: 170 },
+      { ui: { language }, shows: [[PIN_STATUS_WHOLE, 'the mode under the name is whole']] }
+    )
+  ),
+  resizedPinScene(
+    'climate-range',
+    'climate.heat_pump',
+    { width: 280, height: 200 },
+    {
+      shows: [
+        [
+          `document.querySelectorAll('.desktop-pin-climate-mode:not([hidden])').length === 4`,
+          'a roomy heat/cool pin offers all four of its modes',
+        ],
+        [RANGE_ROWS_SPREAD, "a roomy heat/cool pin's sliders are as far apart as the modes"],
+      ],
+    }
+  ),
   resizedPinScene(
     'de-climate',
     'climate.bedroom',
@@ -2683,13 +2914,14 @@ const scenes = [
   pinScene('pin-large-weather', 'weather.home', { ui: { scale: 1.5 } }),
   pinScene('pin-theme-light-climate', 'climate.bedroom', { ui: { theme: 'light' } }),
   // The Readable preset reaches pin windows too: the power chip, the panel chips and the sliders.
-  pinScene('readable-pin-light', 'light.desk_lamp', { ui: READABLE }),
+  // Its outline is where the lamp's "100%" preset ran into its edge on Windows.
+  fittedPinScene('readable-pin-light', 'light.desk_lamp', { ui: READABLE }),
   pinScene('readable-pin-climate', 'climate.bedroom', { ui: READABLE }),
   pinScene('readable-pin-cover', 'cover.garage_door', { ui: READABLE }),
   pinScene('readable-pin-fan', 'fan.office', { ui: READABLE }),
-  // The pin's own track, thumb and fill in system colours.
+  // The pin's own track, thumb and fill in system colours, and the presets' outline.
   pinScene('forced-colors-pin-climate', 'climate.bedroom', { media: FORCED_COLORS }),
-  pinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
+  fittedPinScene('forced-colors-pin-light', 'light.desk_lamp', { media: FORCED_COLORS }),
 
   // The fixture turns seasonal themes off so the scenes above do not change with the date; these
   // force a holiday on. They also switch the themes on explicitly: CI machines often ask for
@@ -2844,19 +3076,46 @@ const scenes = [
     setup: expectTilesLaidOut,
   },
   { name: 'layout-main-wide', size: WIDE_SIZE, setup: expectTilesLaidOut },
-  // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them.
-  {
-    name: 'layout-media-long',
+  // A film runs past an hour: the times need an h:mm:ss, and the bar sits between them. Beside the
+  // title the bar between two such times was a 36 to 52px stub in the default window, so the seek
+  // row goes under the title there, and the bar has to be readable, with a title of any length.
+  ...[
+    ['layout-media-long', 'media_player.theater', null, 'The Long Goodbye'],
+    ['layout-media-long-title', 'media_player.cinema', longFilm, 'Jesse James'],
+  ].map(([name, player, extraStates, title]) => ({
+    name,
     size: DEFAULT_SIZE,
-    config: { primaryMediaPlayer: 'media_player.theater' },
-  },
+    config: { primaryMediaPlayer: player },
+    ...(extraStates ? { extraStates } : {}),
+    setup: async (ctx) => {
+      await ctx.waitForExpression(
+        `document.querySelector('#media-tile .media-tile-seek')?.dataset.longTimes === 'true' &&
+          document.getElementById('media-tile-title')?.textContent.includes(${JSON.stringify(title)})`,
+        'the film on the media tile'
+      );
+      await ctx.expect(
+        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width >= 60`,
+        'the seek bar between h:mm:ss times is at least 60px wide'
+      );
+      // The short title fits whole; the long one is cut by its ellipsis inside the tile.
+      await ctx.expect(
+        extraStates
+          ? MEDIA_TRACK_CUT_OFF
+          : `(() => {
+              const title = document.getElementById('media-tile-title');
+              return title.scrollWidth <= title.clientWidth;
+            })()`,
+        'the film title is whole, or cut inside the tile'
+      );
+    },
+  })),
   {
     name: 'layout-media-long-narrow',
     size: NARROW_SIZE,
     config: { primaryMediaPlayer: 'media_player.theater' },
   },
-  // A stream has no length and its seek row is hidden. The row keeps only the width of its hidden
-  // times, so the bar in it stays at its shortest, and the programme name has the rest of the row.
+  // A stream has no length and its seek row is hidden. The programme name takes the row up to the
+  // controls: kept for the hidden times, the column left about 130px blank beside a cut name.
   {
     name: 'layout-media-stream',
     size: DEFAULT_SIZE,
@@ -2869,8 +3128,12 @@ const scenes = [
         'the stream on the media tile'
       );
       await ctx.expect(
-        `document.querySelector('#media-tile .media-tile-seek-bar').getBoundingClientRect().width < 40`,
-        'the hidden seek row of a stream takes no share of the row'
+        `(() => {
+          const info = document.getElementById('media-tile-info').getBoundingClientRect();
+          const controls = document.querySelector('#media-tile .media-tile-controls').getBoundingClientRect();
+          return controls.left - info.right <= 12;
+        })()`,
+        'the hidden seek row of a stream leaves the programme name the row'
       );
     },
   },
@@ -2966,6 +3229,8 @@ const scenes = [
         })()`,
         'the target range is one line inside its card'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {
@@ -2978,6 +3243,24 @@ const scenes = [
         `document.getElementById('climate-target-value').getClientRects().length === 1`,
         'the target range is one line'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+    },
+  },
+  // German names the heat pump's modes at their longest; the picture is of the modes, which sit
+  // below the fold of the narrow window's dialog.
+  {
+    name: 'layout-popup-climate-modes-narrow-de',
+    size: NARROW_SIZE,
+    ui: { language: 'de' },
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('climate.heat_pump')(ctx);
+      await ctx.ev(
+        `document.getElementById('climate-mode-buttons').scrollIntoView({ block: 'center' })`
+      );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {
@@ -3300,6 +3583,31 @@ const scenes = [
       await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
     },
   },
+  // In a narrow window the panel's buttons are where the stack rests, and docked above them it
+  // covered the panel's message. It goes above the whole panel, over the weather and media cards.
+  {
+    name: 'layout-offline-toast-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseRefusedCommand(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
+    },
+  },
+  // Three toasts fit neither under the panel nor between it and the header.
+  {
+    name: 'layout-offline-toasts',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseThreeOfflineErrors(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toasts clear of the panel');
+    },
+  },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
   { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
   {
@@ -3314,7 +3622,13 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { language: 'ar' },
     keepToasts: true,
-    setup: showToasts,
+    setup: async (ctx) => {
+      await showToasts(ctx);
+      await ctx.expect(
+        PROBLEM_TOAST_REASON_KEEPS_ITS_STOP,
+        "the reason's full stop after its words"
+      );
+    },
   },
 
   // First run shows when no server is configured. The runner only puts the keys listed above
@@ -3370,6 +3684,54 @@ const scenes = [
     name: 'wizard-welcome-minimum',
     size: MINIMUM_SIZE,
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  },
+  // The steps with the most to say, in the smallest window: their text scrolls, their buttons stay.
+  {
+    name: 'wizard-url-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const field = text.querySelector('input').getBoundingClientRect();
+          const shown = text.getBoundingClientRect();
+          return field.top >= shown.top && field.bottom <= shown.bottom;
+        })()`,
+        'the whole field in view'
+      );
+    },
+  },
+  {
+    name: 'wizard-authorize-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const status = document.querySelector('.first-run-status');
+          return text.scrollHeight <= text.clientHeight || status.getBoundingClientRect().height === 0;
+        })()`,
+        'no empty status line under text that is cut off'
+      );
+    },
+  },
+  {
+    name: 'wizard-welcome-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
   {
@@ -3379,6 +3741,17 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  // The longest welcome (German), a script that joins its letters (Hindi) and one that breaks lines
+  // between any two characters (Chinese).
+  ...['de', 'hi', 'zh'].map((language) => ({
+    name: `wizard-welcome-${language}`,
+    ui: { language },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  })),
   {
     name: 'wizard-welcome-forced-colors',
     media: FORCED_COLORS,
@@ -3401,6 +3774,57 @@ const scenes = [
     platforms: ['linux'],
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: (ctx) => failFirstRunAuthorization(ctx, 'so the authorization cannot be saved.'),
+    teardown: showFirstRunWelcome,
+  },
+  // Waiting for the browser, and that wait cancelled. Only Windows and macOS get as far as asking
+  // the server: Linux under CI stops at the missing keyring before anything waits.
+  {
+    name: 'wizard-authorize-pending',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.expect(
+        `(() => {
+          const [, cancel, connect] = document.querySelectorAll('.first-run-actions .btn');
+          return cancel.textContent === 'Cancel' && cancel.classList.contains('btn-neutral') &&
+            !cancel.hidden && connect.disabled;
+        })()`,
+        'Cancel drawn as every other Cancel, and Connect waiting'
+      );
+    },
+    // Only the widget's 8 s limit for the server's answer holds the wait, and the picture is taken
+    // after the setup and the settle. On a runner slow enough to pass the limit first, the picture
+    // is of the error that follows, so the scene fails instead of passing with it.
+    teardown: async (ctx) => {
+      const stillWaiting = await ctx.ev(
+        `!!document.querySelector('.first-run-status[data-status="pending"]')`
+      );
+      await cancelFirstRunAuthorization(ctx);
+      if (!stillWaiting) throw new Error('the wizard had stopped waiting when it was captured');
+    },
+  },
+  {
+    name: 'wizard-authorize-cancelled',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.click('.first-run-actions .btn-neutral');
+      await ctx.waitForExpression(
+        `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+        'the wait to end'
+      );
+      await ctx.expect(
+        `(() => {
+          const [, back] = document.querySelectorAll('.first-run-actions .btn');
+          const status = document.querySelector('.first-run-status');
+          return back.textContent === 'Back' && !back.classList.contains('btn-neutral') &&
+            !status.dataset.status && !!document.querySelector('.first-run-url');
+        })()`,
+        'the step as it was before Connect, with nothing to report'
+      );
+    },
     teardown: showFirstRunWelcome,
   },
 

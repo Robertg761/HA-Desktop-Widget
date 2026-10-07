@@ -344,25 +344,66 @@ describe('shared layout rules for narrow windows and long labels', () => {
       expect(resolvedValue(document.querySelector('.media-tile-info'), 'min-width')).toBe('0');
     });
 
-    // A stream, a TV input or an idle player has no length: its seek row is hidden, and the share
-    // of the row beside it only cut the station's or the programme's name shorter.
-    it('gives a hidden seek row only the width of its times, at every one-row width', () => {
+    // A stream, a TV input or an idle player has no length: its seek row is hidden. Kept at the width
+    // of its hidden times, its column left about 130px blank beside the station's or the
+    // programme's name cut short, so the title takes it.
+    it('gives the title the column of a hidden seek row, at every one-row width', () => {
       render(
         '',
         `<div class="media-tile-content"><button class="media-tile-info"></button>
-          <div class="media-tile-seek" data-empty="true"></div></div>`
+          <div class="media-tile-seek" data-empty="true"></div>
+          <div class="media-tile-controls"></div></div>`
       );
       const content = document.querySelector('.media-tile-content');
+      const seek = document.querySelector('.media-tile-seek');
+      const controls = document.querySelector('.media-tile-controls');
       for (const viewport of [DEFAULT.viewport, { width: 900, height: 700 }]) {
         expect(resolvedValue(content, 'grid-template-columns', { viewport })).toBe(
-          'minmax(0, 1fr) min-content auto'
+          'minmax(0, 1fr) auto'
         );
+        expect(resolvedValue(seek, 'display', { viewport })).toBe('none');
+        expect(resolvedValue(controls, 'grid-column', { viewport })).toBe('2');
       }
-      // The narrow layouts put the row on a line of its own, as before.
+      // The narrow layouts put the row on a line of its own, which keeps its place.
       expect(resolvedValue(content, 'grid-template-columns', NARROW)).toBe('minmax(0, 1fr)');
       expect(
         resolvedValue(content, 'grid-template-columns', { viewport: { width: 400, height: 600 } })
       ).toBe('minmax(0, 1fr) auto');
+      expect(resolvedValue(seek, 'display', NARROW) ?? 'flex').toBe('flex');
+      expect(resolvedValue(seek, 'visibility', NARROW)).toBe('hidden');
+    });
+
+    // Two h:mm:ss times left the bar between them a 36px stub beside the title in the default
+    // window, and any more for the bar cut the title shorter. Below 640px the seek row goes under
+    // the title, as in the narrow layouts; from 640px it has room beside it.
+    it('puts the seek row of a film past an hour under its title in the default window', () => {
+      render(
+        '',
+        `<div class="media-tile-content"><button class="media-tile-info"></button>
+          <div class="media-tile-seek" data-empty="false" data-long-times="true"></div>
+          <div class="media-tile-controls"></div></div>`
+      );
+      const content = document.querySelector('.media-tile-content');
+      const part = (selector, property, options) =>
+        resolvedValue(document.querySelector(selector), property, options);
+      for (const viewport of [DEFAULT.viewport, { width: 430, height: 600 }]) {
+        const options = { viewport };
+        expect(resolvedValue(content, 'grid-template-columns', options)).toBe(
+          'minmax(0, 1fr) auto'
+        );
+        expect(part('.media-tile-info', 'grid-column', options)).toBe('1 / -1');
+        expect(part('.media-tile-seek', 'grid-column', options)).toBe('1');
+        expect(part('.media-tile-controls', 'grid-column', options)).toBe('2');
+        expect(part('.media-tile-controls', 'grid-row', options)).toBe('2');
+      }
+      expect(
+        resolvedValue(content, 'grid-template-columns', { viewport: { width: 900, height: 700 } })
+      ).toBe('minmax(0, 1fr) minmax(min-content, 200px) auto');
+      // A song keeps the one row.
+      document.querySelector('.media-tile-seek').dataset.longTimes = 'false';
+      expect(resolvedValue(content, 'grid-template-columns', DEFAULT)).toBe(
+        'fit-content(37%) minmax(min-content, 1fr) auto'
+      );
     });
 
     it('draws the seek times at their own width', () => {

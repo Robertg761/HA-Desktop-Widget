@@ -170,14 +170,22 @@ function matchesAlert(rule, value) {
 function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
   const records = new Map();
   let enabled;
-  const makeRecord = (id, entity) => ({
-    previous: entity?.state,
-    // The last real reading, for a State Change rule to judge an entity that comes back from an
-    // outage: it is only a change if it came back as something else.
-    lastReal: hasReading(entity?.state) ? entity.state : undefined,
-    matched: false,
-    signature: JSON.stringify(getConfig()?.alerts?.[id]),
-  });
+  const makeRecord = (id, entity) => {
+    const rule = getConfig()?.alerts?.[id];
+    return {
+      previous: entity?.state,
+      // The last real reading, for a State Change rule to judge an entity that comes back from an
+      // outage: it is only a change if it came back as something else.
+      lastReal: hasReading(entity?.state) ? entity.state : undefined,
+      // A Specific State or threshold condition that already holds when the rule starts watching
+      // (the widget starts, connects to another server, or the rule is saved) is known, not news:
+      // only the entity coming into it is. Otherwise the first update of any kind (a sensor's next
+      // tick, a lamp's brightness) announced a condition that had held all along, which an
+      // outage in between did not.
+      matched: !!rule && !rule.onStateChange && !!entity && matchesAlert(rule, entity.state),
+      signature: JSON.stringify(rule),
+    };
+  };
   const reset = (states = {}) => {
     records.forEach((record) => clearTimeout(record.timer));
     records.clear();
@@ -216,6 +224,19 @@ function createAlertEvaluator({ getConfig, notify, now = () => Date.now() }) {
           // the entity is offline and no state change will bring it up again.
           if (record.outagePending && (record.timer || record.resume) && tellsOutage(rule, fresh))
             fresh.resume = true;
+          // So does a Specific State or threshold condition still being waited out, or whose wait
+          // an outage or a dropped connection cut short: it is news nobody has been told yet, not
+          // a condition already known.
+          else if (
+            rule &&
+            !rule.onStateChange &&
+            !record.outagePending &&
+            (record.timer || record.resume || record.interrupted)
+          ) {
+            fresh.matched = false;
+            fresh.interrupted = true;
+            fresh.resume = true;
+          }
         }
         records.set(id, fresh);
       }

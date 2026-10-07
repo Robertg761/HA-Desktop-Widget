@@ -16,6 +16,7 @@ const {
   getAppImageCommandLinkRecord,
 } = require('../../src/linux-desktop-entry.cjs');
 const { getRelaunchOptions, supportsAutoUpdater } = require('../../src/platform.cjs');
+const { loadAppStylesheets, resolvedValue } = require('../helpers/css-cascade.js');
 
 describe('the command that toggles the widget', () => {
   const bin = path.join(path.sep, 'usr', 'bin');
@@ -169,6 +170,11 @@ describe("an AppImage's command, which outlasts its updates", () => {
       writeFileSync(file, content) {
         nodes.set(file, { file: true, content: String(content) });
       },
+      renameSync(from, to) {
+        if (!nodes.has(from)) throw missing(from);
+        nodes.set(to, nodes.get(from));
+        nodes.delete(from);
+      },
       unlinkSync(file) {
         if (!nodes.delete(file)) throw missing(file);
       },
@@ -269,6 +275,94 @@ describe("an AppImage's command, which outlasts its updates", () => {
     expect(fsModule.readlinkSync(link)).toBe(v401);
   });
 
+  // The note and the link are two files, so a move can stop between them. The note used to name
+  // the new AppImage before the link moved, and when the link could not move, every later start
+  // took the mismatch for a link the user had moved and left it on the deleted file for good.
+  describe('when moving the link stops part-way', () => {
+    const v402 = '/home/u/Applications/HA Desktop Widget-4.0.2-linux-x64.AppImage';
+    const run = (fsModule, appImage) =>
+      ensureAppImageCommandLink({ env: { APPIMAGE: appImage, PATH }, home, fsModule });
+    // The file system after an update: the widget's link on 4.0.0, which has gone, and 4.0.1.
+    function afterUpdate() {
+      const fsModule = fakeFs({ [v400]: { file: true } });
+      run(fsModule, v400);
+      fsModule.nodes.delete(v400);
+      fsModule.nodes.set(v401, { file: true });
+      return fsModule;
+    }
+    // Make the nth call of a file system method throw, as a read-only folder does, or as if the
+    // widget had quit at that point.
+    function failAt(fsModule, method, call, error) {
+      const real = fsModule[method];
+      let calls = 0;
+      fsModule[method] = (...args) => {
+        calls += 1;
+        if (calls === call) throw error;
+        return real(...args);
+      };
+      return () => {
+        fsModule[method] = real;
+      };
+    }
+
+    it.each([
+      [
+        'the old link cannot be removed: ~/.local/bin is read-only, or the widget quit first',
+        'unlinkSync',
+        1,
+        'EROFS',
+      ],
+      ['the new link cannot be made after the old one was removed', 'symlinkSync', 1, 'EACCES'],
+      ['the widget quits after the link moved, before its note says so', 'writeFileSync', 2, 'EIO'],
+    ])('finishes the move at the next start when %s', (_, method, call, code) => {
+      const fsModule = afterUpdate();
+      const error = Object.assign(new Error(code), { code });
+      const restore = failAt(fsModule, method, call, error);
+      expect(() => run(fsModule, v401)).toThrow(error);
+      restore();
+
+      run(fsModule, v401);
+      expect(fsModule.readlinkSync(link)).toBe(v401);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v401 });
+      // And it is still the widget's at the update after.
+      fsModule.nodes.set(v402, { file: true });
+      expect(run(fsModule, v402)).toBe(true);
+      expect(fsModule.readlinkSync(link)).toBe(v402);
+    });
+
+    // Writing a file empties it first, so a disk that fills up, as it can while an update
+    // downloads, leaves an empty file behind. An empty note reads as none, and the link as the
+    // user's.
+    it('finishes the move at the next start when the disk is full as the note is written', () => {
+      const fsModule = afterUpdate();
+      const write = fsModule.writeFileSync;
+      fsModule.writeFileSync = (file) => {
+        fsModule.nodes.set(file, { file: true, content: '' });
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      };
+      expect(() => run(fsModule, v401)).toThrow('ENOSPC');
+      fsModule.writeFileSync = write;
+
+      expect(run(fsModule, v401)).toBe(true);
+      expect(fsModule.readlinkSync(link)).toBe(v401);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v401 });
+      expect(fsModule.nodes.has(`${record}.tmp`)).toBe(false);
+    });
+
+    // Another start of the build the link still leads to settles the note there.
+    it('keeps the link on the AppImage it still leads to when that one starts again', () => {
+      const fsModule = fakeFs({ [v400]: { file: true }, [v401]: { file: true } });
+      run(fsModule, v400);
+      const restore = failAt(fsModule, 'unlinkSync', 1, new Error('EROFS'));
+      expect(() => run(fsModule, v401)).toThrow('EROFS');
+      restore();
+
+      expect(run(fsModule, v400)).toBe(false);
+      expect(fsModule.readlinkSync(link)).toBe(v400);
+      expect(JSON.parse(fsModule.readFileSync(record))).toEqual({ target: v400 });
+    });
+  });
+
   it.each([
     ['a file of that name', { [link]: { file: true } }],
     [
@@ -294,6 +388,17 @@ describe("an AppImage's command, which outlasts its updates", () => {
         [link]: { link: '/home/u/Applications/Nightly.AppImage' },
         '/home/u/Applications/Nightly.AppImage': { file: true },
         [record]: { file: true, content: JSON.stringify({ target: v401 }) },
+      },
+    ],
+    [
+      'a link the user pointed elsewhere while a move of the widget’s own had stopped part-way',
+      {
+        [link]: { link: '/home/u/Applications/Nightly.AppImage' },
+        '/home/u/Applications/Nightly.AppImage': { file: true },
+        [record]: {
+          file: true,
+          content: JSON.stringify({ target: v401, previous: '/home/u/Applications/Old.AppImage' }),
+        },
       },
     ],
   ])('leaves %s alone, and names the AppImage itself', (_, entries) => {
@@ -421,15 +526,27 @@ describe('an APPIMAGE inherited from another AppImage', () => {
 
 describe('the note under the popup hotkey in a desktop layer', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/settings.js'), 'utf8');
-  const start = source.indexOf('function renderLayerModeGuidance()');
-  const fn = source.slice(start, source.indexOf('\n}\n', start) + 3);
+  const functionSource = (signature) => {
+    const start = source.indexOf(signature);
+    return source.slice(start, source.indexOf('\n}\n', start) + 3);
+  };
+  const fn = [
+    functionSource('function renderLayerModeGuidance()'),
+    functionSource('async function copyLayerToggleCommand('),
+  ].join('\n');
   const i18n = require('../../src/i18n.js');
+  let copyTextToClipboard;
+  let showToast;
 
   function render(info) {
     const context = vm.createContext({
       document,
+      window,
       JSON,
       translateDocument: i18n.translateDocument,
+      t: i18n.t,
+      copyTextToClipboard,
+      showToast,
       desktopIntegrationInfo: info,
     });
     vm.runInContext(fn, context);
@@ -443,6 +560,9 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'utf8'
     );
     i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+    copyTextToClipboard = jest.fn(async () => true);
+    showToast = jest.fn();
+    window.getSelection().removeAllRanges();
   });
 
   it('names the command for this installation, as code to copy', () => {
@@ -457,6 +577,81 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'Bind a key in your window manager to run home-assistant-widget --toggle, which shows or hides the widget.'
     );
     expect(note.querySelector('code').textContent).toBe('home-assistant-widget --toggle');
+  });
+
+  // The window cannot be selected, so the command, a whole path on an AppImage, could only be
+  // typed out by hand, and in Arabic it broke over two lines at the hyphen in its name.
+  it('lets the command be selected, all of it at one click, on a line of its own', () => {
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: '/home/u/.local/bin/ha-desktop-widget --toggle',
+    });
+    loadAppStylesheets(document);
+    const code = note.querySelector('code');
+    expect(resolvedValue(document.body, 'user-select')).toBe('none');
+    expect(resolvedValue(code, 'user-select')).toBe('all');
+    expect(resolvedValue(code, '-webkit-user-select')).toBe('all');
+    expect(resolvedValue(code, 'display')).toBe('inline-block');
+  });
+
+  // A command as long as the line took all of it, and the comma after it started the next line on
+  // its own. The chip leaves its margins and 1em beside it, room for any one mark, even '，'.
+  it('leaves room on the line for the mark after a command that fills it', () => {
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: "'/home/u/Applications/HA Desktop Widget-4.0.0-linux-x64.AppImage' --toggle",
+    });
+    loadAppStylesheets(document);
+    const code = note.querySelector('code');
+    expect(resolvedValue(code, 'max-width')).toBe('calc(100% - 1em - 2px)');
+    expect(resolvedValue(code, 'margin-inline')).toBe('1px');
+  });
+
+  // The chip takes no focus, so from the keyboard the command could not be selected, and Sway, niri
+  // and river users drive their desktop from it. A button under the note copies the command.
+  describe('the Copy button', () => {
+    const command = '/home/u/.local/bin/ha-desktop-widget --toggle';
+    const layer = { layerMode: true, hyprland: false, toggleCommand: command };
+    const button = () => document.getElementById('layer-toggle-copy');
+
+    it('copies exactly the command the note names, and says so', async () => {
+      render(layer);
+      expect(button().hidden).toBe(false);
+      expect(button().textContent.trim()).toBe('Copy');
+      // A screen reader names what it copies from the note it sits under.
+      expect(button().getAttribute('aria-describedby')).toBe('layer-toggle-note');
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(copyTextToClipboard).toHaveBeenCalledTimes(1);
+      expect(copyTextToClipboard).toHaveBeenCalledWith(command);
+      expect(showToast).toHaveBeenCalledWith('Command copied', 'success');
+    });
+
+    it('copies the command main gave last, after it changed', async () => {
+      render(layer);
+      render({ ...layer, toggleCommand: 'ha-desktop-widget --toggle' });
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(copyTextToClipboard).toHaveBeenCalledWith('ha-desktop-widget --toggle');
+    });
+
+    it('selects the command for Ctrl+C when the clipboard cannot be written', async () => {
+      copyTextToClipboard = jest.fn(async () => false);
+      const note = render(layer);
+
+      button().click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(window.getSelection().toString()).toBe(command);
+      expect(window.getSelection().anchorNode).toBe(note.querySelector('code'));
+      expect(showToast).toHaveBeenCalledWith('Select and copy the command manually.', 'info');
+    });
   });
 
   it('keeps the command when the language changes', () => {
@@ -488,7 +683,8 @@ describe('the note under the popup hotkey in a desktop layer', () => {
       'before main has said which command',
       { layerMode: true, hyprland: false, toggleCommand: null },
     ],
-  ])('is hidden %s', (_, info) => {
+  ])('is hidden %s, with its Copy button', (_, info) => {
     expect(render(info).hidden).toBe(true);
+    expect(document.getElementById('layer-toggle-copy').hidden).toBe(true);
   });
 });

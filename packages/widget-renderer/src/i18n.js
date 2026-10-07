@@ -1,6 +1,6 @@
 import rtlLocales from './rtl-locales.cjs';
 
-const { isRtlLocale } = rtlLocales;
+const { isRtlLocale, isolateQuotedText } = rtlLocales;
 
 let localeState = {
   languageSetting: 'auto',
@@ -59,9 +59,13 @@ export function isolateLtr(text) {
   return value && isRtlLocale(localeState.activeLocale) ? `\u2066${value}\u2069` : value;
 }
 
+// The text a message quotes, such as the reason Home Assistant gives for refusing a call, keeps its
+// own direction in a right-to-left language (see isolateQuotedText), by the same rule as the main
+// process's messages. Without it an English reason in an Arabic toast takes the toast's direction,
+// and its full stop moves to the far end of the line.
 export function t(key, vars = {}) {
   const template = localeState.messages?.[key] || key;
-  return formatTemplate(template, vars);
+  return formatTemplate(template, isolateQuotedText(localeState.activeLocale, vars));
 }
 
 function getBaseLanguage(locale) {

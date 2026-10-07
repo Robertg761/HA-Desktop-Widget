@@ -99,7 +99,7 @@ describe('normalizeComparisonGraphsConfig', () => {
       customTabs: [{ id: 'default', name: 'All', entityIds: ['graph:1'] }],
     });
     expect(config.comparisonGraphs[0].entityIds).toEqual(['sensor.a']);
-    expect(config.comparisonGraphs[0].name).toBe('Comparison Graph');
+    expect(config.comparisonGraphs[0].name).toBe('Comparison graph');
   });
 
   it('keeps the graphs apart when many share one id, without slowing down', () => {

@@ -271,7 +271,7 @@ function createSettingsModalDOM() {
 
       <label for="language-select">Language Mode</label>
       <select id="language-select">
-        <option value="auto">Auto (System Default)</option>
+        <option value="auto">Auto (system default)</option>
         <option value="en">English</option>
       </select>
       <div id="language-select-help">Download a language pack below to enable it in the selector.</div>
@@ -434,7 +434,7 @@ function createSettingsModalDOM() {
             <button type="button" id="save-custom-color-btn">Save Custom Color</button>
             <div id="custom-color-hex-error" class="hidden"></div>
             <div id="custom-theme-management" class="hidden">
-              <input id="custom-color-name-input" type="text" />
+              <input id="custom-color-name-input" type="text" maxlength="48" />
               <button type="button" id="rename-custom-color-btn">Rename</button>
               <button type="button" id="remove-custom-color-btn">Remove</button>
             </div>
@@ -3171,6 +3171,16 @@ describe('Settings + Config Integration', () => {
         return type(query);
       };
 
+      test('says one match is one icon, not one of the whole catalogue', async () => {
+        // "Showing 1 of 3,946 icons for “bulb”" read as 3,946 icons matching, and German put the
+        // plural verb beside the one icon ("1 von 3.946 Symbolen ... werden angezeigt").
+        const picker = await search('bulb');
+        expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(1);
+        expect(picker.querySelector('.custom-entity-icon-picker-meta').textContent).toBe(
+          '1 icon matches “bulb”.'
+        );
+      });
+
       test('says so in one line, with something to try, and lists no icons', async () => {
         const picker = await search('zzzzqq');
         expect(picker.querySelectorAll('.custom-entity-icon-choice')).toHaveLength(0);
@@ -3439,10 +3449,13 @@ describe('Settings + Config Integration', () => {
         '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-picker-meta'
       );
       expect(ratSummary).toBeTruthy();
-      expect(ratSummary.textContent).toMatch(/Showing \d+ of [\d,]+ icons for “rat”\./);
-      const [, ratShown, ratTotal] =
-        ratSummary.textContent.match(/Showing ([\d,]+) of ([\d,]+) icons for “rat”\./) || [];
-      expect(Number(ratShown.replace(/,/g, ''))).toBeLessThan(Number(ratTotal.replace(/,/g, '')));
+      // The line counts the matches, which are all on screen, not the whole catalogue.
+      const [, ratCount] = ratSummary.textContent.match(/^(\d+) icons match “rat”\.$/) || [];
+      expect(Number(ratCount)).toBe(
+        document.querySelectorAll(
+          '[data-custom-icon-picker="light.living_room"] .custom-entity-icon-choice'
+        ).length
+      );
 
       // Act
       iconInput.value = 'mouse';
@@ -4111,6 +4124,50 @@ describe('Settings + Config Integration', () => {
         document.getElementById('rename-custom-color-btn').click();
         await settings.saveSettings();
         expect(state.CONFIG.ui.customColors[0].name).toBe('Sea #AB34CD');
+      });
+
+      test('lets the name, not the marks, fill the rename field', async () => {
+        // The field's 48 characters counted the two marks around the hex code, so a name with a
+        // code stopped taking letters two short of the limit.
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(38)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.value).toHaveLength(48);
+        expect(field.maxLength).toBe(50);
+
+        // Without the code there are no marks to make room for.
+        field.value = 'Sea';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(field.maxLength).toBe(48);
+      });
+
+      test('saves no more than the limit when a long name is typed into the room the marks left', async () => {
+        // While the field holds marks it allows two more characters. Typed or pasted over them, a
+        // plain 50-character name kept all 50, because lowering maxlength does not cut a value.
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(38)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.maxLength).toBe(50);
+        field.value = 'b'.repeat(50);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('b'.repeat(48));
+      });
+
+      test("takes the name's limit from the field's maxlength in the markup", async () => {
+        // A second copy of the limit in settings.js reset a raised maxlength to 48 on every show.
+        document.getElementById('custom-color-name-input').setAttribute('maxlength', '60');
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(50)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.maxLength).toBe(62);
+        field.value = 'Sea';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(field.maxLength).toBe(60);
       });
 
       test('reads an unchanged field as no edit, so Save does not ask about it', async () => {
@@ -5247,7 +5304,7 @@ describe('Settings + Config Integration', () => {
       test.each([
         [
           'encryption_unavailable',
-          'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.',
+          'The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.',
         ],
         [
           'not_persisted',

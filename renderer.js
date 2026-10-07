@@ -25,6 +25,7 @@ import {
   formatNumber,
   formatTime,
   getLocaleState,
+  isolateLtr,
   setLocaleBootstrap,
   t,
   translateDocument,
@@ -446,16 +447,18 @@ function getTokenRecoveryPanel() {
     onClick: openTokenSettings,
   };
   if (tokenRecoveryReason === 'encryption_unavailable' && linux) {
-    // The encrypted token is still on disk: unlocking the keyring and restarting brings it back.
-    // The title names the locked keyring, so the message starts with what that means for the token.
+    // The encrypted token is still on disk: starting or unlocking the keyring and restarting brings
+    // it back. Electron cannot tell a locked keyring from one that is not running, so neither the
+    // title nor the message says which. The title names the keyring, so the message starts with
+    // what that means for the token.
     return {
       tone: 'error',
-      title: t('System keyring is locked'),
+      title: t('System keyring is unavailable'),
       message: t(
-        'The saved Home Assistant token cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.'
+        'The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.'
       ),
       actions: [
-        { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+        { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
         { ...enterToken, className: 'btn btn-secondary' },
       ],
     };
@@ -1198,10 +1201,10 @@ function getOAuthStatePanel() {
     if (!pending && !error && isKeyringUnavailable()) {
       return {
         tone: 'error',
-        title: t('System keyring is locked'),
+        title: t('System keyring is unavailable'),
         message: describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant),
         actions: [
-          { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+          { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
           {
             label: t('Reconnect with Home Assistant'),
             className: 'btn btn-secondary',
@@ -1629,12 +1632,14 @@ function createWizardText(tagName, className, id, text) {
 }
 
 // Back moves between steps, so the first step and the last have none to offer. While authorization
-// waits in the browser the same button is the way out of it.
+// waits in the browser the same button is the way out of it, and looks like every other Cancel.
 function syncWizardBackButton() {
   const backButton = firstRunWizard?.backButton;
   if (!backButton) return;
+  const cancels = !!firstRunWizard.finishInProgress;
   backButton.hidden = firstRunWizard.step === 0 || firstRunWizard.step === 3;
-  backButton.textContent = firstRunWizard.finishInProgress ? t('Cancel') : t('Back');
+  backButton.textContent = cancels ? t('Cancel') : t('Back');
+  backButton.classList.toggle('btn-neutral', cancels);
 }
 
 function renderWizardStep() {
@@ -2133,7 +2138,10 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
 
 // Every save reports the same unchanged condition, so the token warning is said once per
 // session. Throttled instead, it came back every few seconds for as long as the person kept
-// saving, next to the keyring toast that names the same cause.
+// saving, next to the keyring toast that names the same cause. It is not said while there is no
+// token to keep: the main window is then asking for one, and its panel names the missing keyring
+// and what to do. Once a token is entered, its save brings the warning; marking it said at start-up
+// instead kept quiet that the token just typed in was not saved either.
 let tokenPersistenceWarningShown = false;
 let latestRendererConfigRevision = -1;
 
@@ -2145,7 +2153,7 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
     return;
   }
 
-  if (tokenPersistenceWarningShown) return;
+  if (tokenPersistenceWarningShown || !isConfigured(state.CONFIG)) return;
   tokenPersistenceWarningShown = true;
   uiUtils.showToast(
     window.electronAPI?.platform === 'linux'
@@ -2292,7 +2300,7 @@ function showConfigRecoveryNotice(recovery) {
   if (recovery.recovered) {
     const message = t(
       'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
-      { path: String(recovery.backupPath || '-') }
+      { path: isolateLtr(recovery.backupPath || '-') }
     );
     uiUtils.showToast(message, 'warning', 20000);
     return;
@@ -2301,7 +2309,7 @@ function showConfigRecoveryNotice(recovery) {
   const message = t(
     'Configuration recovery could not be completed. Backup: {{path}} Error: {{error}}',
     {
-      path: String(recovery.backupPath || '-'),
+      path: isolateLtr(recovery.backupPath || '-'),
       error: String(recovery.error || t('Unknown error')),
     }
   );
@@ -3511,9 +3519,6 @@ async function init() {
     // Runtime recovery metadata is intentionally not part of renderer state so
     // later update-config calls cannot echo it back into persisted settings.
     delete config.configRecovery;
-    // A saved token that cannot be used is explained in the main window with its own remedy. The
-    // persistence warning that arrives with the same config would name that cause a second time.
-    if (config.tokenResetReason) tokenPersistenceWarningShown = true;
     applyRendererConfig(config);
     wireUI();
     replaceEmojiIcons();
@@ -3615,7 +3620,7 @@ function wireUI() {
             // The file manager opens somewhere else on the screen, or behind the widget; this says
             // that something happened, and where the file is.
             uiUtils.showToast(
-              t('Showing the log file: {{path}}', { path: result.path }),
+              t('Showing the log file: {{path}}', { path: isolateLtr(result.path) }),
               'info',
               5000
             );
@@ -3626,7 +3631,7 @@ function wireUI() {
             uiUtils.showToast(
               copied
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
-                    path: result.path,
+                    path: isolateLtr(result.path),
                   })
                 : t('Failed to open log file: {{error}}', { error: result.error }),
               'error',

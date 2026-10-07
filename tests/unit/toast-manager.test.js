@@ -565,39 +565,6 @@ describe('keeping clear of what the toast belongs to', () => {
     expect(container().style.bottom).toBe('98px');
   });
 
-  const connectionPanel = (top) => {
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      '<div class="widget-state-panel"><p class="widget-state-copy"></p><div class="widget-state-actions"></div></div>'
-    );
-    setRect(document.querySelector('.widget-state-actions'), { top, bottom: top + 40 });
-  };
-
-  // The panel sits above Quick Access, so its buttons are usually halfway up the window. Docking
-  // above them put the stack over the panel's own title and message, and an error stays until it
-  // is dismissed.
-  it('stays down, over the dimmed tiles, when the connection panel is higher up the window', () => {
-    connectionPanel(window.innerHeight - 260);
-    uiUtils.showToast('Could not run command', 'error');
-
-    expect(container().style.bottom).toBe('');
-  });
-
-  it('moves above the connection panel buttons where it would cover them, in a short window', () => {
-    connectionPanel(window.innerHeight - 70);
-    uiUtils.showToast('Could not run command', 'error');
-
-    expect(container().style.bottom).toBe('78px');
-  });
-
-  it('keeps its gap from buttons that end just above it', () => {
-    // The buttons end 4px above the stack: closer than the 8px gap, so it moves.
-    connectionPanel(window.innerHeight - 124);
-    uiUtils.showToast('Could not run command', 'error');
-
-    expect(container().style.bottom).toBe('132px');
-  });
-
   it('stays down below a short dialog whose footer is higher up the window', () => {
     // Under the footer there is only the backdrop; above it, the dialog's own question.
     const modal = footer(window.innerHeight / 2);
@@ -616,35 +583,240 @@ describe('keeping clear of what the toast belongs to', () => {
     expect(container().style.bottom).toBe('158px');
   });
 
-  // Retry and Open Settings start below the fold in a short window; scrolling brings them up to
-  // where the stack rests, and an error there stays until it is dismissed.
-  it('moves above the connection panel buttons that a scroll brings under it', () => {
+  it('prefers the dialog over what is behind it', () => {
+    connectionPanel({ top: 100, bottom: window.innerHeight - 30 });
+    const modal = footer(window.innerHeight - 60);
+    uiUtils.openDialog(modal);
+    uiUtils.showToast('Over the dialog', 'error');
+
+    expect(container().style.bottom).toBe('68px');
+  });
+
+  // The connection panel, with its title, message and buttons, where `rect` says; and the window's
+  // header above it, 40px tall.
+  function connectionPanel(rect) {
     document.body.insertAdjacentHTML(
       'beforeend',
-      '<div class="widget-content"><div class="widget-state-panel"><div class="widget-state-actions"></div></div></div>'
+      `<div class="widget-header"></div>
+       <div class="widget-content"><div class="widget-state-panel">
+         <h3 class="widget-state-title"></h3><p class="widget-state-copy"></p>
+         <div class="widget-state-actions"></div>
+       </div></div>`
     );
-    const actions = document.querySelector('.widget-state-actions');
-    setRect(actions, { top: window.innerHeight + 200, bottom: window.innerHeight + 240 });
+    setRect(document.querySelector('.widget-header'), { top: 0, bottom: 40 });
+    const panel = document.querySelector('.widget-state-panel');
+    setRect(panel, rect);
+    // The buttons are the panel's last 60px.
+    setRect(panel.querySelector('.widget-state-actions'), {
+      top: rect.bottom - 60,
+      bottom: rect.bottom - 20,
+    });
+    return panel;
+  }
+
+  // A stack of 60px toasts with 8px between them, as tall as the toasts on screen, resting 20px
+  // above the bottom of the window or wherever layoutToasts moved it.
+  function stackOfToasts() {
+    container().getBoundingClientRect = () => {
+      const shown = toasts().filter((toast) => !toast.classList.contains('toast-held')).length;
+      const bottom = window.innerHeight - (parseFloat(container().style.bottom) || 20);
+      return { left: 0, right: 100, top: bottom - (shown * 68 - 8), bottom };
+    };
+  }
+
+  // The panel sits above Quick Access, so in the default window it is halfway up and the stack
+  // rests below it, over the dimmed tiles.
+  it('stays down, over the dimmed tiles, when the connection panel is higher up the window', () => {
+    connectionPanel({ top: 200, bottom: window.innerHeight - 260 });
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe('');
+  });
+
+  // Docked above the panel's buttons, the stack covered the panel's title and message, and an error
+  // stays until it is dismissed. The weather and media cards above the panel say nothing new.
+  it('goes above the whole connection panel where it would cover it, under the header', () => {
+    connectionPanel({ top: window.innerHeight - 200, bottom: window.innerHeight - 30 });
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe('208px');
+  });
+
+  it('keeps its gap from a panel that ends just above it', () => {
+    // The panel ends 4px above the stack: closer than the 8px gap, so it moves.
+    connectionPanel({ top: 300, bottom: window.innerHeight - 84 });
+    uiUtils.showToast('Could not run command', 'error');
+
+    expect(container().style.bottom).toBe(`${window.innerHeight - 292}px`);
+  });
+
+  describe('with more toasts than fit beside the connection panel', () => {
+    // Under the panel there is room for two toasts, and above it, under the header, for none.
+    const tallPanel = () => connectionPanel({ top: 100, bottom: window.innerHeight - 160 });
+
+    it('holds back the oldest, and keeps the newest on screen clear of the panel', () => {
+      tallPanel();
+      stackOfToasts();
+      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+
+      const held = toasts().filter((toast) => toast.classList.contains('toast-held'));
+      expect(held.map((toast) => toast.textContent)).toEqual(['first']);
+      expect(container().style.bottom).toBe('');
+      expect(messages()).toEqual(['first', 'second', 'third']);
+    });
+
+    // Hidden, the toast the user had tabbed to would drop the keyboard focus to the page.
+    it('holds back the next oldest instead of one with the keyboard focus in it', () => {
+      tallPanel();
+      stackOfToasts();
+      ['first', 'second'].forEach((name) => uiUtils.showToast(name, 'error'));
+      const focused = toasts()[0].querySelector('.toast-close');
+      focused.focus();
+      uiUtils.showToast('third', 'error');
+
+      const held = toasts().filter((toast) => toast.classList.contains('toast-held'));
+      expect(held.map((toast) => toast.textContent)).toEqual(['second']);
+      expect(document.activeElement).toBe(focused);
+    });
+
+    it('brings them back once the panel has gone', () => {
+      tallPanel();
+      stackOfToasts();
+      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+
+      expect(document.querySelectorAll('.toast-held')).toHaveLength(0);
+    });
+
+    // Out of sight, a success or a warning would run out unseen and never come back.
+    it('stops the clock of a toast it holds back, and runs the rest of it once it is back', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('first', 'success', 4000);
+      jest.advanceTimersByTime(1000);
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(false);
+      // The 3 s it had left when it was held back.
+      jest.advanceTimersByTime(2900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
+    // Layout runs on every resize and every new toast; each pass shows the held toasts before hiding
+    // them again, so the clock must not start and stop with it, and a second hold must keep the
+    // time the first left.
+    it('keeps the time a toast has left across repeated layouts and a second hold', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('first', 'success', 10000);
+      jest.advanceTimersByTime(1000);
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+      for (let pass = 0; pass < 3; pass += 1) window.dispatchEvent(new Event('resize'));
+      // Errors never expire, so a running timer could only be the held toast's.
+      expect(jest.getTimerCount()).toBe(0);
+      jest.advanceTimersByTime(60 * 1000);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(false);
+      jest.advanceTimersByTime(4000);
+
+      tallPanel();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      // 10 s, less the 1 s before the first hold and the 4 s between the two.
+      jest.advanceTimersByTime(4900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
+    // Hidden from under the pointer, a toast can hear that the pointer left while it is still held.
+    it('keeps the clock of a held toast stopped when the pointer leaves it', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('Careful', 'warning');
+      first.dispatchEvent(new Event('pointerenter'));
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      first.dispatchEvent(new Event('pointerleave'));
+
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      // A newer toast going makes room for it again, with all of its 6 s reading time ahead of it.
+      uiUtils.dismissToast(toasts()[2]);
+      expect(first.classList.contains('toast-held')).toBe(false);
+      jest.advanceTimersByTime(5900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
+    it('goes above the panel with all of them when there is room there', () => {
+      connectionPanel({ top: 300, bottom: window.innerHeight - 30 });
+      stackOfToasts();
+      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+
+      expect(document.querySelectorAll('.toast-held')).toHaveLength(0);
+      expect(container().style.bottom).toBe(`${window.innerHeight - 292}px`);
+    });
+
+    // With no room on either side even for one toast, the panel's buttons stay within reach.
+    it('keeps a toast with no room anywhere off the panel buttons', () => {
+      connectionPanel({ top: 60, bottom: window.innerHeight - 10 });
+      stackOfToasts();
+      ['first', 'second'].forEach((name) => uiUtils.showToast(name, 'error'));
+
+      expect(toasts()[0].classList.contains('toast-held')).toBe(true);
+      expect(container().style.bottom).toBe('78px');
+    });
+  });
+
+  // In a short window the panel starts below the fold; scrolling brings it up to where the stack
+  // rests, and an error there stays until it is dismissed.
+  it('moves above the connection panel that a scroll brings under it', () => {
+    const panel = connectionPanel({
+      top: window.innerHeight + 200,
+      bottom: window.innerHeight + 380,
+    });
     uiUtils.showToast('Could not run command', 'error');
     expect(container().style.bottom).toBe('');
 
-    setRect(actions, { top: window.innerHeight - 70, bottom: window.innerHeight - 30 });
+    setRect(panel, { top: window.innerHeight - 200, bottom: window.innerHeight - 20 });
     document.querySelector('.widget-content').dispatchEvent(new Event('scroll'));
     jest.advanceTimersByTime(16);
 
-    expect(container().style.bottom).toBe('78px');
+    expect(container().style.bottom).toBe('208px');
   });
 
   it('leaves the stack alone on a scroll that moves none of what it keeps clear of', () => {
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      '<div class="widget-content"></div><div class="widget-state-panel"><div class="widget-state-actions"></div></div>'
-    );
-    const actions = document.querySelector('.widget-state-actions');
-    setRect(actions, { top: window.innerHeight + 200, bottom: window.innerHeight + 240 });
+    document.body.insertAdjacentHTML('beforeend', '<div class="widget-content"></div>');
+    const panel = connectionPanel({
+      top: window.innerHeight + 200,
+      bottom: window.innerHeight + 380,
+    });
+    // The panel is outside the page that scrolls.
+    document.body.appendChild(panel);
     uiUtils.showToast('Could not run command', 'error');
 
-    setRect(actions, { top: window.innerHeight - 70, bottom: window.innerHeight - 30 });
+    setRect(panel, { top: window.innerHeight - 200, bottom: window.innerHeight - 20 });
     document.querySelector('.widget-content').dispatchEvent(new Event('scroll'));
     jest.advanceTimersByTime(16);
 
@@ -652,33 +824,10 @@ describe('keeping clear of what the toast belongs to', () => {
   });
 
   it('leaves a surface that has scrolled out of view alone', () => {
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      '<div class="widget-state-panel"><div class="widget-state-actions"></div></div>'
-    );
-    setRect(document.querySelector('.widget-state-actions'), {
-      top: window.innerHeight + 200,
-      bottom: window.innerHeight + 240,
-    });
+    connectionPanel({ top: window.innerHeight + 200, bottom: window.innerHeight + 380 });
     uiUtils.showToast('Nothing to cover', 'error');
 
     expect(container().style.bottom).toBe('');
-  });
-
-  it('prefers the dialog over what is behind it', () => {
-    document.body.insertAdjacentHTML(
-      'beforeend',
-      '<div class="widget-state-panel"><div class="widget-state-actions"></div></div>'
-    );
-    setRect(document.querySelector('.widget-state-actions'), {
-      top: window.innerHeight - 140,
-      bottom: window.innerHeight - 100,
-    });
-    const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the dialog', 'error');
-
-    expect(container().style.bottom).toBe('68px');
   });
 });
 

@@ -25,11 +25,11 @@ window.electronAPI = mockElectronAPI;
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
   CAMERA_PREVIEW_REFRESH_OPTIONS: [
-    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
     { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
   ],
   disposeCameraPreview: jest.fn(),
   mountCameraPreview: jest.fn(),
@@ -124,6 +124,34 @@ jest.mock('../../src/websocket.js', () => ({
   emit: jest.fn(),
   request: mockRequest,
 }));
+
+// jsdom has no ResizeObserver. This one records what is observed and is told by a test when a size
+// changes, so a test can play a window that reaches its new size after the pin was drawn for it.
+const resizeObservers = [];
+window.ResizeObserver = class {
+  constructor(callback) {
+    this.callback = callback;
+    this.targets = new Set();
+    resizeObservers.push(this);
+  }
+
+  observe(target) {
+    this.targets.add(target);
+  }
+
+  unobserve(target) {
+    this.targets.delete(target);
+  }
+
+  disconnect() {
+    this.targets.clear();
+  }
+};
+const reportResize = (target) => {
+  for (const observer of resizeObservers) {
+    if (observer.targets.has(target)) observer.callback([{ target }], observer);
+  }
+};
 
 // Import modules after mocks
 const ui = require('../../src/ui.js');
@@ -1960,6 +1988,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const [message] = uiUtils.showToast.mock.calls.at(-1);
       expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
       expect(message).not.toContain('WebSocket');
+    });
+
+    it("keeps Home Assistant's English reason and the name in their own direction in Arabic", async () => {
+      // In an Arabic toast the reason's full stop took the toast's direction and moved to the far
+      // left of the line: ".powered on and connected to Home Assistant".
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'ar',
+        messages: {
+          'Failed to control {{entityName}}: {{errorMessage}}':
+            'تعذّر التحكم في {{entityName}}: {{errorMessage}}',
+        },
+      });
+      try {
+        state.setConfig({
+          ...sampleConfig,
+          ui: { ...sampleConfig.ui },
+          favoriteEntities: ['light.bedroom'],
+        });
+        state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+        ui.renderActiveTab();
+        mockCallService.mockRejectedValueOnce(new Error('The device did not respond.'));
+
+        ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+        await flushAsync();
+        await flushAsync();
+
+        const [message] = uiUtils.showToast.mock.calls.at(-1);
+        expect(message).toBe(
+          'تعذّر التحكم في \u2068Bedroom Light\u2069: \u2068The device did not respond.\u2069'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
   });
 
@@ -7066,6 +7128,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         return {
           layout: control.dataset.layout,
           header: control.querySelector('.desktop-pin-climate-kpi')?.textContent ?? null,
+          status: control.querySelector('.desktop-pin-panel-status')?.textContent ?? null,
           boxes: control.querySelectorAll('.desktop-pin-panel-stat').length,
           current: control.querySelector('.desktop-pin-climate-inline-copy')?.textContent ?? null,
           sliders: control.querySelectorAll('[data-climate-range]').length,
@@ -7081,12 +7144,15 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(render(width, height)).toEqual({
           layout,
           header: null,
+          status: 'Heat/Cool',
           boxes: 0,
           current: 'Now 21°C',
           sliders: 2,
         });
       }
       // Bigger, the Current and Target boxes beside two sliders pushed the mode row off the tile.
+      // Beside the range, the line under the name says the mode alone: "Modus: Heizen/Kühlen" and
+      // "Mode Chaud/Froid" were cut there at 200x170.
       for (const [width, height, layout] of [
         [200, 170, 'balanced'],
         [280, 200, 'roomy'],
@@ -7094,10 +7160,90 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         expect(render(width, height)).toEqual({
           layout,
           header: expect.stringMatching(/^19.*24/),
+          status: 'Heat/Cool',
           boxes: 0,
           current: 'Now 21°C',
           sliders: 2,
         });
+      }
+
+      // A single target has its box in the body and nothing beside the name, so it keeps the mode
+      // line in full, through a state change too.
+      const single = {
+        entity_id: 'climate.study',
+        state: 'heat',
+        attributes: {
+          friendly_name: 'Study',
+          current_temperature: 20,
+          temperature: 21,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat'],
+          supported_features: 1,
+        },
+      };
+      state.setStates({ [single.entity_id]: single });
+      setDesktopPinViewport(200, 170);
+      document.getElementById('desktop-pin-content').innerHTML = '';
+      ui.renderDesktopPinnedTile(single.entity_id, single);
+      const status = () =>
+        document.querySelector('#desktop-pin-content .desktop-pin-panel-status').textContent;
+      expect(status()).toBe('Heat mode');
+      ui.renderDesktopPinnedTile(single.entity_id, { ...single, state: 'off' });
+      expect(status()).toBe('Off mode');
+    });
+
+    // Each bound was a row of its own, sized to its own label, so the tracks of one range started at
+    // different places: in French the cooling track began 33px after the heating one and was 43px
+    // long to its 76. The labels were HVAC action states ("Refroidissement", "Calentando").
+    it('lays a pin’s heat/cool range on one grid, its bounds named by their modes', () => {
+      const i18n = require('../../src/i18n.js');
+      const range = {
+        entity_id: 'climate.hall',
+        state: 'heat_cool',
+        attributes: {
+          friendly_name: 'Hall',
+          current_temperature: 21,
+          target_temp_low: 19,
+          target_temp_high: 24,
+          min_temp: 7,
+          max_temp: 30,
+          hvac_modes: ['off', 'heat_cool'],
+          supported_features: 2,
+        },
+      };
+      state.setStates({ [range.entity_id]: range });
+      const bounds = () => {
+        const grid = document.querySelector('#desktop-pin-content .desktop-pin-climate-range');
+        return [...grid.querySelectorAll(':scope > .desktop-pin-panel-slider-row')].map((row) => [
+          row.querySelector('.desktop-pin-panel-slider-label').textContent,
+          row.querySelector('input').dataset.climateRange,
+          row.querySelector('input').getAttribute('aria-label'),
+        ]);
+      };
+      try {
+        for (const [width, height] of [
+          [168, 148],
+          [200, 170],
+          [280, 200],
+        ]) {
+          setDesktopPinViewport(width, height);
+          document.getElementById('desktop-pin-content').innerHTML = '';
+          ui.renderDesktopPinnedTile(range.entity_id, range);
+          expect(bounds()).toEqual([
+            ['Heat', 'low', 'Heating target'],
+            ['Cool', 'high', 'Cooling target'],
+          ]);
+        }
+        i18n.setLocaleBootstrap({
+          activeLocale: 'fr',
+          messages: { Heat: 'Chauffe', Cool: 'Froid', Heating: 'Chauffage' },
+        });
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(range.entity_id, range);
+        expect(bounds().map(([label]) => label)).toEqual(['Chauffe', 'Froid']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
       }
     });
 
@@ -7169,10 +7315,45 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         render();
         expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
 
+        // A pin is drawn for its new size before its window has that size, so a row that widens
+        // after it was drawn is fitted again: dragged bigger, a pin kept the modes of the old row.
+        rowWidth = 150;
+        render();
+        expect(modes()).toEqual(['heat_cool', 'off']);
+        rowWidth = 190;
+        const frame = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+          callback(0);
+          return 0;
+        });
+        try {
+          reportResize(document.querySelector('#desktop-pin-content .desktop-pin-climate-modes'));
+        } finally {
+          frame.mockRestore();
+        }
+        expect(modes()).toEqual(['heat_cool', 'off', 'heat']);
+
         // Never fewer than two, however narrow the row.
         rowWidth = 60;
         render();
         expect(modes()).toEqual(['heat_cool', 'off']);
+
+        // A row the pin no longer shows is reported as it leaves, and is not watched any more.
+        const row = document.querySelector('#desktop-pin-content .desktop-pin-climate-modes');
+        const watched = () => resizeObservers.some((observer) => observer.targets.has(row));
+        expect(watched()).toBe(true);
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        const lastFrame = jest
+          .spyOn(window, 'requestAnimationFrame')
+          .mockImplementation((callback) => {
+            callback(0);
+            return 0;
+          });
+        try {
+          reportResize(row);
+        } finally {
+          lastFrame.mockRestore();
+        }
+        expect(watched()).toBe(false);
       } finally {
         scrollWidth.mockRestore();
         clientWidth.mockRestore();
@@ -7212,6 +7393,56 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       slider.dispatchEvent(new Event('change', { bubbles: true }));
       jest.advanceTimersByTime(1000);
       jest.useRealTimers();
+    });
+
+    // Home Assistant reports no speed for a fan in a preset mode, or one with no speeds at all. Its
+    // meter says On, and the line under the name said On as well.
+    it('says On once on a fan pin that has no speed to show', () => {
+      const presetFan = {
+        entity_id: 'fan.office',
+        state: 'on',
+        attributes: {
+          friendly_name: 'Office fan',
+          percentage: null,
+          preset_modes: ['auto', 'sleep'],
+          preset_mode: 'auto',
+          supported_features: 9,
+        },
+      };
+      const plainFan = {
+        entity_id: 'fan.attic',
+        state: 'on',
+        attributes: { friendly_name: 'Attic fan', supported_features: 0 },
+      };
+      state.setStates({ [presetFan.entity_id]: presetFan, [plainFan.entity_id]: plainFan });
+      const read = () => {
+        const control = document.querySelector('#desktop-pin-content .desktop-pin-fan-control');
+        const status = control.querySelector('.desktop-pin-panel-status');
+        return {
+          status: status.hidden ? null : status.textContent,
+          meter: control.querySelector('.desktop-pin-fan-value').textContent,
+        };
+      };
+      setDesktopPinViewport(168, 148);
+      for (const fan of [presetFan, plainFan]) {
+        document.getElementById('desktop-pin-content').innerHTML = '';
+        ui.renderDesktopPinnedTile(fan.entity_id, fan);
+        expect(read()).toEqual({ status: null, meter: 'On' });
+      }
+
+      // The line comes back with a speed, and when the fan stops.
+      ui.renderDesktopPinnedTile(presetFan.entity_id, presetFan);
+      ui.renderDesktopPinnedTile(presetFan.entity_id, {
+        ...presetFan,
+        attributes: { ...presetFan.attributes, percentage: 33, preset_mode: null },
+      });
+      expect(read()).toEqual({ status: 'On', meter: '33%' });
+      ui.renderDesktopPinnedTile(presetFan.entity_id, {
+        ...presetFan,
+        state: 'off',
+        attributes: { ...presetFan.attributes, percentage: 0, preset_mode: null },
+      });
+      expect(read()).toEqual({ status: 'Ready', meter: 'Off' });
     });
 
     it('renders compact climate controls and sends hvac mode changes', () => {

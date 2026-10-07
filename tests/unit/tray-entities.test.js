@@ -223,6 +223,55 @@ describe('buildTrayEntityPresentation', () => {
     });
   });
 
+  // A thermostat that reports no temperature (a heat/cool one has only its two targets) shows its
+  // mode. Cut to fit, "Heat/Cool" read "HEAT", the same as heat mode, and with no language heat_cool
+  // read "AUTO", the same as auto. A short form wider than the 16px Windows icon at every size
+  // ("VENT", and by a hair "FAN") was drawn as an ellipsis. Measured here at 0.62em a letter, the
+  // app's own estimate without a canvas, four Latin capitals never fit; the short forms in other
+  // scripts were checked by drawing them.
+  it('never gives two HVAC modes the same label, or an ellipsis, in any language', () => {
+    const measure = (text, fontSize) => Array.from(text).length * fontSize * 0.62;
+    const fs = require('fs');
+    const path = require('path');
+    const packDir = path.resolve(__dirname, '../../locale-packs');
+    const { packs } = JSON.parse(fs.readFileSync(path.join(packDir, 'manifest.json'), 'utf8'));
+    const catalogs = {
+      none: null,
+      en: require('../../locales/en.json'),
+      ...Object.fromEntries(
+        packs.map(({ locale }) => [
+          locale,
+          JSON.parse(fs.readFileSync(path.join(packDir, `${locale}.json`), 'utf8')).messages,
+        ])
+      ),
+    };
+    const modes = ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'];
+    for (const [language, messages] of Object.entries(catalogs)) {
+      const translate = messages ? (key) => messages[key] ?? key : undefined;
+      const owners = new Map();
+      for (const mode of modes) {
+        const { candidates } = buildTrayEntityPresentation(entity('climate.hall', mode), {
+          translate,
+        });
+        // The icons are always drawn through a catalog; untranslated, a label is the bitmap's own.
+        if (messages && candidates.every((label) => /^[\p{Script=Latin}\p{P}]+$/u.test(label))) {
+          const { text } = chooseTrayLabelLayout(candidates, measure, {
+            maxWidth: getTrayIconSizeForPlatform('win32') - 2,
+          });
+          expect({ language, mode, text }).not.toEqual({ language, mode, text: '…' });
+        }
+        for (const label of candidates) {
+          expect({ language, label, modes: [owners.get(label) ?? mode, mode] }).toEqual({
+            language,
+            label,
+            modes: [mode, mode],
+          });
+          owners.set(label, mode);
+        }
+      }
+    }
+  });
+
   it('truncates long tooltips and strips line breaks', () => {
     const presentation = buildTrayEntityPresentation(entity('sensor.cpu', '1'), {
       displayName: 'A\nvery  long\tname '.padEnd(200, 'x'),

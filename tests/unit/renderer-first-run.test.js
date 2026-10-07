@@ -67,6 +67,12 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Next');
   };
 
+  // A setup with a long-lived token, the only kind whose token a save can fail to keep.
+  const tokenConfig = () => ({
+    ...unconfiguredConfig(),
+    homeAssistant: { url: 'http://ha.local:8123', token: 'long-lived-token', authMethod: 'token' },
+  });
+
   const oauthConfig = (url = 'http://ha.local:8123') => ({
     ...unconfiguredConfig(),
     homeAssistant: {
@@ -1020,6 +1026,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
     await clickButton('Connect');
     expect(wizardButton('Back')).toBeUndefined();
     expect(wizardButton('Cancel').hidden).toBe(false);
+    // Drawn as every other Cancel is, not in the accent of a second action.
+    expect(wizardButton('Cancel').classList.contains('btn-neutral')).toBe(true);
 
     await clickButton('Cancel');
     const cancelError = new Error('Home Assistant authorization was cancelled');
@@ -1033,6 +1041,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     );
     expect(wizardButton('Connect').disabled).toBe(false);
     expect(wizardButton('Back').hidden).toBe(false);
+    expect(wizardButton('Back').classList.contains('btn-neutral')).toBe(false);
     expect(wizardButton('Cancel')).toBeUndefined();
   });
 
@@ -1161,7 +1170,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   });
 
   it('shows and strips token persistence warnings delivered after a save', async () => {
-    await loadRenderer();
+    await loadRenderer({ config: tokenConfig() });
     mockUiUtils.showToast.mockClear();
 
     triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
@@ -1224,7 +1233,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   });
 
   it('says the token was not saved once per session, however often settings are saved', async () => {
-    await loadRenderer();
+    await loadRenderer({ config: tokenConfig() });
     mockUiUtils.showToast.mockClear();
 
     for (let save = 0; save < 3; save += 1) {
@@ -1239,6 +1248,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
   it('names the missing keyring on Linux instead of telling the user to re-enter the token', async () => {
     await loadRenderer({
+      config: tokenConfig(),
       configureApi(api) {
         api.platform = 'linux';
       },
@@ -1389,7 +1399,9 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(everythingSaid().join(' ')).not.toMatch(/gear/i);
     });
 
-    it('names a locked keyring on Linux, where unlocking it and restarting brings the token back', async () => {
+    // A keyring that is not running is as unreadable as a locked one, and Electron cannot tell
+    // them apart, so neither is named as the cause.
+    it('names an unavailable keyring on Linux, where starting or unlocking it brings the token back', async () => {
       await loadRenderer({
         config: recoveryConfig('encryption_unavailable'),
         configureApi(api) {
@@ -1397,14 +1409,16 @@ describe('Renderer first-run Home Assistant authorization', () => {
         },
       });
 
-      expect(panel().querySelector('.widget-state-title').textContent).toBe(
-        'System keyring is locked'
-      );
+      const title = panel().querySelector('.widget-state-title').textContent;
+      expect(title).toBe('System keyring is unavailable');
       // The body goes on from the title instead of saying it again.
       const copy = panel().querySelector('.widget-state-copy').textContent;
-      expect(copy).toContain('token cannot be read until the system keyring is unlocked');
-      expect(copy).not.toMatch(/keyring is locked/i);
-      expect(findButtonByText('Restart Widget')).toBeTruthy();
+      expect(copy).toContain(
+        'token cannot be read until the system keyring is running and unlocked'
+      );
+      expect(copy).toContain('Start or unlock it');
+      expect(`${title} ${copy}`).not.toMatch(/keyring is locked/i);
+      expect(findButtonByText('Restart widget')).toBeTruthy();
       expect(findButtonByText('Enter token')).toBeTruthy();
     });
 
@@ -1420,7 +1434,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(copy).toContain('Access token was not saved');
       expect(copy).toContain('start gnome-keyring or KWallet so it is remembered');
       expect(copy).not.toMatch(/restart the widget|has been kept/i);
-      expect(findButtonByText('Restart Widget')).toBeUndefined();
+      expect(findButtonByText('Restart widget')).toBeUndefined();
     });
 
     it('notes a token that was not saved once, though main repeats it with every config', async () => {
@@ -1460,7 +1474,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       await flushAsync();
 
       expect(wizardShown()).toBe(false);
-      expect(panel().textContent).toContain('System keyring is locked');
+      expect(panel().textContent).toContain('System keyring is unavailable');
       expect(mockElectronAPI.publishHaConnectionState).toHaveBeenLastCalledWith('disconnected');
     });
 
@@ -1527,7 +1541,38 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
       // The panel names the keyring; a toast with another remedy beside it would say it twice.
       expect(mockUiUtils.showToast).not.toHaveBeenCalled();
-      expect(panel().textContent).toContain('System keyring is locked');
+      expect(panel().textContent).toContain('System keyring is unavailable');
+    });
+
+    // The panel asked for the token again because no keyring could keep it. Typed in with still no
+    // keyring, the new one is not kept either, and only the save can say so.
+    it('says a token entered again was not saved either, while there is still no keyring', async () => {
+      await loadRenderer({
+        config: recoveryConfig('not_persisted'),
+        configureApi(api) {
+          api.platform = 'linux';
+        },
+      });
+      mockUiUtils.showToast.mockClear();
+
+      // Main says so as it saves, before the config with the token reaches the window, and again
+      // with that config.
+      const warning = [{ code: 'home_assistant_token_not_persisted' }];
+      triggerMockEvent('configPersistenceWarning', warning);
+      triggerMockEvent('configUpdated', {
+        ...recoveryConfig('not_persisted'),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'new-token', authMethod: 'token' },
+        persistenceWarnings: warning,
+      });
+      await flushAsync();
+
+      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('this token will not be remembered after you quit'),
+        'warning',
+        10000,
+        { source: 'startup-warning' }
+      );
     });
 
     it('continues startup but reports when the acknowledgement is not saved', async () => {

@@ -14,11 +14,11 @@ window.electronAPI = mockElectronAPI;
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
   CAMERA_PREVIEW_REFRESH_OPTIONS: [
-    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
     { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
   ],
   disposeCameraPreview: jest.fn(),
   mountCameraPreview: jest.fn(),
@@ -171,7 +171,7 @@ describe('ui.js translations and number formatting', () => {
       Brightness: 'Helligkeit',
       Close: 'Schließen',
       'Turn off': 'Ausschalten',
-      'Color Temperature': 'Farbtemperatur',
+      'Color temperature': 'Farbtemperatur',
       'Color temperature: Warm': 'Warm DE',
     });
     const light = entity('light.desk', 'on', {

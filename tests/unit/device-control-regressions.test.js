@@ -14,11 +14,11 @@ window.electronAPI = mockElectronAPI;
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
   CAMERA_PREVIEW_REFRESH_OPTIONS: [
-    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
     { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
   ],
   disposeCameraPreview: jest.fn(),
   mountCameraPreview: jest.fn(),
@@ -864,6 +864,23 @@ describe('device control and live data regressions', () => {
     expect(modal.querySelector('.media-detail-play-btn').disabled).toBe(false);
     expect(modal.querySelector('.media-detail-next-btn').disabled).toBe(true);
     expect(modal.querySelector('#media-volume-slider').disabled).toBe(true);
+  });
+
+  // A cover's footer says Done because its action to close the cover says Close, so a note that
+  // told the reader to "Close this" pointed at the button that moves the cover.
+  test('the unavailable note names none of the dialog’s buttons', () => {
+    const cover = entity('cover.unreachable', 'unavailable', { supported_features: 11 });
+    state.setEntityState(cover);
+    ui.openEntityControls(cover);
+    jest.advanceTimersByTime(20);
+    const modal = document.querySelector('.cover-modal');
+    const note = modal.querySelector('.dialog-unavailable-note').textContent;
+    const labels = [...modal.querySelectorAll('button')]
+      .map((button) => button.textContent.trim())
+      .filter(Boolean);
+
+    expect(labels).toEqual(expect.arrayContaining(['Close', 'Done']));
+    for (const label of labels) expect(note).not.toMatch(new RegExp(`\\b${label}\\b`, 'i'));
   });
 
   test('primary media buttons follow live playback capabilities', () => {

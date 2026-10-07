@@ -969,6 +969,60 @@ describe('Camera Module', () => {
       expect(visual.style.getPropertyValue('view-transition-name')).toBe('');
     });
 
+    // The viewer's transition grows the picture out of its tile, and it can only capture an element
+    // that has a box. Until the first frame the stylesheet lays the tile out without the stage's
+    // box (the style element below stands in for that rule), and the viewer only faded in and out.
+    // jsdom has no view transitions, so this one records what each state names.
+    it.each([
+      ['with no picture', false],
+      ['showing a picture', true],
+    ])('grows the viewer out of a camera tile %s, and back into it', async (_label, hasFrame) => {
+      const style = document.createElement('style');
+      style.textContent = `.camera-preview-tile:not([data-camera-preview-has-frame='true'])
+        .camera-tile-visual { display: contents; }`;
+      document.head.appendChild(style);
+      const named = () =>
+        Array.from(document.querySelectorAll('*')).filter(
+          (element) =>
+            element.style?.getPropertyValue('view-transition-name') ===
+              'expanded-camera-preview-image' && getComputedStyle(element).display !== 'contents'
+        );
+      const states = [];
+      document.startViewTransition = (update) => {
+        const before = named();
+        update();
+        states.push({ before, after: named() });
+        return { finished: Promise.resolve() };
+      };
+
+      try {
+        const tile = createPreviewTile();
+        tile.classList.add('camera-preview-tile');
+        const visual = tile.querySelector('.camera-tile-visual');
+        mockState.CONFIG = getMockConfig();
+        mockState.STATES = {
+          'camera.front_door': sampleStates['camera.front_door'],
+        };
+        camera.mountCameraPreview(tile, 'camera.front_door', 'live');
+        await flushLivePreviewStart();
+        if (hasFrame) tile.querySelector('.camera-tile-preview-video').onloadeddata();
+        expect(tile.dataset.cameraPreviewHasFrame === 'true').toBe(hasFrame);
+        const inTile = hasFrame ? visual : tile;
+
+        await camera.openCamera('camera.front_door', { sourceTile: tile });
+        expect(states).toEqual([{ before: [inTile], after: [visual] }]);
+
+        document.querySelector('.camera-expanded-preview-close').click();
+        expect(states[1]).toEqual({ before: [visual], after: [inTile] });
+        await Promise.resolve();
+        expect(tile.style.getPropertyValue('view-transition-name')).toBe('');
+        expect(visual.style.getPropertyValue('view-transition-name')).toBe('');
+      } finally {
+        delete document.startViewTransition;
+        style.remove();
+      }
+    });
+
     it('updates the expanded status and falls back when startup stalls', async () => {
       const tile = createPreviewTile();
       const buffers = Array.from(tile.querySelectorAll('.camera-tile-preview-image'));

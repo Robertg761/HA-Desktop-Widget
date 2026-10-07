@@ -43,6 +43,28 @@ describe('the Readable preset', () => {
     expect(parseColor(resolvedValue(document.querySelector('.toast'), 'background'))[3]).toBe(1);
   });
 
+  // A warm chosen or holiday accent halves a lit tile's wash so it is never stronger than a tile
+  // that needs attention. The preset draws its own blue accent instead, which no one takes for an
+  // alarm, and with Christmas a lit tile's wash was half as strong for nothing.
+  it('keeps the whole lit wash under a warm accent', () => {
+    const wash = (bodyClass, warm) => {
+      render(bodyClass, '');
+      if (warm) document.body.dataset.accentWarm = 'true';
+      else delete document.body.dataset.accentWarm;
+      return resolvedValue(document.body, '--dash-tile-wash');
+    };
+    try {
+      // Without the preset a warm accent takes the lighter wash.
+      expect(wash('', true)).toBe(resolvedValue(document.body, '--dash-tile-wash-warm'));
+      expect(wash('', true)).not.toBe(wash('', false));
+      expect(wash('high-contrast opaque-panels', true)).toBe(
+        wash('high-contrast opaque-panels', false)
+      );
+    } finally {
+      delete document.body.dataset.accentWarm;
+    }
+  });
+
   // The light, fan, cover, climate and media pop-ups open with focus on their heading. The preset's
   // ring is !important, so it boxed the title of every pop-up like a field.
   it('draws no focus ring around a pop-up heading that took focus as the pop-up opened', () => {
@@ -98,6 +120,9 @@ describe('the Readable preset', () => {
     '<button class="climate-preset-mode-btn active"></button>',
     '<button class="media-mute-toggle active"></button>',
     '<button class="donate-amount-chip selected"></button>',
+    // The lamp and fan pop-ups' current preset looked like the others.
+    '<button class="brightness-preset-btn active"></button>',
+    '<button class="fan-preset-btn active"></button>',
   ])('keeps an accent edge on a selected chip: %s', (html) => {
     render('high-contrast opaque-panels', html);
     const chip = document.querySelector('button');

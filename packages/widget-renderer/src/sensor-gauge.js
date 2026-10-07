@@ -13,7 +13,7 @@ import { formatNumber } from './i18n.js';
 export const SENSOR_TILE_CHART_TYPE_DEFAULT = 'line';
 
 export const SENSOR_TILE_CHART_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'line', label: 'Line chart (Default)' }),
+  Object.freeze({ value: 'line', label: 'Line chart (default)' }),
   Object.freeze({ value: 'gauge', label: 'Gauge' }),
   Object.freeze({ value: 'none', label: 'No chart' }),
 ]);
