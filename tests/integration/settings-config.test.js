@@ -522,7 +522,7 @@ function createSettingsModalDOM() {
         </label>
       </div>
 
-      <button id="save-settings">Save</button>
+      <button id="save-settings">Save and close</button>
       <button id="cancel-settings">Cancel</button>
     </div>
   `;
@@ -2387,6 +2387,64 @@ describe('Settings + Config Integration', () => {
       expect(document.querySelector('#language-select option[value="fr"]').disabled).toBe(false);
       expect(document.querySelector('[data-locale-action="remove"]').dataset.locale).toBe('fr');
     });
+
+    test.each([
+      ['manifest failure', false, false, true],
+      ['IPC rejection', true, false, true],
+      ['installed packs retained', false, true, true],
+      ['no status element', false, false, false],
+    ])(
+      'relocalizes a cached language pack error without fetching again: %s',
+      async (_scenario, reject, hasInstalledPack, hasStatus) => {
+        const i18n = require('../../src/i18n.js');
+        const installedPacks = hasInstalledPack
+          ? [{ locale: 'fr', displayName: 'Français', version: '1.0.0', installed: true }]
+          : [];
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        if (!hasStatus) document.getElementById('language-pack-status').remove();
+        if (reject) {
+          window.electronAPI.getLocalePacks.mockRejectedValueOnce(new Error('IPC timeout'));
+        } else {
+          window.electronAPI.getLocalePacks.mockResolvedValueOnce({
+            error: 'manifest_unavailable',
+            installedPacks,
+          });
+        }
+
+        try {
+          await settings.openSettings();
+          await waitForLanguagePackRefresh();
+          const list = document.getElementById('language-packs-list');
+          const errorElement = hasStatus ? document.getElementById('language-pack-status') : list;
+          expect(errorElement.textContent).toBe('Unable to load language packs right now.');
+          window.electronAPI.getLocalePacks.mockClear();
+
+          i18n.setLocaleBootstrap({
+            activeLocale: 'de',
+            messages: require('../../locales/de.json'),
+          });
+          // Let the open Settings locale observer redraw its dynamic text.
+          await Promise.resolve();
+          expect(errorElement.textContent).toBe(
+            'Sprachpakete können derzeit nicht geladen werden.'
+          );
+          expect(errorElement.classList.contains('hidden')).toBe(false);
+          if (hasStatus) {
+            expect(list.textContent).not.toContain(
+              'Sprachpakete können derzeit nicht geladen werden.'
+            );
+          }
+          if (hasInstalledPack) expect(list.textContent).toContain('Français');
+
+          i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+          await Promise.resolve();
+          expect(errorElement.textContent).toBe('Unable to load language packs right now.');
+          expect(window.electronAPI.getLocalePacks).not.toHaveBeenCalled();
+        } finally {
+          i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+        }
+      }
+    );
 
     test('shows when a language pack was installed to the minute, in the Time format', async () => {
       window.electronAPI.getLocalePacks.mockResolvedValueOnce([
@@ -9191,7 +9249,7 @@ describe('Settings + Config Integration', () => {
         const status = document.getElementById('test-ha-connection-status');
         expect(status.dataset.status).toBe('success');
         expect(status.textContent).toBe(
-          'Token accepted. Home Assistant is reachable. Select Save to keep it.'
+          'Token accepted. Home Assistant is reachable. Select Save and close to keep it.'
         );
 
         document.getElementById('ha-token').dispatchEvent(new Event('input', { bubbles: true }));
@@ -9635,8 +9693,8 @@ describe('Settings + Config Integration', () => {
       never: 'nie',
       '1 custom icon configured.': '1 eigenes Symbol festgelegt.',
       '{{count}} custom icons configured.': '{{count}} eigene Symbole festgelegt.',
-      'All custom icons cleared. Click Save to persist changes.':
-        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+      'All custom icons cleared. Click Save and close to persist changes.':
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern und schließen klicken.',
       'Remove alert': 'Warnung entfernen',
       'Remove alert for “{{name}}”?': 'Warnung für „{{name}}“ entfernen?',
       Remove: 'Entfernen',
@@ -9832,7 +9890,7 @@ describe('Settings + Config Integration', () => {
       document.getElementById('custom-entity-icons-reset-all').click();
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
       expect(mockUiUtils.showToast).toHaveBeenCalledWith(
-        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern klicken.',
+        'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern und schließen klicken.',
         'info',
         2400
       );

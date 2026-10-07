@@ -205,7 +205,7 @@ Ref: MP-34, CSSA1-25, CSSA1-19, MP-37, MP-74, MP-75, CSSB2-42
 
 Layer-mode desktops (Hyprland, Sway, niri, river) do not hide on focus loss; skip this check there.
 
-1. Settings > General > Window & behavior: turn on Hide to tray when focus is lost (Hide to menu bar when focus is lost on macOS). Read its help text. Save.
+1. Settings > General > Window & behavior: turn on Hide to tray when focus is lost (Hide to menu bar when focus is lost on macOS). Read its help text. Save and close.
 2. Pin a tile and turn on Reorganize Quick Access. Click and drag the pin.
 3. Press Escape.
 4. In Settings > General, start a new browser authorization with Connect, switch to the browser, approve, and return.
@@ -250,7 +250,7 @@ Ref: CSSA2-27, RO3-16, CSSA1-35, CSSA1-34, CSSB1-19
 Open each Settings page at the default window size. Note anything that looks wrong or inconsistent.
 
 - General: open Offline language packs and Legacy access token (advanced). The language pack names are not larger than their section heading. Every expandable row uses the same chevron. Open a dropdown such as Language: the highlight uses the accent color and matches the other dropdowns.
-- Appearance: the Holidays list reads as a titled list, and the Reset buttons look alike. With Holiday colors on, the switches, the focus ring and the Save button use one accent color.
+- Appearance: the Holidays list reads as a titled list, and the Reset buttons look alike. With Holiday colors on, the switches, the focus ring and the Save and close button use one accent color.
 - Advanced > Profile syncing with encryption on: spacing between the Sync passphrase label and its input is even, with no stray gap below. Switches sit level with their row title, or are clearly attached to long help text.
 - Manage Quick Access (the + button): the Add and Remove buttons line up with the same width, in English and in German.
 - Search settings: type "a" and scroll the results. The search box and result count stay visible or are easy to get back to, and Tab does not hide a result under the header.
@@ -266,16 +266,16 @@ Capture: One screenshot per page, with the OS and display scale.
 
 Ref: CSSB2-40, CSSB1-46, SM1-38, SM1-47, SM1-40, CSSC2-41, CSSC2-40, CSSC2-30, CSSB1-24, CSSB2-14, CSSC2-18, CSSB1-27, SM1-22, CSSA3-16, SM1-13, CSSA1-06, CSSA2-11, RO1-51
 
-### ALL-10 Custom color editor and Save
+### ALL-10 Custom color editor and saving settings
 
 Needs: A touch screen for the last step, if you have one.
 
 1. Settings > Appearance > Colors: open Custom color and click into a color field to start editing.
-2. Read the note about the Save button.
-3. Without leaving the field, click Save at a normal speed. Then do it again as fast as you can. On a touch screen, tap Save.
+2. Read the note about the Save and close button.
+3. Without leaving the field, click Save and close at a normal speed. Then do it again as fast as you can. On a touch screen, tap Save and close.
 4. Edit the color again. Press Save custom color. Edit it once more and click outside the fields instead.
 
-Expected: The note is in plain words: it says how to keep the color (Save custom color) and how to go back, and it does not mention a "Main Save". One normal click or tap on Save works the first time. Leaving with an unsaved draft asks what to do ("Unsaved custom color changes").
+Expected: The note is in plain words: it says how to keep the color (Save custom color) and how to go back, and it does not mention a "Main Save". One normal click or tap on Save and close works the first time. Leaving with an unsaved draft asks what to do ("Unsaved custom color changes").
 
 Capture: The note's text and a recording of a click that did not work.
 
@@ -283,7 +283,7 @@ Ref: SM1-23, SM2-21
 
 ### ALL-11 Export with unsaved edits
 
-1. Settings > Appearance: change the accent color but do not press Save.
+1. Settings > Appearance: change the accent color but do not press Save and close.
 2. Settings > Advanced > Settings files: choose Export settings and save the file.
 3. Open the file in a text editor and find the accent.
 
@@ -368,9 +368,9 @@ Ref: MP-53, MP-52, MP-25
 1. Settings > Appearance > Window effects: turn on Frosted glass background. Put the widget over a busy wallpaper and over a white window.
 2. In Windows Settings > Personalization > Colors, turn Transparency effects off, look again, then turn it back on.
 3. Turn Frosted glass background off in the app and look again.
-4. Turn Frosted glass background on or off in the app without pressing Save. Alt+Tab to another app and back. Then Save or Cancel.
+4. Turn Frosted glass background on or off in the app without pressing Save and close. Alt+Tab to another app and back. Then Save and close or Cancel.
 
-Expected: With Frosted glass and Transparency effects on, what is behind the widget is blurred and its text is easy to read over both backgrounds. With Transparency effects off, or Frosted glass off, the widget is still readable. An unsaved preview stays on screen after Alt+Tab; it does not snap back to the saved look until you Save or Cancel.
+Expected: With Frosted glass and Transparency effects on, what is behind the widget is blurred and its text is easy to read over both backgrounds. With Transparency effects off, or Frosted glass off, the widget is still readable. An unsaved preview stays on screen after Alt+Tab; it does not snap back to the saved look until you Save and close or Cancel.
 
 Capture: A screenshot over each background, and the Windows build number.
 
@@ -418,7 +418,7 @@ Ref: MP-26, MP-45
 
 Use your real profile; Start at login does not work in a throwaway profile.
 
-1. Settings > General > Window & behavior: turn on Start at login and Save. Sign out and back in.
+1. Settings > General > Window & behavior: turn on Start at login and Save and close. Sign out and back in.
 2. While Windows starts, type in another app and watch for the widget.
 3. Look at the entry in Windows Settings > Apps > Startup.
 
@@ -694,9 +694,9 @@ Ref: RO2-73, CSSB3-19, RO2-71
 
 ### LNX-3 Opacity 100 and the restart prompt
 
-1. Settings > Appearance > Window effects: move Window opacity from below 100 to 100 and Save.
+1. Settings > Appearance > Window effects: move Window opacity from below 100 to 100 and Save and close.
 2. If a prompt appears, read it and choose Restart now.
-3. After the restart, look at the pins' corners and where the widget sits. Then move opacity back below 100 and Save once more.
+3. After the restart, look at the pins' corners and where the widget sits. Then move opacity back below 100 and Save and close once more.
 
 Expected: If a restart is needed, it is asked for in an in-app dialog (not an untitled system box) with buttons that say what they do, and it is visible even when the widget is a desktop layer. After Restart now the app comes back by itself, from an AppImage too. At 100 on Wayland, pins have rounded corners with no square plate behind them, and the widget stays where it was.
 
@@ -843,8 +843,8 @@ Ref: MP-24
 ### KDE-2 Moving a pin with the window gesture
 
 1. With Reorganize off, hold Alt or Meta (whichever moves windows on your Plasma) and drag a pin.
-2. Release it, then change Window opacity and Save.
-3. Turn on Reorganize and drag a pin so it straddles two monitors, or hangs past a screen edge. Drop it. Then change Window opacity and Save.
+2. Release it, then change Window opacity and Save and close.
+3. Turn on Reorganize and drag a pin so it straddles two monitors, or hangs past a screen edge. Drop it. Then change Window opacity and Save and close.
 4. Quit and start the app again.
 
 Expected: Outside Reorganize, a pin does not stay where the gesture left it. In Reorganize, a pin dropped across a monitor boundary or past an edge moves to a fully visible position straight away. It does not jump later when you change an unrelated setting, and the same position is there after restart.
@@ -953,7 +953,7 @@ Ref: CSSA1-10
 ### HYP-3 Opacity 100 and dialogs
 
 1. Open another window on the same workspace so the widget is under it.
-2. Open Settings from the tray. Move Window opacity to 100 and Save.
+2. Open Settings from the tray. Move Window opacity to 100 and Save and close.
 3. If a prompt appears, read it and choose Restart now.
 4. Look at the pins' corners and where the widget sits.
 
@@ -995,9 +995,9 @@ Ref: SM3-09, SM3-32, SM3-40, SM1-30, CSSC1-32
 
 1. Run `hyprctl getoption decoration:blur:enabled` and note it.
 2. Settings > Appearance > Window effects: use the button to turn blur on for the widget (labeled Turn on blur for the widget), then press Cancel in Settings.
-3. Run the `hyprctl` command again. Then turn it off (Turn off blur for the widget) and Save.
+3. Run the `hyprctl` command again. Then turn it off (Turn off blur for the widget) and Save and close.
 
-Expected: The page says the blur change takes effect immediately, because it changes the compositor without waiting for Save, and the two buttons are worded as a pair. The button is still reachable when Frosted glass background is off, so a blur you turned on can be turned off again. It is clear that Cancel does not undo the change.
+Expected: The page says the blur change takes effect immediately, because it changes the compositor without waiting for Save and close, and the two buttons are worded as a pair. The button is still reachable when Frosted glass background is off, so a blur you turned on can be turned off again. It is clear that Cancel does not undo the change.
 
 Capture: The `hyprctl` output before and after each step and a screenshot of the section.
 
@@ -1007,13 +1007,13 @@ Ref: SM3-34, SM1-11
 
 Run this with a dark Omarchy theme (for example Tokyo Night) and a light one (Catppuccin Latte or Rose Pine). Switch themes with the Omarchy menu (Style > Theme).
 
-1. Settings > Appearance with Follow Omarchy theme on: look at the Colors section and the Mode control. Pick a different accent and press Save.
-2. Turn Follow Omarchy theme off. Watch the window and the Save button before you save.
+1. Settings > Appearance with Follow Omarchy theme on: look at the Colors section and the Mode control. Pick a different accent and press Save and close.
+2. Turn Follow Omarchy theme off. Watch the window and the Save and close button before you save.
 3. Look at the form fields, selects, swatches and dividers in Settings, and at secondary text (state lines such as Off, tab labels, popup captions, help text).
 4. Select text in the Settings search field.
 5. Change the Omarchy theme while the widget is open.
 
-Expected: With Follow Omarchy on, the Colors and Mode controls are clearly disabled or explained and show the mode in use, so a choice never silently reverts on Save. Turning it off previews your own accent and mode at once. Form fields and dividers have soft borders like the stock theme, not full-strength outlines. Secondary text stays readable on both themes. Selected text uses the Omarchy selection color. A theme change updates the whole window, glass included, without a restart.
+Expected: With Follow Omarchy on, the Colors and Mode controls are clearly disabled or explained and show the mode in use, so a choice never silently reverts on Save and close. Turning it off previews your own accent and mode at once. Form fields and dividers have soft borders like the stock theme, not full-strength outlines. Secondary text stays readable on both themes. Selected text uses the Omarchy selection color. A theme change updates the whole window, glass included, without a restart.
 
 Capture: A screenshot of Appearance and a dark and a light Settings page.
 
@@ -1084,7 +1084,7 @@ Ref: RO1-25, RO1-26, RO1-27, MP-65
 
 ### HYP-13 Other Hyprland checks
 
-Run the monitor checks in MON-1 (the tray's Move to Monitor menu and Reset Position), SYNC-3 (a locked keyring and the toasts over Save), A11Y-1 for the contrast settings Hyprland supports, and LNX-1, LNX-4 and LNX-5.
+Run the monitor checks in MON-1 (the tray's Move to Monitor menu and Reset Position), SYNC-3 (a locked keyring and the toasts over Save and close), A11Y-1 for the contrast settings Hyprland supports, and LNX-1, LNX-4 and LNX-5.
 
 Ref: none
 
@@ -1340,10 +1340,10 @@ Use two computers where a check says so. Use a throwaway profile and a throwaway
 Run on each system you have: Windows, macOS, and Linux with a working keyring (GNOME Keyring or KWallet).
 
 1. Settings > Advanced > Profile syncing: turn on Profile sync and choose a sync folder. Wait for the first sync.
-2. Tick Encrypt synced profile with passphrase, enter a passphrase of at least eight characters in Sync passphrase, and Save.
+2. Tick Encrypt synced profile with passphrase, enter a passphrase of at least eight characters in Sync passphrase, and Save and close.
 3. Open the sync file in a text editor.
 4. On a second computer, turn on Profile sync with the same folder and the same passphrase. Change a setting on either computer.
-5. Turn encryption off again and Save.
+5. Turn encryption off again and Save and close.
 
 Expected: After step 2 the status shows encryption on and sync keeps working; it does not say sync is paused until something is resolved. In step 3 the settings are not readable in the file. The second computer picks up changes. Turning encryption off again works, and the file becomes readable.
 
@@ -1356,23 +1356,23 @@ Ref: MP-02
 Start the app with `--password-store=basic` to act as if no keyring exists, or use a minimal session. Use a legacy long-lived token for the connection.
 
 1. Start the app. Read the messages about secure storage.
-2. Turn on Profile sync, wait for a sync, and then tick Encrypt synced profile with passphrase and Save.
+2. Turn on Profile sync, wait for a sync, and then tick Encrypt synced profile with passphrase and Save and close.
 3. Read the Linux install steps on the download page (see WEB-1).
 
 Expected: The keyring message appears once and does not give two opposite instructions (re-enter the token versus unlock and restart). Changing encryption on an existing sync file without secure storage is refused with a message that says an unlocked system keyring is needed, before sync is paused. Sync keeps working in its current mode. The install steps name the keyring requirement.
 
-Capture: A screenshot of the messages and the status after Save.
+Capture: A screenshot of the messages and the status after Save and close.
 
 Ref: MP-11, RO1-34, RO3-31
 
-### SYNC-3 Locked keyring and toasts over Save
+### SYNC-3 Locked keyring and toasts over Save and close
 
 Needs: A Linux session with a keyring (GNOME Keyring or KWallet).
 
 1. Lock the login keyring (Passwords and Keys: right-click Login > Lock). You will need your login password to unlock it again. Start the widget with a legacy token.
-2. Within 20 seconds, open Settings. Try Save. Then close it and open a light's controls and try Turn off and Close.
+2. Within 20 seconds, open Settings. Try Save and close. Then close it and open a light's controls and try Turn off and Close.
 
-Expected: The toasts do not cover Save, Turn off or Close, and clicking those buttons does what they say. A toast that shows after the dialog opens does not float in the middle of the window.
+Expected: The toasts do not cover Save and close, Turn off or Close, and clicking those buttons does what they say. A toast that shows after the dialog opens does not float in the middle of the window.
 
 Capture: A screenshot of the toasts over the buttons.
 
@@ -1655,7 +1655,7 @@ Ref: I18N-12
 
 ### UPD-4 Beta channel
 
-1. Settings > Advanced > Application updates: turn Receive beta updates on and press Check for updates without pressing Save. Then turn it off and check again, again without saving.
+1. Settings > Advanced > Application updates: turn Receive beta updates on and press Check for updates without pressing Save and close. Then turn it off and check again, again without saving.
 
 Expected: Pre-release builds are offered only when the switch is on, as the switch shows it right now; you do not have to save first.
 

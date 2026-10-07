@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.73",
+  "version": "1.2.74",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2147,6 +2147,15 @@
     "Tray: Heat/Cool": "ت/ت",
     "Tray: Fan only": "مرو",
     "Home Assistant alert": "تنبيه Home Assistant",
+    "Save and close": "حفظ وإغلاق",
+    "Icon applied. Click Save and close to persist changes.": "تم تطبيق الأيقونة. انقر على «حفظ وإغلاق» لحفظ التغييرات.",
+    "Custom icon cleared. Click Save and close to persist changes.": "تم مسح الأيقونة المخصصة. انقر على «حفظ وإغلاق» لحفظ التغييرات.",
+    "Custom icon reset. Click Save and close to persist changes.": "تمت إعادة تعيين الأيقونة المخصصة. انقر على «حفظ وإغلاق» لحفظ التغييرات.",
+    "All custom icons cleared. Click Save and close to persist changes.": "تم مسح جميع الأيقونات المخصصة. انقر على «حفظ وإغلاق» لحفظ التغييرات.",
+    "Token accepted. Home Assistant is reachable. Select Save and close to keep it.": "تم قبول الرمز. يمكن الوصول إلى Home Assistant. اختر «حفظ وإغلاق» للاحتفاظ به.",
+    "Remove every custom icon? Nothing changes for good until you select Save and close.": "هل تريد إزالة كل الأيقونات المخصصة؟ لن يُحفظ أي تغيير نهائيًا حتى تختار «حفظ وإغلاق».",
+    "Blur changes take effect immediately, without saving.": "تسري تغييرات الطمس فورًا، دون الحاجة إلى حفظ.",
+    "Could not save custom colors. Press Save and close in Settings to try again.": "تعذّر حفظ الألوان المخصصة. جرّب «حفظ وإغلاق» في الإعدادات.",
     "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "يستخدم التباين العالي الوضع الداكن. يعود اختيارك للسمة عند إيقاف التباين العالي."
   }
 }
