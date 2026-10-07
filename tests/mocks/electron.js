@@ -266,6 +266,7 @@ function createMockElectronAPI() {
         size: mockConfig.windowSize,
       })
     ),
+    getWindowDisplays: jest.fn(async () => ({ supported: false, selectedId: '', displays: [] })),
     minimizeWindow: jest.fn(() => Promise.resolve()),
     focusWindow: jest.fn(() => Promise.resolve()),
     showWindow: jest.fn(() => Promise.resolve()),

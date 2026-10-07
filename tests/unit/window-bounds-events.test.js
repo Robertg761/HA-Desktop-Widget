@@ -134,6 +134,24 @@ describe('main window bounds on Linux', () => {
     expect(context.config.windowSize).toEqual({ width: 520, height: 640 });
   });
 
+  it('an older queued save leaves a newer user resize pending until its own save runs', () => {
+    const queued = [];
+    const { context, mainWindow } = loadMainWindowRuntime('linux', {
+      runBackgroundConfigMutation: (mutation) => queued.push(mutation),
+    });
+    mainWindow.setSize(501, 600);
+    jest.advanceTimersByTime(400);
+    mainWindow.setSize(502, 600);
+    jest.advanceTimersByTime(400);
+
+    queued[0]();
+    expect(context.config.windowSize.width).toBe(501);
+    expect(context.pendingWindowBounds.width).toBe(502);
+    queued[1]();
+    expect(context.config.windowSize.width).toBe(502);
+    expect(context.pendingWindowBounds).toBeNull();
+  });
+
   it('does not save programmatic moves back to the saved bounds', () => {
     const { context, mainWindow } = loadMainWindowRuntime('linux');
     // The compositor drops the window elsewhere on show; the popup presenter restores it.

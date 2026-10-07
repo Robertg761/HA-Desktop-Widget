@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,17 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die Autorisierung nicht gespeichert werden. Starte oder entsperre ihn und starte das Widget dann neu.",
     "Tray: Heat/Cool": "H/K",
     "Tray: Fan only": "VE",
-    "Home Assistant alert": "Home-Assistant-Warnung"
+    "Home Assistant alert": "Home-Assistant-Warnung",
+    "Display": "Bildschirm",
+    "Display {{number}}": "Bildschirm {{number}}",
+    "{{display}} (disconnected)": "{{display}} (nicht verbunden)",
+    "{{display}} (primary)": "{{display}} (primär)",
+    "Could not load displays. Reopen Settings to try again.": "Die Bildschirme konnten nicht geladen werden. Öffne die Einstellungen erneut, um es noch einmal zu versuchen.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Wähle, wo sich das Widget öffnet. Automatisch merkt sich, wohin du es ziehst. Desktop-Pins behalten ihre eigenen Positionen.",
+    "Use Move to Monitor in the tray menu on this desktop.": "Verwende auf diesem Desktop „Auf Monitor verschieben“ im Menü des Infobereichs.",
+    "Your desktop manages window placement.": "Dein Desktop verwaltet die Fensterposition.",
+    "Invalid display selection": "Ungültige Bildschirmauswahl",
+    "The selected display is no longer connected": "Der ausgewählte Bildschirm ist nicht mehr verbunden",
+    "Display selection is managed by the desktop": "Die Bildschirmauswahl wird vom Desktop verwaltet"
   }
 }

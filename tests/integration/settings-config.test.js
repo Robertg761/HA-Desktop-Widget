@@ -258,6 +258,7 @@ function createSettingsModalDOM() {
         <input type="checkbox" id="hide-on-blur" />
         Always on Top
       </label>
+      <select id="window-display"></select><p id="window-display-help"></p>
 
       <label for="start-with-windows">
         <input type="checkbox" id="start-with-windows" />
@@ -613,6 +614,24 @@ describe('Settings + Config Integration', () => {
   };
 
   describe('Settings Open/Close Flow', () => {
+    test('saves a display choice only after editing the selector', async () => {
+      window.electronAPI.getWindowDisplays = jest.fn(async () => ({
+        supported: true,
+        selectedId: '',
+        displays: [{ id: '2', label: 'Desk', width: 1280, height: 900, available: true }],
+      }));
+      await settings.openSettings();
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0]).not.toHaveProperty(
+        'windowDisplayChoice'
+      );
+      await settings.openSettings();
+      const select = document.getElementById('window-display');
+      select.value = '2';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].windowDisplayChoice).toBe('2');
+    });
     test('opening settings populates fields from config', async () => {
       const mockUiHooks = {
         exitReorganizeMode: jest.fn(),

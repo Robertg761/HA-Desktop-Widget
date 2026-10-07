@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { getWindowDisplayState, formatWindowDisplayLabel } = require('../../src/window-display.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -25,6 +26,17 @@ function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } =
     usesCompositorOwnedPlacement: false,
     layerShellRaiser: null,
     layerShellMonitors: [],
+    getWindowDisplayState,
+    formatWindowDisplayLabel,
+    electronScreen: {
+      getPrimaryDisplay: () => ({ id: 1 }),
+      getAllDisplays: () => [
+        { id: 1, label: 'Laptop', workArea: { x: 0, y: 0, width: 1920, height: 1080 } },
+        { id: 2, label: 'Desk', workArea: { x: 1920, y: 0, width: 1920, height: 1080 } },
+      ],
+    },
+    applyWindowDisplayChoice: jest.fn(),
+    applyLayerShellMonitorChoice: jest.fn(),
     omarchyBarPublisher: null,
     omarchyBarEntry: { present: false },
     mainWindow: {
@@ -50,7 +62,8 @@ function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } =
     isQuitting: false,
   };
   vm.runInNewContext(
-    sliceMain('function buildTrayContextMenu()', 'function getOmarchyBarEntities()'),
+    sliceMain('function getWindowDisplaySettings()', 'function getWindowDisplayChoicePatch(') +
+      sliceMain('function buildTrayContextMenu()', 'function getOmarchyBarEntities()'),
     context
   );
   return context;
@@ -59,6 +72,35 @@ function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } =
 const labels = (menu) => menu.map((item) => item.label ?? '---');
 
 describe('the tray menu', () => {
+  it('offers native monitor choices and marks a disconnected preference', () => {
+    const context = loadTrayMenu();
+    context.config.windowDisplay = { id: '3', label: 'Office', offset: { x: 100, y: 100 } };
+    const submenu = context
+      .buildTrayContextMenu()
+      .find((item) => item.label === 'Move to Monitor').submenu;
+    expect(submenu).toHaveLength(4);
+    expect(submenu[0]).toMatchObject({ label: 'Automatic', checked: false });
+    expect(submenu[3]).toMatchObject({ checked: true, enabled: false });
+    submenu[2].click();
+    expect(context.applyWindowDisplayChoice).toHaveBeenCalledWith('2');
+    submenu[0].click();
+    expect(context.applyWindowDisplayChoice).toHaveBeenLastCalledWith('');
+  });
+
+  it('keeps the layer monitor picker and omits native choices on other Wayland desktops', () => {
+    const context = loadTrayMenu();
+    context.usesCompositorOwnedPlacement = true;
+    expect(labels(context.buildTrayContextMenu())).not.toContain('Move to Monitor');
+    context.isLayerShellChildProcess = true;
+    context.layerShellRaiser = {};
+    context.layerShellMonitors = [{ name: 'DP-1', description: 'Desk' }];
+    const submenu = context
+      .buildTrayContextMenu()
+      .find((item) => item.label === 'Move to Monitor').submenu;
+    submenu[1].click();
+    expect(context.applyLayerShellMonitorChoice).toHaveBeenCalledWith('DP-1');
+    expect(context.applyWindowDisplayChoice).not.toHaveBeenCalled();
+  });
   it('leaves the debugging commands out of a release build', () => {
     const menu = loadTrayMenu({ isPackaged: true }).buildTrayContextMenu();
     expect(labels(menu)).not.toContain('DevTools');

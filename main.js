@@ -436,6 +436,13 @@ const {
   boundsVisibleOnAnyWorkArea,
   clampPositionToWorkAreas,
 } = require('./src/window-placement.cjs');
+const {
+  getWindowDisplayState,
+  resolveWindowDisplayPosition,
+  prepareWindowDisplayChoice,
+  rememberWindowDisplayPosition,
+  formatWindowDisplayLabel,
+} = require('./src/window-display.cjs');
 const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
@@ -1120,7 +1127,13 @@ const windowAutoHide = createWindowAutoHideController({
 // pops the widget up, so a hotkey press lands above full-screen video instead of behind it.
 const popupWindowPresenter = createPopupWindowPresenter({
   onWillShow: () => windowAutoHide.prepareToShow(),
-  getConfig: () => config,
+  getConfig: () => {
+    const position =
+      !usesCompositorOwnedPlacement &&
+      config.windowDisplay &&
+      resolveWindowDisplayPosition(config, electronScreen);
+    return position ? { ...config, windowPosition: position } : config;
+  },
   getWorkAreas: () => electronScreen.getAllDisplays().map((display) => display.workArea),
   supportsWindowPositioning: !usesCompositorOwnedPlacement,
   // Linux has press-only global shortcuts, and toggle-mode popups on other platforms
@@ -3649,6 +3662,10 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
 }
 
 function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
+  if (JSON.stringify(previousConfig?.windowDisplay) !== JSON.stringify(nextConfig?.windowDisplay)) {
+    applyPreferredWindowDisplay();
+    refreshTrayMenu();
+  }
   // Config mutations stage values before disk writes finish. Activate this
   // preference only through the post-save path, including profile-sync pulls.
   appliedHideOnBlur = nextConfig?.hideOnBlur === true;
@@ -5446,6 +5463,7 @@ function loadConfig(options = {}) {
   // Default configuration
   const defaultConfig = {
     windowPosition: { x: 100, y: 100 },
+    windowDisplay: null,
     windowSize: { ...DEFAULT_WINDOW_SIZE },
     alwaysOnTop: true,
     hideOnBlur: false,
@@ -7274,6 +7292,8 @@ function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
   const changeWin = () => {
+    // The OS can move a window before the display-change recovery timer runs.
+    if (config.windowDisplay && displayChangeTimer !== null) return;
     // A maximized or full-screen size is the window manager's, not a size the user chose.
     if (targetWindow.isMaximized?.() || targetWindow.isFullScreen?.()) return;
     const bounds = targetWindow.getBounds();
@@ -7287,23 +7307,40 @@ function watchMainWindowBounds(targetWindow) {
       return;
     }
     pendingWindowBounds = bounds;
+    const placementRevision = targetWindow.__displayPlacementRevision || 0;
     if (windowStateSaveTimer) {
       clearTimeout(windowStateSaveTimer);
     }
     windowStateSaveTimer = setTimeout(() => {
       windowStateSaveTimer = null;
       const boundsToPersist = pendingWindowBounds;
-      pendingWindowBounds = null;
       if (!boundsToPersist) return;
       runBackgroundConfigMutation(() => {
+        // Keep user geometry pending while its save waits in the mutation queue.
+        // A monitor selection ahead of this save must still recognize a real resize.
+        if (pendingWindowBounds === boundsToPersist) pendingWindowBounds = null;
+        // Clearing a timer cannot cancel a mutation already waiting in the save queue.
+        if (placementRevision !== (targetWindow.__displayPlacementRevision || 0)) return;
+        const previousDisplayId = config.windowDisplay?.id;
         // Native Wayland compositors own placement and report coordinates that are not
         // stable app-controlled positions. Persisting those values during a resize makes
         // the next XWayland/X11 launch jump to compositor bookkeeping coordinates.
         if (!usesCompositorOwnedPlacement) {
+          if (config.windowDisplay && displayChangeTimer === null) {
+            config.windowDisplay = rememberWindowDisplayPosition(
+              config,
+              electronScreen,
+              boundsToPersist
+            );
+          }
           config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
         }
         config.windowSize = clampToMinimumWindowSize(boundsToPersist);
         saveConfig();
+        if (previousDisplayId !== config.windowDisplay?.id) {
+          refreshTrayMenu();
+          pushConfigToRenderer();
+        }
       }, 'window bounds save');
     }, 400);
   };
@@ -7334,7 +7371,12 @@ function getPrimaryWorkArea() {
  * primary monitor's corner, kept on that monitor. The size is only shrunk when it no longer fits.
  */
 function getDefaultMainWindowBounds() {
-  const workArea = getPrimaryWorkArea();
+  const workArea =
+    (config.windowDisplay &&
+      electronScreen
+        .getAllDisplays()
+        .find((display) => String(display.id) === config.windowDisplay.id)?.workArea) ||
+    getPrimaryWorkArea();
   const minimum = getMainWindowMinimumSizeForConfig(config);
   const width = Math.max(minimum.width, Math.min(config.windowSize.width, workArea.width));
   const height = Math.max(minimum.height, Math.min(config.windowSize.height, workArea.height));
@@ -7364,18 +7406,37 @@ function recoverWindowsAfterDisplayChange() {
     !mainWindow.isFullScreen()
   ) {
     const bounds = mainWindow.getBounds();
-    const position = clampPositionToWorkAreas(
-      bounds,
-      electronScreen.getAllDisplays().map((display) => display.workArea)
-    );
-    if (position.x !== bounds.x || position.y !== bounds.y) {
-      log.info(
-        `The widget at ${bounds.x},${bounds.y} is on no connected display; moving it to ${position.x},${position.y}`
+    // Windows can resize the native window while crossing a DPI boundary. The saved
+    // dimensions remain the user's intended size in logical pixels.
+    const placementSize =
+      config.windowDisplay && process.platform === 'win32' ? config.windowSize : bounds;
+    if (config.windowDisplay) {
+      mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
+    }
+    const position =
+      (config.windowDisplay &&
+        resolveWindowDisplayPosition(config, electronScreen, placementSize)) ||
+      clampPositionToWorkAreas(
+        bounds,
+        electronScreen.getAllDisplays().map((display) => display.workArea)
       );
-      mainWindow.setPosition(position.x, position.y);
+    if (
+      position.x !== bounds.x ||
+      position.y !== bounds.y ||
+      placementSize.width !== bounds.width ||
+      placementSize.height !== bounds.height
+    ) {
+      log.info(
+        `Display layout changed; moving the widget from ${bounds.x},${bounds.y} to ${position.x},${position.y}`
+      );
+      if (config.windowDisplay) config.windowPosition = position;
+      moveMainWindowToPosition(position, placementSize);
       // A programmatic move is not always reported as one (Windows only reports a user's), so
       // save it here rather than counting on the bounds watcher.
+      const targetWindow = mainWindow;
+      const placementRevision = targetWindow.__displayPlacementRevision || 0;
       runBackgroundConfigMutation(() => {
+        if (placementRevision !== (targetWindow.__displayPlacementRevision || 0)) return;
         config.windowPosition = { x: position.x, y: position.y };
         saveConfig();
       }, 'window position recovery');
@@ -7392,6 +7453,11 @@ function recoverWindowsAfterDisplayChange() {
 function watchDisplayChanges() {
   ['display-added', 'display-removed', 'display-metrics-changed'].forEach((eventName) => {
     electronScreen.on(eventName, () => {
+      if (config.windowDisplay) {
+        clearTimeout(windowStateSaveTimer);
+        windowStateSaveTimer = null;
+        pendingWindowBounds = null;
+      }
       // Plugging in a dock reports several changes in a burst while the layout settles.
       clearTimeout(displayChangeTimer);
       displayChangeTimer = setTimeout(() => {
@@ -7402,6 +7468,8 @@ function watchDisplayChanges() {
           log.warn('Failed to recover windows after a display change:', error.message);
         }
         refreshTrayIconForDisplayScale();
+        refreshTrayMenu();
+        pushConfigToRenderer();
       }, DISPLAY_CHANGE_RECOVERY_DELAY_MS);
     });
   });
@@ -7444,7 +7512,10 @@ function createWindow() {
     // A saved position can point at a monitor that has since been unplugged, or at the empty
     // space between monitors in a multi-display layout, and a window opened there never
     // appears. Recover onto the nearest display instead of starting off-screen.
-    const savedPosition = config.windowPosition || {};
+    const savedPosition =
+      (config.windowDisplay && resolveWindowDisplayPosition(config, electronScreen)) ||
+      config.windowPosition ||
+      {};
     const placement = clampPositionToWorkAreas(
       {
         x: savedPosition.x,
@@ -7458,8 +7529,10 @@ function createWindow() {
       log.info(
         `Saved window position ${savedPosition.x},${savedPosition.y} is not on a connected display; opening at ${placement.x},${placement.y}`
       );
-      config.windowPosition = { x: placement.x, y: placement.y };
     }
+    // The preferred display can resolve to a new origin even when no clamping was needed.
+    // Use that position for both creation and the bounds watcher's saved-position comparison.
+    config.windowPosition = { x: placement.x, y: placement.y };
     positionOptions.x = config.windowPosition.x;
     positionOptions.y = config.windowPosition.y;
   }
@@ -7573,6 +7646,11 @@ function createWindow() {
     });
   }
 
+  if (process.platform === 'win32' && !usesCompositorOwnedPlacement) {
+    // Native construction can round the size repeatedly on fractional DPI displays.
+    // Reapply the saved logical size before the window is revealed or its bounds watched.
+    moveMainWindowToPosition(config.windowPosition, config.windowSize);
+  }
   watchMainWindowBounds(mainWindow);
 
   // Hide to tray when minimizing
@@ -7663,6 +7741,82 @@ function createWindow() {
     mainWindowReveal.cancel();
     windowAutoHide.handleClosed();
     mainWindow = null;
+  });
+}
+
+function moveMainWindowToPosition(position, size) {
+  mainWindow.setPosition(position.x, position.y);
+  if (process.platform === 'win32') {
+    const actual = mainWindow.getBounds();
+    // The first move can still use the source display's DPI. A second bounds update
+    // uses the destination DPI; keep the dimensions captured before that first move.
+    if (
+      actual.x !== position.x ||
+      actual.y !== position.y ||
+      actual.width !== size.width ||
+      actual.height !== size.height
+    ) {
+      mainWindow.setBounds({ ...position, width: size.width, height: size.height });
+    }
+  }
+}
+
+function getWindowDisplaySettings() {
+  return getWindowDisplayState(config, electronScreen, !usesCompositorOwnedPlacement);
+}
+
+function getWindowDisplayChoicePatch(id) {
+  if (usesCompositorOwnedPlacement) throw new Error('Display selection is managed by the desktop');
+  const bounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+  if (bounds && process.platform === 'win32' && !pendingWindowBounds) {
+    // Fractional DPI can round native bounds up by one DIP. Keep the intended size
+    // across repeated selections, while a pending user resize takes precedence.
+    for (const dimension of ['width', 'height']) {
+      if (Math.abs(bounds[dimension] - config.windowSize[dimension]) <= 1) {
+        bounds[dimension] = config.windowSize[dimension];
+      }
+    }
+  }
+  const patch = prepareWindowDisplayChoice(id, config, electronScreen, bounds);
+  if (bounds) {
+    patch.windowSize = clampToMinimumWindowSize(bounds);
+    if (id === '') patch.windowPosition = { x: bounds.x, y: bounds.y };
+  }
+  return patch;
+}
+
+function applyPreferredWindowDisplay() {
+  if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
+  const bounds = mainWindow.getBounds();
+  const placementSize = process.platform === 'win32' ? config.windowSize : bounds;
+  const position = resolveWindowDisplayPosition(config, electronScreen, placementSize);
+  clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = null;
+  pendingWindowBounds = null;
+  if (!position) return;
+  config.windowPosition = position;
+  moveMainWindowToPosition(position, placementSize);
+}
+
+function applyWindowDisplayChoice(id) {
+  return runSerializedConfigMutation(async () => {
+    const patch = getWindowDisplayChoicePatch(id);
+    const previous = config;
+    config = { ...config, ...patch };
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      config = previous;
+      refreshTrayMenu();
+      log.warn('Failed to save display selection:', persistence.error);
+      return;
+    }
+    applyPreferredWindowDisplay();
+    refreshTrayMenu();
+    pushConfigToRenderer();
+  }).catch((error) => {
+    refreshTrayMenu();
+    log.warn('Failed to select display:', error.message);
   });
 }
 
@@ -7990,14 +8144,19 @@ function buildTrayContextMenu() {
         void runSerializedConfigMutation(async () => {
           const previousPosition = config.windowPosition;
           const previousSize = config.windowSize;
+          const previousDisplay = config.windowDisplay;
           const defaultBounds = getDefaultMainWindowBounds();
           const position = { x: defaultBounds.x, y: defaultBounds.y };
           config.windowPosition = position;
           config.windowSize = clampToMinimumWindowSize(defaultBounds);
+          if (config.windowDisplay) {
+            config.windowDisplay = { ...config.windowDisplay, offset: { x: 100, y: 100 } };
+          }
           const persistence = await saveConfigDurably();
           if (!persistence.success) {
             config.windowPosition = previousPosition;
             config.windowSize = previousSize;
+            config.windowDisplay = previousDisplay;
             log.warn(`Failed to save reset window position: ${persistence.error}`);
             return;
           }
@@ -8012,6 +8171,28 @@ function buildTrayContextMenu() {
     // A layer surface cannot be dragged between monitors, so moving it is a
     // config choice plus a relaunch. Shown only when the helper answered the
     // monitor query — an old or wedged helper degrades to no menu item.
+    ...(!usesCompositorOwnedPlacement
+      ? [
+          {
+            label: mainT('Move to Monitor'),
+            submenu: [
+              {
+                label: mainT('Automatic'),
+                type: 'radio',
+                checked: !config.windowDisplay,
+                click: () => applyWindowDisplayChoice(''),
+              },
+              ...getWindowDisplaySettings().displays.map((display) => ({
+                label: formatWindowDisplayLabel(display, mainT),
+                type: 'radio',
+                checked: config.windowDisplay?.id === display.id,
+                enabled: display.available,
+                click: () => applyWindowDisplayChoice(display.id),
+              })),
+            ],
+          },
+        ]
+      : []),
     ...(layerShellRaiser && layerShellMonitors.length
       ? [
           {
@@ -8441,6 +8622,12 @@ ipcMain.handle('get-config', (event) => {
   return sanitizeConfigForRenderer(config);
 });
 
+ipcMain.handle('get-window-displays', (event) => {
+  const sender = authorizeIpcSender(event, 'get-window-displays');
+  if (!sender) return rejectUnauthorizedIpc('get-window-displays');
+  return getWindowDisplaySettings();
+});
+
 ipcMain.handle('get-locale-bootstrap', (event) => {
   const sender = authorizeIpcSender(event, 'get-locale-bootstrap', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('get-locale-bootstrap');
@@ -8604,6 +8791,23 @@ ipcMain.handle(
     }
     log.debug('Updating configuration');
     const prevConfig = config;
+    let windowDisplayPatch = {};
+    if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
+      try {
+        windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
+      } catch (error) {
+        return {
+          success: false,
+          error: mainTError(error),
+          config: sanitizeConfigForRenderer(config),
+        };
+      }
+    }
+    // Geometry belongs to the main process. An old Settings snapshot must not undo a
+    // tray selection or a drag. Only an explicit selector edit requests another display.
+    delete newConfig.windowDisplayChoice;
+    delete newConfig.windowDisplay;
+    delete newConfig.windowPosition;
     const previousRuntimeTracking = {
       localProfileHash: profileSyncRuntime.localProfileHash,
       localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
@@ -8758,6 +8962,7 @@ ipcMain.handle(
     config = {
       ...config,
       ...newConfig,
+      ...windowDisplayPatch,
       homeAssistant,
       desktopCompanion: previousDesktopCompanion,
       customTabs,
@@ -13176,6 +13381,13 @@ function capturePendingWindowBoundsForShutdown() {
   freezePendingWindowBoundsForShutdown();
   if (pendingWindowBounds) {
     if (!usesCompositorOwnedPlacement) {
+      if (config.windowDisplay && displayChangeTimer === null) {
+        config.windowDisplay = rememberWindowDisplayPosition(
+          config,
+          electronScreen,
+          pendingWindowBounds
+        );
+      }
       config.windowPosition = {
         x: pendingWindowBounds.x,
         y: pendingWindowBounds.y,

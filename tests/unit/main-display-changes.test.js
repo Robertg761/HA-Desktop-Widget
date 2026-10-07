@@ -17,6 +17,7 @@ const {
 } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+const { resolveWindowDisplayPosition } = require('../../src/window-display.cjs');
 
 function sliceMain(startMarker, endMarker) {
   const start = mainSource.indexOf(startMarker);
@@ -39,8 +40,8 @@ function createScreen(workAreas) {
         : best
     );
   Object.assign(screen, {
-    getAllDisplays: () => areas.map((workArea) => ({ workArea })),
-    getPrimaryDisplay: () => ({ workArea: areas[0] }),
+    getAllDisplays: () => areas.map((workArea, index) => ({ id: index + 1, workArea })),
+    getPrimaryDisplay: () => ({ id: 1, workArea: areas[0] }),
     getDisplayMatching: (bounds) => ({ workArea: nearest(bounds) }),
     setDisplays: (next) => {
       areas = next;
@@ -181,6 +182,7 @@ describe('the widget after the monitors change', () => {
     const pinWindow = { isDestroyed: () => false };
     const context = {
       electronScreen,
+      process: { platform: 'linux' },
       clampPositionToWorkAreas,
       mainWindow,
       usesCompositorOwnedPlacement: false,
@@ -193,6 +195,9 @@ describe('the widget after the monitors change', () => {
       desktopPinWindows: new Map([['light.desk', pinWindow]]),
       applyDesktopPinBoundsToWindowIfMoved: jest.fn(),
       refreshTrayIconForDisplayScale: jest.fn(),
+      refreshTrayMenu: jest.fn(),
+      pushConfigToRenderer: jest.fn(),
+      resolveWindowDisplayPosition,
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
       runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
       saveConfig: jest.fn(),
@@ -202,7 +207,10 @@ describe('the widget after the monitors change', () => {
       ...overrides,
     };
     vm.runInNewContext(
-      sliceMain('const DISPLAY_CHANGE_RECOVERY_DELAY_MS', "/**\n * The main window's minimum size"),
+      sliceMain(
+        'const DISPLAY_CHANGE_RECOVERY_DELAY_MS',
+        "/**\n * The main window's minimum size"
+      ) + sliceMain('function moveMainWindowToPosition(', 'function getWindowDisplaySettings('),
       context
     );
     return { context, electronScreen, mainWindow, pinWindow };
@@ -229,6 +237,40 @@ describe('the widget after the monitors change', () => {
     // Hanging slightly off the edge is the user's choice.
     expect(mainWindow.setPosition).not.toHaveBeenCalled();
     expect(context.saveConfig).not.toHaveBeenCalled();
+  });
+
+  it('returns to the selected monitor when it reconnects, retaining its saved offset', () => {
+    const { context, electronScreen, mainWindow } = loadDisplays();
+    const preference = { id: '2', label: 'Desk', offset: { x: 180, y: 120 } };
+    context.config.windowDisplay = preference;
+    context.recoverWindowsAfterDisplayChange();
+    expect(mainWindow.setPosition).toHaveBeenLastCalledWith(180, 120);
+    expect(context.config.windowDisplay).toEqual(preference);
+    electronScreen.setDisplays([PRIMARY, SECONDARY]);
+    context.recoverWindowsAfterDisplayChange();
+    expect(mainWindow.setPosition).toHaveBeenLastCalledWith(2100, 120);
+    expect(context.config.windowDisplay).toEqual(preference);
+  });
+
+  it.each([
+    ['unchanged position', { x: 0, y: 0, width: 1920, height: 1040 }],
+    ['smaller fallback display', { x: 0, y: 0, width: 1024, height: 720 }],
+  ])('recovers the saved Windows DIP size with an %s', (_case, workArea) => {
+    const { context, electronScreen, mainWindow } = loadDisplays({
+      bounds: { x: 100, y: 100, width: 750, height: 900 },
+      process: { platform: 'win32' },
+    });
+    electronScreen.setDisplays([workArea]);
+    context.config.windowSize = { width: 500, height: 600 };
+    context.config.windowDisplay = { id: '2', offset: { x: 100, y: 100 } };
+    mainWindow.setBounds.mockImplementation((bounds) => {
+      mainWindow.bounds = { ...bounds };
+    });
+
+    context.recoverWindowsAfterDisplayChange();
+
+    expect(mainWindow.getBounds()).toEqual({ x: 100, y: 100, width: 500, height: 600 });
+    expect(context.config.windowDisplay).toEqual({ id: '2', offset: { x: 100, y: 100 } });
   });
 
   it('re-places the pins, so a returning monitor gets its pins back', () => {

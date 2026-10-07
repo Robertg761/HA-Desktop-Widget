@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,17 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "सिस्टम कीरिंग लॉक है या नहीं चल रही है, इसलिए प्राधिकरण सहेजा नहीं जा सकता। उसे शुरू या अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
     "Tray: Heat/Cool": "ही/कू",
     "Tray: Fan only": "पंखा",
-    "Home Assistant alert": "Home Assistant अलर्ट"
+    "Home Assistant alert": "Home Assistant अलर्ट",
+    "Display": "डिस्प्ले",
+    "Display {{number}}": "डिस्प्ले {{number}}",
+    "{{display}} (disconnected)": "{{display}} (डिस्कनेक्ट किया गया)",
+    "{{display}} (primary)": "{{display}} (प्राथमिक)",
+    "Could not load displays. Reopen Settings to try again.": "डिस्प्ले लोड नहीं हो सके। फिर से कोशिश करने के लिए सेटिंग्स दोबारा खोलें।",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "चुनें कि विजेट कहाँ खुले। स्वचालित उस जगह को याद रखता है जहाँ आप उसे खींचते हैं। डेस्कटॉप पर पिन की गई टाइलें अपनी जगह पर रहती हैं।",
+    "Use Move to Monitor in the tray menu on this desktop.": "इस डेस्कटॉप पर ट्रे मेनू में मॉनिटर पर ले जाएँ विकल्प का उपयोग करें।",
+    "Your desktop manages window placement.": "आपका डेस्कटॉप विंडो की जगह तय करता है।",
+    "Invalid display selection": "अमान्य डिस्प्ले चयन",
+    "The selected display is no longer connected": "चुना गया डिस्प्ले अब कनेक्ट नहीं है",
+    "Display selection is managed by the desktop": "डिस्प्ले का चयन डेस्कटॉप द्वारा प्रबंधित किया जाता है"
   }
 }

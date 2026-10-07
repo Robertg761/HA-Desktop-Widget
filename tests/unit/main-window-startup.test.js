@@ -188,6 +188,80 @@ function loadCreateWindow({
 }
 
 describe('main window creation', () => {
+  it.each([
+    [
+      'scaled',
+      [
+        { id: 1, x: 0, width: 1280 },
+        { id: 2, x: 1280, width: 853 },
+      ],
+      1380,
+    ],
+    [
+      'rearranged',
+      [
+        { id: 1, x: 1280, width: 1920 },
+        { id: 2, x: 0, width: 1280 },
+      ],
+      100,
+    ],
+    ['disconnected', [{ id: 1, x: 0, width: 1920 }], 100],
+  ])(
+    'restores the preferred display after it was %s while the app was closed',
+    (_case, layout, x) => {
+      const { context, windows } = loadCreateWindow();
+      const displays = layout.map((display) => ({
+        id: display.id,
+        workArea: { x: display.x, y: 0, width: display.width, height: 533 },
+        workAreaSize: { width: display.width, height: 533 },
+      }));
+      context.electronScreen.getAllDisplays = () => displays;
+      context.electronScreen.getPrimaryDisplay = () => displays[0];
+      context.resolveWindowDisplayPosition =
+        require('../../src/window-display.cjs').resolveWindowDisplayPosition;
+      context.clampPositionToWorkAreas =
+        require('../../src/window-placement.cjs').clampPositionToWorkAreas;
+      context.config.windowPosition = { x: 2020, y: 100 };
+      context.config.windowSize = { width: 400, height: 400 };
+      context.config.windowDisplay = { id: '2', offset: { x: 100, y: 100 } };
+
+      context.createWindow();
+
+      expect(windows[0].options).toMatchObject({ x, y: 100 });
+      expect(context.config.windowPosition).toEqual({ x, y: 100 });
+      expect(context.config.windowDisplay).toEqual({ id: '2', offset: { x: 100, y: 100 } });
+    }
+  );
+
+  it.each([false, true])(
+    'restores the intended Windows startup size with an explicit display: %s',
+    (selected) => {
+      const { context } = loadCreateWindow({ platform: 'win32' });
+      context.config.windowPosition = { x: 2020, y: 100 };
+      context.config.windowDisplay = selected ? { id: '2', offset: { x: 100, y: 100 } } : null;
+      context.resolveWindowDisplayPosition = () => ({ x: 2020, y: 100 });
+      let bounds;
+      context.BrowserWindow = function (options) {
+        const window = new FakeWindow(options);
+        // Native construction performs several position updates on fractional DPI.
+        bounds = { x: options.x, y: options.y, width: options.width + 4, height: options.height };
+        window.getBounds = () => ({ ...bounds });
+        window.setPosition = (x, y) => {
+          bounds = { ...bounds, x, y };
+        };
+        window.setBounds = (next) => {
+          bounds = { ...next, width: next.width + 1 };
+        };
+        return window;
+      };
+
+      context.createWindow();
+
+      expect(bounds).toEqual({ x: 2020, y: 100, width: 501, height: 600 });
+      expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
+    }
+  );
+
   it('opens hidden and waits for the first real frame', () => {
     const { context, windows, holdSpy } = loadCreateWindow();
     context.createWindow();

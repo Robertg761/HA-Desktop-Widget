@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,17 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede guardar la autorización. Inícialo o desbloquéalo y reinicia el widget.",
     "Tray: Heat/Cool": "C/F",
     "Tray: Fan only": "VE",
-    "Home Assistant alert": "Alerta de Home Assistant"
+    "Home Assistant alert": "Alerta de Home Assistant",
+    "Display": "Pantalla",
+    "Display {{number}}": "Pantalla {{number}}",
+    "{{display}} (disconnected)": "{{display}} (desconectada)",
+    "{{display}} (primary)": "{{display}} (principal)",
+    "Could not load displays. Reopen Settings to try again.": "No se pudieron cargar las pantallas. Vuelve a abrir Configuración para intentarlo de nuevo.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Elige dónde se abre el widget. Automático recuerda dónde lo arrastras. Los mosaicos anclados al escritorio conservan sus propias posiciones.",
+    "Use Move to Monitor in the tray menu on this desktop.": "En este escritorio, usa Mover a monitor en el menú de la bandeja del sistema.",
+    "Your desktop manages window placement.": "Tu escritorio gestiona la posición de las ventanas.",
+    "Invalid display selection": "Selección de pantalla no válida",
+    "The selected display is no longer connected": "La pantalla seleccionada ya no está conectada",
+    "Display selection is managed by the desktop": "El escritorio gestiona la selección de pantalla"
   }
 }

@@ -1658,5 +1658,16 @@
   "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.",
   "Tray: Heat/Cool": "H/C",
   "Tray: Fan only": "FA",
-  "Home Assistant alert": "Home Assistant alert"
+  "Home Assistant alert": "Home Assistant alert",
+  "Display": "Display",
+  "Display {{number}}": "Display {{number}}",
+  "{{display}} (disconnected)": "{{display}} (disconnected)",
+  "{{display}} (primary)": "{{display}} (primary)",
+  "Could not load displays. Reopen Settings to try again.": "Could not load displays. Reopen Settings to try again.",
+  "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.",
+  "Use Move to Monitor in the tray menu on this desktop.": "Use Move to Monitor in the tray menu on this desktop.",
+  "Your desktop manages window placement.": "Your desktop manages window placement.",
+  "Invalid display selection": "Invalid display selection",
+  "The selected display is no longer connected": "The selected display is no longer connected",
+  "Display selection is managed by the desktop": "Display selection is managed by the desktop"
 }
