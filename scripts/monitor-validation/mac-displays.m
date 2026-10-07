@@ -2,6 +2,7 @@
 // ui/display/mac/test/virtual_display_util_mac.mm. Never included in the app.
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <dlfcn.h>
 @interface CGVirtualDisplayDescriptor : NSObject
 @property unsigned int vendorID, productID, serialNum, serialNumber, maxPixelsWide, maxPixelsHigh;
 @property(strong) NSString *name;
@@ -36,11 +37,23 @@ static NSDictionary *createDisplay(NSString *key, BOOL retina, int x, int y) {
   s.hiDPI = retina;
   s.modes = @[[[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:retina?1280:1920 height:retina?800:1080 refreshRate:60]];
   if (![display applySettings:s]) return @{@"error":@"CGVirtualDisplay applySettings failed"};
+  NSMutableArray *modeInfo=[NSMutableArray new];
+  CGError scaleResult=kCGErrorSuccess;
+  CFArrayRef modes=CGDisplayCopyAllDisplayModes(display.displayID,(__bridge CFDictionaryRef)@{(__bridge NSString*)kCGDisplayShowDuplicateLowResolutionModes:@YES});
+  if(modes){
+   for(CFIndex i=0;i<CFArrayGetCount(modes);i++){
+    CGDisplayModeRef mode=(CGDisplayModeRef)CFArrayGetValueAtIndex(modes,i);
+    size_t w=CGDisplayModeGetWidth(mode),pw=CGDisplayModeGetPixelWidth(mode);
+    [modeInfo addObject:@{@"width":@(w),@"height":@(CGDisplayModeGetHeight(mode)),@"pixels":@(pw)}];
+    if(retina && w==1280 && pw==2560) scaleResult=CGDisplaySetDisplayMode(display.displayID,mode,NULL);
+   }
+   CFRelease(modes);
+  }
   displays[key]=display;
   CGDisplayConfigRef config;
   CGError error= CGBeginDisplayConfiguration(&config);
   if(error==kCGErrorSuccess){CGConfigureDisplayOrigin(config,display.displayID,x,y);error=CGCompleteDisplayConfiguration(config,kCGConfigureForSession);}
-  return @{@"id":@(display.displayID),@"requestedRetina":@(retina),@"layoutResult":@(error)};
+  return @{@"id":@(display.displayID),@"requestedRetina":@(retina),@"layoutResult":@(error),@"scaleResult":@(scaleResult),@"modes":modeInfo};
 }
 static NSDictionary *command(NSDictionary *c) {
  NSString *op=c[@"op"];
@@ -50,8 +63,15 @@ static NSDictionary *command(NSDictionary *c) {
   NSDictionary *two=createDisplay(@"2",YES,origin+1920,0);
   return @{@"one":one,@"two":two};
  }
- if([op isEqual:@"off"]){[displays removeObjectForKey:@"2"];return @{@"ok":@YES};}
- if([op isEqual:@"on"]){int origin=CGDisplayBounds(CGMainDisplayID()).size.width;return createDisplay(@"2",YES,origin+1920,0);}
+ if([op isEqual:@"off"] || [op isEqual:@"on"]){
+  typedef CGError (*EnableFn)(CGDisplayConfigRef,CGDirectDisplayID,bool);
+  EnableFn enable=(EnableFn)dlsym(RTLD_DEFAULT,"CGSConfigureDisplayEnabled");
+  if(!enable){void *library=dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight",RTLD_LAZY);enable=(EnableFn)dlsym(library,"CGSConfigureDisplayEnabled");}
+  if(!enable)return @{@"error":@"No CGSConfigureDisplayEnabled symbol"};
+  CGDisplayConfigRef cfg;CGError e=CGBeginDisplayConfiguration(&cfg);CGError applied=e;
+  if(e==kCGErrorSuccess){e=enable(cfg,displays[@"2"].displayID,[op isEqual:@"on"]);applied=CGCompleteDisplayConfiguration(cfg,kCGConfigureForSession);}
+  return @{@"id":@(displays[@"2"].displayID),@"result":@(e),@"applied":@(applied)};
+ }
  if([op isEqual:@"layout"]){
   CGDisplayConfigRef cfg;CGError e=CGBeginDisplayConfiguration(&cfg);
   if(e==kCGErrorSuccess){CGConfigureDisplayOrigin(cfg,displays[@"2"].displayID,-1280,0);e=CGCompleteDisplayConfiguration(cfg,kCGConfigureForSession);}return @{@"result":@(e)};

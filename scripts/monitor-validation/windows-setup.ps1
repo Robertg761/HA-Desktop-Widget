@@ -40,8 +40,12 @@ try {
         [IO.File]::WriteAllBytes($certificatePath, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
         Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' | Out-Null
     }
-    & "$download\x64\nefconw.exe" install "$driverDirectory\MttVDD.inf" 'Root\MttVDD'
-    if ($LASTEXITCODE -ne 0) { throw "nefcon driver install failed: $LASTEXITCODE" }
+    # The console binary waits for installation and populates LASTEXITCODE in Windows
+    # PowerShell 5.1. The windowless binary returns asynchronously in that host.
+    & "$download\x64\nefconc.exe" install "$driverDirectory\MttVDD.inf" 'Root\MttVDD' |
+        Tee-Object -FilePath (Join-Path $StateDirectory 'windows-driver-install.log')
+    $installExitCode = $LASTEXITCODE
+    if ($null -eq $installExitCode -or $installExitCode -ne 0) { throw "nefcon driver install failed: $installExitCode" }
     Start-Sleep -Seconds 12
     Get-PnpDevice -Class Display | Format-List | Out-String | Set-Content (Join-Path $StateDirectory 'windows-adapters.txt')
     [NativeMonitorValidation]::Extend()
