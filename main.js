@@ -7644,6 +7644,11 @@ function createWindow() {
     });
   }
 
+  if (process.platform === 'win32' && !usesCompositorOwnedPlacement) {
+    // Native construction can round the size repeatedly on fractional DPI displays.
+    // Reapply the saved logical size before the window is revealed or its bounds watched.
+    moveMainWindowToPosition(config.windowPosition, config.windowSize);
+  }
   watchMainWindowBounds(mainWindow);
 
   // Hide to tray when minimizing

@@ -233,6 +233,35 @@ describe('main window creation', () => {
     }
   );
 
+  it.each([false, true])(
+    'restores the intended Windows startup size with an explicit display: %s',
+    (selected) => {
+      const { context } = loadCreateWindow({ platform: 'win32' });
+      context.config.windowPosition = { x: 2020, y: 100 };
+      context.config.windowDisplay = selected ? { id: '2', offset: { x: 100, y: 100 } } : null;
+      context.resolveWindowDisplayPosition = () => ({ x: 2020, y: 100 });
+      let bounds;
+      context.BrowserWindow = function (options) {
+        const window = new FakeWindow(options);
+        // Native construction performs several position updates on fractional DPI.
+        bounds = { x: options.x, y: options.y, width: options.width + 4, height: options.height };
+        window.getBounds = () => ({ ...bounds });
+        window.setPosition = (x, y) => {
+          bounds = { ...bounds, x, y };
+        };
+        window.setBounds = (next) => {
+          bounds = { ...next, width: next.width + 1 };
+        };
+        return window;
+      };
+
+      context.createWindow();
+
+      expect(bounds).toEqual({ x: 2020, y: 100, width: 501, height: 600 });
+      expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
+    }
+  );
+
   it('opens hidden and waits for the first real frame', () => {
     const { context, windows, holdSpy } = loadCreateWindow();
     context.createWindow();
