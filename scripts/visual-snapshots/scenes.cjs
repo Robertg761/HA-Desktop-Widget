@@ -391,10 +391,11 @@ const WIZARD_ACTIONS_IN_VIEW = `(() => {
 // Back and Next (Connect) sit on one row, whether or not Full settings has a row of its own above
 // them. In the smallest window German's labels wrapped Connect alone under Back.
 const WIZARD_STEP_ACTIONS_TOGETHER = `(() => {
-  const [back, next] = [...document.querySelectorAll('.first-run-step-actions .btn')].map((button) =>
-    button.getBoundingClientRect()
+  const next = document.querySelector('.first-run-actions .btn-primary');
+  const [back, connect] = [next?.previousElementSibling, next].map((button) =>
+    button?.getBoundingClientRect()
   );
-  return !!back && !!next && back.height > 0 && Math.abs(back.top - next.top) < 1;
+  return !!back && !!connect && back.height > 0 && Math.abs(back.top - connect.top) < 1;
 })()`;
 
 // Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
