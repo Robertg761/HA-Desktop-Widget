@@ -137,7 +137,6 @@ function Get-StrayWindow {
 # but those of the app (process <pid>), the desktop and the taskbar, answers a line for each, and
 # ends the answer with `done`; see desktop-keeper.cjs.
 if ($Keep) {
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
   $say = {
     param([string]$Line)
     # One answer line each, whatever a window title holds.
