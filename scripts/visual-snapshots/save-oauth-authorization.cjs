@@ -11,6 +11,7 @@
  * Test-only; never shipped.
  */
 
+const path = require('path');
 const { app, safeStorage } = require('electron');
 const { HomeAssistantOAuthClient, OAUTH_CALLBACK_PATH } = require('../../src/ha-oauth.cjs');
 const {
@@ -20,7 +21,12 @@ const { name } = require('../../package.json');
 
 app.setName(name);
 const profileDir = app.commandLine.getSwitchValue('user-data-dir');
-if (profileDir) app.setPath('userData', profileDir);
+if (profileDir) {
+  // The paths main.js gives the app: Local State, and the Windows key in it, may be kept with the
+  // session data, so it has to be where the app will look for it.
+  app.setPath('userData', profileDir);
+  app.setPath('sessionData', path.join(profileDir, 'session'));
+}
 
 app.whenReady().then(() => {
   try {

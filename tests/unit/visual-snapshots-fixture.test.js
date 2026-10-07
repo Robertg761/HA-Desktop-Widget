@@ -372,6 +372,10 @@ describe('visual snapshot scenes', () => {
       expect(helper.indexOf('app.setName(name)')).toBeGreaterThan(-1);
       expect(helper.indexOf('app.setName(name)')).toBeLessThan(helper.indexOf('app.whenReady()'));
       expect(helper).toContain("const { name } = require('../../package.json');");
+      // Where main.js puts the session data, which may hold Local State.
+      expect(helper).toContain("app.setPath('sessionData', path.join(profileDir, 'session'));");
+      const main = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+      expect(main).toContain("app.setPath('sessionData', path.join(userDataPath, 'session'));");
       expect(helper).toContain('.writeCredentials({');
       expect(helper).toContain('isSecureStorageAvailable: isSecureProfileSyncStorageAvailable');
       expect(helper).toMatch(/writeCredentials\([\s\S]*\bapp\.quit\(\)/);
