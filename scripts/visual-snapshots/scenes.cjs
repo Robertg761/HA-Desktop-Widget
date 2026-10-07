@@ -3596,7 +3596,16 @@ const scenes = [
         'Cancel drawn as every other Cancel, and Connect waiting'
       );
     },
-    teardown: cancelFirstRunAuthorization,
+    // Only the widget's 8 s limit for the server's answer holds the wait, and the picture is taken
+    // after the setup and the settle. On a runner slow enough to pass the limit first, the picture
+    // is of the error that follows, so the scene fails instead of passing with it.
+    teardown: async (ctx) => {
+      const stillWaiting = await ctx.ev(
+        `!!document.querySelector('.first-run-status[data-status="pending"]')`
+      );
+      await cancelFirstRunAuthorization(ctx);
+      if (!stillWaiting) throw new Error('the wizard had stopped waiting when it was captured');
+    },
   },
   {
     name: 'wizard-authorize-cancelled',
