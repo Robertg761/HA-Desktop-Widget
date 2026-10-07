@@ -1765,6 +1765,28 @@ describe('hotkeys module', () => {
       ]);
     });
 
+    // "Open" alone is the state a cover is in ("Offen"); the action is the verb ("Öffnen").
+    it('names the actions with verbs in German, as the cover dialog does', () => {
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'de',
+        messages: { ...require('../../locales/en.json'), ...require('../../locales/de.json') },
+      });
+      try {
+        hotkeys.renderHotkeysTab();
+
+        const labels = (entityId) =>
+          [...document.querySelector(`select[data-entity-id="${entityId}"]`).options].map(
+            (option) => option.textContent
+          );
+        expect(labels('cover.garage')).toEqual(['Umschalten', 'Öffnen', 'Schließen']);
+        expect(labels('valve.garden')).toEqual(['Umschalten', 'Öffnen', 'Schließen']);
+        expect(labels('lock.front')).toEqual(['Verriegeln', 'Entriegeln']);
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
+    });
+
     it('shows a toggle an older version saved on a lock as the Lock it now runs', () => {
       state.CONFIG.globalHotkeys.hotkeys = {
         'lock.front': { hotkey: 'Ctrl+Alt+L', action: 'toggle' },

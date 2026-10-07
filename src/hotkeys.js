@@ -98,7 +98,9 @@ function getActionOptionsForDomain(domain) {
     press: t('Press'),
     increase_speed: t('Increase speed'),
     decrease_speed: t('Decrease speed'),
-    open: t('Open'),
+    // The verb. Plain "Open" is the state a cover is in, which German, French and the others word
+    // differently ("Offen", not "Öffnen").
+    open: t('Action: Open'),
     close: t('Close'),
     lock: t('Lock'),
     unlock: t('Unlock'),
