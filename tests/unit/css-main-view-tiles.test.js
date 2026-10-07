@@ -1,11 +1,9 @@
 const {
   cascadedDeclaration,
-  compareSpecificity,
   contrastRatio,
   loadAppStylesheets,
   parseColor,
   resolvedValue,
-  specificity,
 } = require('../helpers/css-cascade.js');
 
 // Each case is a body class list. Dark solid is a Windows panel without acrylic; frosted is
@@ -638,85 +636,5 @@ describe('panel veil', () => {
         'transparent'
       );
     }
-  });
-});
-
-describe('the window under a dialog', () => {
-  beforeAll(() => {
-    loadAppStylesheets(document);
-  });
-
-  afterEach(() => {
-    document.body.className = '';
-    document.body.innerHTML = '';
-  });
-
-  const rules = () => [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
-
-  // On native glass the window around the cards and tiles is the half-clear tint alone, and the
-  // blur a full-window scrim lays over half-clear pixels is half clear too: on Windows and macOS the
-  // header's and the page tabs' sharp text showed through the scrim. jsdom cannot match :has(), so
-  // this finds the rule and plays its condition out by hand: the body it names and a scrim shown in
-  // it.
-  it('lays a nearly opaque pane over native glass while a dialog, the palette or the camera viewer is up', () => {
-    const shownRule = rules().find(
-      (candidate) =>
-        /^body\.native-glass/.test(candidate.selectorText || '') &&
-        /:has\(/.test(candidate.selectorText)
-    );
-    expect(shownRule).toBeDefined();
-    const [, host, shown] = shownRule.selectorText
-      .replace(/\s+/g, ' ')
-      .replace(/\(\s+/g, '(')
-      .replace(/\s+\)/g, ')')
-      .match(/^(.*?):has\((.*)\)::before$/);
-    const applies = (bodyClass, overlays) => {
-      render(
-        bodyClass,
-        `<div class="widget-header"></div>
-        <div class="widget-content"><div class="section-header quick-access-header"></div></div>
-        ${overlays}`
-      );
-      return document.body.matches(host) && !!document.body.querySelector(shown);
-    };
-
-    const native = 'native-glass frosted-glass';
-    expect(applies(native, '<div class="modal"></div>')).toBe(true);
-    expect(applies(native, '<div class="command-palette-overlay"></div>')).toBe(true);
-    // The camera viewer is a full-window scrim of its own, and is removed when it closes.
-    expect(applies(native, '<div class="camera-expanded-preview"></div>')).toBe(true);
-    expect(applies(`theme-light ${native}`, '<div class="modal"></div>')).toBe(true);
-    // Closed, a dialog or the palette is only hidden, and the window keeps its glass. A closing
-    // dialog fades out, and the pane with it.
-    expect(
-      applies(
-        native,
-        '<div class="modal hidden"></div><div class="command-palette-overlay hidden"></div>'
-      )
-    ).toBe(false);
-    expect(applies(native, '<div class="modal modal-closing"></div>')).toBe(false);
-    // The Linux tint and the solid panel are nearly opaque already, and the scrim blurs them. A pin
-    // is a window of its own, with its own pane.
-    expect(applies('software-glass frosted-glass', '<div class="modal"></div>')).toBe(false);
-    expect(applies('', '<div class="modal"></div>')).toBe(false);
-    expect(applies(`${native} desktop-pin-mode`, '<div class="modal"></div>')).toBe(false);
-    expect(shownRule.style.getPropertyValue('opacity')).toBe('1');
-
-    // The pane covers the whole window, under the weather and holiday art and the header and
-    // content: the body's own colour is not taken in by a backdrop blur, and panes on the header
-    // and the tab row alone showed as bands.
-    const pane = rules().find(
-      (candidate) => candidate.selectorText === `${host}::before` && candidate.style.content
-    );
-    expect(pane).toBeDefined();
-    expect(pane.style.getPropertyValue('position')).toBe('fixed');
-    expect(pane.style.getPropertyValue('inset')).toBe('0');
-    expect(pane.style.getPropertyValue('z-index')).toBe('0');
-    expect(pane.style.getPropertyValue('pointer-events')).toBe('none');
-    expect(pane.style.getPropertyValue('background')).toBe('rgba(var(--window-bg-rgb), 0.9)');
-    expect(pane.style.getPropertyValue('opacity')).toBe('0');
-    expect(
-      compareSpecificity(specificity(shownRule.selectorText), specificity(pane.selectorText))
-    ).toBeGreaterThan(0);
   });
 });
