@@ -532,6 +532,7 @@ describe('the note under the popup hotkey in a desktop layer', () => {
   };
   const fn = [
     functionSource('function renderLayerModeGuidance()'),
+    functionSource('function boxLayerToggleCommandWords('),
     functionSource('async function copyLayerToggleCommand('),
   ].join('\n');
   const i18n = require('../../src/i18n.js');
@@ -581,7 +582,7 @@ describe('the note under the popup hotkey in a desktop layer', () => {
 
   // The window cannot be selected, so the command, a whole path on an AppImage, could only be
   // typed out by hand, and in Arabic it broke over two lines at the hyphen in its name.
-  it('lets the command be selected, all of it at one click, on a line of its own', () => {
+  it('lets the command be selected, all of it at one click, and wraps it only between words', () => {
     const note = render({
       layerMode: true,
       hyprland: false,
@@ -592,12 +593,23 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     expect(resolvedValue(document.body, 'user-select')).toBe('none');
     expect(resolvedValue(code, 'user-select')).toBe('all');
     expect(resolvedValue(code, '-webkit-user-select')).toBe('all');
-    expect(resolvedValue(code, 'display')).toBe('inline-block');
+    // Each word is a box, which breaks inside only when it is longer than the line.
+    const words = [...code.children];
+    expect(words.map((word) => word.textContent)).toEqual([
+      '/home/u/.local/bin/ha-desktop-widget',
+      '--toggle',
+    ]);
+    for (const word of words) {
+      expect(resolvedValue(word, 'display')).toBe('inline-block');
+      expect(resolvedValue(word, 'overflow-wrap')).toBe('anywhere');
+    }
+    expect(code.textContent).toBe('/home/u/.local/bin/ha-desktop-widget --toggle');
   });
 
-  // A command as long as the line took all of it, and the comma after it started the next line on
-  // its own. The chip leaves its margins and 1em beside it, room for any one mark, even '，'.
-  it('leaves room on the line for the mark after a command that fills it', () => {
+  // As one box, a command that wrapped was as wide as the line, and the comma after it sat at the
+  // far end, about 120px from '--toggle'. The command runs on with the sentence instead, each of
+  // its lines a chip, and the comma follows its last word.
+  it('keeps the mark after a command beside its last word', () => {
     const note = render({
       layerMode: true,
       hyprland: false,
@@ -605,8 +617,11 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     });
     loadAppStylesheets(document);
     const code = note.querySelector('code');
-    expect(resolvedValue(code, 'max-width')).toBe('calc(100% - 1em - 2px)');
-    expect(resolvedValue(code, 'margin-inline')).toBe('1px');
+    expect(resolvedValue(code, 'display')).toBeNull();
+    expect(resolvedValue(code, 'max-width')).toBeNull();
+    expect(resolvedValue(code, 'box-decoration-break')).toBe('clone');
+    expect(code.lastChild.textContent).toBe('--toggle');
+    expect(code.nextSibling.textContent.startsWith(',')).toBe(true);
   });
 
   // The chip takes no focus, so from the keyboard the command could not be selected, and Sway, niri

@@ -8049,6 +8049,21 @@ function renderLayerModeGuidance() {
   // Kept on the element, so a later language change words the note around the same command.
   toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
   translateDocument(toggleNote);
+  boxLayerToggleCommandWords(toggleNote.querySelector('code'));
+}
+
+// The command runs on with the sentence, a word to a box, so it wraps only between its words and
+// never at a hyphen inside one ('ha-desktop-widget', '--toggle'). As one box it took a line of its
+// own, and once a long path wrapped the box was as wide as the line: the comma after it sat at the
+// far end, away from '--toggle'. The text, and so what a selection copies, stays the command.
+function boxLayerToggleCommandWords(code) {
+  if (!code) return;
+  const words = code.textContent.split(' ').map((word) => {
+    const box = document.createElement('span');
+    box.textContent = word;
+    return box;
+  });
+  code.replaceChildren(...words.flatMap((box, index) => (index ? [' ', box] : [box])));
 }
 
 // A click selects the command, but it takes no focus, so from the keyboard it could not be copied

@@ -12075,20 +12075,24 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 
 /* The command to bind for a desktop layer can be an AppImage's whole path, which the user copies
    into a compositor's config. The window cannot be selected, so the command is the exception, and
-   a click selects all of it. It takes a line of its own rather than break at the hyphen in
-   'ha-desktop-widget', breaks anywhere only when it is longer than the line, and reads left to
-   right inside an Arabic sentence. A command that fills the line stops short of its end by the
-   chip's margins and 1em, room for the mark after it (up to a Chinese full-width comma), which
-   otherwise started the next line. */
+   a click selects all of it. It reads left to right inside an Arabic sentence, and runs on with the
+   sentence, so the comma after it follows its last word: as one box, a command that wrapped was as
+   wide as the line and its comma sat at the line's far end. Each line of it is a chip of its own. */
 #layer-toggle-note code {
-  display: inline-block;
-  max-width: calc(100% - 1em - 2px);
-  overflow-wrap: anywhere;
+  box-decoration-break: clone;
   direction: ltr;
   unicode-bidi: isolate;
   user-select: all;
   -webkit-user-select: all;
   cursor: text;
+}
+
+/* Its words are boxes (settings.js), so it wraps between them and not at the hyphen in
+   'ha-desktop-widget' or '--toggle'. Only a word longer than the line breaks inside. */
+#layer-toggle-note code > span {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 /* Its focus ring touched the help line under it with the help line's own 3px margin alone. */
