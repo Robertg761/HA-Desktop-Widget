@@ -76,6 +76,18 @@ static NSDictionary *command(NSDictionary *c) {
   CGDisplayConfigRef cfg;CGError e=CGBeginDisplayConfiguration(&cfg);
   if(e==kCGErrorSuccess){CGConfigureDisplayOrigin(cfg,displays[@"2"].displayID,-1280,0);e=CGCompleteDisplayConfiguration(cfg,kCGConfigureForSession);}return @{@"result":@(e)};
  }
+ if([op isEqual:@"retina"]){
+  CGDirectDisplayID displayID=displays[@"2"].displayID;
+  NSMutableArray *info=[NSMutableArray new];int applied=-1;
+  CFArrayRef modes=CGDisplayCopyAllDisplayModes(displayID,(__bridge CFDictionaryRef)@{(__bridge NSString*)kCGDisplayShowDuplicateLowResolutionModes:@YES});
+  if(modes){for(CFIndex i=0;i<CFArrayGetCount(modes);i++){
+   CGDisplayModeRef mode=(CGDisplayModeRef)CFArrayGetValueAtIndex(modes,i);
+   size_t width=CGDisplayModeGetWidth(mode),pixels=CGDisplayModeGetPixelWidth(mode);
+   [info addObject:@{@"width":@(width),@"height":@(CGDisplayModeGetHeight(mode)),@"pixels":@(pixels)}];
+   if(width==1280 && pixels==2560)applied=CGDisplaySetDisplayMode(displayID,mode,NULL);
+  }CFRelease(modes);}
+  return @{@"id":@(displayID),@"applied":@(applied),@"modes":info};
+ }
  if([op isEqual:@"list"]){NSMutableDictionary *r=[NSMutableDictionary new];for(NSString *key in displays)r[key]=@(displays[key].displayID);return r;}
  if([op isEqual:@"quit"]){[displays removeAllObjects];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,100*NSEC_PER_MSEC),dispatch_get_main_queue(),^{exit(0);});return @{@"ok":@YES};}
  return @{@"error":@"Unknown operation"};

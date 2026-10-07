@@ -50,6 +50,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   macProcess.stdout.on('data',chunk=>{macRead+=chunk;let end;while((end=macRead.indexOf('\n'))>=0){const line=macRead.slice(0,end);macRead=macRead.slice(end+1);const waiter=macWaiters.shift();if(waiter){try{waiter.resolve(JSON.parse(line));}catch(e){waiter.reject(e);}}}});
   macProcess.on('exit',code=>macWaiters.splice(0).forEach(w=>w.reject(Error('Display helper exited '+code))));
   macSetup=await mac('setup');fs.writeFileSync(path.join(out,'mac-setup.json'),JSON.stringify(macSetup,null,2));await pause(2000);
+  const retina=await mac('retina');fs.writeFileSync(path.join(out,'mac-retina.json'),JSON.stringify(retina,null,2));await pause(1000);
  }
  fs.writeFileSync(path.join(profile,'config.json'),JSON.stringify({windowPosition:{x:100,y:100},windowSize:{width:400,height:400},alwaysOnTop:false,opacity:1,frostedGlass:false,globalHotkeys:{enabled:false,hotkeys:{}},ui:{language:'en',theme:'dark',scale:1},desktopPins:{'light.virtual_test':{x:100,y:520,width:168,height:148}},omarchyThemeDefaultApplied:true}));
  await launch();await pause(1200);
@@ -105,4 +106,24 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
  });
  await screenshot('final-window');
  console.log(JSON.stringify({passed:rows.filter(r=>r.status==='PASS').length,blocked:rows.filter(r=>r.status==='BLOCKED').length}));
-})().catch(error=>{console.error(error);fs.writeFileSync(path.join(out,'failure.txt'),error.stack);process.exitCode=1;}).finally(async()=>{await stop();if(macProcess){await mac('quit').catch(()=>{});macProcess.kill();}save();});
+})().catch(async error=>{
+ if(process.platform==='win32'){
+  try{
+   const observations=[];const initial=await state();
+   const primary=initial.displays.find(d=>String(d.id)===initial.primaryId).workArea;
+   const target=initial.displays.find(d=>d.scaleFactor>1).workArea;
+   const primaryBounds={x:primary.x+100,y:primary.y+100,width:400,height:400};
+   const targetBounds={x:target.x+100,y:target.y+100,width:400,height:400};
+   const trials=[
+    ['setBounds primary',`mainWindow.setBounds(${JSON.stringify(primaryBounds)})`],
+    ['setPosition secondary',`mainWindow.setPosition(${targetBounds.x},${targetBounds.y})`],
+    ['setSize after move','mainWindow.setSize(400,400)'],
+    ['setBounds primary again',`mainWindow.setBounds(${JSON.stringify(primaryBounds)})`],
+    ['setBounds secondary',`mainWindow.setBounds(${JSON.stringify(targetBounds)})`],
+    ['setBounds secondary repeated',`mainWindow.setBounds(${JSON.stringify(targetBounds)})`],
+   ];
+   for(const [name,expression] of trials){await rpc(expression);await pause(1000);observations.push({name,state:await state()});}
+   fs.writeFileSync(path.join(out,'windows-dpi-trials.json'),JSON.stringify(observations,null,2));
+  }catch(diagnosticError){fs.writeFileSync(path.join(out,'windows-dpi-trials-error.txt'),diagnosticError.stack);}
+ }
+ console.error(error);fs.writeFileSync(path.join(out,'failure.txt'),error.stack);process.exitCode=1;}).finally(async()=>{await stop();if(macProcess){await mac('quit').catch(()=>{});macProcess.kill();}save();});
