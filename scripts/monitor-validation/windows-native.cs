@@ -90,6 +90,45 @@ public static class NativeMonitorValidation {
         int result=SetDisplayConfig(0,IntPtr.Zero,0,IntPtr.Zero,0x80|0x4);
         if(result!=0) throw new Exception("SetDisplayConfig EXTEND failed: "+result);
     }
+    public static string SaveMode(string name) {
+        Mode mode=GetMode(name);
+        int size=Marshal.SizeOf(typeof(Mode));
+        IntPtr pointer=Marshal.AllocHGlobal(size);
+        try {
+            Marshal.StructureToPtr(mode,pointer,false);
+            byte[] bytes=new byte[size];
+            Marshal.Copy(pointer,bytes,0,size);
+            return Convert.ToBase64String(bytes);
+        } finally { Marshal.FreeHGlobal(pointer); }
+    }
+    // Detach the source from the desktop without destroying its PnP monitor or
+    // restarting its adapter. Stage all changes before CommitModes().
+    // https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-changedisplaysettingsexw
+    public static void StageDetach(string name) {
+        Mode mode=GetMode(name);
+        mode.fields=0x180020; // DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT
+        mode.width=0;mode.height=0;mode.x=0;mode.y=0;
+        int result=ChangeDisplaySettingsEx(name,ref mode,IntPtr.Zero,0x10000001,IntPtr.Zero);
+        if(result!=0) throw new Exception("Stage display detach failed: "+name+" result="+result);
+    }
+    public static void StageRestore(string name,string savedMode) {
+        byte[] bytes=Convert.FromBase64String(savedMode);
+        int size=Marshal.SizeOf(typeof(Mode));
+        if(bytes.Length!=size) throw new Exception("Saved DEVMODE has an unexpected size");
+        IntPtr pointer=Marshal.AllocHGlobal(size);
+        Mode mode;
+        try {
+            Marshal.Copy(bytes,0,pointer,size);
+            mode=(Mode)Marshal.PtrToStructure(pointer,typeof(Mode));
+        } finally { Marshal.FreeHGlobal(pointer); }
+        mode.fields|=0x180020;
+        int result=ChangeDisplaySettingsEx(name,ref mode,IntPtr.Zero,0x10000001,IntPtr.Zero);
+        if(result!=0) throw new Exception("Stage display restore failed: "+name+" result="+result);
+    }
+    public static void CommitModes() {
+        int result=ApplySettings(IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,0,IntPtr.Zero);
+        if(result!=0) throw new Exception("Apply display mode changes failed: "+result);
+    }
     public static void Layout(bool reverse) {
         List<Monitor> monitors=new List<Monitor>(List());
         monitors.Sort(delegate(Monitor a,Monitor b) { if(a.primary!=b.primary) return a.primary?-1:1; return String.CompareOrdinal(a.name,b.name); });

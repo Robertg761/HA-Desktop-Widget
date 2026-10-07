@@ -10,26 +10,39 @@ $ErrorActionPreference = 'Stop'
 if (-not ('NativeMonitorValidation' -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot 'windows-native.cs')
 }
-function Get-TestAdapter {
-    @(Get-PnpDevice -Class Display | Where-Object {
-        $hardware = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction SilentlyContinue
-        @($hardware.Data) -contains 'Root\MttVDD'
-    })
-}
+New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
+$savedModesPath = Join-Path $StateDirectory 'windows-detached-modes.json'
 switch ($Action) {
     'off' {
-        $devices = @(Get-TestAdapter)
-        if ($devices.Count -eq 0) { throw 'The test MttVDD adapter was not found.' }
-        foreach ($device in $devices) { Disable-PnpDevice -InstanceId $device.InstanceId -Confirm:$false | Out-Null }
+        $active = @([NativeMonitorValidation]::List())
+        $virtual = @($active | Where-Object isVirtual)
+        if ($virtual.Count -eq 0) { throw 'No active MttVDD outputs were found.' }
+        if (@($active | Where-Object { $_.primary -and -not $_.isVirtual }).Count -ne 1) {
+            throw 'Refusing to detach virtual outputs without an active nonvirtual primary display.'
+        }
+        $savedModes = @($virtual | ForEach-Object {
+            [ordered]@{ name=$_.name; mode=[NativeMonitorValidation]::SaveMode($_.name); scalePercent=$_.scalePercent }
+        })
+        $savedModes | ConvertTo-Json -Depth 4 | Set-Content $savedModesPath -Encoding UTF8
+        foreach ($display in $virtual) { [NativeMonitorValidation]::StageDetach($display.name) }
+        [NativeMonitorValidation]::CommitModes()
         Start-Sleep -Seconds 4
+        if (@([NativeMonitorValidation]::List() | Where-Object isVirtual).Count -gt 0) {
+            throw 'Virtual display detach did not remove every VDD output from the desktop.'
+        }
     }
     'on' {
-        $devices = @(Get-TestAdapter)
-        if ($devices.Count -eq 0) { throw 'The test MttVDD adapter was not found.' }
-        foreach ($device in $devices) { Enable-PnpDevice -InstanceId $device.InstanceId -Confirm:$false | Out-Null }
-        Start-Sleep -Seconds 6
-        [NativeMonitorValidation]::Extend()
+        if (-not (Test-Path $savedModesPath)) { throw 'No saved display modes exist. Call off before on.' }
+        $savedModes = @(Get-Content $savedModesPath -Raw | ConvertFrom-Json)
+        foreach ($display in $savedModes) { [NativeMonitorValidation]::StageRestore($display.name, $display.mode) }
+        [NativeMonitorValidation]::CommitModes()
         Start-Sleep -Seconds 3
+        $active = @([NativeMonitorValidation]::List())
+        foreach ($display in $savedModes) {
+            if ($display.name -notin $active.name) { throw "Restored source is absent: $($display.name)" }
+            if ($display.scalePercent -gt 0) { [NativeMonitorValidation]::SetScale($display.name, $display.scalePercent) }
+        }
+        Start-Sleep -Seconds 2
     }
     'scale' {
         if (-not $DisplayName) {
@@ -43,7 +56,7 @@ switch ($Action) {
     'layout' { [NativeMonitorValidation]::Layout($Reverse.IsPresent); Start-Sleep -Seconds 3 }
 }
 $inventory = @([NativeMonitorValidation]::List())
-$result = [ordered]@{ action=$Action; timestamp=[DateTime]::UtcNow.ToString('o'); displays=$inventory }
+$result = [ordered]@{ action=$Action; timestamp=[DateTime]::UtcNow.ToString('o'); displays=$inventory; connectionMechanism='GDI desktop source detach/restore; adapter remains enabled' }
 New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
 $json = $result | ConvertTo-Json -Depth 6
 $json | Set-Content -Path (Join-Path $StateDirectory "windows-$Action.json") -Encoding UTF8

@@ -108,6 +108,34 @@ test('moving to a differently scaled Windows display preserves the intended DIP 
   expect(context.config.windowDisplay.offset).toEqual({ x: 100, y: 100 });
 });
 
+test('repeated Windows monitor choices do not accumulate fractional DPI rounding', async () => {
+  const { context } = load();
+  context.process = { platform: 'win32' };
+  let bounds = { x: 100, y: 100, width: 500, height: 600 };
+  context.mainWindow.getBounds = () => ({ ...bounds });
+  context.mainWindow.setPosition.mockImplementation((x, y) => {
+    bounds = { x, y, width: bounds.width * 1.5, height: bounds.height * 1.5 };
+  });
+  context.mainWindow.setBounds = jest.fn((next) => {
+    bounds = { ...next, width: next.width + (next.x >= 1920 ? 1 : 0) };
+  });
+
+  for (const id of ['2', '1', '2', '1']) {
+    await context.applyWindowDisplayChoice(id);
+    expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
+    expect(bounds.width).toBe(id === '2' ? 501 : 500);
+  }
+});
+
+test('a pending Windows user resize keeps its size even when only one DIP changed', async () => {
+  const { context } = load();
+  context.process = { platform: 'win32' };
+  context.pendingWindowBounds = { x: 100, y: 100, width: 501, height: 600 };
+  context.mainWindow.getBounds = () => ({ ...context.pendingWindowBounds });
+  await context.applyWindowDisplayChoice('');
+  expect(context.config.windowSize).toEqual({ width: 501, height: 600 });
+});
+
 test('Automatic durably keeps a drag that has not reached the bounds save timer yet', async () => {
   const { context } = load();
   context.config.windowDisplay = { id: '2', label: 'Desk', offset: { x: 100, y: 100 } };

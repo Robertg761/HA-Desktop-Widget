@@ -7761,6 +7761,15 @@ function getWindowDisplaySettings() {
 function getWindowDisplayChoicePatch(id) {
   if (usesCompositorOwnedPlacement) throw new Error('Display selection is managed by the desktop');
   const bounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+  if (bounds && process.platform === 'win32' && !pendingWindowBounds) {
+    // Fractional DPI can round native bounds up by one DIP. Keep the intended size
+    // across repeated selections, while a pending user resize takes precedence.
+    for (const dimension of ['width', 'height']) {
+      if (Math.abs(bounds[dimension] - config.windowSize[dimension]) <= 1) {
+        bounds[dimension] = config.windowSize[dimension];
+      }
+    }
+  }
   const patch = prepareWindowDisplayChoice(id, config, electronScreen, bounds);
   if (bounds) {
     patch.windowSize = clampToMinimumWindowSize(bounds);
@@ -7773,13 +7782,14 @@ function applyPreferredWindowDisplay() {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
   const bounds = mainWindow.getBounds();
-  const position = resolveWindowDisplayPosition(config, electronScreen, bounds);
+  const placementSize = process.platform === 'win32' ? config.windowSize : bounds;
+  const position = resolveWindowDisplayPosition(config, electronScreen, placementSize);
   clearTimeout(windowStateSaveTimer);
   windowStateSaveTimer = null;
   pendingWindowBounds = null;
   if (!position) return;
   config.windowPosition = position;
-  moveMainWindowToPosition(position, bounds);
+  moveMainWindowToPosition(position, placementSize);
 }
 
 function applyWindowDisplayChoice(id) {

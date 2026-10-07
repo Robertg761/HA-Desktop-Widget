@@ -22,7 +22,7 @@ const renderer=js=>rpc(`mainWindow.webContents.executeJavaScript(${JSON.stringif
 const disk=()=>JSON.parse(fs.readFileSync(path.join(profile,'config.json'),'utf8'));
 async function until(check,label,timeout=20000){let last;const end=Date.now()+timeout;while(Date.now()<end){try{last=await state();if(await check(last))return last;}catch(e){last=e.message;}await pause(150);}throw Error(`Timeout ${label}: ${JSON.stringify(last)}`);}
 function save(){fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({platform:process.platform,versions:process.versions,rows},null,2));}
-async function test(name,fn){try{const details=await fn();await pause(700);const settled=await state(),saved=disk();for(const axis of ['width','height']){assert(Math.abs(settled.bounds[axis]-400)<=2,`Native ${axis} changed: ${settled.bounds[axis]}`);assert(Math.abs(saved.windowSize[axis]-400)<=2,`Saved ${axis} changed: ${saved.windowSize[axis]}`);}assert.deepEqual(saved.windowDisplay,settled.preference);rows.push({name,status:'PASS',details,state:settled,saved:{size:saved.windowSize,position:saved.windowPosition,preference:saved.windowDisplay}});console.log('PASS '+name);save();}catch(e){rows.push({name,status:'FAIL',error:e.stack});save();throw e;}}
+async function test(name,fn){try{const details=await fn();await pause(700);const settled=await state(),saved=disk();for(const axis of ['width','height']){assert(Math.abs(settled.bounds[axis]-400)<=1,`Native ${axis} changed: ${settled.bounds[axis]}`);assert(saved.windowSize[axis]===400,`Saved ${axis} changed: ${saved.windowSize[axis]}`);}assert.deepEqual(saved.windowDisplay,settled.preference);rows.push({name,status:'PASS',details,state:settled,saved:{size:saved.windowSize,position:saved.windowPosition,preference:saved.windowDisplay}});console.log('PASS '+name);save();}catch(e){rows.push({name,status:'FAIL',error:e.stack});save();throw e;}}
 function mac(op){return new Promise((resolve,reject)=>{macWaiters.push({resolve,reject});macProcess.stdin.write(JSON.stringify({op})+'\n');});}
 function windows(action){
  const output=execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(dir,'windows-control.ps1'),'-Action',action],{encoding:'utf8',timeout:90000});
@@ -93,6 +93,9 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   await renderer(`document.getElementById('settings-btn').click()`);await pause(300);await tray(target);
   s=await until(s=>at(s,expected(s,target,pref.offset)),'back to target');pref=s.preference;
   await until(async()=>await renderer(`document.getElementById('window-display').value`)===target,'Settings refresh');
+ });
+ await test('Repeated monitor selections preserve size without rounding drift',async()=>{
+  for(let i=0;i<3;i++){await tray(primary);await pause(700);await tray(target);await pause(700);const current=await state();assert(Math.abs(current.bounds.width-400)<=1);assert.equal(disk().windowSize.width,400);assert.equal(disk().windowSize.height,400);}pref=(await state()).preference;
  });
  await test('Live unplug falls back and retains preferred display and offset',async()=>{
   await displayOp('off');s=await until(s=>!s.displays.some(d=>String(d.id)===target)&&at(s,expected(s,target,pref.offset)),'unplug recovery');
