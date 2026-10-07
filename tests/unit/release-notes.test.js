@@ -59,3 +59,17 @@ Stable release summary.
     expect(() => normalizeVersion('../3.9.1')).toThrow('Release version must use');
   });
 });
+
+// What's new opens this version's section. The Hotkeys page, the portal's error and the rest of the
+// 4.0 notes call it the popup hotkey, and one note there still called it the popup shortcut.
+describe("this version's release notes", () => {
+  const fs = require('fs');
+  const path = require('path');
+  const read = (file) => fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+  const notes = extractReleaseNotes(read('CHANGELOG.md'), JSON.parse(read('package.json')).version);
+
+  test('call the popup hotkey by that one name', () => {
+    expect(notes).toMatch(/popup hotkey/);
+    expect(notes).not.toMatch(/popup shortcut/i);
+  });
+});
