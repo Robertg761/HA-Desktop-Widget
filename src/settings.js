@@ -67,8 +67,8 @@ import {
   getLanguageDisplayName,
   getLocaleState,
   isolateLtr,
+  setTextWithCodeSpans,
   t,
-  translateDocument,
 } from './i18n.js';
 import {
   compareNames,
@@ -8046,9 +8046,16 @@ function renderLayerModeGuidance() {
     copyButton.onclick = () => copyLayerToggleCommand(toggleNote, command);
   }
   if (toggleNote.hidden) return;
-  // Kept on the element, so a later language change words the note around the same command.
-  toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
-  translateDocument(toggleNote);
+  // JS owns this note, so it has no data-i18n-html: the page's translation pass, which runs again
+  // on every config change, would rebuild the command as one run of text without its word boxes.
+  // A language change reaches it through relocalizeOpenSettings, which renders it again.
+  setTextWithCodeSpans(
+    toggleNote,
+    t(
+      'Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.',
+      { command }
+    )
+  );
   boxLayerToggleCommandWords(toggleNote.querySelector('code'));
 }
 

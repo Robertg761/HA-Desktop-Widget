@@ -9913,11 +9913,7 @@ describe('Settings + Config Integration', () => {
             <p id="desktop-integration-status"></p>
             <p id="desktop-integration-legacy" hidden></p>
           </div>
-          <p
-            id="layer-toggle-note"
-            data-i18n-html="Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
-            hidden
-          ></p>
+          <p id="layer-toggle-note" hidden></p>
           <p id="popup-hotkey-immediate-note">Popup hotkey changes take effect immediately.</p>
           <p id="entity-hotkey-immediate-note">Entity hotkey changes take effect immediately.</p>`
         );
@@ -10080,6 +10076,43 @@ describe('Settings + Config Integration', () => {
           );
         }
         settings.closeSettings();
+      });
+
+      // The note is rendered by Settings, not by the page's translation pass, so a language change
+      // made while Settings is open has to reach it some other way.
+      test('words the toggle note in a language chosen while Settings is open', async () => {
+        const i18n = require('../../src/i18n.js');
+        const command = '/home/u/.local/bin/ha-desktop-widget --toggle';
+        window.electronAPI.getDesktopIntegration = jest
+          .fn()
+          .mockResolvedValue({
+            shortcuts: [],
+            hyprland: false,
+            layerMode: true,
+            toggleCommand: command,
+          });
+        try {
+          await openPanel();
+          i18n.setLocaleBootstrap({
+            activeLocale: 'de',
+            messages: {
+              'Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget.':
+                'Belege im Fenstermanager eine Taste mit <code>{{command}}</code>, das das Widget ein- oder ausblendet.',
+            },
+          });
+          // The locale observer runs as a microtask, and the note follows main's answer.
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          const note = el('layer-toggle-note');
+          expect(note.textContent.startsWith('Belege')).toBe(true);
+          expect([...note.querySelector('code').children].map((box) => box.textContent)).toEqual([
+            '/home/u/.local/bin/ha-desktop-widget',
+            '--toggle',
+          ]);
+        } finally {
+          i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+          settings.closeSettings();
+        }
       });
     });
 

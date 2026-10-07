@@ -543,8 +543,7 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     const context = vm.createContext({
       document,
       window,
-      JSON,
-      translateDocument: i18n.translateDocument,
+      setTextWithCodeSpans: i18n.setTextWithCodeSpans,
       t: i18n.t,
       copyTextToClipboard,
       showToast,
@@ -624,6 +623,23 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     expect(code.nextSibling.textContent.startsWith(',')).toBe(true);
   });
 
+  // The page's translation pass runs again on every config change (refreshLocaleBootstrap), and it
+  // rebuilt a note with data-i18n-html around the command as one run of text, which could break at
+  // its hyphens again until Settings was reopened.
+  it('keeps its boxes through the page translation pass', () => {
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: '/home/u/.local/bin/ha-desktop-widget --toggle',
+    });
+    i18n.translateDocument(document);
+
+    expect([...note.querySelector('code').children].map((box) => box.textContent)).toEqual([
+      '/home/u/.local/bin/ha-desktop-widget',
+      '--toggle',
+    ]);
+  });
+
   // The chip takes no focus, so from the keyboard the command could not be selected, and Sway, niri
   // and river users drive their desktop from it. A button under the note copies the command.
   describe('the Copy button', () => {
@@ -669,8 +685,9 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     });
   });
 
-  it('keeps the command when the language changes', () => {
-    render({ layerMode: true, hyprland: false, toggleCommand: "'/a b/HA.AppImage' --toggle" });
+  // A language change renders the note again (relocalizeOpenSettings), in the new words around the
+  // same command, boxed as before.
+  it('words the note in the language of the interface', () => {
     i18n.setLocaleBootstrap({
       activeLocale: 'de',
       messages: {
@@ -678,10 +695,18 @@ describe('the note under the popup hotkey in a desktop layer', () => {
           'Belege im Fenstermanager eine Taste mit <code>{{command}}</code>, das das Widget ein- oder ausblendet.',
       },
     });
-    i18n.translateDocument(document);
+    const note = render({
+      layerMode: true,
+      hyprland: false,
+      toggleCommand: "'/a b/HA.AppImage' --toggle",
+    });
 
-    const note = document.getElementById('layer-toggle-note');
     expect(note.querySelector('code').textContent).toBe("'/a b/HA.AppImage' --toggle");
+    expect([...note.querySelector('code').children].map((box) => box.textContent)).toEqual([
+      "'/a",
+      "b/HA.AppImage'",
+      '--toggle',
+    ]);
     expect(note.textContent.startsWith('Belege')).toBe(true);
   });
 
