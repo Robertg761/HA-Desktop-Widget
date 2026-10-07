@@ -690,6 +690,49 @@ describe('keeping clear of what the toast belongs to', () => {
       expect(document.querySelectorAll('.toast-held')).toHaveLength(0);
     });
 
+    // Out of sight, a success or a warning would run out unseen and never come back.
+    it('stops the clock of a toast it holds back, and runs the rest of it once it is back', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('first', 'success', 4000);
+      jest.advanceTimersByTime(1000);
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(false);
+      // The 3 s it had left when it was held back.
+      jest.advanceTimersByTime(2900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
+    // Hidden from under the pointer, a toast can hear that the pointer left while it is still held.
+    it('keeps the clock of a held toast stopped when the pointer leaves it', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('Careful', 'warning');
+      first.dispatchEvent(new Event('pointerenter'));
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      first.dispatchEvent(new Event('pointerleave'));
+
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      // A newer toast going makes room for it again, with all of its 6 s reading time ahead of it.
+      uiUtils.dismissToast(toasts()[2]);
+      expect(first.classList.contains('toast-held')).toBe(false);
+      jest.advanceTimersByTime(5900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
     it('goes above the panel with all of them when there is room there', () => {
       connectionPanel({ top: 300, bottom: window.innerHeight - 30 });
       stackOfToasts();

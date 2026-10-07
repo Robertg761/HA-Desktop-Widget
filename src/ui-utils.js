@@ -941,7 +941,7 @@ function openModal(modal, { display = 'flex' } = {}) {
 // ---------------------------------------------------------------------------------------------
 // Toasts. One manager owns the stack: it keeps the container clear of the buttons of whatever
 // raised them, folds repeats into one toast, caps the stack, keeps problems on screen until they
-// are read, and pauses the clock while a toast is being looked at.
+// are read, and pauses the clock while a toast is being looked at or is held back out of sight.
 // ---------------------------------------------------------------------------------------------
 
 const TOAST_FOOTER_GAP_PX = 8;
@@ -971,7 +971,7 @@ const TOAST_SCROLLED_SURFACES = `${TOAST_WIZARD_AVOID_SELECTOR}, ${TOAST_STATE_P
 // While one of these is on screen Escape is not for the toasts: it ends a mode.
 const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
 
-// Timing per toast: how long is left, whether the pointer or focus is on it, and the live timer.
+// Timing per toast: how long is left, what is stopping its clock, and the live timer.
 const toastTiming = new WeakMap();
 // Names each message, so the close button can say which one it closes.
 let toastMessageCounter = 0;
@@ -1050,6 +1050,17 @@ function scheduleToastDismiss(toast, delay) {
   }
 }
 
+// The clock stops while anything holds the toast: the pointer or the keyboard focus on it, or no
+// room for it on screen. Each reason is kept apart, so the pointer leaving a toast that has just
+// been held back out of sight does not start its clock again.
+function holdToastClock(toast, reason, holding) {
+  const timing = toastTiming.get(toast);
+  if (!timing) return;
+  if (holding) timing.holds.add(reason);
+  else timing.holds.delete(reason);
+  setToastPaused(toast, timing.holds.size > 0);
+}
+
 function setToastPaused(toast, paused) {
   const timing = toastTiming.get(toast);
   if (!timing || timing.paused === paused) return;
@@ -1098,6 +1109,16 @@ function layoutToasts() {
   if (typeof document === 'undefined') return;
   const container = document.getElementById('toast-container');
   if (!container) return;
+  placeToastStack(container);
+  // A toast held back is not on screen to be read, so its clock waits for it to come back. This runs
+  // after the stack is placed, because placing it lets every held toast back before it holds some
+  // again.
+  getLiveToasts(container).forEach((toast) =>
+    holdToastClock(toast, 'out-of-sight', toast.classList.contains('toast-held'))
+  );
+}
+
+function placeToastStack(container) {
   container.style.removeProperty('bottom');
   // Held back beside the connection panel, a toast comes back whenever the stack is laid out again.
   container
@@ -1155,9 +1176,10 @@ function placeToastFloor(container, floor) {
  * goes above the panel, over the weather and media cards, which say nothing new while Home
  * Assistant is away, as long as it fits there under the window's header. A stack too tall for
  * either place holds back its oldest toasts until it fits; they come back once there is room again,
- * when the panel goes or the window grows. Docked above the panel's buttons, as the stack once was,
- * it covered the panel's own message, and an error toast stays until it is dismissed. Only a single
- * toast with no room on either side still does that, to keep Retry within reach.
+ * when the panel goes or the window grows, with the time they had left when they went. Docked
+ * above the panel's buttons, as the stack once was, it covered the panel's own message, and an
+ * error toast stays until it is dismissed. Only a single toast with no room on either side still
+ * does that, to keep Retry within reach.
  */
 function layoutToastsBesidePanel(container, panel) {
   const header = document.querySelector('.widget-header')?.getBoundingClientRect();
@@ -1260,8 +1282,9 @@ function dismissNewestToastForEscape(event) {
  * `.toast-closing` animation. Errors and warnings are announced as alerts and carry a close
  * button, which is the keyboard's way to them; errors stay until dismissed (in a pin window, as
  * long as a warning) and warnings stay long enough to read. Every toast pauses while the pointer
- * or keyboard focus is on it, is dismissed by click or by Escape, and is folded into an identical
- * toast already showing. At most three stay on screen at once (one in a pin window).
+ * or keyboard focus is on it, or while it is held back out of sight beside the connection panel.
+ * Each is dismissed by click or by Escape, and is folded into an identical toast already showing.
+ * At most three stay on screen at once (one in a pin window).
  *
  * @param {string} message - Text to show inside the toast.
  * @param {string} [type='success'] - Visual variant/class to apply ('success', 'error', 'warning' or 'info').
@@ -1326,7 +1349,12 @@ function showToast(
     body.textContent = text;
     toast.appendChild(body);
 
-    toastTiming.set(toast, { remaining: lifetime, startedAt: Date.now(), timer: null });
+    toastTiming.set(toast, {
+      remaining: lifetime,
+      startedAt: Date.now(),
+      timer: null,
+      holds: new Set(),
+    });
 
     if (passive) {
       toast.classList.add('toast-passive');
@@ -1353,28 +1381,16 @@ function showToast(
       }
       // Reading takes longer than the clock allows for: hold it while it is under the pointer
       // or focused, then give it a moment more.
-      const hold = { hovered: false, focused: false };
-      const update = () => setToastPaused(toast, hold.hovered || hold.focused);
-      toast.addEventListener('pointerenter', () => {
-        hold.hovered = true;
-        update();
-      });
-      toast.addEventListener('pointerleave', () => {
-        hold.hovered = false;
-        update();
-      });
+      toast.addEventListener('pointerenter', () => holdToastClock(toast, 'pointer', true));
+      toast.addEventListener('pointerleave', () => holdToastClock(toast, 'pointer', false));
       toast.addEventListener('focusin', (event) => {
         const timing = toastTiming.get(toast);
         if (timing && event.relatedTarget && !toast.contains(event.relatedTarget)) {
           timing.returnTo = event.relatedTarget;
         }
-        hold.focused = true;
-        update();
+        holdToastClock(toast, 'focus', true);
       });
-      toast.addEventListener('focusout', () => {
-        hold.focused = false;
-        update();
-      });
+      toast.addEventListener('focusout', () => holdToastClock(toast, 'focus', false));
     }
 
     container.appendChild(toast);
