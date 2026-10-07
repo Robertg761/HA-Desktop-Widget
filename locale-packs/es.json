@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,15 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "El llavero del sistema está bloqueado o no se está ejecutando, por lo que no se puede guardar la autorización. Inícialo o desbloquéalo y reinicia el widget.",
     "Tray: Heat/Cool": "C/F",
     "Tray: Fan only": "VE",
-    "Home Assistant alert": "Alerta de Home Assistant"
+    "Home Assistant alert": "Alerta de Home Assistant",
+    "Save and close": "Guardar y cerrar",
+    "Icon applied. Click Save and close to persist changes.": "Icono aplicado. Haz clic en Guardar y cerrar para conservar los cambios.",
+    "Custom icon cleared. Click Save and close to persist changes.": "Icono personalizado borrado. Haz clic en Guardar y cerrar para conservar los cambios.",
+    "Custom icon reset. Click Save and close to persist changes.": "Icono personalizado restablecido. Haz clic en Guardar y cerrar para conservar los cambios.",
+    "All custom icons cleared. Click Save and close to persist changes.": "Se borraron todos los iconos personalizados. Haz clic en Guardar y cerrar para conservar los cambios.",
+    "Token accepted. Home Assistant is reachable. Select Save and close to keep it.": "Token aceptado. Home Assistant es accesible. Selecciona «Guardar y cerrar» para conservarlo.",
+    "Remove every custom icon? Nothing changes for good until you select Save and close.": "¿Quitar todos los iconos personalizados? Nada cambia de forma definitiva hasta que selecciones «Guardar y cerrar».",
+    "Blur changes take effect immediately, without saving.": "Los cambios del desenfoque se aplican de inmediato, sin guardar.",
+    "Could not save custom colors. Press Save and close in Settings to try again.": "No se pudieron guardar los colores personalizados. Prueba a pulsar Guardar y cerrar en la configuración."
   }
 }

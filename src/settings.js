@@ -1356,7 +1356,7 @@ function persistCustomColorsImmediately() {
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
       showToast(
-        t('Could not save custom colors. Press Save in Settings to try again.'),
+        t('Could not save custom colors. Press Save and close in Settings to try again.'),
         'warning',
         3000
       );
@@ -3239,11 +3239,11 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   if (normalized) {
     next[entityId] = normalized;
     lastCustomEntityIconAction = { entityId, action: 'apply' };
-    showToast(t('Icon applied. Click Save to persist changes.'), 'success', 2200);
+    showToast(t('Icon applied. Click Save and close to persist changes.'), 'success', 2200);
   } else {
     delete next[entityId];
     lastCustomEntityIconAction = { entityId, action: 'reset' };
-    showToast(t('Custom icon cleared. Click Save to persist changes.'), 'info', 2200);
+    showToast(t('Custom icon cleared. Click Save and close to persist changes.'), 'info', 2200);
   }
   pendingCustomEntityIcons = next;
   markSettingsTouched('customEntityIcons');
@@ -3258,7 +3258,7 @@ function resetCustomEntityIcon(entityId) {
   const next = { ...pendingCustomEntityIcons };
   delete next[entityId];
   lastCustomEntityIconAction = { entityId, action: 'reset' };
-  showToast(t('Custom icon reset. Click Save to persist changes.'), 'info', 2200);
+  showToast(t('Custom icon reset. Click Save and close to persist changes.'), 'info', 2200);
   pendingCustomEntityIcons = next;
   markSettingsTouched('customEntityIcons');
   setCustomEntityIconPickerQuery(entityId, '');
@@ -3272,7 +3272,7 @@ async function resetAllCustomEntityIcons() {
   // every other edit to get them back.
   const confirmed = await showConfirm(
     t('Reset all custom icons'),
-    t('Remove every custom icon? Nothing changes for good until you select Save.'),
+    t('Remove every custom icon? Nothing changes for good until you select Save and close.'),
     { confirmText: t('Reset'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -3281,7 +3281,7 @@ async function resetAllCustomEntityIcons() {
   customEntityIconPickerQueryByEntityId = {};
   activeCustomEntityIconPickerEntityId = null;
   lastCustomEntityIconAction = null;
-  showToast(t('All custom icons cleared. Click Save to persist changes.'), 'info', 2400);
+  showToast(t('All custom icons cleared. Click Save and close to persist changes.'), 'info', 2400);
   renderCustomEntityIconsList();
 }
 
@@ -6218,7 +6218,7 @@ function getConnectionTestMessage(resultOrError) {
   if (resultOrError?.success) {
     return {
       type: 'success',
-      text: t('Token accepted. Home Assistant is reachable. Select Save to keep it.'),
+      text: t('Token accepted. Home Assistant is reachable. Select Save and close to keep it.'),
     };
   }
 
