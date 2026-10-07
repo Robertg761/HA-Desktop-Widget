@@ -183,6 +183,7 @@ describe('a hotkey an earlier version saved on an entity it cannot act on', () =
     const context = {
       config: { globalHotkeys: { enabled: true, hotkeys }, popupHotkey: '' },
       liveEntityHotkeys,
+      resolveEntityHotkeyAction,
       acceleratorsConflict,
       process: { platform: 'linux' },
       mainT: (text, vars = {}) => text.replace(/\{\{(\w+)\}\}/g, (_, name) => vars[name]),

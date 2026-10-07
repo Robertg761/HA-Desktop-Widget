@@ -2109,6 +2109,16 @@
     "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant no puede acceder a él ahora mismo. Vuelve a intentarlo cuando vuelva a estar disponible.",
     "System keyring is unavailable": "El llavero del sistema no está disponible",
     "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "El token guardado de Home Assistant no se puede leer hasta que el llavero del sistema esté en ejecución y desbloqueado. Inícialo o desbloquéalo y reinicia el widget.",
-    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "La autorización guardada de Home Assistant no se puede leer hasta que el llavero del sistema esté en ejecución y desbloqueado. Inícialo o desbloquéalo y reinicia el widget."
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "La autorización guardada de Home Assistant no se puede leer hasta que el llavero del sistema esté en ejecución y desbloqueado. Inícialo o desbloquéalo y reinicia el widget.",
+    "Lock {{entity}}": "Bloquear {{entity}}",
+    "Unlock {{entity}}": "Desbloquear {{entity}}",
+    "Open {{entity}}": "Abrir {{entity}}",
+    "Close {{entity}}": "Cerrar {{entity}}",
+    "Press {{entity}}": "Pulsar {{entity}}",
+    "Trigger {{entity}}": "Ejecutar {{entity}}",
+    "Brighten {{entity}}": "Subir el brillo de {{entity}}",
+    "Dim {{entity}}": "Bajar el brillo de {{entity}}",
+    "Speed up {{entity}}": "Aumentar la velocidad de {{entity}}",
+    "Slow down {{entity}}": "Reducir la velocidad de {{entity}}"
   }
 }

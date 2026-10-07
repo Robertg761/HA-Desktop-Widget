@@ -2109,6 +2109,16 @@
     "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant अभी इससे संपर्क नहीं कर पा रहा है। वापस उपलब्ध होने पर फिर से कोशिश करें।",
     "System keyring is unavailable": "सिस्टम कीरिंग उपलब्ध नहीं है",
     "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "सिस्टम कीरिंग चालू और अनलॉक होने तक सहेजा गया Home Assistant टोकन पढ़ा नहीं जा सकता। उसे शुरू या अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
-    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "सिस्टम कीरिंग चालू और अनलॉक होने तक सहेजा गया Home Assistant प्राधिकरण पढ़ा नहीं जा सकता। उसे शुरू या अनलॉक करें, फिर विजेट को पुनः आरंभ करें।"
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "सिस्टम कीरिंग चालू और अनलॉक होने तक सहेजा गया Home Assistant प्राधिकरण पढ़ा नहीं जा सकता। उसे शुरू या अनलॉक करें, फिर विजेट को पुनः आरंभ करें।",
+    "Lock {{entity}}": "{{entity}} लॉक करें",
+    "Unlock {{entity}}": "{{entity}} अनलॉक करें",
+    "Open {{entity}}": "{{entity}} खोलें",
+    "Close {{entity}}": "{{entity}} बंद करें",
+    "Press {{entity}}": "{{entity}} दबाएं",
+    "Trigger {{entity}}": "{{entity}} ट्रिगर करें",
+    "Brighten {{entity}}": "{{entity}} की ब्राइटनेस बढ़ाएं",
+    "Dim {{entity}}": "{{entity}} की ब्राइटनेस घटाएं",
+    "Speed up {{entity}}": "{{entity}} की गति बढ़ाएं",
+    "Slow down {{entity}}": "{{entity}} की गति घटाएं"
   }
 }

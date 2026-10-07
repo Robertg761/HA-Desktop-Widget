@@ -2109,6 +2109,16 @@
     "Home Assistant can't reach it right now. Try again once it's back.": "Home Assistant ne peut pas le joindre pour le moment. Réessayez quand il sera de retour.",
     "System keyring is unavailable": "Le trousseau de clés du système n'est pas disponible",
     "The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "Le jeton Home Assistant enregistré ne peut pas être lu tant que le trousseau de clés du système n'est pas lancé et déverrouillé. Lancez-le ou déverrouillez-le, puis redémarrez le widget.",
-    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "L'autorisation Home Assistant enregistrée ne peut pas être lue tant que le trousseau de clés du système n'est pas lancé et déverrouillé. Lancez-le ou déverrouillez-le, puis redémarrez le widget."
+    "The saved Home Assistant authorization cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.": "L'autorisation Home Assistant enregistrée ne peut pas être lue tant que le trousseau de clés du système n'est pas lancé et déverrouillé. Lancez-le ou déverrouillez-le, puis redémarrez le widget.",
+    "Lock {{entity}}": "Verrouiller {{entity}}",
+    "Unlock {{entity}}": "Déverrouiller {{entity}}",
+    "Open {{entity}}": "Ouvrir {{entity}}",
+    "Close {{entity}}": "Fermer {{entity}}",
+    "Press {{entity}}": "Appuyer sur {{entity}}",
+    "Trigger {{entity}}": "Déclencher {{entity}}",
+    "Brighten {{entity}}": "Augmenter la luminosité de {{entity}}",
+    "Dim {{entity}}": "Réduire la luminosité de {{entity}}",
+    "Speed up {{entity}}": "Augmenter la vitesse de {{entity}}",
+    "Slow down {{entity}}": "Réduire la vitesse de {{entity}}"
   }
 }
