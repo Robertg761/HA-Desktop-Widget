@@ -37,13 +37,15 @@ function findPreferredWindowDisplay(config, screen) {
   return matches.length === 1 ? matches[0] : null;
 }
 
-function createDisplayIdentityScreen(screen, getIdentities) {
+function createDisplayIdentityScreen(screen, getIdentities, ensureIdentities) {
   const decorate = (display) => {
     const persistentId = getIdentities()[String(display.id)];
     return persistentId ? { ...display, persistentId } : display;
   };
   return new Proxy(screen, {
     get(target, key) {
+      if (key === 'requiresPersistentIdentity') return true;
+      if (key === 'ensureDisplayIdentities') return ensureIdentities;
       if (key === 'getAllDisplays') return () => target.getAllDisplays().map(decorate);
       if (key === 'getPrimaryDisplay') return () => decorate(target.getPrimaryDisplay());
       if (key === 'getDisplayMatching')
@@ -116,6 +118,9 @@ function prepareWindowDisplayChoice(
   )
     return { windowDisplay: config.windowDisplay };
   if (!target) throw new Error('The selected display is no longer connected');
+  if (screen.requiresPersistentIdentity && !target.persistentId) {
+    throw new Error('Could not load displays. Reopen Settings to try again.');
+  }
   const source = screen.getDisplayMatching(bounds).workArea;
   const offset = { x: bounds.x - source.x, y: bounds.y - source.y };
   const windowPosition = positionOnDisplay(target, offset, bounds);
@@ -139,6 +144,7 @@ function rememberWindowDisplayPosition(config, screen, bounds) {
     return saved;
   }
   const target = screen.getDisplayMatching(bounds);
+  if (screen.requiresPersistentIdentity && !target.persistentId) return saved;
   if (!connectedDisplays(screen).some((display) => display.id === target.id)) return saved;
   return {
     id: String(target.id),

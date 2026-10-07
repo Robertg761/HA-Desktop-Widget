@@ -448,9 +448,14 @@ const {
 const { loadWindowsDisplayIdentities } = require('./src/windows-display-identity.cjs');
 let windowsDisplayIdentities = {};
 let windowsDisplayIdentityRevision = 0;
+let windowsDisplayIdentityRead = null;
 const electronScreen =
   process.platform === 'win32'
-    ? createDisplayIdentityScreen(nativeElectronScreen, () => windowsDisplayIdentities)
+    ? createDisplayIdentityScreen(
+        nativeElectronScreen,
+        () => windowsDisplayIdentities,
+        ensureWindowsDisplayIdentities
+      )
     : nativeElectronScreen;
 
 function invalidateWindowsDisplayIdentities() {
@@ -461,12 +466,37 @@ function invalidateWindowsDisplayIdentities() {
 async function refreshWindowsDisplayIdentities() {
   if (process.platform !== 'win32') return;
   const revision = ++windowsDisplayIdentityRevision;
-  try {
-    const identities = await loadWindowsDisplayIdentities();
-    if (revision === windowsDisplayIdentityRevision) windowsDisplayIdentities = identities;
-  } catch (error) {
-    log.warn('Could not read Windows monitor identities:', error.message);
+  const read = loadWindowsDisplayIdentities()
+    .then((identities) => {
+      if (revision === windowsDisplayIdentityRevision) windowsDisplayIdentities = identities;
+    })
+    .catch((error) => {
+      log.warn('Could not read Windows monitor identities:', error.message);
+    })
+    .finally(() => {
+      if (windowsDisplayIdentityRead === read) windowsDisplayIdentityRead = null;
+    });
+  windowsDisplayIdentityRead = read;
+  return read;
+}
+
+async function ensureWindowsDisplayIdentities(id) {
+  if (process.platform !== 'win32' || id === '') return;
+  const ready = () => {
+    const ids = id
+      ? [id]
+      : nativeElectronScreen
+          .getAllDisplays()
+          .filter((display) => display.id >= 0)
+          .map((display) => String(display.id));
+    return ids.every((key) => windowsDisplayIdentities[key]);
+  };
+  // An event may invalidate an in-flight query. Await a fresh inventory rather
+  // than downgrading a persistent preference to an ephemeral runtime ID.
+  for (let attempt = 0; attempt < 2 && !ready(); attempt += 1) {
+    await (windowsDisplayIdentityRead || refreshWindowsDisplayIdentities());
   }
+  if (!ready()) throw new Error('Could not load displays. Reopen Settings to try again.');
 }
 
 const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
@@ -7836,6 +7866,7 @@ function applyPreferredWindowDisplay() {
 
 function applyWindowDisplayChoice(id) {
   return runSerializedConfigMutation(async () => {
+    if (electronScreen.ensureDisplayIdentities) await electronScreen.ensureDisplayIdentities(id);
     const patch = getWindowDisplayChoicePatch(id);
     const previous = config;
     config = { ...config, ...patch };
@@ -8829,6 +8860,9 @@ ipcMain.handle(
     let windowDisplayPatch = {};
     if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
       try {
+        if (electronScreen.ensureDisplayIdentities) {
+          await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
+        }
         windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
       } catch (error) {
         return {
@@ -13656,11 +13690,12 @@ protocol.registerSchemesAsPrivileged([
 
 app
   .whenReady()
-  .then(async () => {
+  .then(() => {
     // An instance that lost the single-instance lock is already on its way out. It must not load the
     // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
     if (!gotSingleInstanceLock) return;
-    const displayIdentitiesReady = refreshWindowsDisplayIdentities();
+    watchDisplayChanges();
+    void refreshWindowsDisplayIdentities();
 
     // Inside a layer-shell child the inherited environment says "already handed off"
     // and points WAYLAND_DISPLAY at the helper's private socket. Only this browser
@@ -13822,12 +13857,16 @@ app
       }
     }
 
-    await displayIdentitiesReady;
-    createWindow();
-    watchDisplayChanges();
-    setupAutoUpdates();
-    setupUsagePing();
-    schedulePostWindowStartupTasks();
+    return ensureWindowsDisplayIdentities()
+      .catch((error) => {
+        log.warn('Starting without complete Windows monitor identities:', error.message);
+      })
+      .then(() => {
+        createWindow();
+        setupAutoUpdates();
+        setupUsagePing();
+        schedulePostWindowStartupTasks();
+      });
   })
   .catch((error) => {
     log.error('Application startup failed:', error);

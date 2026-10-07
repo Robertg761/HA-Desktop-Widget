@@ -53,7 +53,7 @@ async function stop(){
 const closeTo=(a,b)=>Math.abs(a-b)<=1;
 function expected(s,id,offset){const d=s.displays.find(d=>String(d.id)===id)||s.displays.find(d=>String(d.id)===s.primaryId);const a=d.workArea;return {x:Math.round(a.x+Math.max(0,Math.min(offset.x,a.width-s.bounds.width))),y:Math.round(a.y+Math.max(0,Math.min(offset.y,a.height-s.bounds.height)))};}
 function at(s,p){return closeTo(s.bounds.x,p.x)&&closeTo(s.bounds.y,p.y);}
-async function tray(id){await rpc(`buildTrayContextMenu().items.find(i=>i.label==='Move to Monitor').submenu.items[${id===''?0:`1+getWindowDisplaySettings().displays.findIndex(d=>d.id===${JSON.stringify(id)})`}].click()`);await until(s=>s.preference?.id===id||(id===''&&s.preference===null),'tray preference');await until(()=>disk().windowDisplay?.id===id||(id===''&&disk().windowDisplay===null),'tray persisted');}
+async function tray(id){await rpc(`buildTrayContextMenu().items.find(i=>i.label==='Move to Monitor').submenu.items[${id===''?0:`1+getWindowDisplaySettings().displays.findIndex(d=>d.id===${JSON.stringify(id)})`}].click()`);await rpc('runSerializedConfigMutation(() => true)');await until(s=>s.preference?.id===id||(id===''&&s.preference===null),'tray preference');await until(()=>disk().windowDisplay?.id===id||(id===''&&disk().windowDisplay===null),'tray persisted');}
 async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>fs.writeFileSync(${JSON.stringify(path.join(out,name+'.png'))},image.toPNG()))`);}
 (async()=>{
  let macSetup;

@@ -165,3 +165,26 @@ test('screen identity decoration keeps native methods bound and reads the latest
   identities = {};
   expect(screen.getAllDisplays()[1].persistentId).toBeUndefined();
 });
+
+test('an explicit Windows choice cannot discard a stable identity during inventory refresh', () => {
+  const screen = display.createDisplayIdentityScreen(makeScreen(), () => ({}));
+  const saved = {
+    ...config,
+    windowDisplay: { id: '2', persistentId: 'windows-monitor-a', offset: { x: 100, y: 100 } },
+  };
+  expect(() => display.prepareWindowDisplayChoice('2', saved, screen)).toThrow();
+  expect(display.prepareWindowDisplayChoice('', saved, screen)).toEqual({ windowDisplay: null });
+});
+
+test('dragging onto a Windows monitor with no verified identity retains the preference', () => {
+  const screen = display.createDisplayIdentityScreen(makeScreen(), () => ({
+    1: 'windows-monitor-a',
+  }));
+  const saved = {
+    ...config,
+    windowDisplay: { id: '1', persistentId: 'windows-monitor-a', offset: { x: 100, y: 100 } },
+  };
+  expect(
+    display.rememberWindowDisplayPosition(saved, screen, { x: -1000, y: 0, ...config.windowSize })
+  ).toEqual(saved.windowDisplay);
+});

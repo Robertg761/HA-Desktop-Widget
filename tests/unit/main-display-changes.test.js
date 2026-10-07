@@ -400,11 +400,41 @@ describe('Reset Position', () => {
 });
 
 describe('Windows identity inventory', () => {
+  it('awaits a fresh inventory when startup discovery was invalidated', async () => {
+    const pending = [];
+    const context = {
+      process: { platform: 'win32' },
+      windowsDisplayIdentityRevision: 0,
+      windowsDisplayIdentityRead: null,
+      windowsDisplayIdentities: {},
+      nativeElectronScreen: { getAllDisplays: () => [{ id: 2 }] },
+      loadWindowsDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
+      log: { warn: jest.fn() },
+    };
+    vm.runInNewContext(
+      sliceMain('function invalidateWindowsDisplayIdentities()', 'const { onWindowBoundsChanged }'),
+      context
+    );
+    let ready = false;
+    const waiting = context.ensureWindowsDisplayIdentities().then(() => {
+      ready = true;
+    });
+    context.invalidateWindowsDisplayIdentities();
+    pending[0]({ 2: 'stale-device' });
+    await new Promise(setImmediate);
+    expect(ready).toBe(false);
+    expect(pending).toHaveLength(2);
+    pending[1]({ 2: 'current-device' });
+    await waiting;
+    expect(context.windowsDisplayIdentities).toEqual({ 2: 'current-device' });
+  });
+
   it('does not publish an inventory invalidated by a later display event', async () => {
     const pending = [];
     const context = {
       process: { platform: 'win32' },
       windowsDisplayIdentityRevision: 0,
+      windowsDisplayIdentityRead: null,
       windowsDisplayIdentities: { old: 'old-device' },
       loadWindowsDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
       log: { warn: jest.fn() },
