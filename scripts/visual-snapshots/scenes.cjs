@@ -502,6 +502,16 @@ const PIN_STATUS_WHOLE = `(() => {
   return !!status && status.scrollWidth <= status.clientWidth;
 })()`;
 
+// A heat/cool range's two sliders are as far apart as the cooling one is from the modes under it:
+// the pin's spare height goes around each row alike.
+const RANGE_ROWS_SPREAD = `(() => {
+  const [heat, cool] = [
+    ...document.querySelectorAll('.desktop-pin-climate-range > .desktop-pin-panel-slider-row'),
+  ].map((row) => row.getBoundingClientRect());
+  const modes = document.querySelector('.desktop-pin-climate-modes')?.getBoundingClientRect();
+  return !!cool && !!modes && Math.abs(cool.top - heat.bottom - (modes.top - cool.bottom)) <= 1;
+})()`;
+
 async function expectPinButtonsFit(pin) {
   if (!(await pin.evaluate(PIN_BUTTONS_FIT))) {
     throw new Error('Layout check failed: a pin button is cut off or its label shortened');
@@ -510,16 +520,16 @@ async function expectPinButtonsFit(pin) {
 
 // A pin dragged a little bigger than the default 168x148, named for its size. Pins in that band ran
 // their bottom row off the tile and cut its labels to "C...", so the scene fails if that is back.
-// `shows` is a check of the pin's own, [expression, what it says], for what the row must still hold.
-const resizedPinScene = (family, entityId, size, { shows, ...extra } = {}) =>
+// `shows` lists checks of the pin's own, [expression, what it says], for what it must still hold.
+const resizedPinScene = (family, entityId, size, { shows = [], ...extra } = {}) =>
   pinScene(`pin-${family}-${size.width}x${size.height}`, entityId, {
     ...extra,
     setup: async (ctx) => {
       const pin = await ctx.openPin(entityId);
       await resizePin(ctx, entityId, size);
       await expectPinButtonsFit(pin);
-      if (shows && !(await pin.evaluate(shows[0]))) {
-        throw new Error(`Layout check failed: ${shows[1]}`);
+      for (const [expression, says] of shows) {
+        if (!(await pin.evaluate(expression))) throw new Error(`Layout check failed: ${says}`);
       }
       return { capture: pin };
     },
@@ -2778,13 +2788,14 @@ const scenes = [
   // The longer names of the mode ("Heizen/Kühlen", "Chaud/Froid") cut every mode of that pin in
   // German and French, and the mode under the name beside the range, and four equal shares of a
   // roomy row cut "Heat/Cool" in English, where the row has room for all four once they take their
-  // names' width.
+  // names' width. The roomy pin's two sliders share its spare height with the modes: a fixed gap
+  // apart, they sat close together under an empty band.
   ...['de', 'fr'].map((language) =>
     resizedPinScene(
       `${language}-climate-range`,
       'climate.heat_pump',
       { width: 200, height: 170 },
-      { ui: { language }, shows: [PIN_STATUS_WHOLE, 'the mode under the name is whole'] }
+      { ui: { language }, shows: [[PIN_STATUS_WHOLE, 'the mode under the name is whole']] }
     )
   ),
   resizedPinScene(
@@ -2793,8 +2804,11 @@ const scenes = [
     { width: 280, height: 200 },
     {
       shows: [
-        `document.querySelectorAll('.desktop-pin-climate-mode:not([hidden])').length === 4`,
-        'a roomy heat/cool pin offers all four of its modes',
+        [
+          `document.querySelectorAll('.desktop-pin-climate-mode:not([hidden])').length === 4`,
+          'a roomy heat/cool pin offers all four of its modes',
+        ],
+        [RANGE_ROWS_SPREAD, "a roomy heat/cool pin's sliders are as far apart as the modes"],
       ],
     }
   ),

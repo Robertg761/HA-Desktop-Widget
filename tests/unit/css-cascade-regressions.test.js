@@ -1399,9 +1399,11 @@ describe('stylesheet cascade regressions', () => {
     );
 
     // Sized row by row, the two tracks of a heat/cool range began where each row's own label
-    // ended, 33px apart in French, though they run over the same scale.
+    // ended, 33px apart in French, though they run over the same scale. Held a fixed gap apart in
+    // that column, they no longer took their share of the pin's spare height, and a roomy pin
+    // had its two thumbs close together under an empty band.
     it.each(['compact', 'balanced', 'roomy'])(
-      'gives the two rows of a %s heat/cool pin one label column',
+      'gives the two rows of a %s heat/cool pin one label column and their share of its height',
       (layout) => {
         render(
           'desktop-pin-mode',
@@ -1417,7 +1419,8 @@ describe('stylesheet cascade regressions', () => {
         const range = document.querySelector('.desktop-pin-climate-range');
         expect(resolvedValue(range, 'display')).toBe('grid');
         expect(resolvedValue(range, 'grid-template-columns')).toBe('max-content minmax(0, 1fr)');
-        expect(resolvedValue(range, 'margin-top')).toBe('auto');
+        expect(resolvedValue(range, 'flex-grow')).toBe('1');
+        expect(resolvedValue(range, 'align-content')).toBe('space-evenly');
         for (const row of range.querySelectorAll('.desktop-pin-panel-slider-row')) {
           expect(resolvedValue(row, 'grid-template-columns')).toBe('subgrid');
           expect(resolvedValue(row, 'grid-column')).toBe('1 / -1');

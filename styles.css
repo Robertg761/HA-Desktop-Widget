@@ -1830,8 +1830,7 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   flex: 1 1 auto;
 }
 
-.desktop-pin-panel-body
-  > :is(.desktop-pin-panel-slider-row, .desktop-pin-climate-range, .desktop-pin-panel-actions) {
+.desktop-pin-panel-body > :is(.desktop-pin-panel-slider-row, .desktop-pin-panel-actions) {
   margin-top: auto;
 }
 
@@ -2101,9 +2100,13 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 }
 
 /* A heat/cool range's two rows share one column for their labels, so the tracks, which run over the
-   same scale, start and end at the same place (see climateRangeMarkup). */
+   same scale, start and end at the same place (see climateRangeMarkup). The pin's spare height is
+   shared out above, between and under the two rows, as it was when each was a row of the body:
+   held a fixed gap apart, the thumbs of a roomy pin sat 10px apart under a wide empty band. */
 .desktop-pin-climate-range {
   display: grid;
+  flex-grow: 1;
+  align-content: space-evenly;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: var(--desktop-pin-panel-gap) 6px;
 }
