@@ -89,6 +89,40 @@ describe('the visual snapshot workflow', () => {
       expect(WINDOW_POSITION.x - 32).toBeGreaterThan(32);
     });
 
+    // The Windows 11 runner opened its WSL console minutes after the desktop was cleared, and every
+    // pin captured after that sat on it. The run keeps the script beside it and has it clear the
+    // screen around the app again before each screen capture.
+    it('clears the screen again before each capture, around the app', () => {
+      const take = steps[order('Take snapshots (Windows, macOS)')];
+      expect(take.env.SNAPSHOT_CLEAR_DESKTOP).toBe('1');
+
+      const keep = script.slice(
+        script.indexOf('if ($Keep) {'),
+        script.indexOf('if (-not $Check) {')
+      );
+      expect(keep).toMatch(/while \(\$null -ne \(\$request = \[Console\]::In\.ReadLine\(\)\)\)/);
+      expect(keep).toMatch(
+        /Get-Process -Name wsl\b[^\n]*\|\s*ForEach-Object\s*\{[^}]*Stop-Process/
+      );
+      // Every window but the app's, the desktop and the taskbar, minimized without activating the
+      // next one, which could be the app's.
+      expect(keep).toContain('Get-StrayWindow | Where-Object { $_.Id -ne $appId }');
+      expect(keep).toContain('[Win32.Desktop]::ShowWindow($window.Handle, 7)');
+      expect(keep).toContain("& $say 'done'");
+      // The keep mode answers the runner and goes no further: no listing of its own, no pointer.
+      expect(keep.trim().endsWith('return\n}')).toBe(true);
+
+      const run = fs.readFileSync(
+        path.resolve(__dirname, '../../scripts/visual-snapshots/run.cjs'),
+        'utf8'
+      );
+      const capture = run.slice(run.indexOf('async function capture('));
+      expect(capture.indexOf('desktopKeeper.sweep(runningAppPid)')).toBeGreaterThan(-1);
+      expect(capture.indexOf('desktopKeeper.sweep(runningAppPid)')).toBeLessThan(
+        capture.indexOf('captureScreen(')
+      );
+    });
+
     // Whatever is left is named on the run's summary, before and after the run, and the snapshots
     // still go ahead: they are informational.
     it('warns about every window still on screen, without failing the job', () => {

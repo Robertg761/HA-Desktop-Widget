@@ -5,10 +5,12 @@
 #   windows-desktop.ps1          end the WSL prompt, minimize every window but the desktop and the
 #                                taskbar, park the pointer, then list what is still on screen
 #   windows-desktop.ps1 -Check   only list what is on screen
+#   windows-desktop.ps1 -Keep    stay running beside the snapshots and clear the screen again
+#                                before each capture (desktop-keeper.cjs)
 #
 # Every window still on screen becomes a warning on the run's summary page, so a reviewer knows
 # which captures to distrust. Nothing here fails the job: the snapshots are informational.
-param([switch]$Check)
+param([switch]$Check, [switch]$Keep)
 
 $ErrorActionPreference = 'Stop'
 
@@ -126,6 +128,50 @@ function Get-StrayWindow {
         Handle = $_.Handle
       }
     }
+}
+
+# The runner's own windows can open during the run, after the desktop was cleared: on the Windows 11
+# image the console asking for a WSL update opened minutes into it and sat under every pin captured
+# after that. So the snapshot runner keeps this script running and asks it, a line `sweep <pid>` at a
+# time, to clear the screen again before each capture. It ends wsl.exe and minimizes every window
+# but those of the app (process <pid>), the desktop and the taskbar, answers a line for each, and
+# ends the answer with `done`; see desktop-keeper.cjs.
+if ($Keep) {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $say = {
+    param([string]$Line)
+    # One answer line each, whatever a window title holds.
+    [Console]::Out.WriteLine(($Line -replace '[\r\n]+', ' '))
+  }
+  while ($null -ne ($request = [Console]::In.ReadLine())) {
+    $appId = 0
+    [void][int]::TryParse(($request -replace '^sweep\s*', ''), [ref]$appId)
+    try {
+      Get-Process -Name wsl -ErrorAction SilentlyContinue | ForEach-Object {
+        & $say "stopped $($_.ProcessName) ($($_.Id))"
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+      }
+      $stray = @(Get-StrayWindow | Where-Object { $_.Id -ne $appId })
+      foreach ($window in $stray) {
+        & $say "cleared $($window.Process) ($($window.Id)) $($window.Class): $($window.Title)"
+        # SW_SHOWMINNOACTIVE: minimized without activating the next window, which could be the
+        # app's, so a scene keeps the focus it set up.
+        [Win32.Desktop]::ShowWindow($window.Handle, 7) | Out-Null
+      }
+      if ($stray.Count -gt 0) {
+        # A window takes a moment to minimize; what is still there after it is in the capture.
+        Start-Sleep -Milliseconds 500
+        foreach ($window in @(Get-StrayWindow | Where-Object { $_.Id -ne $appId })) {
+          & $say "left $($window.Process) ($($window.Id)) $($window.Class) at $($window.Bounds): $($window.Title)"
+        }
+      }
+    } catch {
+      & $say "error $($_.Exception.Message)"
+    }
+    & $say 'done'
+    [Console]::Out.Flush()
+  }
+  return
 }
 
 if (-not $Check) {
