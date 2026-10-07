@@ -424,7 +424,7 @@ Syncthing, or any similar app already keeps in sync. There is no server and no a
 2. Pick your **Sync app**, then **Choose folder...** and select a folder inside it.
 3. Optionally turn on **Encrypt synced profile with passphrase** and enter a passphrase of at
    least 8 characters.
-4. Choose **Save**. The sync file is created.
+4. Choose **Save and close**. The sync file is created.
 
 **Add another computer**
 

@@ -877,6 +877,15 @@
                 <div class="form-group setting-row">
                   <div class="setting-text">
                     <label id="theme-mode-label" data-i18n="Mode">Mode</label>
+                    <p
+                      id="theme-mode-contrast-note"
+                      class="form-help"
+                      hidden
+                      data-i18n="High contrast uses Dark mode. Your theme choice returns when high contrast is turned off."
+                    >
+                      High contrast uses Dark mode. Your theme choice returns when high contrast is
+                      turned off.
+                    </p>
                   </div>
                   <div
                     id="theme-mode-control"
@@ -1205,9 +1214,9 @@
                   <p id="desktop-blur-status" class="form-help" role="status"></p>
                   <p
                     class="help-text"
-                    data-i18n="Blur changes take effect immediately, without Save."
+                    data-i18n="Blur changes take effect immediately, without saving."
                   >
-                    Blur changes take effect immediately, without Save.
+                    Blur changes take effect immediately, without saving.
                   </p>
                   <div class="setting-row-action">
                     <button
@@ -2873,8 +2882,13 @@
           >
             Cancel
           </button>
-          <button type="button" id="save-settings" class="btn btn-primary" data-i18n="Save">
-            Save
+          <button
+            type="button"
+            id="save-settings"
+            class="btn btn-primary"
+            data-i18n="Save and close"
+          >
+            Save and close
           </button>
         </div>
       </div>

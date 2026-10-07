@@ -73,6 +73,20 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
  assert(s.displays.some(d=>String(d.id)===target),'Virtual target must exist in Electron');
  let pref;
  await test('Native display discovery and selector inventory',async()=>{assert(s.choice.supported);assert(s.choice.displays.length>=2);return {target,primary};});
+ if(process.platform==='win32') await test('Windows persistent display keys match native target hashes',async()=>{
+  const identities=await rpc(`require('./src/windows-display-identity.cjs').loadWindowsDisplayIdentities()`);
+  const versions=await rpc('process.versions');
+  s=await state();
+  fs.writeFileSync(path.join(out,'windows-display-identities.json'),JSON.stringify({identities,versions,displays:s.displays},null,2));
+  assert.equal(s.displays.length,3,'Windows fixture must expose the host and two virtual displays');
+  assert.deepEqual(Object.keys(identities).sort(),s.displays.map(d=>String(d.id)).sort(),'Native target hashes must match every actual Electron runtime ID');
+  for(const display of s.displays){
+   assert.equal(typeof display.persistentId,'string','App display must include its persistent monitor key');
+   assert.equal(display.persistentId,identities[String(display.id)],'App key must match the OS device path for this exact runtime ID');
+  }
+  assert.equal(new Set(s.displays.map(d=>d.persistentId)).size,3,'All three native monitor keys must be distinct');
+  return {identities,versions};
+ });
  const scales=[...new Set(s.displays.map(d=>d.scaleFactor))];
  if(scales.length<2){rows.push({name:'OS provides mixed per-monitor DPI',status:'BLOCKED',scales,reason:'Runner/driver exposed only one scale factor'});save();}
  else await test('OS provides mixed per-monitor DPI',async()=>({scales}));
@@ -80,6 +94,11 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   const before=await state(),source=before.displays.find(d=>String(d.id)===before.mainDisplayId);
   const offset={x:before.bounds.x-source.workArea.x,y:before.bounds.y-source.workArea.y};
   await tray(target);s=await until(s=>at(s,expected(s,target,offset)),'tray geometry');pref=s.preference;
+  if(process.platform==='win32'){
+   assert.equal(typeof pref.persistentId,'string','Chosen monitor must persist its stable key');
+   assert(pref.persistentId.length>0,'Chosen monitor key cannot be empty');
+   assert.equal(pref.persistentId,s.displays.find(d=>String(d.id)===target).persistentId);
+  }
   assert.deepEqual(s.pins,before.pins);assert.deepEqual(disk().windowDisplay,pref);return {offset,pref};
  });
  await test('Settings saves primary display through real renderer and IPC',async()=>{
@@ -119,6 +138,48 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
  await test('Automatic retains the current position across restart',async()=>{
   const before=await state();await tray('');s=await state();assert(at(s,before.bounds));await stop();await launch();s=await until(s=>at(s,before.bounds),'Automatic restart');assert.equal(s.preference,null);
  });
+ if(process.platform==='win32'){
+  const name='Windows adapter restart restores the selected monitor by device key';
+  const experiment={beforeMap:null,afterMap:null};
+  const saveExperiment=()=>fs.writeFileSync(path.join(out,'windows-adapter-restart-identities.json'),JSON.stringify(experiment,null,2));
+  try{
+   await tray(target);s=await until(s=>at(s,expected(s,target,{x:100,y:100})),'adapter experiment initial selection');
+   experiment.preferenceBefore=s.preference;
+   experiment.beforeState=s;
+   const loadIdentities=require(path.join(root,'src/windows-display-identity.cjs')).loadWindowsDisplayIdentities;
+   experiment.beforeMap=await loadIdentities();
+   const persistentId=s.preference.persistentId;
+   assert.equal(experiment.beforeMap[target],persistentId,'Adapter experiment must start with a verified OS monitor key');
+   saveExperiment();
+   await stop();
+   experiment.adapterControl=windows('restart-adapter');
+   experiment.afterMap=await loadIdentities();
+   saveExperiment();
+   assert.equal(Object.keys(experiment.afterMap).length,3,'Native identity query must still expose every display after adapter restart');
+   const matching=Object.entries(experiment.afterMap).filter(([,key])=>key===persistentId);
+   await launch();
+   experiment.afterState=await state();
+   if(matching.length===0){
+    experiment.status='BLOCKED';
+    experiment.reason='VDD recreated the OS monitor identity during adapter restart; the saved monitorDevicePath no longer exists. This does not validate restoration to the same device after runtime-ID churn.';
+    rows.push({name,status:'BLOCKED',reason:experiment.reason,details:experiment});save();
+   }else{
+    assert.equal(matching.length,1,'Saved monitor device key must resolve uniquely');
+    const nextRuntimeId=matching[0][0];
+    experiment.runtimeIdBefore=target;experiment.runtimeIdAfter=nextRuntimeId;experiment.runtimeIdChanged=nextRuntimeId!==target;
+    await test(name,async()=>{
+     const restored=await until(current=>current.mainDisplayId===nextRuntimeId&&at(current,expected(current,nextRuntimeId,experiment.preferenceBefore.offset)),'adapter restart stable monitor recovery');
+     assert.equal(restored.preference.persistentId,persistentId);
+     assert.deepEqual(restored.preference.offset,experiment.preferenceBefore.offset);
+     assert.equal(restored.preference.label,experiment.preferenceBefore.label);
+     assert.equal(restored.choice.selectedId,nextRuntimeId,'Selector must show the new runtime ID for the same saved monitor');
+     assert.equal(restored.displays.find(d=>String(d.id)===nextRuntimeId).persistentId,persistentId);
+     experiment.afterState=restored;experiment.status='PASS';
+     return experiment;
+    });
+   }
+  }catch(error){experiment.error=error.stack;throw error;}finally{saveExperiment();}
+ }
  await screenshot('final-window');
  console.log(JSON.stringify({passed:rows.filter(r=>r.status==='PASS').length,blocked:rows.filter(r=>r.status==='BLOCKED').length}));
 })().catch(async error=>{

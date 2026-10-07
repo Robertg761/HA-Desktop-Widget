@@ -17,7 +17,10 @@ const {
 } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-const { resolveWindowDisplayPosition } = require('../../src/window-display.cjs');
+const {
+  resolveWindowDisplayPosition,
+  findPreferredWindowDisplay,
+} = require('../../src/window-display.cjs');
 
 function sliceMain(startMarker, endMarker) {
   const start = mainSource.indexOf(startMarker);
@@ -198,6 +201,7 @@ describe('the widget after the monitors change', () => {
       refreshTrayMenu: jest.fn(),
       pushConfigToRenderer: jest.fn(),
       resolveWindowDisplayPosition,
+      findPreferredWindowDisplay,
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
       runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
       saveConfig: jest.fn(),
@@ -307,6 +311,30 @@ describe('the widget after the monitors change', () => {
     expect(mainWindow.setPosition).toHaveBeenCalledTimes(1);
   });
 
+  it('waits for Windows identities and ignores recovery superseded by another display event', async () => {
+    const completions = [];
+    const { context, electronScreen, mainWindow } = loadDisplays({
+      process: { platform: 'win32' },
+      invalidateWindowsDisplayIdentities: jest.fn(),
+      refreshWindowsDisplayIdentities: jest.fn(
+        () => new Promise((resolve) => completions.push(resolve))
+      ),
+    });
+    context.watchDisplayChanges();
+    electronScreen.emit('display-removed');
+    jest.advanceTimersByTime(500);
+    expect(mainWindow.setPosition).not.toHaveBeenCalled();
+    electronScreen.emit('display-added');
+    completions[0]();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mainWindow.setPosition).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(500);
+    completions[1]();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mainWindow.setPosition).toHaveBeenCalledTimes(1);
+    expect(context.invalidateWindowsDisplayIdentities).toHaveBeenCalledTimes(2);
+  });
+
   it('survives a failure while recovering', () => {
     const { context, electronScreen } = loadDisplays();
     context.mainWindow.getBounds = () => {
@@ -329,6 +357,7 @@ describe('Reset Position', () => {
       electronScreen: createScreen([workArea]),
       clampPositionToWorkAreas,
       config: { windowSize },
+      findPreferredWindowDisplay,
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
     };
     vm.runInNewContext(
@@ -367,5 +396,30 @@ describe('Reset Position', () => {
       width: 1366,
       height: 728,
     });
+  });
+});
+
+describe('Windows identity inventory', () => {
+  it('does not publish an inventory invalidated by a later display event', async () => {
+    const pending = [];
+    const context = {
+      process: { platform: 'win32' },
+      windowsDisplayIdentityRevision: 0,
+      windowsDisplayIdentities: { old: 'old-device' },
+      loadWindowsDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
+      log: { warn: jest.fn() },
+    };
+    vm.runInNewContext(
+      sliceMain('function invalidateWindowsDisplayIdentities()', 'const { onWindowBoundsChanged }'),
+      context
+    );
+    const first = context.refreshWindowsDisplayIdentities();
+    context.invalidateWindowsDisplayIdentities();
+    const second = context.refreshWindowsDisplayIdentities();
+    pending[1]({ current: 'current-device' });
+    await second;
+    pending[0]({ stale: 'stale-device' });
+    await first;
+    expect(context.windowsDisplayIdentities).toEqual({ current: 'current-device' });
   });
 });

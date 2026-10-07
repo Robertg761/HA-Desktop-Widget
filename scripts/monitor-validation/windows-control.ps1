@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('list','off','on','scale','layout')][string]$Action = 'list',
+    [ValidateSet('list','off','on','scale','layout','restart-adapter')][string]$Action = 'list',
     [string]$DisplayName,
     [int]$ScalePercent = 150,
     [switch]$Reverse,
@@ -13,6 +13,26 @@ if (-not ('NativeMonitorValidation' -as [type])) {
 New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
 $savedModesPath = Join-Path $StateDirectory 'windows-detached-modes.json'
 switch ($Action) {
+    'restart-adapter' {
+        $active = @([NativeMonitorValidation]::List())
+        if (@($active | Where-Object { $_.primary -and -not $_.isVirtual }).Count -ne 1) {
+            throw 'Refusing adapter restart without an active nonvirtual primary display.'
+        }
+        $devices = @(Get-PnpDevice -Class Display | Where-Object {
+            $hardware = Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_HardwareIds' -ErrorAction SilentlyContinue
+            @($hardware.Data) -contains 'Root\MttVDD'
+        })
+        if ($devices.Count -ne 1) { throw "Expected exactly one MttVDD adapter, found $($devices.Count)." }
+        Disable-PnpDevice -InstanceId $devices[0].InstanceId -Confirm:$false | Out-Null
+        Start-Sleep -Seconds 4
+        Enable-PnpDevice -InstanceId $devices[0].InstanceId -Confirm:$false | Out-Null
+        Start-Sleep -Seconds 6
+        [NativeMonitorValidation]::Extend()
+        Start-Sleep -Seconds 3
+        if (@([NativeMonitorValidation]::List() | Where-Object isVirtual).Count -ne 2) {
+            throw 'The restarted VDD adapter did not restore both virtual displays.'
+        }
+    }
     'off' {
         $active = @([NativeMonitorValidation]::List())
         $virtual = @($active | Where-Object isVirtual)
@@ -71,7 +91,8 @@ switch ($Action) {
     'layout' { [NativeMonitorValidation]::Layout($Reverse.IsPresent); Start-Sleep -Seconds 3 }
 }
 $inventory = @([NativeMonitorValidation]::List())
-$result = [ordered]@{ action=$Action; timestamp=[DateTime]::UtcNow.ToString('o'); displays=$inventory; connectionMechanism='GDI desktop source detach/restore; adapter remains enabled' }
+$mechanism = if ($Action -eq 'restart-adapter') { 'PnP disable/enable of the same Root\MttVDD adapter instance' } else { 'GDI desktop source detach/restore; adapter remains enabled' }
+$result = [ordered]@{ action=$Action; timestamp=[DateTime]::UtcNow.ToString('o'); displays=$inventory; connectionMechanism=$mechanism }
 New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
 $json = $result | ConvertTo-Json -Depth 6
 $json | Set-Content -Path (Join-Path $StateDirectory "windows-$Action.json") -Encoding UTF8

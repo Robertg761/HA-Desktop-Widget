@@ -113,3 +113,55 @@ test('lists a disconnected preference and ignores displays with an unknown ident
     displays: [],
   });
 });
+
+test('restores a Windows monitor by persistent identity after runtime IDs change', () => {
+  const original = { ...secondary, persistentId: 'windows-monitor-a' };
+  const saved = {
+    ...config,
+    ...display.prepareWindowDisplayChoice('2', config, makeScreen([primary, original])),
+  };
+  expect(saved.windowDisplay.persistentId).toBe('windows-monitor-a');
+  const returned = { ...original, id: 99, workArea: { ...original.workArea, x: 1920, y: 0 } };
+  const other = { ...secondary, id: 2, persistentId: 'windows-monitor-b' };
+  const screen = makeScreen([primary, other, returned]);
+  expect(display.resolveWindowDisplayPosition(JSON.parse(JSON.stringify(saved)), screen)).toEqual({
+    x: 2020,
+    y: 100,
+  });
+  expect(display.getWindowDisplayState(saved, screen, true).selectedId).toBe('99');
+});
+
+test('never mistakes a reused runtime ID or identical label for a missing Windows monitor', () => {
+  const saved = {
+    ...config,
+    windowDisplay: {
+      id: '2',
+      persistentId: 'windows-monitor-a',
+      label: 'Desk',
+      offset: { x: 100, y: 100 },
+    },
+  };
+  for (const replacement of [{ ...secondary, persistentId: 'windows-monitor-b' }, secondary]) {
+    const screen = makeScreen([primary, replacement]);
+    expect(display.resolveWindowDisplayPosition(saved, screen)).toEqual({ x: 100, y: 124 });
+    const state = display.getWindowDisplayState(saved, screen, true);
+    expect(state.displays.find((item) => item.id === state.selectedId).available).toBe(false);
+    expect(
+      display.rememberWindowDisplayPosition(saved, screen, { x: 200, y: 224, ...config.windowSize })
+    ).toEqual(saved.windowDisplay);
+  }
+});
+
+test('screen identity decoration keeps native methods bound and reads the latest inventory', () => {
+  let identities = { 2: 'windows-monitor-a' };
+  const native = makeScreen();
+  native.on = function () {
+    return this;
+  };
+  const screen = display.createDisplayIdentityScreen(native, () => identities);
+  expect(screen.on('display-added')).toBe(native);
+  expect(screen.getAllDisplays()[1].persistentId).toBe('windows-monitor-a');
+  expect(screen.getDisplayMatching({ x: -1000 }).persistentId).toBe('windows-monitor-a');
+  identities = {};
+  expect(screen.getAllDisplays()[1].persistentId).toBeUndefined();
+});

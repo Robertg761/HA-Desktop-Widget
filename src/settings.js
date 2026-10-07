@@ -166,7 +166,7 @@ let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let profileSyncErrorObserver = null;
 let localePackListCache = [];
-let localePackListError = '';
+let localePackListFailed = false;
 let languagePackRefreshPromise = Promise.resolve();
 let languagePackRefreshGeneration = 0;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
@@ -1357,7 +1357,7 @@ function persistCustomColorsImmediately() {
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
       showToast(
-        t('Could not save custom colors. Press Save in Settings to try again.'),
+        t('Could not save custom colors. Press Save and close in Settings to try again.'),
         'warning',
         3000
       );
@@ -2295,17 +2295,24 @@ function isFollowingDesktopPalette() {
   return !!followOmarchy && !followOmarchy.disabled && followOmarchy.checked;
 }
 
-function updateThemeModeControl() {
+function updateThemeModeControl(ui = getAppearanceFromInputs()) {
   const control = document.getElementById('theme-mode-control');
   if (!control) return;
-  // A followed desktop palette decides light or dark itself, so the control shows the mode the
-  // palette is in rather than a pick it ignores.
-  const locked = isFollowingDesktopPalette();
+  // High contrast forces Dark even over a followed desktop palette. Keep the underlying choice
+  // in pendingThemeMode/config so disabling the override restores it instead of saving Dark.
+  const highContrast = !!ui.highContrast;
+  const followingPalette = isFollowingDesktopPalette();
+  const locked = highContrast || followingPalette;
   const paletteMode = state.CONFIG?.desktopAppearance?.mode;
-  const mode =
-    locked && THEME_MODES.includes(paletteMode)
+  const mode = highContrast
+    ? 'dark'
+    : followingPalette && THEME_MODES.includes(paletteMode)
       ? paletteMode
       : pendingThemeMode || getSavedThemeMode();
+  const note = document.getElementById('theme-mode-contrast-note');
+  if (note) note.hidden = !highContrast;
+  if (highContrast) control.setAttribute('aria-describedby', 'theme-mode-contrast-note');
+  else control.removeAttribute('aria-describedby');
   control.classList.toggle('is-disabled', locked);
   control.querySelectorAll('[data-theme-mode]').forEach((option) => {
     const selected = option.dataset.themeMode === mode;
@@ -2323,6 +2330,7 @@ function updateThemeModeControl() {
  * @param {string} mode - 'auto', 'dark' or 'light'.
  */
 function previewThemeMode(mode) {
+  if (isFollowingDesktopPalette() || getAppearanceFromInputs().highContrast) return;
   const nextMode = normalizeThemeMode(mode);
   if (nextMode !== (pendingThemeMode || getSavedThemeMode())) markSettingsTouched('ui.theme');
   pendingThemeMode = nextMode;
@@ -3240,11 +3248,11 @@ function applyCustomEntityIconFromInput(entityId, rawIcon) {
   if (normalized) {
     next[entityId] = normalized;
     lastCustomEntityIconAction = { entityId, action: 'apply' };
-    showToast(t('Icon applied. Click Save to persist changes.'), 'success', 2200);
+    showToast(t('Icon applied. Click Save and close to persist changes.'), 'success', 2200);
   } else {
     delete next[entityId];
     lastCustomEntityIconAction = { entityId, action: 'reset' };
-    showToast(t('Custom icon cleared. Click Save to persist changes.'), 'info', 2200);
+    showToast(t('Custom icon cleared. Click Save and close to persist changes.'), 'info', 2200);
   }
   pendingCustomEntityIcons = next;
   markSettingsTouched('customEntityIcons');
@@ -3259,7 +3267,7 @@ function resetCustomEntityIcon(entityId) {
   const next = { ...pendingCustomEntityIcons };
   delete next[entityId];
   lastCustomEntityIconAction = { entityId, action: 'reset' };
-  showToast(t('Custom icon reset. Click Save to persist changes.'), 'info', 2200);
+  showToast(t('Custom icon reset. Click Save and close to persist changes.'), 'info', 2200);
   pendingCustomEntityIcons = next;
   markSettingsTouched('customEntityIcons');
   setCustomEntityIconPickerQuery(entityId, '');
@@ -3273,7 +3281,7 @@ async function resetAllCustomEntityIcons() {
   // every other edit to get them back.
   const confirmed = await showConfirm(
     t('Reset all custom icons'),
-    t('Remove every custom icon? Nothing changes for good until you select Save.'),
+    t('Remove every custom icon? Nothing changes for good until you select Save and close.'),
     { confirmText: t('Reset'), confirmClass: 'btn-danger' }
   );
   if (!confirmed) return;
@@ -3282,7 +3290,7 @@ async function resetAllCustomEntityIcons() {
   customEntityIconPickerQueryByEntityId = {};
   activeCustomEntityIconPickerEntityId = null;
   lastCustomEntityIconAction = null;
-  showToast(t('All custom icons cleared. Click Save to persist changes.'), 'info', 2400);
+  showToast(t('All custom icons cleared. Click Save and close to persist changes.'), 'info', 2400);
   renderCustomEntityIconsList();
 }
 
@@ -3632,7 +3640,9 @@ function restorePreviewWindowEffects() {
 function reapplySettingsPreviews() {
   if (!previewState) return;
   setCustomThemes(pendingCustomColors);
-  applyUiPreferences(getAppearanceFromInputs());
+  const ui = getAppearanceFromInputs();
+  applyUiPreferences(ui);
+  updateThemeModeControl(ui);
   // The echo put the saved mode back, while the Mode control still shows the pick. A followed
   // palette decides the mode itself (and was just applied), so it keeps its say.
   if (pendingThemeMode && !isFollowingDesktopPalette()) applyTheme(pendingThemeMode);
@@ -5112,19 +5122,21 @@ function renderLanguagePackList() {
   const statusEl = document.getElementById('language-pack-status');
   if (!container) return;
 
+  // Translate on each render so a cached failure follows language changes while Settings is open.
+  const errorMessage = localePackListFailed ? t('Unable to load language packs right now.') : '';
   container.innerHTML = '';
   if (statusEl) {
-    statusEl.classList.toggle('hidden', !localePackListError);
-    statusEl.textContent = localePackListError;
+    statusEl.classList.toggle('hidden', !localePackListFailed);
+    statusEl.textContent = errorMessage;
   }
 
   if (!localePackListCache.length) {
     // The status line already shows the load error; don't repeat it in the list.
-    if (localePackListError && statusEl) return;
+    if (localePackListFailed && statusEl) return;
     const empty = document.createElement('div');
     empty.className = 'help-text';
     empty.textContent =
-      localePackListError || t('No downloadable language packs are currently available.');
+      errorMessage || t('No downloadable language packs are currently available.');
     container.appendChild(empty);
     return;
   }
@@ -5215,7 +5227,7 @@ function renderLanguagePackList() {
 async function refreshLanguagePackList(forceRefresh = false) {
   const generation = ++languagePackRefreshGeneration;
   try {
-    localePackListError = '';
+    localePackListFailed = false;
     if (!window?.electronAPI?.getLocalePacks) {
       localePackListCache = [];
     } else {
@@ -5225,14 +5237,14 @@ async function refreshLanguagePackList(forceRefresh = false) {
         localePackListCache = result;
       } else {
         localePackListCache = Array.isArray(result?.installedPacks) ? result.installedPacks : [];
-        localePackListError = t('Unable to load language packs right now.');
+        localePackListFailed = true;
       }
     }
   } catch (error) {
     if (generation !== languagePackRefreshGeneration) return;
     log.error('Failed to load locale packs:', error);
     localePackListCache = Array.isArray(error?.installedPacks) ? error.installedPacks : [];
-    localePackListError = t('Unable to load language packs right now.');
+    localePackListFailed = true;
   }
   syncLanguageSelectOptions();
   renderLanguagePackList();
@@ -5442,6 +5454,7 @@ function previewAppearance() {
   syncSeasonalControls(ui);
   syncReadablePresetOverrides(ui);
   applyUiPreferences(ui);
+  updateThemeModeControl(ui);
 }
 
 function bindSeasonalSettingsUi(ui) {
@@ -5503,6 +5516,7 @@ function bindAppearanceSettingsUi() {
     control.onchange = previewAppearance;
   }
   syncReadablePresetOverrides(ui);
+  updateThemeModeControl(ui);
   bindSeasonalSettingsUi(ui);
 }
 
@@ -6231,7 +6245,7 @@ function getConnectionTestMessage(resultOrError) {
   if (resultOrError?.success) {
     return {
       type: 'success',
-      text: t('Token accepted. Home Assistant is reachable. Select Save to keep it.'),
+      text: t('Token accepted. Home Assistant is reachable. Select Save and close to keep it.'),
     };
   }
 

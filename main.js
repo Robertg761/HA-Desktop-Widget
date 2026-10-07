@@ -4,7 +4,7 @@ const {
   ipcMain,
   Menu,
   Tray,
-  screen: electronScreen,
+  screen: nativeElectronScreen,
   shell,
   protocol,
   globalShortcut,
@@ -437,12 +437,38 @@ const {
   clampPositionToWorkAreas,
 } = require('./src/window-placement.cjs');
 const {
+  createDisplayIdentityScreen,
+  findPreferredWindowDisplay,
   getWindowDisplayState,
   resolveWindowDisplayPosition,
   prepareWindowDisplayChoice,
   rememberWindowDisplayPosition,
   formatWindowDisplayLabel,
 } = require('./src/window-display.cjs');
+const { loadWindowsDisplayIdentities } = require('./src/windows-display-identity.cjs');
+let windowsDisplayIdentities = {};
+let windowsDisplayIdentityRevision = 0;
+const electronScreen =
+  process.platform === 'win32'
+    ? createDisplayIdentityScreen(nativeElectronScreen, () => windowsDisplayIdentities)
+    : nativeElectronScreen;
+
+function invalidateWindowsDisplayIdentities() {
+  windowsDisplayIdentityRevision += 1;
+  windowsDisplayIdentities = {};
+}
+
+async function refreshWindowsDisplayIdentities() {
+  if (process.platform !== 'win32') return;
+  const revision = ++windowsDisplayIdentityRevision;
+  try {
+    const identities = await loadWindowsDisplayIdentities();
+    if (revision === windowsDisplayIdentityRevision) windowsDisplayIdentities = identities;
+  } catch (error) {
+    log.warn('Could not read Windows monitor identities:', error.message);
+  }
+}
+
 const { onWindowBoundsChanged } = require('./src/window-bounds-events.cjs');
 const { attachEditHandlers, installApplicationMenu } = require('./src/application-menu.cjs');
 const {
@@ -7314,9 +7340,11 @@ function watchMainWindowBounds(targetWindow) {
     windowStateSaveTimer = setTimeout(() => {
       windowStateSaveTimer = null;
       const boundsToPersist = pendingWindowBounds;
-      pendingWindowBounds = null;
       if (!boundsToPersist) return;
       runBackgroundConfigMutation(() => {
+        // Keep user geometry pending while its save waits in the mutation queue.
+        // A monitor selection ahead of this save must still recognize a real resize.
+        if (pendingWindowBounds === boundsToPersist) pendingWindowBounds = null;
         // Clearing a timer cannot cancel a mutation already waiting in the save queue.
         if (placementRevision !== (targetWindow.__displayPlacementRevision || 0)) return;
         const previousDisplayId = config.windowDisplay?.id;
@@ -7370,11 +7398,7 @@ function getPrimaryWorkArea() {
  */
 function getDefaultMainWindowBounds() {
   const workArea =
-    (config.windowDisplay &&
-      electronScreen
-        .getAllDisplays()
-        .find((display) => String(display.id) === config.windowDisplay.id)?.workArea) ||
-    getPrimaryWorkArea();
+    findPreferredWindowDisplay(config, electronScreen)?.workArea || getPrimaryWorkArea();
   const minimum = getMainWindowMinimumSizeForConfig(config);
   const width = Math.max(minimum.width, Math.min(config.windowSize.width, workArea.width));
   const height = Math.max(minimum.height, Math.min(config.windowSize.height, workArea.height));
@@ -7451,6 +7475,7 @@ function recoverWindowsAfterDisplayChange() {
 function watchDisplayChanges() {
   ['display-added', 'display-removed', 'display-metrics-changed'].forEach((eventName) => {
     electronScreen.on(eventName, () => {
+      if (process.platform === 'win32') invalidateWindowsDisplayIdentities();
       if (config.windowDisplay) {
         clearTimeout(windowStateSaveTimer);
         windowStateSaveTimer = null;
@@ -7458,7 +7483,11 @@ function watchDisplayChanges() {
       }
       // Plugging in a dock reports several changes in a burst while the layout settles.
       clearTimeout(displayChangeTimer);
-      displayChangeTimer = setTimeout(() => {
+      displayChangeTimer = setTimeout(async () => {
+        const timer = displayChangeTimer;
+        if (process.platform === 'win32') await refreshWindowsDisplayIdentities();
+        // A newer display event invalidates the inventory read and this recovery.
+        if (timer !== displayChangeTimer) return;
         displayChangeTimer = null;
         try {
           recoverWindowsAfterDisplayChange();
@@ -7787,14 +7816,22 @@ function applyPreferredWindowDisplay() {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
   const bounds = mainWindow.getBounds();
+  // The durable choice save can overlap a user resize. Its newer geometry wins
+  // over the snapshot captured when the choice was made, even if its save is queued.
+  const userBounds = pendingWindowBounds;
+  if (userBounds) config.windowSize = clampToMinimumWindowSize(userBounds);
   const placementSize = process.platform === 'win32' ? config.windowSize : bounds;
   const position = resolveWindowDisplayPosition(config, electronScreen, placementSize);
   clearTimeout(windowStateSaveTimer);
   windowStateSaveTimer = null;
   pendingWindowBounds = null;
-  if (!position) return;
-  config.windowPosition = position;
-  moveMainWindowToPosition(position, placementSize);
+  if (position) {
+    config.windowPosition = position;
+    moveMainWindowToPosition(position, placementSize);
+  } else if (userBounds) {
+    config.windowPosition = { x: bounds.x, y: bounds.y };
+  }
+  if (userBounds) saveConfig();
 }
 
 function applyWindowDisplayChoice(id) {
@@ -8183,7 +8220,7 @@ function buildTrayContextMenu() {
               ...getWindowDisplaySettings().displays.map((display) => ({
                 label: formatWindowDisplayLabel(display, mainT),
                 type: 'radio',
-                checked: config.windowDisplay?.id === display.id,
+                checked: getWindowDisplaySettings().selectedId === display.id,
                 enabled: display.available,
                 click: () => applyWindowDisplayChoice(display.id),
               })),
@@ -13619,10 +13656,11 @@ protocol.registerSchemesAsPrivileged([
 
 app
   .whenReady()
-  .then(() => {
+  .then(async () => {
     // An instance that lost the single-instance lock is already on its way out. It must not load the
     // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
     if (!gotSingleInstanceLock) return;
+    const displayIdentitiesReady = refreshWindowsDisplayIdentities();
 
     // Inside a layer-shell child the inherited environment says "already handed off"
     // and points WAYLAND_DISPLAY at the helper's private socket. Only this browser
@@ -13784,6 +13822,7 @@ app
       }
     }
 
+    await displayIdentitiesReady;
     createWindow();
     watchDisplayChanges();
     setupAutoUpdates();
