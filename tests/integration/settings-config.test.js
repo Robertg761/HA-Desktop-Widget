@@ -4142,6 +4142,21 @@ describe('Settings + Config Integration', () => {
         expect(field.maxLength).toBe(48);
       });
 
+      test('saves no more than the limit when a long name is typed into the room the marks left', async () => {
+        // While the field holds marks it allows two more characters. Typed or pasted over them, a
+        // plain 50-character name kept all 50, because lowering maxlength does not cut a value.
+        i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: ARABIC });
+        await openWithCustomAccent(`${'a'.repeat(38)} #AB34CD`);
+
+        const field = document.getElementById('custom-color-name-input');
+        expect(field.maxLength).toBe(50);
+        field.value = 'b'.repeat(50);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('rename-custom-color-btn').click();
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.customColors[0].name).toBe('b'.repeat(48));
+      });
+
       test("takes the name's limit from the field's maxlength in the markup", async () => {
         // A second copy of the limit in settings.js reset a raised maxlength to 48 on every show.
         document.getElementById('custom-color-name-input').setAttribute('maxlength', '60');

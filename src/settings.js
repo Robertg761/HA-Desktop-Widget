@@ -711,9 +711,20 @@ function isDefaultCustomColorName(name, color) {
 }
 
 // The rename field shows a name the way the summary line does, with its hex code isolated (see
-// getThemeDisplayName); what it holds is read back without those marks.
+// getThemeDisplayName); what it holds is read back without those marks. The field allows one more
+// character for each mark it shows (fitCustomColorNameLimit), and a name typed or pasted into that
+// room after the marks are gone keeps the extra characters, since lowering maxlength does not cut a
+// value; the name is held to its own limit here, counted as maxlength counts.
 function readCustomColorNameField(input) {
-  return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
+  const name = (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
+  const limit = Number(input?.dataset?.nameMaxLength);
+  if (!Number.isFinite(limit) || limit < 0 || name.length <= limit) return name;
+  let kept = '';
+  for (const character of name) {
+    if (kept.length + character.length > limit) break;
+    kept += character;
+  }
+  return kept.trim();
 }
 
 // The marks around a hex code are never saved, but maxlength counts them, so in Arabic a name with
