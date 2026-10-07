@@ -1158,7 +1158,11 @@ function placeToastFloor(container, floor) {
 function layoutToastsBesidePanel(container, panel) {
   const header = document.querySelector('.widget-header')?.getBoundingClientRect();
   const ceiling = (header?.bottom > 0 ? header.bottom : 0) + TOAST_FOOTER_GAP_PX;
-  const toasts = getLiveToasts(container);
+  // Oldest first, never the newest, and never one the keyboard focus is in: hiding that one would
+  // drop the focus to the page, out of the toast the user had tabbed to.
+  const holdable = getLiveToasts(container)
+    .slice(0, -1)
+    .filter((toast) => !toast.contains(document.activeElement));
   for (let held = 0; ; held += 1) {
     const rest = container.getBoundingClientRect();
     const height = rest.bottom - rest.top;
@@ -1171,8 +1175,8 @@ function layoutToastsBesidePanel(container, panel) {
       placeToastFloor(container, floor);
       return;
     }
-    if (held >= toasts.length - 1) break;
-    toasts[held].classList.add('toast-held');
+    if (held >= holdable.length) break;
+    holdable[held].classList.add('toast-held');
   }
   dockToastsAbove(
     container,

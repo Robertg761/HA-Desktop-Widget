@@ -665,6 +665,20 @@ describe('keeping clear of what the toast belongs to', () => {
       expect(messages()).toEqual(['first', 'second', 'third']);
     });
 
+    // Hidden, the toast the user had tabbed to would drop the keyboard focus to the page.
+    it('holds back the next oldest instead of one with the keyboard focus in it', () => {
+      tallPanel();
+      stackOfToasts();
+      ['first', 'second'].forEach((name) => uiUtils.showToast(name, 'error'));
+      const focused = toasts()[0].querySelector('.toast-close');
+      focused.focus();
+      uiUtils.showToast('third', 'error');
+
+      const held = toasts().filter((toast) => toast.classList.contains('toast-held'));
+      expect(held.map((toast) => toast.textContent)).toEqual(['second']);
+      expect(document.activeElement).toBe(focused);
+    });
+
     it('brings them back once the panel has gone', () => {
       tallPanel();
       stackOfToasts();
