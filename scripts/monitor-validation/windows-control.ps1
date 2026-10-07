@@ -33,7 +33,22 @@ switch ($Action) {
     }
     'on' {
         if (-not (Test-Path $savedModesPath)) { throw 'No saved display modes exist. Call off before on.' }
-        $savedModes = @(Get-Content $savedModesPath -Raw | ConvertFrom-Json)
+        # Windows PowerShell 5.1 returns a JSON array as one pipeline object.
+        # An outer @() would nest it; foreach would then receive the whole array.
+        $savedModes = Get-Content $savedModesPath -Raw | ConvertFrom-Json
+        if ($null -eq $savedModes) { throw 'The saved display mode list is empty.' }
+        foreach ($display in $savedModes) {
+            if ($display.name -isnot [string] -or $display.mode -isnot [string]) {
+                throw 'Each saved display mode must have scalar string name and mode fields.'
+            }
+            if ([string]::IsNullOrWhiteSpace($display.name) -or [string]::IsNullOrWhiteSpace($display.mode)) {
+                throw 'A saved display name or mode is empty.'
+            }
+            # Validate every record before staging any changes.
+            if ([Convert]::FromBase64String($display.mode).Length -ne 220) {
+                throw "Saved DEVMODE has an unexpected length for $($display.name)."
+            }
+        }
         foreach ($display in $savedModes) { [NativeMonitorValidation]::StageRestore($display.name, $display.mode) }
         [NativeMonitorValidation]::CommitModes()
         Start-Sleep -Seconds 3
