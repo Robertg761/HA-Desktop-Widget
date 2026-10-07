@@ -12088,10 +12088,12 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
 }
 
 /* Its words are boxes (settings.js), so it wraps between them and not at the hyphen in
-   'ha-desktop-widget' or '--toggle'. Only a word longer than the line breaks inside. */
+   'ha-desktop-widget' or '--toggle'. Only a box longer than the line breaks inside, and it leaves
+   room for the chip's padding and margin, which every line of the chip repeats (3px and 1px a
+   side): without it a path with no space ran past the end of the line. */
 #layer-toggle-note code > span {
   display: inline-block;
-  max-width: 100%;
+  max-width: calc(100% - 8px);
   overflow-wrap: anywhere;
 }
 

@@ -580,7 +580,8 @@ describe('the note under the popup hotkey in a desktop layer', () => {
   });
 
   // The window cannot be selected, so the command, a whole path on an AppImage, could only be
-  // typed out by hand, and in Arabic it broke over two lines at the hyphen in its name.
+  // typed out by hand, and in Arabic it broke over two lines at the hyphen in its name. A path can
+  // be longer than the line, so its words wrap on their own.
   it('lets the command be selected, all of it at one click, and wraps it only between words', () => {
     const note = render({
       layerMode: true,
@@ -601,9 +602,25 @@ describe('the note under the popup hotkey in a desktop layer', () => {
     for (const word of words) {
       expect(resolvedValue(word, 'display')).toBe('inline-block');
       expect(resolvedValue(word, 'overflow-wrap')).toBe('anywhere');
+      // Every line of the chip repeats its padding and margin (3px and 1px a side), so a box as
+      // wide as the line left a path with no space running past its end.
+      expect(resolvedValue(word, 'max-width')).toBe('calc(100% - 8px)');
     }
     expect(code.textContent).toBe('/home/u/.local/bin/ha-desktop-widget --toggle');
   });
+
+  // With a box to each word, 'ha-desktop-widget' fitted at the end of the first line and '--toggle'
+  // started the next, two chips that read like two commands. A command on PATH is short, and it
+  // stays one chip, which moves to the next line whole, as it did before the boxes.
+  it.each(['ha-desktop-widget --toggle', 'home-assistant-widget --toggle'])(
+    'keeps %s in one box',
+    (command) => {
+      const note = render({ layerMode: true, hyprland: false, toggleCommand: command });
+      const code = note.querySelector('code');
+      expect([...code.children].map((box) => box.textContent)).toEqual([command]);
+      expect(code.textContent).toBe(command);
+    }
+  );
 
   // As one box, a command that wrapped was as wide as the line, and the comma after it sat at the
   // far end, about 120px from '--toggle'. The command runs on with the sentence instead, each of
