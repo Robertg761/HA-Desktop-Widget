@@ -712,6 +712,42 @@ describe('keeping clear of what the toast belongs to', () => {
       expect(first.isConnected).toBe(false);
     });
 
+    // Layout runs on every resize and every new toast; each pass shows the held toasts before hiding
+    // them again, so the clock must not start and stop with it, and a second hold must keep the
+    // time the first left.
+    it('keeps the time a toast has left across repeated layouts and a second hold', () => {
+      tallPanel();
+      stackOfToasts();
+      const first = uiUtils.showToast('first', 'success', 10000);
+      jest.advanceTimersByTime(1000);
+      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+      for (let pass = 0; pass < 3; pass += 1) window.dispatchEvent(new Event('resize'));
+      // Errors never expire, so a running timer could only be the held toast's.
+      expect(jest.getTimerCount()).toBe(0);
+      jest.advanceTimersByTime(60 * 1000);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(false);
+      jest.advanceTimersByTime(4000);
+
+      tallPanel();
+      window.dispatchEvent(new Event('resize'));
+      expect(first.classList.contains('toast-held')).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+      jest.advanceTimersByTime(60 * 1000);
+      expect(first.isConnected).toBe(true);
+
+      document.querySelector('.widget-state-panel').remove();
+      window.dispatchEvent(new Event('resize'));
+      // 10 s, less the 1 s before the first hold and the 4 s between the two.
+      jest.advanceTimersByTime(4900);
+      expect(first.isConnected).toBe(true);
+      jest.advanceTimersByTime(200);
+      expect(first.isConnected).toBe(false);
+    });
+
     // Hidden from under the pointer, a toast can hear that the pointer left while it is still held.
     it('keeps the clock of a held toast stopped when the pointer leaves it', () => {
       tallPanel();

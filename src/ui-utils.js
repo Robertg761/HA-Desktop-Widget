@@ -1176,7 +1176,8 @@ function placeToastFloor(container, floor) {
  * goes above the panel, over the weather and media cards, which say nothing new while Home
  * Assistant is away, as long as it fits there under the window's header. A stack too tall for
  * either place holds back its oldest toasts until it fits; they come back once there is room again,
- * when the panel goes or the window grows, with the time they had left when they went. Docked
+ * when the panel goes or the window grows, with the time they had left when they went (never less
+ * than the short moment a toast gets after the pointer leaves it). Docked
  * above the panel's buttons, as the stack once was, it covered the panel's own message, and an
  * error toast stays until it is dismissed. Only a single toast with no room on either side still
  * does that, to keep Retry within reach.
