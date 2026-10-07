@@ -340,9 +340,29 @@ function reportDesktopKeeper() {
 }
 
 /**
+ * Save a Home Assistant authorization in a profile, as a finished browser pairing does, with the
+ * safe storage the app will read it with (save-oauth-authorization.cjs). Electron writes the key
+ * Windows encrypts with when it quits, so the helper must be let to finish.
+ */
+async function saveOAuthAuthorization(profileDir, baseUrl) {
+  const env = { ...process.env, SNAPSHOT_OAUTH_URL: baseUrl };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const helper = spawn(
+    require('electron'),
+    [path.join(__dirname, 'save-oauth-authorization.cjs'), `--user-data-dir=${profileDir}`],
+    { cwd: ROOT, env, stdio: 'inherit' }
+  );
+  const exited = new Promise((resolve) => helper.on('exit', resolve));
+  const code = await Promise.race([exited, sleep(30000).then(() => 'timeout')]);
+  if (code === 'timeout') helper.kill('SIGKILL');
+  if (code !== 0) throw new Error(`Saving an authorization failed (${code})`);
+}
+
+/**
  * Start the app on the profile a start-up scene describes, capture it and stop it. `startup.config`
- * turns the fixture's settings into the config.json the app starts from, and `startup.env` adds to
- * the app's environment (the system language, on Linux).
+ * turns the fixture's settings into the config.json the app starts from, `startup.env` adds to the
+ * app's environment (the system language, on Linux), and `startup.savedAuthorization` saves a
+ * browser authorization beside it.
  */
 async function captureStartupScene(scene, baseConfig) {
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-snapshot-'));
@@ -352,6 +372,9 @@ async function captureStartupScene(scene, baseConfig) {
       path.join(profileDir, 'config.json'),
       JSON.stringify(scene.startup.config(baseConfig), null, 2)
     );
+    if (scene.startup.savedAuthorization) {
+      await saveOAuthAuthorization(profileDir, baseConfig.homeAssistant.url);
+    }
     launched = await launchApp(profileDir, scene.startup.env);
     const { cdp } = launched;
     await waitFor(() => cdp.evaluate(`document.readyState === 'complete'`), {

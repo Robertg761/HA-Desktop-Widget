@@ -289,6 +289,7 @@ describe('visual snapshot scenes', () => {
       'startup-token-not-saved',
       'startup-oauth-reauth',
       'startup-oauth-keyring',
+      'startup-oauth-restoring',
       'wizard-welcome-ar',
       'wizard-welcome-minimum',
       'wizard-url-minimum',
@@ -338,6 +339,42 @@ describe('visual snapshot scenes', () => {
       const oauth = startup('startup-oauth-reauth');
       expect(oauth.homeAssistant).toEqual({ url: base.homeAssistant.url, authMethod: 'oauth' });
       expect(startup('startup-oauth-keyring')).toEqual(oauth);
+      expect(startup('startup-oauth-restoring')).toEqual(oauth);
+    });
+
+    // Every start of a browser-authorized setup shows the restoring panel, which no scene captured:
+    // with nothing saved the start-up fails at once and goes on to ask for a new authorization.
+    it('saves an authorization beside the config of the restoring start-up only', () => {
+      const saving = scenes.filter((scene) => scene.startup?.savedAuthorization);
+      expect(saving.map((scene) => scene.name)).toEqual(['startup-oauth-restoring']);
+      // Linux under CI has no keyring to save one in.
+      expect([...saving[0].platforms].sort()).toStrictEqual(['darwin', 'win32']);
+
+      const run = fs.readFileSync(
+        path.resolve(__dirname, '../../scripts/visual-snapshots/run.cjs'),
+        'utf8'
+      );
+      const startupRun = run.slice(run.indexOf('async function captureStartupScene('));
+      expect(startupRun.indexOf('saveOAuthAuthorization(profileDir')).toBeGreaterThan(-1);
+      expect(startupRun.indexOf('saveOAuthAuthorization(profileDir')).toBeLessThan(
+        startupRun.indexOf('launchApp(profileDir')
+      );
+    });
+
+    // The app reads the authorization with its safe storage, whose key macOS keeps in a keychain
+    // item named after the app before Electron is ready, and Windows in Local State, which Electron
+    // writes as it quits. The helper saves it the way a finished pairing does.
+    it('saves the authorization as the app does, with the app’s name and storage', () => {
+      const helper = fs.readFileSync(
+        path.resolve(__dirname, '../../scripts/visual-snapshots/save-oauth-authorization.cjs'),
+        'utf8'
+      );
+      expect(helper.indexOf('app.setName(name)')).toBeGreaterThan(-1);
+      expect(helper.indexOf('app.setName(name)')).toBeLessThan(helper.indexOf('app.whenReady()'));
+      expect(helper).toContain("const { name } = require('../../package.json');");
+      expect(helper).toContain('.writeCredentials({');
+      expect(helper).toContain('isSecureStorageAvailable: isSecureProfileSyncStorageAvailable');
+      expect(helper).toMatch(/writeCredentials\([\s\S]*\bapp\.quit\(\)/);
     });
   });
 

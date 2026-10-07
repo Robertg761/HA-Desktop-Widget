@@ -242,8 +242,9 @@ const unreadableToken = (base) => ({
     tokenEncrypted: true,
   },
 });
-// Browser authorization set up, and no authorization saved beside it.
-const oauthWithNothingSaved = (base) => ({
+// Browser authorization set up. The authorization itself is saved beside the config only where a
+// scene says so (startup.savedAuthorization).
+const oauthSetUp = (base) => ({
   ...base,
   homeAssistant: { url: base.homeAssistant.url, authMethod: 'oauth' },
 });
@@ -331,14 +332,29 @@ const startupScenes = [
   {
     name: 'startup-oauth-reauth',
     platforms: ['win32', 'darwin'],
-    startup: { config: oauthWithNothingSaved },
+    startup: { config: oauthSetUp },
     setup: (ctx) => showTokenPanel(ctx, 'Home Assistant authorization expired'),
   },
   {
     name: 'startup-oauth-keyring',
     platforms: ['linux'],
-    startup: { config: oauthWithNothingSaved },
+    startup: { config: oauthSetUp },
     setup: (ctx) => showTokenPanel(ctx, 'System keyring is unavailable'),
+  },
+  // Every start of a browser-authorized setup, while it trades its saved authorization for a token.
+  // The mock Home Assistant leaves that request unanswered, so the panel stays. Linux under CI has no
+  // keyring to save an authorization in.
+  {
+    name: 'startup-oauth-restoring',
+    platforms: ['win32', 'darwin'],
+    startup: { config: oauthSetUp, savedAuthorization: true },
+    setup: async (ctx) => {
+      await showTokenPanel(ctx, 'Waiting for live Home Assistant data...');
+      await ctx.expect(
+        `document.querySelector('#widget-state-panel').textContent.includes('Restoring Home Assistant authorization...')`,
+        'the panel says the authorization is being restored'
+      );
+    },
   },
 ];
 

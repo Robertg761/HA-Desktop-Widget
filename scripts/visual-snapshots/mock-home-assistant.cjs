@@ -185,6 +185,9 @@ function startMockHomeAssistant({
     // authorization waits, as it does while the browser is open, until it is cancelled or the
     // widget stops waiting for an answer; closeAllConnections ends it with the server.
     if (request.url?.startsWith('/auth/providers')) return;
+    // A saved authorization is traded here for a token as the widget starts. Left unanswered, the
+    // widget stays on its restoring panel until it stops waiting (15 s).
+    if (request.url?.startsWith('/auth/token')) return;
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
   });
