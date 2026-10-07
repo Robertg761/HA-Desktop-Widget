@@ -1110,6 +1110,20 @@ function runCameraPreviewViewTransition(update) {
   }
 }
 
+const CAMERA_PREVIEW_TRANSITION_NAME = 'expanded-camera-preview-image';
+
+// The picture grows from its tile into the viewer's stage, and back. Until a camera has sent a frame
+// its visual gives way to its contents in the tile (display: contents) and has no box to capture,
+// so the tile stands in for it there: with nothing to capture the viewer only faded in and out.
+// Only one of the two carries the name at a time, as a name used twice cancels the transition.
+function nameCameraPreviewTransition(visual, tile) {
+  const subject = getComputedStyle(visual).display === 'contents' ? tile : visual;
+  [visual, tile].forEach((element) => {
+    if (element && element !== subject) element.style.removeProperty('view-transition-name');
+  });
+  subject?.style.setProperty('view-transition-name', CAMERA_PREVIEW_TRANSITION_NAME);
+}
+
 function openExpandedCameraPreview(record, camera) {
   if (!record || record.disposed || !record.visual?.isConnected) return false;
   if (record.expandedPreview) {
@@ -1162,7 +1176,7 @@ function openExpandedCameraPreview(record, camera) {
   const originalNextSibling = record.visual.nextSibling;
   const sourceTile = record.tile;
   const visual = record.visual;
-  visual.style.setProperty('view-transition-name', 'expanded-camera-preview-image');
+  nameCameraPreviewTransition(visual, sourceTile);
   // Inside the tile the visual is decorative, but it is the dialog's only content once expanded.
   const wasVisualHidden = visual.getAttribute('aria-hidden') === 'true';
   visual.removeAttribute('aria-hidden');
@@ -1202,12 +1216,14 @@ function openExpandedCameraPreview(record, camera) {
         originalParent.insertBefore(visual, anchor);
       }
       overlay.remove();
+      nameCameraPreviewTransition(visual, sourceTile);
     };
     const transition = animate ? runCameraPreviewViewTransition(restoreImage) : null;
     if (!animate) restoreImage();
 
     const finish = () => {
       visual.style.removeProperty('view-transition-name');
+      sourceTile?.style.removeProperty('view-transition-name');
       if (restoreFocus && sourceTile?.isConnected) sourceTile.focus({ preventScroll: true });
     };
     if (transition?.finished) {
@@ -1247,6 +1263,7 @@ function openExpandedCameraPreview(record, camera) {
     if (expandedPreview.closed) return;
     document.body.appendChild(overlay);
     stage.appendChild(visual);
+    nameCameraPreviewTransition(visual, sourceTile);
     // Escape (and the backdrop) close this preview, not a dialog open underneath it. The preview
     // returns focus to its tile itself, once the view transition has settled.
     openDialog(overlay, {

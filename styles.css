@@ -6948,8 +6948,10 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
    of the tile, and the name and status hung under it at the same offset as theirs, so a row of
    tiles shares one line for its names. Held at the foot of the tile, with the icon placed above
    it, the camera's name sat about 15px below the lamp's beside it. The stage and the placeholder
-   that hold the icon over a picture give way to their contents. The caption is centred, as their
-   name and state are; over a picture it keeps to the start edge. */
+   that hold the icon over a picture give way to their contents, so the stage has no box for the
+   viewer's transition to grow from, and the tile stands in for it (nameCameraPreviewTransition in
+   camera.js). The caption is centred, as their name and state are; over a picture it keeps to the
+   start edge. */
 #quick-controls
   .camera-preview-tile:not([data-camera-preview-has-frame='true'])
   :is(.camera-tile-visual, .camera-tile-fallback) {
