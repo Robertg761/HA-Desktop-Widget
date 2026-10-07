@@ -1819,6 +1819,82 @@
     "retiredIn": "4.0.0",
     "reason": "Written with curly quotation marks, as the other English strings are"
   },
+  "Download, update, or remove offline language packs. English is always available offline.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to name German, which is built in as well"
+  },
+  "Showing {{shown}} of {{total}} icons for “{{query}}”.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to count the matching icons, with a singular for one"
+  },
+  "The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded to call it the popup hotkey, as the Hotkeys page does"
+  },
+  "Edit Comparison Graph": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Comparison Graph": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Auto (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Extra Large": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Line chart (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Static icon (Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Live stream while visible (Higher usage)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Snapshot every 30 seconds (Efficient)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Snapshot every 5 seconds (Frequent)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Auto (System Default)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Save & Exit Reorganize Mode (ESC)": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "New View": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Restart Widget": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Pinned Tile": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Light Color": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the labels beside it"
+  },
+  "Could not persist custom colors. Try Save in settings.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded as a plain sentence that names the Settings panel with its capital"
+  },
   "Home Assistant can't reach it right now. Close this and try again once it's back.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the note named Close, which in the cover dialog is the action that closes the cover, and the dialog's way out says Done"
@@ -1831,12 +1907,12 @@
     "retiredIn": "4.0.0",
     "reason": "Reworded: the panel said the keyring was locked, but one that is not running looks the same to the widget, so the title and message no longer name either cause"
   },
-  "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": {
-    "retiredIn": "4.0.0",
-    "reason": "Reworded: the panel said the keyring was locked, but one that is not running looks the same to the widget, so the title and message no longer name either cause"
-  },
   "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: it asked only to unlock the keyring, though it may not be running; it now asks to start or unlock it, as the keyring panels do"
+  },
+  "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: the panel said the keyring was locked, but one that is not running looks the same to the widget, so the title and message no longer name either cause"
   }
 }

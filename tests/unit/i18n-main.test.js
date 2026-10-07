@@ -132,6 +132,40 @@ describe('main localization service', () => {
     expect(fs.existsSync(path.join(installedDir, 'de.json'))).toBe(false);
   });
 
+  it('keeps a quoted error in its own direction in an Arabic message, and only there', () => {
+    // An English OS error took the Arabic sentence's direction, so the quote closing its path
+    // moved to the far end of the line ("'/home/u/.config/…/config.json").
+    const failed = 'Failed to save settings: {{error}}';
+    const rollback = '{{error}}. Rollback failed: {{warning}}';
+    fs.writeFileSync(
+      path.join(bundledDir, 'ar.json'),
+      JSON.stringify({
+        [failed]: 'تعذّر حفظ الإعدادات: {{error}}',
+        [rollback]: '{{error}}. فشل التراجع: {{warning}}',
+        'Selected language: {{language}}': 'اللغة: {{language}}',
+      })
+    );
+    const service = createLocalizationService({
+      bundledDir,
+      getUserDataDir: () => userDataDir,
+      getDetectedLocale: () => 'en-US',
+    });
+    const error = "EACCES: permission denied, open '/home/u/config.json'";
+
+    expect(service.translate('ar', failed, { error })).toBe(
+      `تعذّر حفظ الإعدادات: \u2068${error}\u2069`
+    );
+    expect(service.translate('ar', rollback, { error: 'لم يُحفظ', warning: error })).toBe(
+      `\u2068لم يُحفظ\u2069. فشل التراجع: \u2068${error}\u2069`
+    );
+    // The app's own words, an empty error and a left-to-right language get no marks.
+    expect(
+      service.translate('ar', 'Selected language: {{language}}', { language: 'English' })
+    ).toBe('اللغة: English');
+    expect(service.translate('ar', failed, { error: '' })).toBe('تعذّر حفظ الإعدادات: ');
+    expect(service.translate('en', failed, { error })).toBe(`Failed to save settings: ${error}`);
+  });
+
   it('falls back to bundled English when the detected locale pack is unavailable', () => {
     const service = createLocalizationService({
       bundledDir,

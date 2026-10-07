@@ -37,7 +37,7 @@ const GERMAN = {
   'Partly cloudy': 'Teilweise bewölkt',
   All: 'Alle',
   'View {{index}}': 'Ansicht {{index}}',
-  'New View': 'Neue Ansicht',
+  'New view': 'Neue Ansicht',
   'just now': 'gerade eben',
 };
 
@@ -386,6 +386,56 @@ describe('left-to-right values in right-to-left languages', () => {
     i18n.setLocaleBootstrap({ activeLocale: 'ar', messages: {} });
     expect(i18n.isolateLtr('23°C')).toBe('\u206623°C\u2069');
     expect(i18n.isolateLtr('')).toBe('');
+  });
+
+  it("keeps the text a message quotes in its own direction, Home Assistant's or translated", () => {
+    // A toast that passed its error without a wrap of its own showed Home Assistant's English
+    // reason with its full stop at the far end of the line. First strong, not left to right:
+    // Home Assistant may give its reason in English or in Arabic.
+    const failed = 'Failed to save the scene: {{error}}';
+    const reason = 'The device did not respond.';
+    expect(i18n.t(failed, { error: reason })).toBe(`Failed to save the scene: ${reason}`);
+    useGerman();
+    expect(i18n.t(failed, { error: reason })).toBe(`Failed to save the scene: ${reason}`);
+    i18n.setLocaleBootstrap({
+      activeLocale: 'ar',
+      messages: {
+        [failed]: 'تعذّر حفظ المشهد: {{error}}',
+        'Failed to control {{entityName}}: {{errorMessage}}':
+          'تعذّر التحكم في {{entityName}}: {{errorMessage}}',
+        'Showing the log file: {{path}}': 'عرض ملف السجل: {{path}}',
+      },
+    });
+    expect(i18n.t(failed, { error: reason })).toBe(`تعذّر حفظ المشهد: \u2068${reason}\u2069`);
+    expect(i18n.t(failed, { error: 'لم يستجب الجهاز.' })).toBe(
+      'تعذّر حفظ المشهد: \u2068لم يستجب الجهاز.\u2069'
+    );
+    expect(
+      i18n.t('Failed to control {{entityName}}: {{errorMessage}}', {
+        entityName: 'Bedroom Light',
+        errorMessage: reason,
+      })
+    ).toBe(`تعذّر التحكم في \u2068Bedroom Light\u2069: \u2068${reason}\u2069`);
+    // The app's own values, and an empty error, get no marks.
+    expect(i18n.t('Showing the log file: {{path}}', { path: 'app.log' })).toBe(
+      'عرض ملف السجل: app.log'
+    );
+    expect(i18n.t(failed, { error: '' })).toBe('تعذّر حفظ المشهد: ');
+  });
+
+  it('isolates every placeholder that names an error, a warning or a reason', () => {
+    // The rule goes by the placeholder's name, so a message that called its error {{details}}
+    // would show it unisolated in Arabic.
+    const { QUOTED_TEXT_VARS } = require('../../packages/widget-renderer/src/rtl-locales.cjs');
+    const english = require('../../locales/en.json');
+    const placeholders = new Set(
+      Object.keys(english).flatMap((key) =>
+        [...key.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map(([, name]) => name)
+      )
+    );
+    const quoting = [...placeholders].filter((name) => /error|warning|reason|message/i.test(name));
+    expect(quoting.length).toBeGreaterThan(0);
+    expect(QUOTED_TEXT_VARS).toEqual(expect.arrayContaining(quoting));
   });
 
   it('keeps the unit next to every sensor history figure in Arabic', async () => {

@@ -629,7 +629,7 @@ describe('stylesheet one-offs', () => {
 
     it('accents the value in a heading, and not a heading that is all label', () => {
       render(
-        '<div class="brightness-control-heading" id="two"><span>Color Temperature</span><span id="value">4250K</span></div><div class="brightness-control-heading" id="one"><span id="label">Color</span></div>'
+        '<div class="brightness-control-heading" id="two"><span>Color temperature</span><span id="value">4250K</span></div><div class="brightness-control-heading" id="one"><span id="label">Color</span></div>'
       );
       const accent = resolvedValue(document.querySelector('#value'), 'color');
       expect(accent).toBe(resolvedValue(document.querySelector('#value'), '--accent-text'));

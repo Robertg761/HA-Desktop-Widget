@@ -15,11 +15,11 @@ import { prefersReducedMotion } from './motion.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 
 const CAMERA_PREVIEW_REFRESH_OPTIONS = Object.freeze([
-  { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-  { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-  { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+  { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+  { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+  { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
   { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-  { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+  { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
 ]);
 const CAMERA_PREVIEW_REFRESH_VALUES = new Set(
   CAMERA_PREVIEW_REFRESH_OPTIONS.map((option) => option.value)

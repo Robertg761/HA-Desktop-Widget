@@ -11832,7 +11832,7 @@ ipcMain.handle(
                   success: false,
                   backend: PORTAL_SHORTCUTS_BACKEND,
                   error: mainT(
-                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+                    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
                   ),
                 };
           })
@@ -11845,7 +11845,7 @@ ipcMain.handle(
       !registrationResult.success &&
       registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
       deactivatePortalShortcutsForLegacyFallback(
-        'The desktop portal did not assign an active popup shortcut.'
+        'The desktop portal did not assign the popup hotkey.'
       )
     ) {
       registrationResult = await Promise.resolve(registerPopupHotkey());
@@ -12623,7 +12623,7 @@ function registerPopupHotkey() {
           success: false,
           backend: PORTAL_SHORTCUTS_BACKEND,
           error: mainT(
-            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+            "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
           ),
         };
       }

@@ -1418,7 +1418,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       );
       expect(copy).toContain('Start or unlock it');
       expect(`${title} ${copy}`).not.toMatch(/keyring is locked/i);
-      expect(findButtonByText('Restart Widget')).toBeTruthy();
+      expect(findButtonByText('Restart widget')).toBeTruthy();
       expect(findButtonByText('Enter token')).toBeTruthy();
     });
 
@@ -1434,7 +1434,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       expect(copy).toContain('Access token was not saved');
       expect(copy).toContain('start gnome-keyring or KWallet so it is remembered');
       expect(copy).not.toMatch(/restart the widget|has been kept/i);
-      expect(findButtonByText('Restart Widget')).toBeUndefined();
+      expect(findButtonByText('Restart widget')).toBeUndefined();
     });
 
     it('notes a token that was not saved once, though main repeats it with every config', async () => {

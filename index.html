@@ -806,11 +806,11 @@
                 <div class="form-group language-section">
                   <label for="language-select" data-i18n="Language">Language</label>
                   <select id="language-select">
-                    <option value="auto" data-i18n="Auto (System Default)">
-                      Auto (System Default)
+                    <option value="auto" data-i18n="Auto (system default)">
+                      Auto (system default)
                     </option>
-                    <option value="en">English</option>
-                    <option value="de">Deutsch</option>
+                    <option value="en" lang="en">English</option>
+                    <option value="de" lang="de">Deutsch</option>
                   </select>
                   <p
                     id="language-select-help"
@@ -835,10 +835,10 @@
                   <div class="settings-details-body">
                     <p
                       class="help-text"
-                      data-i18n="Download, update, or remove offline language packs. English is always available offline."
+                      data-i18n="Download, update, or remove offline language packs. English and German are always available offline."
                     >
-                      Download, update, or remove offline language packs. English is always
-                      available offline.
+                      Download, update, or remove offline language packs. English and German are
+                      always available offline.
                     </p>
                     <div id="language-pack-status" class="help-text hidden"></div>
                     <div id="language-packs-list" class="language-packs-list"></div>
@@ -1943,6 +1943,16 @@
                     data-i18n-html="Bind a key in your window manager to run <code>{{command}}</code>, which shows or hides the widget."
                     hidden
                   ></p>
+                  <button
+                    type="button"
+                    id="layer-toggle-copy"
+                    class="btn btn-secondary btn-sm"
+                    aria-describedby="layer-toggle-note"
+                    data-i18n="Copy"
+                    hidden
+                  >
+                    Copy
+                  </button>
                   <p
                     id="popup-hotkey-immediate-note"
                     class="help-text"
@@ -2515,7 +2525,7 @@
                       </span>
                     </label>
                   </div>
-                  <div class="form-group setting-row">
+                  <div class="form-group setting-row setting-row-stacked">
                     <div class="setting-text">
                       <label for="profile-sync-interval" data-i18n="Background sync interval"
                         >Background sync interval</label

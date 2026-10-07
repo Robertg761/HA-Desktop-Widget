@@ -3,6 +3,7 @@ const path = require('path');
 const nodeCrypto = require('crypto');
 const { fileURLToPath, pathToFileURL } = require('url');
 const { fetchChecked } = require('./net-fetch.cjs');
+const { isolateQuotedText } = require('../packages/widget-renderer/src/rtl-locales.cjs');
 
 function normalizeLocaleCode(locale) {
   if (!locale || typeof locale !== 'string') return '';
@@ -623,9 +624,13 @@ function createLocalizationService(options = {}) {
   }
 
   function translate(languageSetting, key, vars = {}) {
-    // Only the messages: the bootstrap also lists every installed pack, which a lookup has no use for.
-    const template = resolveActiveMessages(languageSetting).messages?.[key] || key;
-    return formatTemplate(template, vars);
+    // Only the messages and their language: the bootstrap also lists every installed pack, which a
+    // lookup has no use for.
+    const { activeLocale, messages } = resolveActiveMessages(languageSetting);
+    const template = messages?.[key] || key;
+    // The errors a message quotes keep their own direction in a right-to-left language, by the
+    // same rule as the renderer's messages.
+    return formatTemplate(template, isolateQuotedText(activeLocale, vars));
   }
 
   return {

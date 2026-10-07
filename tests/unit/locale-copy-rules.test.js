@@ -69,6 +69,20 @@ describe('English wording', () => {
     }
   );
 
+  it('calls the popup hotkey a hotkey everywhere, main process included', () => {
+    // A portal desktop that refused the binding answered the Popup hotkey setting with "did not
+    // assign an active popup shortcut".
+    expect(Object.keys(english).filter((key) => /popup shortcut/i.test(key))).toEqual([]);
+  });
+
+  it('writes Settings with its capital where a string sends the reader to the panel', () => {
+    // The panel is named as its title has it ("Open Settings", "Reconnect with Home Assistant in
+    // Settings"), and the custom colors warning alone said "Try Save in settings".
+    expect(
+      Object.keys(english).filter((key) => /\b(?:in|[Oo]pen|[Rr]eopen) settings\b/.test(key))
+    ).toEqual([]);
+  });
+
   it('keeps the names of the sync buttons in sentence case, as the buttons are written', () => {
     expect(Object.keys(english).filter((key) => /\bSync (Up|Down|Folder)\b/.test(key))).toEqual([]);
   });

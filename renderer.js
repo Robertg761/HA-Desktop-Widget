@@ -25,6 +25,7 @@ import {
   formatNumber,
   formatTime,
   getLocaleState,
+  isolateLtr,
   setLocaleBootstrap,
   t,
   translateDocument,
@@ -457,7 +458,7 @@ function getTokenRecoveryPanel() {
         'The saved Home Assistant token cannot be read until the system keyring is running and unlocked. Start or unlock it, then restart the widget.'
       ),
       actions: [
-        { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+        { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
         { ...enterToken, className: 'btn btn-secondary' },
       ],
     };
@@ -1203,7 +1204,7 @@ function getOAuthStatePanel() {
         title: t('System keyring is unavailable'),
         message: describeHomeAssistantOAuthReauthReason(state.CONFIG.homeAssistant),
         actions: [
-          { label: t('Restart Widget'), className: 'btn btn-primary', onClick: restartWidget },
+          { label: t('Restart widget'), className: 'btn btn-primary', onClick: restartWidget },
           {
             label: t('Reconnect with Home Assistant'),
             className: 'btn btn-secondary',
@@ -2299,7 +2300,7 @@ function showConfigRecoveryNotice(recovery) {
   if (recovery.recovered) {
     const message = t(
       'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
-      { path: String(recovery.backupPath || '-') }
+      { path: isolateLtr(recovery.backupPath || '-') }
     );
     uiUtils.showToast(message, 'warning', 20000);
     return;
@@ -2308,7 +2309,7 @@ function showConfigRecoveryNotice(recovery) {
   const message = t(
     'Configuration recovery could not be completed. Backup: {{path}} Error: {{error}}',
     {
-      path: String(recovery.backupPath || '-'),
+      path: isolateLtr(recovery.backupPath || '-'),
       error: String(recovery.error || t('Unknown error')),
     }
   );
@@ -3619,7 +3620,7 @@ function wireUI() {
             // The file manager opens somewhere else on the screen, or behind the widget; this says
             // that something happened, and where the file is.
             uiUtils.showToast(
-              t('Showing the log file: {{path}}', { path: result.path }),
+              t('Showing the log file: {{path}}', { path: isolateLtr(result.path) }),
               'info',
               5000
             );
@@ -3630,7 +3631,7 @@ function wireUI() {
             uiUtils.showToast(
               copied
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
-                    path: result.path,
+                    path: isolateLtr(result.path),
                   })
                 : t('Failed to open log file: {{error}}', { error: result.error }),
               'error',

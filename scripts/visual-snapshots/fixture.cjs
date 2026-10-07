@@ -39,6 +39,13 @@ const RESET_SETTINGS_VIEW = `(() => {
   if (body) body.scrollTop = 0;
 })()`;
 
+// A dialog the runner closes with Escape hands focus back while the page is in keyboard mode, so the
+// control it lands on draws its focus ring. The scenes open dialogs with a script click, which
+// focuses nothing, and the notifications panel then hands focus to the header gear: the gear kept a
+// ring through every scene after it, until a scene moved focus on. The runner evaluates this once
+// the dialogs are closed, so every scene starts with nothing focused.
+const DROP_FOCUS = `document.activeElement?.blur?.()`;
+
 // Where the main window opens. The default (100, 100) puts a 660px window under the taskbar on a
 // 768px display; y=20 keeps all of it on screen. Pins are placed by the app, off to the side.
 const WINDOW_SIZE = { width: 500, height: 660 };
@@ -963,6 +970,7 @@ function buildConfig(haUrl) {
 const FAILING_ENTITIES = ['light.unreachable'];
 
 module.exports = {
+  DROP_FOCUS,
   FAILING_ENTITIES,
   PAGE_SETS,
   RESET_SETTINGS_VIEW,
