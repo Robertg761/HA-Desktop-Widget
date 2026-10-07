@@ -9829,8 +9829,16 @@ body.theme-light:not(.high-contrast)
   flex-wrap: wrap;
 }
 
-.first-run-actions .btn:first-child {
+.first-run-actions > .btn:first-child {
   margin-inline-end: auto;
+}
+
+/* Back and Next keep to one row at the end, and take the next row together when the three buttons
+   do not fit one. */
+.first-run-step-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-inline-start: auto;
 }
 
 /* Back is hidden on the first and last steps; a button's own display would otherwise win. */

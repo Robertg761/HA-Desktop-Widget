@@ -217,7 +217,7 @@ describe('first-run wizard buttons', () => {
 
   it('really hides Back on the steps where it is hidden', () => {
     document.body.innerHTML =
-      '<div class="first-run-actions"><button class="btn">Full Settings</button><button class="btn btn-secondary" hidden>Back</button><button class="btn btn-primary">Next</button></div>';
+      '<div class="first-run-actions"><button class="btn">Full settings</button><div class="first-run-step-actions"><button class="btn btn-secondary" hidden>Back</button><button class="btn btn-primary">Next</button></div></div>';
     const [, back, next] = document.querySelectorAll('.first-run-actions .btn');
     expect(window.getComputedStyle(back).display).toBe('none');
     expect(window.getComputedStyle(next).display).not.toBe('none');

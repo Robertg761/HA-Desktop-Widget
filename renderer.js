@@ -1960,9 +1960,12 @@ function ensureFirstRunWizard() {
     renderWizardStep();
   });
 
-  actions.appendChild(skipButton);
-  actions.appendChild(backButton);
-  actions.appendChild(nextButton);
+  // Back and Next (Connect) step through the wizard and wrap together, under Full settings: in the
+  // smallest window the German labels wrapped Connect alone onto a row of its own, away from Back.
+  const stepActions = document.createElement('div');
+  stepActions.className = 'first-run-step-actions';
+  stepActions.append(backButton, nextButton);
+  actions.append(skipButton, stepActions);
   panel.appendChild(content);
   panel.appendChild(status);
   panel.appendChild(actions);

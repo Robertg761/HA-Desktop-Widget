@@ -210,7 +210,7 @@ async function openAlarmCodeDialog(ctx) {
 // same place, however the scenes were selected.
 async function showFirstRunWelcome(ctx) {
   await ctx.waitForSelector('.first-run-onboarding:not(.hidden)');
-  const back = `document.querySelector('.first-run-actions .btn-secondary:nth-child(2)')`;
+  const back = `document.querySelector('.first-run-step-actions .btn-secondary')`;
   await ctx.ev(`(async () => {
     const back = ${back};
     // The URL and authorization steps are the most there is to step back from.
@@ -372,6 +372,15 @@ const WIZARD_ACTIONS_IN_VIEW = `(() => {
   });
 })()`;
 
+// Back and Next (Connect) sit on one row, whether or not Full settings has a row of its own above
+// them. In the smallest window German's labels wrapped Connect alone under Back.
+const WIZARD_STEP_ACTIONS_TOGETHER = `(() => {
+  const [back, next] = [...document.querySelectorAll('.first-run-step-actions .btn')].map((button) =>
+    button.getBoundingClientRect()
+  );
+  return !!back && !!next && back.height > 0 && Math.abs(back.top - next.top) < 1;
+})()`;
+
 // Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
 // first request unanswered: the wizard waits as it does while the browser is open, for as long as
 // the widget gives the server to answer (8 s). The Back button is Cancel meanwhile.
@@ -384,7 +393,7 @@ async function waitForFirstRunAuthorization(ctx) {
 // Back to the welcome step from a wait, which Cancel ends.
 async function cancelFirstRunAuthorization(ctx) {
   await ctx.ev(`(() => {
-    const cancel = document.querySelector('.first-run-actions .btn-secondary:nth-child(2)');
+    const cancel = document.querySelector('.first-run-step-actions .btn-secondary');
     if (cancel?.classList.contains('btn-neutral')) cancel.click();
   })()`);
   await ctx.waitForExpression(
@@ -3771,6 +3780,18 @@ const scenes = [
         })()`,
         'no empty status line under text that is cut off'
       );
+    },
+  },
+  // German's labels are the longest, and the three buttons take two rows here.
+  {
+    name: 'wizard-authorize-minimum-de',
+    size: MINIMUM_SIZE,
+    ui: { language: 'de' },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+      await ctx.expect(WIZARD_STEP_ACTIONS_TOGETHER, 'Back and Connect on one row');
     },
   },
   {

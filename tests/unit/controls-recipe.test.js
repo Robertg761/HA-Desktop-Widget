@@ -90,8 +90,10 @@ describe('the control recipe', () => {
         '',
         `<div class="first-run-onboarding"><div class="first-run-panel"><div class="first-run-actions">
           <button class="btn btn-secondary">Full settings</button>
-          <button class="btn btn-secondary btn-neutral">Cancel</button>
-          <button class="btn btn-primary">Connect</button>
+          <div class="first-run-step-actions">
+            <button class="btn btn-secondary btn-neutral">Cancel</button>
+            <button class="btn btn-primary">Connect</button>
+          </div>
         </div></div></div>
         <button class="btn btn-secondary btn-neutral">Cancel</button>`
       );
