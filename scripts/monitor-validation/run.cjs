@@ -122,7 +122,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
     ['setBounds secondary',`mainWindow.setBounds(${JSON.stringify(targetBounds)})`],
     ['setBounds secondary repeated',`mainWindow.setBounds(${JSON.stringify(targetBounds)})`],
    ];
-   for(const [name,expression] of trials){await rpc(expression);await pause(1000);observations.push({name,state:await state()});}
+   for(const [name,expression] of trials){await rpc(expression);const immediate=await state();await pause(1000);observations.push({name,immediate,state:await state()});}
    fs.writeFileSync(path.join(out,'windows-dpi-trials.json'),JSON.stringify(observations,null,2));
   }catch(diagnosticError){fs.writeFileSync(path.join(out,'windows-dpi-trials-error.txt'),diagnosticError.stack);}
  }
