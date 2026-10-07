@@ -527,6 +527,13 @@ const PIN_BUTTONS_FIT = `(() => {
   );
 })()`;
 
+// A lamp's presets keep at least the 8px the compact layout pads them with from the pin's bottom
+// edge, clear of its rounded corners. The first roomy size in Arabic put them 3px from it.
+const PIN_PRESETS_CLEAR_OF_EDGE = `(() => {
+  const presets = document.querySelector('.desktop-pin-light-presets')?.getBoundingClientRect();
+  return !!presets && innerHeight - presets.bottom >= 8;
+})()`;
+
 // The line under a pin's name is not cut short.
 const PIN_STATUS_WHOLE = `(() => {
   const status = document.querySelector('.desktop-pin-panel-status');
@@ -2877,8 +2884,23 @@ const scenes = [
   resizedPinScene('weather', 'weather.home', { width: 200, height: 170 }),
   resizedPinScene('climate', 'climate.bedroom', { width: 240, height: 180 }),
   // A lamp whose name takes two lines, with its status line under it, put its presets 4px past the
-  // bottom of a 200x170 pin.
-  resizedPinScene('light-long', 'light.upstairs_hallway_ceiling', { width: 200, height: 170 }),
+  // bottom of a 200x170 pin, and at the first roomy size the status line and the Brightness caption
+  // were 5px taller each in Arabic, which put them 3px from it.
+  resizedPinScene(
+    'light-long',
+    'light.upstairs_hallway_ceiling',
+    { width: 200, height: 170 },
+    { shows: [[PIN_PRESETS_CLEAR_OF_EDGE, 'the presets clear of the bottom edge']] }
+  ),
+  resizedPinScene(
+    'ar-light-long',
+    'light.upstairs_hallway_ceiling',
+    { width: 260, height: 190 },
+    {
+      ui: { language: 'ar' },
+      shows: [[PIN_PRESETS_CLEAR_OF_EDGE, 'the presets clear of the bottom edge']],
+    }
+  ),
   resizedPinScene('weather', 'weather.home', { width: 240, height: 180 }),
   // A heat/cool range's second slider took the room of the mode row, and a pin just short of the
   // balanced layout brought back a fourth mode that German cut to "Kü...".

@@ -1235,12 +1235,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
 
 .desktop-pin-light-status {
   margin-top: 3px;
-  font-family: var(--desktop-pin-display-font);
-  font-size: var(--desktop-pin-caption-size);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1342,15 +1336,6 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 8px 16px rgba(0, 0, 0, 0.15);
-}
-
-.desktop-pin-light-brightness-label {
-  font-family: var(--desktop-pin-display-font);
-  font-size: var(--desktop-pin-caption-size);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(var(--desktop-pin-ink-rgb), 0.7);
 }
 
 .desktop-pin-light-meter-value {
@@ -1865,10 +1850,15 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   -webkit-line-clamp: 2;
 }
 
+/* The small capitals over and under a pin's readings. Their line height is set, not the font's: a
+   lamp pin's two captions had the font's own, and Arabic's fallback font made each 5px taller than
+   in English, which put a roomy lamp's presets 3px from the rounded bottom edge. */
 .desktop-pin-panel-status,
 .desktop-pin-panel-stat-label,
 .desktop-pin-panel-slider-label,
-.desktop-pin-panel-caption {
+.desktop-pin-panel-caption,
+.desktop-pin-light-status,
+.desktop-pin-light-brightness-label {
   font-family: var(--desktop-pin-display-font);
   color: rgba(var(--desktop-pin-ink-rgb), 0.7);
   font-size: var(--desktop-pin-caption-size);

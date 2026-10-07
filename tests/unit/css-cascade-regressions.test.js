@@ -1574,6 +1574,24 @@ describe('stylesheet cascade regressions', () => {
       ).toBe('24px');
     });
 
+    // At the font's own line height, Arabic's fallback font made the roomy lamp's status line and
+    // Brightness caption 5px taller each than in English, which put its presets 3px from the bottom
+    // of a 260x190 pin. They take the set line height of every other pin's captions.
+    it('sets the lamp pin’s captions on the line height of the other pins’ captions', () => {
+      render(
+        'desktop-pin-mode',
+        `<div class="control-item desktop-pin-control desktop-pin-light-control" data-layout="roomy">
+          <div class="desktop-pin-light-status">تشغيل</div>
+          <div class="desktop-pin-light-brightness-label">السطوع</div>
+          <div class="desktop-pin-panel-status">On</div></div>`
+      );
+      const lineHeight = (selector) =>
+        resolvedValue(document.querySelector(selector), 'line-height');
+      expect(lineHeight('.desktop-pin-panel-status')).toBe('1.3');
+      expect(lineHeight('.desktop-pin-light-status')).toBe('1.3');
+      expect(lineHeight('.desktop-pin-light-brightness-label')).toBe('1.3');
+    });
+
     it.each(THEME_CASES)('marks the lamp preset at the current level (%s)', (_, theme) => {
       render(
         `desktop-pin-mode ${theme}`,
