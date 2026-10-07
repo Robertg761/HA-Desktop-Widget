@@ -1261,6 +1261,26 @@ describe('dashboard data display', () => {
       }
     });
 
+    // Three chips a row in a narrow window are about 72px wide, and "Heizen/Kühlen" without a break
+    // ran past both edges of its chip.
+    it('lets a combined mode or option wrap after its slash, saying the same text', () => {
+      const modal = open(
+        climate('heat_cool', {
+          fan_modes: ['low', 'low/high'],
+          fan_mode: 'low',
+          supported_features: 9,
+        })
+      );
+      const label = modal.querySelector(
+        '.climate-mode-btn[data-mode="heat_cool"] .climate-mode-label'
+      );
+      expect(label.innerHTML).toBe('Heat/<wbr>Cool');
+      expect(label.textContent).toBe('Heat/Cool');
+      const option = modal.querySelector('.climate-fan-mode-btn[data-mode="low/high"]');
+      expect(option.querySelectorAll('wbr')).toHaveLength(1);
+      expect(option.textContent).toBe(option.title);
+    });
+
     it('tells Heat/Cool from Auto by its icon', () => {
       const modal = open(climate('auto'));
       const icon = (mode) =>

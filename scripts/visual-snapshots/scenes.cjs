@@ -804,6 +804,11 @@ const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
   const counts = [...rows.values()];
   return counts.length < 2 || counts.at(-1) > 1;
 })`;
+// Every mode and option label lies inside its chip. Three chips a row in a narrow window are about
+// 72px wide, and German's "Heizen/Kühlen" ran 85px, past both of its chip's edges.
+const CLIMATE_LABELS_IN_CHIPS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-btn, .climate-fan-mode-btn, .climate-preset-mode-btn)'
+)].every((chip) => (chip.querySelector('.climate-mode-label') || chip).scrollWidth <= chip.clientWidth)`;
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -3042,6 +3047,7 @@ const scenes = [
         'the target range is one line inside its card'
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {
@@ -3055,6 +3061,23 @@ const scenes = [
         'the target range is one line'
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+    },
+  },
+  // German names the heat pump's modes at their longest; the picture is of the modes, which sit
+  // below the fold of the narrow window's dialog.
+  {
+    name: 'layout-popup-climate-modes-narrow-de',
+    size: NARROW_SIZE,
+    ui: { language: 'de' },
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('climate.heat_pump')(ctx);
+      await ctx.ev(
+        `document.getElementById('climate-mode-buttons').scrollIntoView({ block: 'center' })`
+      );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {

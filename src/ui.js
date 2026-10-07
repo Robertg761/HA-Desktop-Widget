@@ -15463,6 +15463,16 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       return titleCase(normalizedMode.replace(/[_-]+/g, ' '));
     }
 
+    // A combined mode ("Heizen/Kühlen", "Chaud/Froid") is one word to the line breaker, and in a
+    // narrow window it ran past both edges of its chip. A break after each slash lets it wrap the
+    // way "Nur Ventilator" does; <wbr> leaves the text and the accessible name as they were.
+    function setChipLabel(element, label) {
+      label.split('/').forEach((part, index, parts) => {
+        if (index > 0) element.append(document.createElement('wbr'));
+        element.append(index < parts.length - 1 ? `${part}/` : part);
+      });
+    }
+
     if (modeButtonsContainer) {
       availableModes.forEach((mode) => {
         const modeValue = String(mode ?? '');
@@ -15480,7 +15490,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
 
         const label = document.createElement('span');
         label.className = 'climate-mode-label';
-        label.textContent = modeLabel;
+        setChipLabel(label, modeLabel);
         button.appendChild(label);
 
         modeButtonsContainer.appendChild(button);
@@ -15498,7 +15508,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
         button.dataset.mode = modeValue;
         button.title = modeLabel;
         button.setAttribute('aria-pressed', String(modeValue === currentValue));
-        button.textContent = modeLabel;
+        setChipLabel(button, modeLabel);
         container.appendChild(button);
       });
     }

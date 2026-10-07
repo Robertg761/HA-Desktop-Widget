@@ -5933,7 +5933,10 @@ body.theme-light:not(.high-contrast)
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-3);
+  /* Three chips a row in a narrow window are about 72px wide. A centred label looks the same with
+     4px at its sides as with 8px; the 4px only lets "Heat/Cool" stay on one line where a longer
+     combined mode wraps after its slash. */
+  padding: var(--space-3) var(--space-2);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);

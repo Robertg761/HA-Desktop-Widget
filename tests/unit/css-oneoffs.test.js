@@ -752,6 +752,17 @@ describe('stylesheet one-offs', () => {
       );
     });
 
+    // Three chips a row in a narrow window are about 72px wide. With 8px at each side "Heat/Cool"
+    // (58px) wrapped after its slash; with 4px only longer combined modes wrap.
+    it('leaves a climate chip label 4px at its sides', () => {
+      render(
+        '<div class="climate-mode-buttons"><button class="climate-mode-btn"></button></div><div class="climate-option-buttons"><button class="climate-fan-mode-btn"></button><button class="climate-preset-mode-btn"></button></div>'
+      );
+      for (const chip of document.querySelectorAll('button')) {
+        expect(resolvedValue(chip, 'padding')).toBe('0.5rem 0.25rem');
+      }
+    });
+
     it('sets the mode labels in the weight of the chips beside them', () => {
       render(
         '<span class="climate-mode-label">Heat Cool</span><button class="climate-fan-mode-btn">Auto</button>'
