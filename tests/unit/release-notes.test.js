@@ -60,15 +60,17 @@ Stable release summary.
   });
 });
 
-// What's new opens this version's section. The Hotkeys page, the portal's error and the rest of the
-// 4.0 notes call it the popup hotkey, and one note there still called it the popup shortcut.
-describe("this version's release notes", () => {
+// What's new opens a version's section. The Hotkeys page, the portal's error and the rest of the
+// 4.0 notes call it the popup hotkey, and one 4.0.0 note still called it the popup shortcut. The
+// section is named, not read from package.json: a later version's notes need not mention the
+// hotkey at all, and a version bump that lands before its heading would fail this for nothing.
+describe('the 4.0.0 release notes', () => {
   const fs = require('fs');
   const path = require('path');
   const read = (file) => fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
-  const notes = extractReleaseNotes(read('CHANGELOG.md'), JSON.parse(read('package.json')).version);
 
   test('call the popup hotkey by that one name', () => {
+    const notes = extractReleaseNotes(read('CHANGELOG.md'), '4.0.0');
     expect(notes).toMatch(/popup hotkey/);
     expect(notes).not.toMatch(/popup shortcut/i);
   });
