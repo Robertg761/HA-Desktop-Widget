@@ -641,7 +641,7 @@ describe('panel veil', () => {
   });
 });
 
-describe('the header and the page tabs under a dialog', () => {
+describe('the window under a dialog', () => {
   beforeAll(() => {
     loadAppStylesheets(document);
   });
@@ -651,22 +651,25 @@ describe('the header and the page tabs under a dialog', () => {
     document.body.innerHTML = '';
   });
 
-  // On native glass they sit on the window's half-clear tint alone, and the blur a dialog's scrim
-  // lays over half-clear pixels is half clear too: on Windows and macOS their sharp text showed
-  // through the scrim. jsdom cannot match :has(), so this finds the rule and plays its condition
-  // out by hand: the body it names, a dialog or the palette shown in it, and the rows it paints.
-  it('gives them a nearly opaque pane on native glass while a dialog or the palette is up', () => {
-    const rule = [...document.styleSheets]
-      .flatMap((sheet) => [...sheet.cssRules])
-      .find(
-        (candidate) =>
-          /:has\(/.test(candidate.selectorText || '') &&
-          /\.widget-header/.test(candidate.selectorText)
-      );
-    expect(rule).toBeDefined();
-    const [, host, shown, rows] = rule.selectorText
+  const rules = () => [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
+
+  // On native glass the window around the cards and tiles is the half-clear tint alone, and the
+  // blur a full-window scrim lays over half-clear pixels is half clear too: on Windows and macOS the
+  // header's and the page tabs' sharp text showed through the scrim. jsdom cannot match :has(), so
+  // this finds the rule and plays its condition out by hand: the body it names and a scrim shown in
+  // it.
+  it('lays a nearly opaque pane over native glass while a dialog, the palette or the camera viewer is up', () => {
+    const shownRule = rules().find(
+      (candidate) =>
+        /^body\.native-glass/.test(candidate.selectorText || '') &&
+        /:has\(/.test(candidate.selectorText)
+    );
+    expect(shownRule).toBeDefined();
+    const [, host, shown] = shownRule.selectorText
       .replace(/\s+/g, ' ')
-      .match(/^(.*?):has\((.*)\) (.*)$/);
+      .replace(/\(\s+/g, '(')
+      .replace(/\s+\)/g, ')')
+      .match(/^(.*?):has\((.*)\)::before$/);
     const applies = (bodyClass, overlays) => {
       render(
         bodyClass,
@@ -680,26 +683,40 @@ describe('the header and the page tabs under a dialog', () => {
     const native = 'native-glass frosted-glass';
     expect(applies(native, '<div class="modal"></div>')).toBe(true);
     expect(applies(native, '<div class="command-palette-overlay"></div>')).toBe(true);
+    // The camera viewer is a full-window scrim of its own, and is removed when it closes.
+    expect(applies(native, '<div class="camera-expanded-preview"></div>')).toBe(true);
     expect(applies(`theme-light ${native}`, '<div class="modal"></div>')).toBe(true);
-    // Closed, a dialog or the palette is only hidden, and the rows keep their glass.
+    // Closed, a dialog or the palette is only hidden, and the window keeps its glass. A closing
+    // dialog fades out, and the pane with it.
     expect(
       applies(
         native,
         '<div class="modal hidden"></div><div class="command-palette-overlay hidden"></div>'
       )
     ).toBe(false);
-    // The Linux tint and the solid panel are nearly opaque already, and the scrim blurs them.
+    expect(applies(native, '<div class="modal modal-closing"></div>')).toBe(false);
+    // The Linux tint and the solid panel are nearly opaque already, and the scrim blurs them. A pin
+    // is a window of its own, with its own pane.
     expect(applies('software-glass frosted-glass', '<div class="modal"></div>')).toBe(false);
     expect(applies('', '<div class="modal"></div>')).toBe(false);
+    expect(applies(`${native} desktop-pin-mode`, '<div class="modal"></div>')).toBe(false);
+    expect(shownRule.style.getPropertyValue('opacity')).toBe('1');
 
-    for (const selector of ['.widget-header', '.quick-access-header']) {
-      expect(document.querySelector(selector).matches(rows)).toBe(true);
-    }
-    expect(rule.style.getPropertyValue('background-color')).toBe('rgba(var(--window-bg-rgb), 0.9)');
-    // It sets the colour under the glass rows' veil layer, and has to outrank the rule that does.
-    render(native, '<div class="widget-header"></div>');
-    const veil = cascadedDeclaration(document.querySelector('.widget-header'), 'background');
-    expect(veil.value).toBe('var(--panel-veil-layer)');
-    expect(compareSpecificity(specificity(rule.selectorText), veil.specificity)).toBeGreaterThan(0);
+    // The pane covers the whole window, under the weather and holiday art and the header and
+    // content: the body's own colour is not taken in by a backdrop blur, and panes on the header
+    // and the tab row alone showed as bands.
+    const pane = rules().find(
+      (candidate) => candidate.selectorText === `${host}::before` && candidate.style.content
+    );
+    expect(pane).toBeDefined();
+    expect(pane.style.getPropertyValue('position')).toBe('fixed');
+    expect(pane.style.getPropertyValue('inset')).toBe('0');
+    expect(pane.style.getPropertyValue('z-index')).toBe('0');
+    expect(pane.style.getPropertyValue('pointer-events')).toBe('none');
+    expect(pane.style.getPropertyValue('background')).toBe('rgba(var(--window-bg-rgb), 0.9)');
+    expect(pane.style.getPropertyValue('opacity')).toBe('0');
+    expect(
+      compareSpecificity(specificity(shownRule.selectorText), specificity(pane.selectorText))
+    ).toBeGreaterThan(0);
   });
 });

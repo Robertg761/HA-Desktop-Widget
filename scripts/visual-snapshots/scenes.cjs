@@ -434,13 +434,13 @@ async function openRemoveConfirmation(ctx) {
 
 // On native glass (the Windows and macOS runners) the header and the page tabs sit on the window's
 // half-clear tint, and the scrim's blur over them let their sharp text through. While a dialog is up
-// they take a nearly opaque pane, which fades in with the dialog. Elsewhere the window under them is
-// nearly opaque already.
-const CHROME_UNDER_SCRIM_OPAQUE = `!document.body.classList.contains('native-glass') ||
-  [...document.querySelectorAll('.widget-header, .quick-access-header')].every((row) => {
-    const alpha = getComputedStyle(row).backgroundColor.match(/rgba?\\(([^)]*)\\)/)?.[1].split(',')[3];
-    return alpha === undefined || Number(alpha) >= 0.9;
-  })`;
+// a nearly opaque pane lies over the whole window, which fades in with the dialog. Elsewhere the
+// window is nearly opaque already.
+const CHROME_UNDER_SCRIM_OPAQUE = `!document.body.classList.contains('native-glass') || (() => {
+  const pane = getComputedStyle(document.body, '::before');
+  const alpha = pane.backgroundColor.match(/rgba?\\(([^)]*)\\)/)?.[1].split(',')[3];
+  return Number(pane.opacity) === 1 && (alpha === undefined || Number(alpha) >= 0.9);
+})()`;
 
 async function pinEntity(ctx, entityId) {
   return { capture: await ctx.openPin(entityId) };

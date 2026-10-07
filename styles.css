@@ -730,15 +730,32 @@ body.frosted-glass .widget-content {
   -webkit-backdrop-filter: none;
 }
 
-/* On native glass (Windows acrylic, macOS vibrancy) the window under the header and the page tabs
-   is the half-clear tint alone. A dialog's scrim lays its blur over what is behind it, and over
-   half-clear pixels the blur is half clear too, so the sharp title, window buttons and tabs showed
-   through it, as if they sat above the dialog, while the cards and tiles below were blurred. While
-   a dialog or the command palette is up, the two rows get a nearly opaque pane of the window's
-   colour, as an unavailable tile does (see its pane), and the scrim blurs them like the rest. */
-body.native-glass.frosted-glass:has(:is(.modal, .command-palette-overlay):not(.hidden))
-  :is(.widget-header, .quick-access-header) {
-  background-color: rgba(var(--window-bg-rgb), 0.9);
+/* On native glass (Windows acrylic, macOS vibrancy) the window around the cards and tiles, under
+   the header and the page tabs, is the half-clear tint alone. A full-window scrim lays its blur over
+   what is behind it, and over half-clear pixels the blur is half clear too, so the sharp title,
+   window buttons and tabs showed through it, as if they sat above the dialog, while the cards and
+   tiles below were blurred. While a dialog, the command palette or the camera viewer is up, a
+   nearly opaque pane of the window's colour lies over the tint, as an unavailable tile has one
+   (see its pane), and the scrim blurs the window like the rest. It is one pane for the whole
+   window, as panes on the header and the tab row alone show as two square-ended bands between
+   clearer margins. The body's own colour cannot be it, as a backdrop blur does not take that in,
+   so it is a layer of its own, under the weather and holiday art (z-index 1) and the header and
+   content (2). It fades in and out with the scrim. */
+body.native-glass.frosted-glass:not(.desktop-pin-mode)::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(var(--window-bg-rgb), 0.9);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+body.native-glass.frosted-glass:not(.desktop-pin-mode):has(
+    :is(.modal, .command-palette-overlay, .camera-expanded-preview):not(.hidden):not(.modal-closing)
+  )::before {
+  opacity: 1;
 }
 
 body.linux-performance-mode {
