@@ -961,10 +961,12 @@ const TOAST_TYPES = new Set(['success', 'error', 'warning', 'info']);
 // Where a toast must not sit: the controls its surface is waiting on. Dialogs come first, because
 // anything behind an open dialog is covered by its backdrop and no longer matters.
 const TOAST_DIALOG_AVOID_SELECTOR = '.modal:not(.hidden):not(.modal-closing) .modal-footer';
-const TOAST_SURFACE_AVOID_SELECTOR = [
-  '.first-run-onboarding:not(.hidden) .first-run-actions',
-  '.widget-state-panel .widget-state-actions',
-].join(', ');
+const TOAST_WIZARD_AVOID_SELECTOR = '.first-run-onboarding:not(.hidden) .first-run-actions';
+// The connection panel is kept clear whole, not only its buttons: its title and message are the one
+// explanation of a dashboard that has stopped working.
+const TOAST_STATE_PANEL_SELECTOR = '.widget-state-panel';
+// A scroll that moves one of these can bring it to where the stack rests, or take it away.
+const TOAST_SCROLLED_SURFACES = `${TOAST_WIZARD_AVOID_SELECTOR}, ${TOAST_STATE_PANEL_SELECTOR}`;
 
 // While one of these is on screen Escape is not for the toasts: it ends a mode.
 const TOAST_ESCAPE_YIELD_SELECTOR = '#quick-controls.reorganize-mode';
@@ -1081,17 +1083,15 @@ function getToastLifetime(type, message, timeout, inPin = false) {
 }
 
 /**
- * Keep the toast stack clear of the controls its surface is waiting on.
+ * Keep the toast stack clear of what its surface is waiting on.
  *
  * Toasts sit at the bottom of the window, which is also where a dialog keeps its footer buttons
- * (Close, Save, Turn On), where the first-run wizard keeps Next, and, in a short window, where the
- * connection panel keeps Retry. A stack that would cover one of those where it rests is lifted
- * above it. One that would not stays down: lifting it above buttons higher up the window put it
- * over what they belong to, such as the connection panel's own message, which sits above Quick
- * Access. The layout is recomputed whenever one of them opens or closes, as well as when a toast
- * is added, so a stack that was already up does not end up covering a footer that appeared
- * afterwards, or float where one used to be. A scroll that moves the connection panel recomputes
- * it too: in a short window the panel's buttons can come up from below the fold to where the
+ * (Close, Save, Turn On) and where the first-run wizard keeps Next. A stack that would cover one of
+ * those where it rests is lifted above it. The connection panel is kept clear whole (see
+ * layoutToastsBesidePanel). The layout is recomputed whenever one of them opens or closes, as well
+ * as when a toast is added, so a stack that was already up does not end up covering a footer that
+ * appeared afterwards, or float where one used to be. A scroll that moves the connection panel
+ * recomputes it too: in a short window the panel can come up from below the fold to where the
  * stack rests.
  */
 function layoutToasts() {
@@ -1099,40 +1099,101 @@ function layoutToasts() {
   const container = document.getElementById('toast-container');
   if (!container) return;
   container.style.removeProperty('bottom');
+  // Held back beside the connection panel, a toast comes back whenever the stack is laid out again.
+  container
+    .querySelectorAll('.toast-held')
+    .forEach((toast) => toast.classList.remove('toast-held'));
   if (!container.querySelector('.toast')) return;
-  const boxes = (selector) =>
+  const footers = visibleToastObstacles(TOAST_DIALOG_AVOID_SELECTOR);
+  if (footers.length || document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
+    dockToastsAbove(container, footers);
+    return;
+  }
+  const [panel] = visibleToastObstacles(TOAST_STATE_PANEL_SELECTOR);
+  if (panel) {
+    layoutToastsBesidePanel(container, panel);
+    return;
+  }
+  dockToastsAbove(container, visibleToastObstacles(TOAST_WIZARD_AVOID_SELECTOR));
+}
+
+function visibleToastObstacles(selector) {
+  return (
     Array.from(document.querySelectorAll(selector))
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => element.getBoundingClientRect())
       // A surface scrolled out of view has nothing for a toast to cover.
-      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight);
-  let avoid = boxes(TOAST_DIALOG_AVOID_SELECTOR);
-  if (!avoid.length && !document.querySelector('.modal:not(.hidden):not(.modal-closing)')) {
-    avoid = boxes(TOAST_SURFACE_AVOID_SELECTOR);
-  }
-  if (!avoid.length) return;
-  // Where the stack rests, then from the lowest control up: each one it would cover, or come
-  // closer to than the gap, moves it above that control.
+      .filter((rect) => rect.bottom > 0 && rect.top < window.innerHeight)
+  );
+}
+
+// From where the stack rests, then from the lowest control up: each one it would cover, or come
+// closer to than the gap, moves it above that control. One that it would not cover leaves it down:
+// lifting it above buttons higher up the window put it over what they belong to.
+function dockToastsAbove(container, obstacles) {
+  if (!obstacles.length) return;
   const rest = container.getBoundingClientRect();
   const height = rest.bottom - rest.top;
   let floor = rest.bottom;
-  avoid
+  obstacles
     .sort((a, b) => b.bottom - a.bottom)
     .forEach((rect) => {
       if (rect.top < floor && rect.bottom + TOAST_FOOTER_GAP_PX > floor - height) {
         floor = rect.top - TOAST_FOOTER_GAP_PX;
       }
     });
-  if (floor === rest.bottom) return;
+  if (floor !== rest.bottom) placeToastFloor(container, floor);
+}
+
+function placeToastFloor(container, floor) {
   container.style.bottom = `${Math.round(Math.max(0, window.innerHeight - floor))}px`;
 }
 
-// At most once a frame, and only while a toast is showing and the scroll moved a surface whose
-// buttons the stack keeps clear of: a scroll anywhere else changes nothing for the toasts.
+/**
+ * The connection panel sits above Quick Access, so in the default window the stack rests below it,
+ * over the dimmed tiles. Where it would cover the panel instead (a narrow window, a full stack), it
+ * goes above the panel, over the weather and media cards, which say nothing new while Home
+ * Assistant is away, as long as it fits there under the window's header. A stack too tall for
+ * either place holds back its oldest toasts until it fits; they come back once there is room again,
+ * when the panel goes or the window grows. Docked above the panel's buttons, as the stack once was,
+ * it covered the panel's own message, and an error toast stays until it is dismissed. Only a single
+ * toast with no room on either side still does that, to keep Retry within reach.
+ */
+function layoutToastsBesidePanel(container, panel) {
+  const header = document.querySelector('.widget-header')?.getBoundingClientRect();
+  const ceiling = (header?.bottom > 0 ? header.bottom : 0) + TOAST_FOOTER_GAP_PX;
+  // Oldest first, never the newest, and never one the keyboard focus is in: hiding that one would
+  // drop the focus to the page, out of the toast the user had tabbed to.
+  const holdable = getLiveToasts(container)
+    .slice(0, -1)
+    .filter((toast) => !toast.contains(document.activeElement));
+  for (let held = 0; ; held += 1) {
+    const rest = container.getBoundingClientRect();
+    const height = rest.bottom - rest.top;
+    const clear =
+      rest.top >= panel.bottom + TOAST_FOOTER_GAP_PX ||
+      rest.bottom + TOAST_FOOTER_GAP_PX <= panel.top;
+    if (clear) return;
+    const floor = panel.top - TOAST_FOOTER_GAP_PX;
+    if (floor - height >= ceiling) {
+      placeToastFloor(container, floor);
+      return;
+    }
+    if (held >= holdable.length) break;
+    holdable[held].classList.add('toast-held');
+  }
+  dockToastsAbove(
+    container,
+    visibleToastObstacles(`${TOAST_STATE_PANEL_SELECTOR} .widget-state-actions`)
+  );
+}
+
+// At most once a frame, and only while a toast is showing and the scroll moved a surface the stack
+// keeps clear of: a scroll anywhere else changes nothing for the toasts.
 let toastScrollFrame = 0;
 function layoutToastsOnScroll(event) {
   if (toastScrollFrame || !document.querySelector('#toast-container .toast')) return;
-  if (!event.target?.querySelector?.(TOAST_SURFACE_AVOID_SELECTOR)) return;
+  if (!event.target?.querySelector?.(TOAST_SCROLLED_SURFACES)) return;
   toastScrollFrame = window.requestAnimationFrame(() => {
     toastScrollFrame = 0;
     layoutToasts();

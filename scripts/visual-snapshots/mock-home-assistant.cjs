@@ -181,6 +181,10 @@ function startMockHomeAssistant({
   failingEntities = [],
 }) {
   const server = http.createServer((request, response) => {
+    // The widget asks for this before it opens a browser to sign in. Left unanswered, a first-run
+    // authorization waits, as it does while the browser is open, until it is cancelled or the
+    // widget stops waiting for an answer; closeAllConnections ends it with the server.
+    if (request.url?.startsWith('/auth/providers')) return;
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
   });

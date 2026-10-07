@@ -91,6 +91,9 @@
     "uiohook-napi": "^1.5.4"
   },
   "overrides": {
+    "concurrently": {
+      "shell-quote": "^1.12.0"
+    },
     "dbus-next": {
       "usocket": "1.0.3",
       "xml2js": "0.6.2"

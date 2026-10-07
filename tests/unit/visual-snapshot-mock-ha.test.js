@@ -407,3 +407,36 @@ describe('visual snapshot mock Home Assistant state changes', () => {
     });
   });
 });
+
+describe('visual snapshot mock Home Assistant sign-in', () => {
+  // The wizard asks this before it opens a browser. Unanswered, the wizard waits as it does for the
+  // browser, which is how a scene captures that wait and its Cancel.
+  test('leaves the request a sign-in starts with unanswered, and answers the rest', async () => {
+    const server = await startMockHomeAssistant({ token: 'token', states: [] });
+    const { port } = server.address();
+    const received = new Promise((resolve) => server.once('request', resolve));
+    let answered = false;
+    const held = http.get({ port, host: '127.0.0.1', path: '/auth/providers' }, () => {
+      answered = true;
+    });
+    held.on('error', () => {});
+    try {
+      await received;
+      const status = await new Promise((resolve, reject) => {
+        http
+          .get({ port, host: '127.0.0.1', path: '/manifest.json' }, (response) => {
+            response.resume();
+            resolve(response.statusCode);
+          })
+          .on('error', reject);
+      });
+
+      expect(status).toBe(404);
+      expect(answered).toBe(false);
+    } finally {
+      held.destroy();
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+});

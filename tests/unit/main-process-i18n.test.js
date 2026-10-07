@@ -4,13 +4,14 @@ const vm = require('vm');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
 const profileSyncCore = require('../../profile-sync-core.js');
 const { REWRITE_TRANSACTION_INVALID } = require('../../src/profile-sync-rewrite-transaction.cjs');
-const { liveEntityHotkeys } = require('../../src/entity-hotkeys.cjs');
+const { liveEntityHotkeys, resolveEntityHotkeyAction } = require('../../src/entity-hotkeys.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
 const GERMAN = {
   'Turn on {{entity}}': '{{entity}} einschalten',
   'Toggle {{entity}}': '{{entity}} umschalten',
+  'Lock {{entity}}': '{{entity}} verriegeln',
   'Show or hide the widget window': 'Widget-Fenster ein- oder ausblenden',
   '{{error}}. Rollback failed: {{warning}}':
     '{{error}}. Wiederherstellung fehlgeschlagen: {{warning}}',
@@ -47,6 +48,21 @@ function loadMainRuntime(language, extraContext = {}) {
   return context;
 }
 
+// collectPortalShortcuts and the descriptions it gives, run against the test catalogs above.
+function portalShortcutRuntime() {
+  const runtime = loadMainRuntime('de', {
+    PORTAL_ENTITY_SHORTCUT_PREFIX: 'entity:',
+    PORTAL_POPUP_SHORTCUT_ID: 'popup',
+    liveEntityHotkeys,
+    resolveEntityHotkeyAction,
+  });
+  vm.runInContext(
+    sliceMain('function collectPortalShortcuts(', 'function reportPortalShortcutSyncResult('),
+    runtime
+  );
+  return runtime;
+}
+
 describe('main-process translations', () => {
   it('names portal shortcuts in the app language for the desktop shortcut settings', () => {
     const shortcutConfig = {
@@ -60,16 +76,8 @@ describe('main-process translations', () => {
       },
       popupHotkey: 'Ctrl+Alt+H',
     };
-    const runtime = loadMainRuntime('de', {
-      PORTAL_ENTITY_SHORTCUT_PREFIX: 'entity:',
-      PORTAL_POPUP_SHORTCUT_ID: 'popup',
-      liveEntityHotkeys,
-    });
+    const runtime = portalShortcutRuntime();
     runtime.config = shortcutConfig;
-    vm.runInContext(
-      sliceMain('function collectPortalShortcuts(', 'function reportPortalShortcutSyncResult('),
-      runtime
-    );
 
     expect(runtime.collectPortalShortcuts().map((shortcut) => shortcut.description)).toEqual([
       'light.kitchen einschalten',
@@ -83,6 +91,51 @@ describe('main-process translations', () => {
       'Toggle switch.fan',
       'Show or hide the widget window',
     ]);
+  });
+
+  // Every action but turning on and off was listed as Toggle, so a lock's Unlock hotkey read
+  // "Toggle lock.back_door" in the desktop's shortcut settings.
+  it('names each portal shortcut for the action it runs', () => {
+    const runtime = portalShortcutRuntime();
+    const descriptions = (hotkeys, language = 'en') => {
+      runtime.config = { ui: { language }, globalHotkeys: { enabled: true, hotkeys } };
+      return runtime.collectPortalShortcuts().map((shortcut) => shortcut.description);
+    };
+
+    expect(
+      descriptions({
+        'lock.back_door': { hotkey: 'Ctrl+Alt+1', action: 'unlock' },
+        'lock.front_door': { hotkey: 'Ctrl+Alt+2', action: 'lock' },
+        'cover.garage': { hotkey: 'Ctrl+Alt+3', action: 'open' },
+        'valve.garden': { hotkey: 'Ctrl+Alt+4', action: 'close' },
+        'button.doorbell': { hotkey: 'Ctrl+Alt+5', action: 'press' },
+        'automation.night': { hotkey: 'Ctrl+Alt+6', action: 'trigger' },
+        'light.desk': { hotkey: 'Ctrl+Alt+7', action: 'brightness_up' },
+        'light.hall': { hotkey: 'Ctrl+Alt+8', action: 'brightness_down' },
+        'fan.ceiling': { hotkey: 'Ctrl+Alt+9', action: 'increase_speed' },
+        'fan.desk': { hotkey: 'Ctrl+Alt+0', action: 'decrease_speed' },
+        'cover.blind': { hotkey: 'Ctrl+Shift+1', action: 'toggle' },
+      })
+    ).toEqual([
+      'Unlock lock.back_door',
+      'Lock lock.front_door',
+      'Open cover.garage',
+      'Close valve.garden',
+      'Press button.doorbell',
+      'Trigger automation.night',
+      'Brighten light.desk',
+      'Dim light.hall',
+      'Speed up fan.ceiling',
+      'Slow down fan.desk',
+      'Toggle cover.blind',
+    ]);
+    // A lock has no toggle: one an older version saved as a toggle, or as a bare accelerator, locks.
+    expect(
+      descriptions(
+        { 'lock.back_door': { hotkey: 'Ctrl+Alt+L', action: 'toggle' }, 'lock.shed': 'Ctrl+Alt+S' },
+        'de'
+      )
+    ).toEqual(['lock.back_door verriegeln', 'lock.shed verriegeln']);
   });
 
   it('reports a failed hotkey save and its failed rollback as one translated sentence', () => {

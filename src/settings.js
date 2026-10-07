@@ -716,8 +716,22 @@ function readCustomColorNameField(input) {
   return (input?.value || '').replace(/[\u2066-\u2069]/g, '').trim();
 }
 
+// The marks around a hex code are never saved, but maxlength counts them, so in Arabic a name with
+// a hex code stopped taking letters two short of the limit. The field allows one more character for
+// each mark it holds. The name's own limit is the maxlength in index.html, noted on the field before
+// the first change so that the markup stays the one place it is written.
+function fitCustomColorNameLimit(input) {
+  input.dataset.nameMaxLength ||= String(input.maxLength);
+  const limit = Number(input.dataset.nameMaxLength);
+  // A field without a maxlength (-1) takes a name of any length, marks or not.
+  if (limit < 0) return;
+  const marks = (input.value.match(/[\u2066-\u2069]/g) || []).length;
+  input.maxLength = limit + marks;
+}
+
 function showCustomColorName(input, theme) {
   input.value = theme ? getThemeDisplayName(theme) : '';
+  fitCustomColorNameLimit(input);
   shownCustomColorName = readCustomColorNameField(input);
 }
 
@@ -1330,7 +1344,11 @@ function persistCustomColorsImmediately() {
     })
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
-      showToast(t('Could not persist custom colors. Try Save in settings.'), 'warning', 3000);
+      showToast(
+        t('Could not save custom colors. Press Save in Settings to try again.'),
+        'warning',
+        3000
+      );
     });
 }
 
@@ -1730,6 +1748,7 @@ function initCustomColorEditor() {
 
   if (nameInput) {
     nameInput.oninput = () => {
+      fitCustomColorNameLimit(nameInput);
       setCustomEditorActive(true);
     };
     nameInput.onkeydown = (event) => {
@@ -2877,7 +2896,6 @@ const CUSTOM_ENTITY_ICON_PICKER_LIMIT = 120;
 
 function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '') {
   if (!pickerEl) return;
-  const choices = Array.isArray(customEntityIconChoices) ? customEntityIconChoices : [];
 
   // Not loaded yet, or loaded with the names of the language the interface showed before.
   if (!isCustomEntityIconCatalogCurrent()) {
@@ -2951,11 +2969,15 @@ function renderCustomEntityIconPickerChoices(pickerEl, entityId, filterValue = '
       }
     );
   } else {
-    summary.textContent = t('Showing {{shown}} of {{total}} icons for “{{query}}”.', {
-      shown: formatNumber(filteredChoices.length),
-      total: formatNumber(choices.length),
-      query: filterValue,
-    });
+    // Every match is shown, so the line counts the matches. It once gave the whole catalogue as a
+    // total ("1 of 3,946 icons for “bulb”"), which read as 3,946 icons matching.
+    summary.textContent =
+      filteredChoices.length === 1
+        ? t('1 icon matches “{{query}}”.', { query: filterValue })
+        : t('{{count}} icons match “{{query}}”.', {
+            count: formatNumber(filteredChoices.length),
+            query: filterValue,
+          });
   }
   pickerEl.appendChild(summary);
 
@@ -5044,9 +5066,10 @@ function syncLanguageSelectOptions() {
     const option = document.createElement('option');
     option.value = pack.locale;
     option.textContent = getLanguagePackDisplayName(pack);
-    // The name is in its own language, so a screen reader reads it in that voice. An option holds
-    // one language, though, and "(Not downloaded)" is in the interface's: marked as Arabic, a German
-    // suffix was read with the Arabic voice. An option with the suffix stays in the interface's.
+    // The name is in its own language, so a screen reader reads it in that voice, as it does the
+    // built-in English and Deutsch (marked in index.html). An option holds one language, though,
+    // and "(Not downloaded)" is in the interface's: marked as Arabic, a German suffix was read with
+    // the Arabic voice. An option with the suffix stays in the interface's.
     if (pack.installed) {
       option.lang = pack.locale;
     } else {
@@ -8004,12 +8027,31 @@ function renderLayerModeGuidance() {
   if (layerNote) layerNote.hidden = !layerMode;
   const toggleNote = document.getElementById('layer-toggle-note');
   if (!toggleNote) return;
+  const copyButton = document.getElementById('layer-toggle-copy');
   const command = desktopIntegrationInfo?.toggleCommand;
   toggleNote.hidden = !(layerMode && !onHyprland && typeof command === 'string' && command);
+  if (copyButton) {
+    copyButton.hidden = toggleNote.hidden;
+    copyButton.onclick = () => copyLayerToggleCommand(toggleNote, command);
+  }
   if (toggleNote.hidden) return;
   // Kept on the element, so a later language change words the note around the same command.
   toggleNote.setAttribute('data-i18n-vars', JSON.stringify({ command }));
   translateDocument(toggleNote);
+}
+
+// A click selects the command, but it takes no focus, so from the keyboard it could not be copied
+// at all, and Sway, niri and river, where this note shows, are driven from the keyboard. The Copy
+// button under the note copies it whole.
+async function copyLayerToggleCommand(toggleNote, command) {
+  if (await copyTextToClipboard(command)) {
+    showToast(t('Command copied'), 'success');
+    return;
+  }
+  // Selected, the command is one Ctrl+C away.
+  const code = toggleNote.querySelector('code');
+  if (code) window.getSelection()?.selectAllChildren(code);
+  showToast(t('Select and copy the command manually.'), 'info');
 }
 
 // "Frosted glass" blurs the window on Windows and macOS. On Linux Chromium cannot see what is behind

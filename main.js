@@ -447,7 +447,11 @@ const {
   acceleratorsConflict,
   validateAccelerator,
 } = require('./src/accelerators.cjs');
-const { liveEntityHotkeys, supportsEntityHotkey } = require('./src/entity-hotkeys.cjs');
+const {
+  liveEntityHotkeys,
+  resolveEntityHotkeyAction,
+  supportsEntityHotkey,
+} = require('./src/entity-hotkeys.cjs');
 const { isAccessibilityGranted } = require('./src/macos-accessibility.cjs');
 const { createPopupWindowPresenter } = require('./src/popup-window-presenter.cjs');
 const {
@@ -11828,7 +11832,7 @@ ipcMain.handle(
                   success: false,
                   backend: PORTAL_SHORTCUTS_BACKEND,
                   error: mainT(
-                    'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+                    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
                   ),
                 };
           })
@@ -11841,7 +11845,7 @@ ipcMain.handle(
       !registrationResult.success &&
       registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
       deactivatePortalShortcutsForLegacyFallback(
-        'The desktop portal did not assign an active popup shortcut.'
+        'The desktop portal did not assign the popup hotkey.'
       )
     ) {
       registrationResult = await Promise.resolve(registerPopupHotkey());
@@ -12102,12 +12106,7 @@ function collectPortalShortcuts() {
         id: PORTAL_ENTITY_SHORTCUT_PREFIX + entityId,
         // Shown in the desktop's shortcut settings. Sent with every bind, so a
         // language change applies the next time the shortcuts are rebound.
-        description:
-          action === 'turn_on'
-            ? mainT('Turn on {{entity}}', { entity: entityId })
-            : action === 'turn_off'
-              ? mainT('Turn off {{entity}}', { entity: entityId })
-              : mainT('Toggle {{entity}}', { entity: entityId }),
+        description: describeEntityShortcut(entityId, action),
         accelerator: hotkey,
       });
     });
@@ -12121,6 +12120,41 @@ function collectPortalShortcuts() {
     });
   }
   return shortcuts;
+}
+
+// What an entity hotkey does, as the desktop's shortcut settings list it: the action it runs, which
+// for a lock saved as a toggle by an older version is Lock. Every action but turning on and off was
+// called Toggle there, so an Unlock hotkey read "Toggle lock.back_door".
+function describeEntityShortcut(entityId, action) {
+  const vars = { entity: entityId };
+  switch (resolveEntityHotkeyAction(entityId, action)) {
+    case 'turn_on':
+      return mainT('Turn on {{entity}}', vars);
+    case 'turn_off':
+      return mainT('Turn off {{entity}}', vars);
+    case 'lock':
+      return mainT('Lock {{entity}}', vars);
+    case 'unlock':
+      return mainT('Unlock {{entity}}', vars);
+    case 'open':
+      return mainT('Open {{entity}}', vars);
+    case 'close':
+      return mainT('Close {{entity}}', vars);
+    case 'press':
+      return mainT('Press {{entity}}', vars);
+    case 'trigger':
+      return mainT('Trigger {{entity}}', vars);
+    case 'brightness_up':
+      return mainT('Brighten {{entity}}', vars);
+    case 'brightness_down':
+      return mainT('Dim {{entity}}', vars);
+    case 'increase_speed':
+      return mainT('Speed up {{entity}}', vars);
+    case 'decrease_speed':
+      return mainT('Slow down {{entity}}', vars);
+    default:
+      return mainT('Toggle {{entity}}', vars);
+  }
 }
 
 function reportPortalShortcutSyncResult(result, shortcuts) {
@@ -12589,7 +12623,7 @@ function registerPopupHotkey() {
           success: false,
           backend: PORTAL_SHORTCUTS_BACKEND,
           error: mainT(
-            'The desktop portal did not assign an active popup shortcut. Assign it in system shortcut settings.'
+            "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
           ),
         };
       }

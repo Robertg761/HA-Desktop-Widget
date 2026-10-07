@@ -5992,6 +5992,15 @@ body.theme-light:not(.high-contrast)
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Five chips make three and two, six two rows of three and nine three of three. The dialog is wide
+   enough for four 80px chips a row, which left a heat pump's fan-only mode alone under Off, and
+   two chips under four, or one under eight. */
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(5):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(6):last-child),
+:is(.climate-mode-buttons, .climate-option-buttons):has(> :nth-child(9):last-child) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .climate-mode-btn,
 .climate-fan-mode-btn,
 .climate-preset-mode-btn {
@@ -5999,7 +6008,10 @@ body.theme-light:not(.high-contrast)
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-3);
+  /* Three chips a row in a narrow window are about 72px wide. A centred label looks the same with
+     4px at its sides as with 8px; the 4px only lets "Heat/Cool" stay on one line where a longer
+     combined mode wraps after its slash. */
+  padding: var(--space-3) var(--space-2);
   background: var(--surface-2);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -9692,15 +9704,52 @@ body.theme-light:not(.high-contrast)
   line-height: 1.5;
 }
 
-/* In a short window (the smallest is 360px) the card's own padding and the space around it left
-   the welcome step scrolling inside the card, its buttons cut off at the bottom. */
+/* A short window: the smallest is 360px tall, and large text makes the default one as short.
+   The card's own padding and the space around it left the welcome step scrolling inside the card,
+   its buttons cut off at the bottom, and step 3 has more to say than fits even without them. When
+   the whole card scrolled, step 3's Back and Connect sat below its fold. So here only the step's
+   text scrolls, and the status line and the buttons stay in view under it. An 8px rhythm between
+   the lines, and 12px above the buttons, lets the URL step fit whole, field and all. */
 @media (max-height: 480px) {
   .first-run-onboarding {
     padding: var(--space-3);
   }
 
   .first-run-panel {
+    display: flex;
+    flex-direction: column;
     padding: var(--space-4);
+  }
+
+  /* The scroller keeps 4px around what it holds, so the field's and the buttons' focus rings are
+     not cut off at its edges; the negative margin leaves the card's layout as it was. */
+  .first-run-content {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin: -4px;
+    padding: 4px;
+  }
+
+  .first-run-status,
+  .first-run-actions {
+    flex: none;
+  }
+
+  .first-run-step-label,
+  .first-run-title,
+  .first-run-copy {
+    margin-bottom: var(--space-3);
+  }
+
+  /* The last line of step 3. Its margin no longer merges with the status line's below it, as it
+     does outside the scroller, so the status line's 8px is the gap. */
+  .first-run-security-note {
+    margin-bottom: 0;
+  }
+
+  .first-run-actions {
+    margin-top: var(--space-4);
   }
 }
 
@@ -9762,6 +9811,21 @@ body.theme-light:not(.high-contrast)
   margin-top: var(--space-3);
   overflow: visible;
   clip-path: none;
+}
+
+/* In a short window a step too tall for the card gives the empty line's room, gap and all, to its
+   text before the text gives up any of its own. The card fills the window then and its buttons sit
+   at its foot, so the reserved line held nothing in place and only cut the text short: the minimum
+   window showed a blank band above Back and Connect while step 3's note was cut off. Where the card
+   still fits, the line keeps its room. */
+@media (max-height: 480px) {
+  .first-run-content:has(.first-run-label, .first-run-security-note)
+    + .first-run-status.connection-status-empty {
+    flex: 0 1000 auto;
+    height: calc(1.4em + var(--space-3));
+    min-height: 0;
+    margin-top: 0;
+  }
 }
 
 .first-run-actions {
@@ -10019,6 +10083,11 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   /* The stack itself must not eat clicks on the widget behind it; individual
      toasts opt back in below so they can be click-dismissed. */
   pointer-events: none;
+  /* layoutToasts (src/ui-utils.js) takes the stack back to where it rests and measures it there
+     at once. Under reduced motion the stylesheet gives every transition 0.01ms instead of none,
+     which still starts one: the measurement read the place it was moved to before, and the stack
+     was left over the connection panel it had been lifted clear of. It is placed, not animated. */
+  transition: none;
 }
 
 .toast {
@@ -10178,6 +10247,12 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 .toast.toast-closing {
   animation: toastSlideOut var(--duration-base) var(--ease-in-out) forwards;
   pointer-events: none;
+}
+
+/* An older toast with no room beside the connection panel waits out of sight (layoutToasts in
+   src/ui-utils.js) and comes back once there is room. */
+.toast.toast-held {
+  display: none;
 }
 
 @keyframes toastSlideOut {
@@ -11997,12 +12072,27 @@ body.active-tile-glow .media-player-entity[data-state='playing'] {
   color: var(--accent-text);
 }
 
-/* The command to bind for a desktop layer can be an AppImage's whole path. It breaks anywhere rather
-   than run out of the card, and reads left to right inside an Arabic sentence. */
+/* The command to bind for a desktop layer can be an AppImage's whole path, which the user copies
+   into a compositor's config. The window cannot be selected, so the command is the exception, and
+   a click selects all of it. It takes a line of its own rather than break at the hyphen in
+   'ha-desktop-widget', breaks anywhere only when it is longer than the line, and reads left to
+   right inside an Arabic sentence. A command that fills the line stops short of its end by the
+   chip's margins and 1em, room for the mark after it (up to a Chinese full-width comma), which
+   otherwise started the next line. */
 #layer-toggle-note code {
+  display: inline-block;
+  max-width: calc(100% - 1em - 2px);
   overflow-wrap: anywhere;
   direction: ltr;
   unicode-bidi: isolate;
+  user-select: all;
+  -webkit-user-select: all;
+  cursor: text;
+}
+
+/* Its focus ring touched the help line under it with the help line's own 3px margin alone. */
+#layer-toggle-copy {
+  margin-block: 6px 4px;
 }
 
 /* --surface-2 is white at 85% in the light theme, the card the chip sits on, so there it showed as
@@ -14310,10 +14400,11 @@ body.opaque-panels #settings-modal .modal-header {
 /* The bottom padding keeps the last setting clear of the floating Save/Cancel pill. The gutter is
    always reserved, so a page that scrolls (General) and one that does not (Alerts) are the same
    width and nothing shifts sideways when switching pages or when a search result list grows past
-   the window; the end padding gives it back, so both margins stay 18px. */
+   the window; the end padding gives it back, so both margins stay 18px. It gives back the width
+   the scrollbar has, which forced colours make wider. */
 #settings-modal .modal-body {
   padding: 18px 18px 76px;
-  padding-inline-end: 9px;
+  padding-inline-end: calc(18px - var(--modal-scrollbar-size));
   scrollbar-gutter: stable;
   /* The Save/Cancel pill floats over the bottom of the page, where the switches and selects sit.
      Without this, Tab scrolled a control that was already inside the box under the pill, and its
@@ -14671,12 +14762,11 @@ textarea::selection {
 }
 
 /* Every row select is at least one width, so their left edges line up down a page (Time format,
-   Date format, Sync app, scope and interval) instead of each starting where its own text ends; the
-   width fits the longest English option. A select whose choices are longer, as the sync scope and
-   sync app are in German, French and Spanish, grows to fit them and so drops under its label, where
-   it has the whole row: at a fixed width it cut the value it showed to "Tous les paramètres
-   synchr...". Only a value longer than the row ends in an ellipsis, rather than running under the
-   chevron. */
+   Date format, Sync app and scope) instead of each starting where its own text ends; the width fits
+   the longest English option. A select whose choices are longer, as the sync scope and sync app are
+   in German, French and Spanish, grows to fit them and so drops under its label, where it has the
+   whole row: at a fixed width it cut the value it showed to "Tous les paramètres synchr...". Only a
+   value longer than the row ends in an ellipsis, rather than running under the chevron. */
 #settings-modal .setting-row > select {
   flex: 0 0 auto;
   width: auto;
@@ -14704,6 +14794,13 @@ textarea::selection {
 .setting-row-stacked > .setting-text {
   flex: none;
   min-width: 0;
+}
+
+/* A select under its label keeps the width of its choices, as one that wrapped there does. The sync
+   interval is stacked because of its help: beside a select, three lines of it were squeezed into a
+   column 150px wide, six in French. */
+#settings-modal .setting-row-stacked > select {
+  align-self: flex-start;
 }
 
 .setting-row-action {

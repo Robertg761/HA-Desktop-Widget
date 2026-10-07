@@ -25,11 +25,11 @@ window.electronAPI = mockElectronAPI;
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
   CAMERA_PREVIEW_REFRESH_OPTIONS: [
-    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
     { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
   ],
   disposeCameraPreview: jest.fn(),
   mountCameraPreview: jest.fn(),
@@ -1988,6 +1988,40 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const [message] = uiUtils.showToast.mock.calls.at(-1);
       expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
       expect(message).not.toContain('WebSocket');
+    });
+
+    it("keeps Home Assistant's English reason and the name in their own direction in Arabic", async () => {
+      // In an Arabic toast the reason's full stop took the toast's direction and moved to the far
+      // left of the line: ".powered on and connected to Home Assistant".
+      const i18n = require('../../src/i18n.js');
+      i18n.setLocaleBootstrap({
+        activeLocale: 'ar',
+        messages: {
+          'Failed to control {{entityName}}: {{errorMessage}}':
+            'تعذّر التحكم في {{entityName}}: {{errorMessage}}',
+        },
+      });
+      try {
+        state.setConfig({
+          ...sampleConfig,
+          ui: { ...sampleConfig.ui },
+          favoriteEntities: ['light.bedroom'],
+        });
+        state.setStates({ 'light.bedroom': getBedroomLightOnState() });
+        ui.renderActiveTab();
+        mockCallService.mockRejectedValueOnce(new Error('The device did not respond.'));
+
+        ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle');
+        await flushAsync();
+        await flushAsync();
+
+        const [message] = uiUtils.showToast.mock.calls.at(-1);
+        expect(message).toBe(
+          'تعذّر التحكم في \u2068Bedroom Light\u2069: \u2068The device did not respond.\u2069'
+        );
+      } finally {
+        i18n.setLocaleBootstrap({ activeLocale: 'en', messages: {} });
+      }
     });
   });
 

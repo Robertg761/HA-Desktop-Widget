@@ -629,7 +629,7 @@ describe('stylesheet one-offs', () => {
 
     it('accents the value in a heading, and not a heading that is all label', () => {
       render(
-        '<div class="brightness-control-heading" id="two"><span>Color Temperature</span><span id="value">4250K</span></div><div class="brightness-control-heading" id="one"><span id="label">Color</span></div>'
+        '<div class="brightness-control-heading" id="two"><span>Color temperature</span><span id="value">4250K</span></div><div class="brightness-control-heading" id="one"><span id="label">Color</span></div>'
       );
       const accent = resolvedValue(document.querySelector('#value'), 'color');
       expect(accent).toBe(resolvedValue(document.querySelector('#value'), '--accent-text'));
@@ -724,6 +724,43 @@ describe('stylesheet one-offs', () => {
       );
       // A lone last chip no longer stretches across the whole row.
       expect(resolvedValue(document.querySelector('.climate-fan-mode-btn'), 'flex')).toBeNull();
+    });
+
+    // The dialog holds four 80px chips a row, so five left a heat pump's fan-only mode alone on
+    // the second row, six put two under four, and nine one under eight. jsdom cannot match
+    // :has(> ...), so the rule is picked as the browser picks it: the last one naming the count.
+    it.each([
+      [4, 'repeat(2, minmax(0, 1fr))'],
+      [5, 'repeat(3, minmax(0, 1fr))'],
+      [6, 'repeat(3, minmax(0, 1fr))'],
+      [9, 'repeat(3, minmax(0, 1fr))'],
+      [7, undefined],
+      [8, undefined],
+    ])('lays %i climate chips out in full rows', (count, columns) => {
+      const counted = `:has(> :nth-child(${count}):last-child)`;
+      const rules = [...document.styleSheets]
+        .flatMap((sheet) => [...sheet.cssRules])
+        .filter((rule) =>
+          ['.climate-mode-buttons', '.climate-option-buttons'].every((grid) =>
+            rule.selectorText
+              ?.split(/,\s*(?=:is\()/)
+              .some((selector) => selector.includes(grid) && selector.endsWith(counted))
+          )
+        );
+      expect(rules.at(-1)?.style.getPropertyValue('grid-template-columns') || undefined).toBe(
+        columns
+      );
+    });
+
+    // Three chips a row in a narrow window are about 72px wide. With 8px at each side "Heat/Cool"
+    // (58px) wrapped after its slash; with 4px only longer combined modes wrap.
+    it('leaves a climate chip label 4px at its sides', () => {
+      render(
+        '<div class="climate-mode-buttons"><button class="climate-mode-btn"></button></div><div class="climate-option-buttons"><button class="climate-fan-mode-btn"></button><button class="climate-preset-mode-btn"></button></div>'
+      );
+      for (const chip of document.querySelectorAll('button')) {
+        expect(resolvedValue(chip, 'padding')).toBe('0.5rem 0.25rem');
+      }
     });
 
     it('sets the mode labels in the weight of the chips beside them', () => {
@@ -927,11 +964,52 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(status, 'min-height')).toBe('1.4em');
     });
 
+    // In the minimum window step 3's note was cut off above a blank band where the empty line sat:
+    // the card fills the window there, so the line held the buttons nowhere.
+    it('gives the empty line’s room to the text first in a short window', () => {
+      render(step('<p class="first-run-security-note">Your password never enters this app.</p>'));
+      const status = document.querySelector('.first-run-status');
+      const short = { viewport: { width: 320, height: 360 } };
+
+      expect(resolvedValue(status, 'flex', short)).toBe('0 1000 auto');
+      expect(resolvedValue(status, 'min-height', short)).toBe('0');
+      // Its gap is part of its height, so that yields too; where the card fits, the room is the same.
+      expect(resolvedValue(status, 'margin-top', short)).toBe('0');
+      expect(resolvedValue(status, 'height', short)).toBe('calc(1.4em + 0.5rem)');
+      // A message keeps its lines.
+      status.classList.remove('connection-status-empty');
+      expect(resolvedValue(status, 'flex', short)).toBe('none');
+      expect(resolvedValue(status, 'min-height', short)).toBe('1.4em');
+    });
+
     it('leaves the welcome step, which has no status line to show, as it was', () => {
       render(step('<p class="first-run-copy">Connect your server.</p>'));
       const status = document.querySelector('.first-run-status');
       expect(resolvedValue(status, 'position')).toBe('absolute');
       expect(resolvedValue(status, 'min-height')).toBeNull();
+    });
+
+    // When the whole card scrolled, a short window put step 3's Back and Connect below its fold.
+    it('scrolls the step’s text in a short window, and keeps the buttons in view', () => {
+      render(
+        `<div class="first-run-panel"><div class="first-run-content"></div>
+          <div class="first-run-status" role="status"></div><div class="first-run-actions"></div></div>`
+      );
+      const card = document.querySelector('.first-run-panel');
+      const text = document.querySelector('.first-run-content');
+      const short = { viewport: { width: 320, height: 360 } };
+
+      expect(resolvedValue(card, 'display', short)).toBe('flex');
+      expect(resolvedValue(card, 'flex-direction', short)).toBe('column');
+      expect(resolvedValue(text, 'overflow-y', short)).toBe('auto');
+      expect(resolvedValue(text, 'min-height', short)).toBe('0');
+      expect(resolvedValue(text, 'flex', short)).toBe('0 1 auto');
+      for (const kept of ['.first-run-status', '.first-run-actions']) {
+        expect(resolvedValue(document.querySelector(kept), 'flex', short)).toBe('none');
+      }
+      // A window with room for every step lays the card out as before.
+      expect(resolvedValue(card, 'display')).toBeNull();
+      expect(resolvedValue(text, 'overflow-y')).toBeNull();
     });
   });
 

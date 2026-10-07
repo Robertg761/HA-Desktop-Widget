@@ -437,6 +437,19 @@ describe('forced colours (Windows High Contrast and other contrast themes)', () 
     });
   });
 
+  // Settings keeps its own 18px margins rather than the dialogs' inset, and gave back a 9px
+  // scrollbar's room whatever its width, so here its right margin was 3px wider than its left.
+  it('gives Settings back as much end padding as its scrollbar takes, in either width', () => {
+    render(
+      '',
+      '<div id="settings-modal" class="modal"><div class="modal-content"><div class="modal-body"></div></div></div>'
+    );
+    const body = document.querySelector('.modal-body');
+
+    expect(resolvedValue(body, 'padding-inline-end')).toBe('calc(18px - 9px)');
+    expect(resolvedValue(body, 'padding-inline-end', FORCED)).toBe('calc(18px - 12px)');
+  });
+
   // Forced colours throw away the Readable preset's palette, yet a rule they discard still outranks
   // a lower one that names a system colour. Each case is a property the forced-colours rules set to
   // a system colour; turning the preset on must not change it.

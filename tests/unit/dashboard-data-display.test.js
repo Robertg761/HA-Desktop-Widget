@@ -14,11 +14,11 @@ window.electronAPI = mockElectronAPI;
 // Mock dependencies
 jest.mock('../../src/camera.js', () => ({
   CAMERA_PREVIEW_REFRESH_OPTIONS: [
-    { value: 'off', label: 'Static icon (Default)', intervalMs: 0 },
-    { value: 'live', label: 'Live stream while visible (Higher usage)', intervalMs: 0 },
-    { value: '30s', label: 'Snapshot every 30 seconds (Efficient)', intervalMs: 30000 },
+    { value: 'off', label: 'Static icon (default)', intervalMs: 0 },
+    { value: 'live', label: 'Live stream while visible (higher usage)', intervalMs: 0 },
+    { value: '30s', label: 'Snapshot every 30 seconds (efficient)', intervalMs: 30000 },
     { value: '10s', label: 'Snapshot every 10 seconds', intervalMs: 10000 },
-    { value: '5s', label: 'Snapshot every 5 seconds (Frequent)', intervalMs: 5000 },
+    { value: '5s', label: 'Snapshot every 5 seconds (frequent)', intervalMs: 5000 },
   ],
   disposeCameraPreview: jest.fn(),
   mountCameraPreview: jest.fn(),
@@ -307,6 +307,30 @@ describe('dashboard data display', () => {
           ['valve', 'close_valve', { entity_id: 'valve.garden' }],
         ]);
       });
+
+      // A garage door can have a hotkey that only shuts it, whichever way it stands.
+      it('opens or closes, whichever way it stands, for an Open or a Close hotkey', async () => {
+        // CoverEntityFeature: OPEN is 1, CLOSE is 2.
+        const garage = (value) => entity('cover.garage', value, { supported_features: 3 });
+        ui.executeHotkeyAction(garage('closed'), 'close');
+        ui.executeHotkeyAction(garage('open'), 'close');
+        ui.executeHotkeyAction(entity('valve.garden', 'open'), 'open');
+        await flush();
+        expect(mockCallService.mock.calls).toEqual([
+          ['cover', 'close_cover', { entity_id: 'cover.garage' }],
+          ['cover', 'close_cover', { entity_id: 'cover.garage' }],
+          ['valve', 'open_valve', { entity_id: 'valve.garden' }],
+        ]);
+      });
+
+      it('leaves a valve alone that cannot go the way its hotkey asks', async () => {
+        ui.executeHotkeyAction(
+          entity('valve.open_only', 'open', { supported_features: 1 }),
+          'close'
+        );
+        await flush();
+        expect(mockCallService).not.toHaveBeenCalled();
+      });
     });
 
     describe('unlocking from a tile', () => {
@@ -351,12 +375,48 @@ describe('dashboard data display', () => {
         expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.door' });
       });
 
-      it('does not ask of a hotkey, which can fire while the widget is hidden', async () => {
-        renderTiles([lock('locked')]);
-        ui.executeHotkeyAction(lock('locked'), 'toggle');
+      it('locks from a Lock hotkey without asking', async () => {
+        renderTiles([lock('unlocked')]);
+        ui.executeHotkeyAction(lock('unlocked'), 'lock');
         await flush();
         expect(uiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.door' });
+      });
+
+      // The chord can be pressed while the widget is hidden, so the widget comes up to ask.
+      it('asks of an Unlock hotkey as it asks of a click, with the widget brought up', async () => {
+        renderTiles([lock('locked')]);
+        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        ui.executeHotkeyAction(lock('locked'), 'unlock');
+        await flush();
+        expect(mockElectronAPI.showWindow).toHaveBeenCalled();
+        expect(uiUtils.showConfirm).toHaveBeenCalledWith('Unlock Back door', 'Are you sure?', {
+          confirmText: 'Unlock',
+          confirmClass: 'btn-primary',
+        });
         expect(mockCallService).toHaveBeenCalledWith('lock', 'unlock', { entity_id: 'lock.door' });
+      });
+
+      it('leaves the door locked when an Unlock hotkey is declined', async () => {
+        renderTiles([lock('locked')]);
+        ui.executeHotkeyAction(lock('locked'), 'unlock');
+        await flush();
+        expect(uiUtils.showConfirm).toHaveBeenCalled();
+        expect(mockCallService).not.toHaveBeenCalled();
+      });
+
+      // A lock has no toggle hotkey any more. One an older version saved (the tile menu did, and a
+      // bare accelerator is one) locks: it must not open the door without asking.
+      it('locks for a toggle hotkey saved before, and never unlocks', async () => {
+        renderTiles([lock('locked')]);
+        ui.executeHotkeyAction(lock('locked'), 'toggle');
+        ui.executeHotkeyAction(lock('locked'), undefined);
+        await flush();
+        expect(uiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockCallService.mock.calls).toEqual([
+          ['lock', 'lock', { entity_id: 'lock.door' }],
+          ['lock', 'lock', { entity_id: 'lock.door' }],
+        ]);
       });
 
       it('tells the Omarchy bar that a locked door answers with a dialog, so the widget comes up', () => {
@@ -1221,6 +1281,26 @@ describe('dashboard data display', () => {
           state: name,
         });
       }
+    });
+
+    // Three chips a row in a narrow window are about 72px wide, and "Heizen/Kühlen" without a break
+    // ran past both edges of its chip.
+    it('lets a combined mode or option wrap after its slash, saying the same text', () => {
+      const modal = open(
+        climate('heat_cool', {
+          fan_modes: ['low', 'low/high'],
+          fan_mode: 'low',
+          supported_features: 9,
+        })
+      );
+      const label = modal.querySelector(
+        '.climate-mode-btn[data-mode="heat_cool"] .climate-mode-label'
+      );
+      expect(label.innerHTML).toBe('Heat/<wbr>Cool');
+      expect(label.textContent).toBe('Heat/Cool');
+      const option = modal.querySelector('.climate-fan-mode-btn[data-mode="low/high"]');
+      expect(option.querySelectorAll('wbr')).toHaveLength(1);
+      expect(option.textContent).toBe(option.title);
     });
 
     it('tells Heat/Cool from Auto by its icon', () => {

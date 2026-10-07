@@ -326,7 +326,8 @@ const startupScenes = [
   },
   // Browser authorization with no saved authorization to restore it from. Windows and macOS find
   // none and ask to reconnect. Linux under CI has no keyring, so it stops before looking and asks
-  // for the keyring to be unlocked: that is the panel it captures, under a name that says so.
+  // for the keyring to be started or unlocked: that is the panel it captures, under a name that
+  // says so.
   {
     name: 'startup-oauth-reauth',
     platforms: ['win32', 'darwin'],
@@ -337,14 +338,12 @@ const startupScenes = [
     name: 'startup-oauth-keyring',
     platforms: ['linux'],
     startup: { config: oauthWithNothingSaved },
-    setup: (ctx) => showTokenPanel(ctx, 'System keyring is locked'),
+    setup: (ctx) => showTokenPanel(ctx, 'System keyring is unavailable'),
   },
 ];
 
-// The wizard's authorization step after an attempt on a server address nothing listens on, which
-// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
-// a scene whose failure drifts to another one fails instead of capturing it.
-async function failFirstRunAuthorization(ctx, says) {
+// The wizard's authorization step, about to open `address`.
+async function showFirstRunAuthorize(ctx, address) {
   await showFirstRunWelcome(ctx);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-content input');
@@ -355,9 +354,51 @@ async function failFirstRunAuthorization(ctx, says) {
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
   })()`);
-  await ctx.insertText('127.0.0.1:9');
+  await ctx.insertText(address);
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-url');
+}
+
+// Every button the wizard shows lies inside its card and the window. When the whole card scrolled,
+// a short window left step 3's Back and Connect below the fold of a scroller inside the window.
+const WIZARD_ACTIONS_IN_VIEW = `(() => {
+  const card = document.querySelector('.first-run-panel').getBoundingClientRect();
+  const shown = [...document.querySelectorAll('.first-run-actions .btn')].filter(
+    (button) => button.getClientRects().length > 0
+  );
+  return shown.length > 0 && shown.every((button) => {
+    const box = button.getBoundingClientRect();
+    return box.top >= card.top && box.bottom <= card.bottom && box.bottom <= window.innerHeight;
+  });
+})()`;
+
+// Connect on the authorization step, against the mock Home Assistant, which leaves the widget's
+// first request unanswered: the wizard waits as it does while the browser is open, for as long as
+// the widget gives the server to answer (8 s). The Back button is Cancel meanwhile.
+async function waitForFirstRunAuthorization(ctx) {
+  await showFirstRunAuthorize(ctx, ctx.homeAssistantUrl);
+  await ctx.click('.first-run-actions .btn-primary');
+  await ctx.waitForSelector('.first-run-status[data-status="pending"]');
+}
+
+// Back to the welcome step from a wait, which Cancel ends.
+async function cancelFirstRunAuthorization(ctx) {
+  await ctx.ev(`(() => {
+    const cancel = document.querySelector('.first-run-actions .btn-secondary:nth-child(2)');
+    if (cancel?.classList.contains('btn-neutral')) cancel.click();
+  })()`);
+  await ctx.waitForExpression(
+    `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+    'the wait to end'
+  );
+  await showFirstRunWelcome(ctx);
+}
+
+// The wizard's authorization step after an attempt on a server address nothing listens on, which
+// fails at once and opens no browser. `says` is a part of the message the failure has to show, so
+// a scene whose failure drifts to another one fails instead of capturing it.
+async function failFirstRunAuthorization(ctx, says) {
+  await showFirstRunAuthorize(ctx, '127.0.0.1:9');
   await ctx.click('.first-run-actions .btn-primary');
   await ctx.waitForSelector('.first-run-status[data-status="error"]');
   await ctx.expect(
@@ -785,6 +826,23 @@ const NO_EMPTY_BLOCK_IN_UNAVAILABLE_DIALOG = `(() => {
   return [...body.children].filter(shown).every((block) =>
     [...block.querySelectorAll('*')].some((part) => shown(part) && part.children.length === 0));
 })()`;
+// The thermostat's modes, fan speeds and presets lie in rows with none left alone on the last row.
+const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-buttons, .climate-option-buttons)'
+)].every((grid) => {
+  const rows = new Map();
+  [...grid.children].filter((chip) => chip.getClientRects().length > 0).forEach((chip) => {
+    const top = Math.round(chip.getBoundingClientRect().top);
+    rows.set(top, (rows.get(top) || 0) + 1);
+  });
+  const counts = [...rows.values()];
+  return counts.length < 2 || counts.at(-1) > 1;
+})`;
+// Every mode and option label lies inside its chip. Three chips a row in a narrow window are about
+// 72px wide, and German's "Heizen/Kühlen" ran 85px, past both of its chip's edges.
+const CLIMATE_LABELS_IN_CHIPS = `[...document.querySelectorAll(
+  '.climate-modal :is(.climate-mode-btn, .climate-fan-mode-btn, .climate-preset-mode-btn)'
+)].every((chip) => (chip.querySelector('.climate-mode-label') || chip).scrollWidth <= chip.clientWidth)`;
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -792,15 +850,31 @@ const openUnavailable = (open) => async (ctx) => {
     'no empty block under the note'
   );
 };
-// Every toast lies above or below the connection panel, so none of its words or buttons is covered.
+// Every toast on screen lies above or below the connection panel, and under the window's header,
+// so none of the panel's words or buttons is covered, and neither are the window's own. The newest
+// toast is one of them: a stack with no room beside the panel holds back its older ones instead.
 const TOASTS_CLEAR_OF_OFFLINE_PANEL = `(() => {
   const panel = document.getElementById('widget-state-panel')?.getBoundingClientRect();
+  const header = document.querySelector('.widget-header').getBoundingClientRect();
   const toasts = [...document.querySelectorAll('#toast-container .toast')];
-  return !!panel && toasts.length > 0 && toasts.every((toast) => {
+  const shown = toasts.filter((toast) => toast.getClientRects().length > 0);
+  return !!panel && shown.includes(toasts.at(-1)) && shown.every((toast) => {
     const box = toast.getBoundingClientRect();
-    return box.top >= panel.bottom || box.bottom <= panel.top;
+    return (box.top >= panel.bottom || box.bottom <= panel.top) && box.top >= header.bottom;
   });
 })()`;
+// A full stack of three while Home Assistant is away, each a command that could not reach it: one
+// from the palette, the media card's play button and a switch's tile. Three errors, because errors
+// stay until they are dismissed.
+async function raiseThreeOfflineErrors(ctx) {
+  await raiseRefusedCommand(ctx);
+  await ctx.click('#media-tile-play');
+  await ctx.click('#quick-controls .control-item[data-entity-id="switch.compound_name"]');
+  await ctx.waitForExpression(
+    `document.querySelectorAll('#toast-container .toast.error').length === 3`,
+    'three error toasts'
+  );
+}
 
 // Every label in a Settings row keeps room to be read, at 150% text size and in a narrow window.
 const SETTING_LABELS_READABLE = `[...document.querySelectorAll('#settings-modal .tab-content.active .setting-text')]
@@ -1185,6 +1259,25 @@ const PROBLEM_TOAST_WRAPS = `(() => {
   const range = document.createRange();
   range.selectNodeContents(document.querySelector('#toast-container .toast.error .toast-message'));
   return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size > 1;
+})()`;
+
+// The mock's reason is English, as Home Assistant's usually is, whatever language the app is in. In
+// an Arabic toast it keeps its own direction, so its full stop stays right of its last word; it took
+// the toast's direction once and sat at the far left of the line (".powered on and connected to
+// Home Assistant").
+const PROBLEM_TOAST_REASON_KEEPS_ITS_STOP = `(() => {
+  const text = document.querySelector('#toast-container .toast.error .toast-message')?.firstChild;
+  const stop = (text?.textContent || '').lastIndexOf('.');
+  if (stop < 1) return false;
+  const box = (start) => {
+    const range = document.createRange();
+    range.setStart(text, start);
+    range.setEnd(text, start + 1);
+    return range.getBoundingClientRect();
+  };
+  const word = box(stop - 1);
+  const mark = box(stop);
+  return Math.abs(mark.top - word.top) < 2 && mark.left >= word.right - 1;
 })()`;
 
 // The edit-mode hint is a long notice, and a refused command adds a problem toast to the stack.
@@ -1701,6 +1794,12 @@ const scenes = [
     setup: async (ctx) => {
       await openHotkeysFor(ctx, '');
       await ctx.expect(SENSOR_HOTKEY_ROW, "the sensor's hotkey keeps a row with its Clear button");
+      // A lock's hotkey locks or unlocks; a toggle unlocked a door with nobody asked.
+      await ctx.expect(
+        `[...document.querySelector('#hotkeys-list .hotkey-action-select[data-entity-id="lock.back_door"]').options]
+          .map((option) => option.value).join() === 'lock,unlock'`,
+        'Lock and Unlock for the lock, and no Toggle'
+      );
     },
   },
   // A home with more lights than one page of the list holds: the last page, with its rows above the
@@ -3130,6 +3229,8 @@ const scenes = [
         })()`,
         'the target range is one line inside its card'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {
@@ -3142,6 +3243,24 @@ const scenes = [
         `document.getElementById('climate-target-value').getClientRects().length === 1`,
         'the target range is one line'
       );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+    },
+  },
+  // German names the heat pump's modes at their longest; the picture is of the modes, which sit
+  // below the fold of the narrow window's dialog.
+  {
+    name: 'layout-popup-climate-modes-narrow-de',
+    size: NARROW_SIZE,
+    ui: { language: 'de' },
+    config: edgePage,
+    setup: async (ctx) => {
+      await openDetails('climate.heat_pump')(ctx);
+      await ctx.ev(
+        `document.getElementById('climate-mode-buttons').scrollIntoView({ block: 'center' })`
+      );
+      await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
+      await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
     },
   },
   {
@@ -3464,6 +3583,31 @@ const scenes = [
       await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
     },
   },
+  // In a narrow window the panel's buttons are where the stack rests, and docked above them it
+  // covered the panel's message. It goes above the whole panel, over the weather and media cards.
+  {
+    name: 'layout-offline-toast-narrow',
+    size: NARROW_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseRefusedCommand(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toast clear of the panel');
+    },
+  },
+  // Three toasts fit neither under the panel nor between it and the header.
+  {
+    name: 'layout-offline-toasts',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    keepToasts: true,
+    setup: async (ctx) => {
+      await showOffline(ctx);
+      await raiseThreeOfflineErrors(ctx);
+      await ctx.waitForExpression(TOASTS_CLEAR_OF_OFFLINE_PANEL, 'the toasts clear of the panel');
+    },
+  },
   { name: 'layout-toast', size: DEFAULT_SIZE, keepToasts: true, setup: showToasts },
   { name: 'layout-toast-narrow', size: NARROW_SIZE, keepToasts: true, setup: showToasts },
   {
@@ -3478,7 +3622,13 @@ const scenes = [
     size: DEFAULT_SIZE,
     ui: { language: 'ar' },
     keepToasts: true,
-    setup: showToasts,
+    setup: async (ctx) => {
+      await showToasts(ctx);
+      await ctx.expect(
+        PROBLEM_TOAST_REASON_KEEPS_ITS_STOP,
+        "the reason's full stop after its words"
+      );
+    },
   },
 
   // First run shows when no server is configured. The runner only puts the keys listed above
@@ -3534,6 +3684,54 @@ const scenes = [
     name: 'wizard-welcome-minimum',
     size: MINIMUM_SIZE,
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  },
+  // The steps with the most to say, in the smallest window: their text scrolls, their buttons stay.
+  {
+    name: 'wizard-url-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.click('.first-run-actions .btn-primary');
+      await ctx.waitForSelector('.first-run-content input');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const field = text.querySelector('input').getBoundingClientRect();
+          const shown = text.getBoundingClientRect();
+          return field.top >= shown.top && field.bottom <= shown.bottom;
+        })()`,
+        'the whole field in view'
+      );
+    },
+  },
+  {
+    name: 'wizard-authorize-minimum',
+    size: MINIMUM_SIZE,
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const status = document.querySelector('.first-run-status');
+          return text.scrollHeight <= text.clientHeight || status.getBoundingClientRect().height === 0;
+        })()`,
+        'no empty status line under text that is cut off'
+      );
+    },
+  },
+  {
+    name: 'wizard-welcome-s130',
+    size: DEFAULT_SIZE,
+    ui: { scale: 1.3 },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
   {
@@ -3543,6 +3741,17 @@ const scenes = [
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: showFirstRunWelcome,
   },
+  // The longest welcome (German), a script that joins its letters (Hindi) and one that breaks lines
+  // between any two characters (Chinese).
+  ...['de', 'hi', 'zh'].map((language) => ({
+    name: `wizard-welcome-${language}`,
+    ui: { language },
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await showFirstRunWelcome(ctx);
+      await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'the buttons in view');
+    },
+  })),
   {
     name: 'wizard-welcome-forced-colors',
     media: FORCED_COLORS,
@@ -3565,6 +3774,57 @@ const scenes = [
     platforms: ['linux'],
     config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
     setup: (ctx) => failFirstRunAuthorization(ctx, 'so the authorization cannot be saved.'),
+    teardown: showFirstRunWelcome,
+  },
+  // Waiting for the browser, and that wait cancelled. Only Windows and macOS get as far as asking
+  // the server: Linux under CI stops at the missing keyring before anything waits.
+  {
+    name: 'wizard-authorize-pending',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.expect(
+        `(() => {
+          const [, cancel, connect] = document.querySelectorAll('.first-run-actions .btn');
+          return cancel.textContent === 'Cancel' && cancel.classList.contains('btn-neutral') &&
+            !cancel.hidden && connect.disabled;
+        })()`,
+        'Cancel drawn as every other Cancel, and Connect waiting'
+      );
+    },
+    // Only the widget's 8 s limit for the server's answer holds the wait, and the picture is taken
+    // after the setup and the settle. On a runner slow enough to pass the limit first, the picture
+    // is of the error that follows, so the scene fails instead of passing with it.
+    teardown: async (ctx) => {
+      const stillWaiting = await ctx.ev(
+        `!!document.querySelector('.first-run-status[data-status="pending"]')`
+      );
+      await cancelFirstRunAuthorization(ctx);
+      if (!stillWaiting) throw new Error('the wizard had stopped waiting when it was captured');
+    },
+  },
+  {
+    name: 'wizard-authorize-cancelled',
+    platforms: ['win32', 'darwin'],
+    config: { homeAssistant: { url: '', token: '', authMethod: 'token' } },
+    setup: async (ctx) => {
+      await waitForFirstRunAuthorization(ctx);
+      await ctx.click('.first-run-actions .btn-neutral');
+      await ctx.waitForExpression(
+        `!document.querySelector('.first-run-actions .btn-primary').disabled`,
+        'the wait to end'
+      );
+      await ctx.expect(
+        `(() => {
+          const [, back] = document.querySelectorAll('.first-run-actions .btn');
+          const status = document.querySelector('.first-run-status');
+          return back.textContent === 'Back' && !back.classList.contains('btn-neutral') &&
+            !status.dataset.status && !!document.querySelector('.first-run-url');
+        })()`,
+        'the step as it was before Connect, with nothing to report'
+      );
+    },
     teardown: showFirstRunWelcome,
   },
 

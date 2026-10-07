@@ -263,6 +263,49 @@ describe('alert evaluator and the states no reading comes with', () => {
     });
 
     describe('for a condition that already held when the widget started', () => {
+      // Home Assistant sends a state_changed event for an attribute too (a lamp's brightness, a
+      // sensor's next tick), with the same state. That is not the entity coming into the condition.
+      it('does not tell about a Specific State on its next update, outage or not', () => {
+        build({ onSpecificState: true, targetState: 'on' });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'on');
+        expect(notify).not.toHaveBeenCalled();
+
+        evaluator.check('sensor.door', 'off');
+        evaluator.check('sensor.door', 'on');
+        expect(newStates()).toEqual(['on']);
+      });
+
+      it('does not tell about a threshold still crossed at its next reading', () => {
+        build({ onNumericThreshold: true, threshold: 25, comparison: 'above' });
+        evaluator.reset(states('sensor.door', '26'));
+        evaluator.check('sensor.door', '26.5');
+        expect(notify).not.toHaveBeenCalled();
+
+        evaluator.check('sensor.door', '20');
+        evaluator.check('sensor.door', '27');
+        expect(newStates()).toEqual(['27']);
+      });
+
+      it('does not tell about an entity that was already offline, for a rule about that', () => {
+        build({ onSpecificState: true, targetState: 'unavailable' });
+        evaluator.reset(states('sensor.door', 'unavailable'));
+        evaluator.check('sensor.door', 'unavailable');
+        expect(notify).not.toHaveBeenCalled();
+
+        evaluator.check('sensor.door', 'on');
+        evaluator.check('sensor.door', 'unavailable');
+        expect(newStates()).toEqual(['unavailable']);
+      });
+
+      it('does not wait out a duration for it either', () => {
+        build({ onSpecificState: true, targetState: 'on', durationSeconds: 60 });
+        evaluator.reset(states('sensor.door', 'on'));
+        evaluator.check('sensor.door', 'on');
+        jest.advanceTimersByTime(60 * 1000);
+        expect(notify).not.toHaveBeenCalled();
+      });
+
       it('does not tell about a Specific State the entity comes back from an outage in', () => {
         build({ onSpecificState: true, targetState: 'on' });
         evaluator.reset(states('sensor.door', 'on'));
@@ -334,6 +377,60 @@ describe('alert evaluator and the states no reading comes with', () => {
       evaluator.check('sensor.door', 'on');
       jest.advanceTimersByTime(60 * 1000);
       expect(newStates()).toEqual(['on']);
+    });
+  });
+
+  describe('a Specific State or threshold rule saved again', () => {
+    const newStates = () => notify.mock.calls.map(([, , to]) => to);
+    // The same rule with something else changed, as saving it from the Alerts dialog does.
+    const edit = (changes, value) => {
+      config.alerts['sensor.door'] = { ...config.alerts['sensor.door'], ...changes };
+      evaluator.reconcile(states('sensor.door', value));
+    };
+
+    it('does not tell again about a condition it already told about', () => {
+      build({ onSpecificState: true, targetState: 'on' });
+      evaluator.reset(states('sensor.door', 'off'));
+      evaluator.check('sensor.door', 'on');
+      edit({ cooldownSeconds: 30 }, 'on');
+      evaluator.check('sensor.door', 'on');
+
+      expect(newStates()).toEqual(['on']);
+    });
+
+    it('waits again for a condition it was still waiting out, with no update to start it', () => {
+      build({ onNumericThreshold: true, threshold: 25, comparison: 'above', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', '20'));
+      evaluator.check('sensor.door', '26');
+      jest.advanceTimersByTime(30 * 1000);
+      edit({ durationSeconds: 120 }, '26');
+
+      jest.advanceTimersByTime(120 * 1000 - 1);
+      expect(notify).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      expect(newStates()).toEqual(['26']);
+    });
+
+    it('waits again for one a dropped connection cut short, once the entity is back', () => {
+      build({ onSpecificState: true, targetState: 'on', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', 'off'));
+      evaluator.check('sensor.door', 'on');
+      evaluator.suspend();
+      edit({ cooldownSeconds: 30 }, 'unavailable');
+      evaluator.check('sensor.door', 'on');
+
+      jest.advanceTimersByTime(60 * 1000);
+      expect(newStates()).toEqual(['on']);
+    });
+
+    it('stops waiting when the saved rule no longer matches', () => {
+      build({ onNumericThreshold: true, threshold: 25, comparison: 'above', durationSeconds: 60 });
+      evaluator.reset(states('sensor.door', '20'));
+      evaluator.check('sensor.door', '26');
+      edit({ threshold: 30 }, '26');
+
+      jest.advanceTimersByTime(120 * 1000);
+      expect(notify).not.toHaveBeenCalled();
     });
   });
 

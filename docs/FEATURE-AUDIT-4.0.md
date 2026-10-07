@@ -285,7 +285,7 @@ The table records the original review. The implementation follow-up above supers
 
 - Calendar load errors have an error message but no in-dialog retry/refresh action. Provide the same recoverable workflow as sensor history and to-do lists, and make the upcoming-events time window clear.
 - Benchmark the entity picker with several thousand entities. It builds the result list on search without the limiting behavior used by the primary picker. No latency regression was measured, so this is a performance check rather than a confirmed defect.
-- The renderer build emits a bundle-size warning; the panel also ships substantial icon/font assets. Measure cold launch, panel download, idle CPU/memory, many graphs/pins, and camera-heavy use before deciding whether splitting or asset trimming belongs in 4.0. The warning alone is not a blocker.
+- The renderer build emits a bundle-size warning; the panel also ships substantial icon/font assets. Measure cold launch, panel download, idle CPU/memory, many graphs/pins, and camera-heavy use before deciding whether splitting or asset trimming belongs in 4.0. The warning alone is not a blocker. A smaller renderer for desktop pins was measured later and left until after 4.0; see [After 4.0](BACKLOG-4.1.md).
 - Check that assistive technology receives tile values and availability as well as entity names. This audit inspected DOM semantics but did not run a screen reader.
 
 ### Required native and integration checks

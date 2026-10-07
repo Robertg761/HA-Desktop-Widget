@@ -84,6 +84,24 @@ describe('the control recipe', () => {
       }
     );
 
+    // The wizard's Back reads Cancel while browser authorization waits, and is drawn as one.
+    it('draws the first-run wizard’s Cancel in the quiet recipe, beside its accent second action', () => {
+      render(
+        '',
+        `<div class="first-run-onboarding"><div class="first-run-panel"><div class="first-run-actions">
+          <button class="btn btn-secondary">Full settings</button>
+          <button class="btn btn-secondary btn-neutral">Cancel</button>
+          <button class="btn btn-primary">Connect</button>
+        </div></div></div>
+        <button class="btn btn-secondary btn-neutral">Cancel</button>`
+      );
+      const [fullSettings, cancel, , dialogCancel] = document.querySelectorAll('button');
+
+      expect(colours(cancel)).toEqual(colours(dialogCancel));
+      expect(cascadedDeclaration(cancel, 'background').value).toBe('transparent');
+      expect(cascadedDeclaration(fullSettings, 'color').value).toBe('var(--accent-text)');
+    });
+
     it("marks every Cancel and Close in the window's markup as neutral", () => {
       document.body.innerHTML = read('index.html').replace(
         /^[\s\S]*?<body[^>]*>|<\/body>[\s\S]*$/g,

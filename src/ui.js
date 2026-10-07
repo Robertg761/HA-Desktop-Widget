@@ -89,6 +89,7 @@ import desktopPinSupport from './desktop-pin-support.cjs';
 import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
+import entityHotkeys from './entity-hotkeys.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
   addEntityToQuickAccessView,
@@ -207,11 +208,11 @@ const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
   'extra-large',
 ]);
 const QUICK_ACCESS_TILE_VALUE_SIZE_LABELS = [
-  { value: 'auto', label: 'Auto (Default)' },
+  { value: 'auto', label: 'Auto (default)' },
   { value: 'small', label: 'Small' },
   { value: 'normal', label: 'Normal' },
   { value: 'large', label: 'Large' },
-  { value: 'extra-large', label: 'Extra Large' },
+  { value: 'extra-large', label: 'Extra large' },
 ];
 const TODO_ITEMS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TODO_ITEMS_REFRESH_THROTTLE_MS = 30 * 1000;
@@ -2219,7 +2220,7 @@ function toggleReorganizeMode() {
       if (btn) {
         setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
-        btn.title = t('Save & Exit Reorganize Mode (ESC)');
+        btn.title = t('Save and exit reorganize mode (Esc)');
       }
 
       // Initialize SortableJS for drag-and-drop
@@ -5279,7 +5280,7 @@ async function addComparisonGraphTile() {
   const config = ensureQuickAccessConfig();
   const activeTab = getActiveQuickAccessTab(config);
   const nextConfig = addComparisonGraph(config, {
-    name: t('Comparison Graph'),
+    name: t('Comparison graph'),
     entityIds: [],
     tabId: activeTab?.id,
   });
@@ -5308,7 +5309,7 @@ function showComparisonGraphModal(graphId) {
   let pendingSave = Promise.resolve();
   const modal = createEntityDetailModal({
     className: 'comparison-graph-modal',
-    title: t('Edit Comparison Graph'),
+    title: t('Edit comparison graph'),
     beforeClose: () => pendingSave,
   });
   const body = modal.querySelector('.modal-body');
@@ -9918,7 +9919,7 @@ function getDesktopPinFallbackDescriptor(
   const fallbackName =
     customName ||
     (entityId && entityId.includes('.') ? entityId.split('.')[1].replace(/_/g, ' ') : '') ||
-    t('Pinned Tile');
+    t('Pinned tile');
   const label = entity ? utils.getEntityDisplayName(entity) : fallbackName;
   const normalizedConnectionIssue =
     typeof connectionIssue === 'string' ? connectionIssue.trim() : '';
@@ -9927,7 +9928,7 @@ function getDesktopPinFallbackDescriptor(
   if (!entityId) {
     return {
       state: 'no-entity',
-      label: t('Pinned Tile'),
+      label: t('Pinned tile'),
       kicker: t('Pin setup'),
       title: t('No entity selected'),
       detail: t('Choose an entity in the main widget and pin it again.'),
@@ -10080,7 +10081,7 @@ function renderDesktopPinTileInto({
       const liveEntity = entity || state.STATES?.[entityId];
       label.textContent = liveEntity
         ? utils.getEntityDisplayName(liveEntity)
-        : entityId || t('Pinned Tile');
+        : entityId || t('Pinned tile');
     }
   }
 
@@ -11452,7 +11453,7 @@ function showUnavailableDialogState(modal, entity) {
     <span class="dialog-unavailable-note-icon" aria-hidden="true">${lineIconMarkup('wifi-off')}</span>
     <span class="dialog-unavailable-note-text">
       <strong>${utils.escapeHtml(t('{{name}} is unavailable.', { name: utils.getEntityDisplayName(entity) }))}</strong>
-      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Close this and try again once it's back."))}</span>
+      <span>${utils.escapeHtml(t("Home Assistant can't reach it right now. Try again once it's back."))}</span>
     </span>`;
     body.prepend(note);
   }
@@ -13421,8 +13422,7 @@ function queueOnOffToggle(entity) {
 }
 
 // Unlocking a door is the one toggle that cannot be taken back by pressing it again, so a click on
-// a tile asks first. Locking stays one click, and a hotkey the user bound to the lock does not ask:
-// it can fire while the widget is hidden, where nobody would see the question.
+// a tile asks first, and so does an Unlock hotkey (executeHotkeyAction). Locking stays one click.
 async function confirmThenUnlock(entity) {
   const name = utils.getEntityDisplayName(entity);
   const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
@@ -13433,6 +13433,25 @@ async function confirmThenUnlock(entity) {
   // The lock may have changed while the question was open.
   const live = state.STATES?.[entity.entity_id];
   if (live?.state === 'locked') toggleEntity(live);
+}
+
+// The service that opens or closes a cover or a valve (by default the other way from where it is,
+// as a click on its tile does), or null when it cannot go that way. Home Assistant's
+// ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no features is tried anyway,
+// like a cover; one that cannot go the asked way is left alone.
+function getOpenCloseService(
+  entity,
+  close = entity.state === 'open' || entity.state === 'opening'
+) {
+  if (getEntityDomain(entity.entity_id) === 'valve') {
+    const features = Number(entity.attributes?.supported_features);
+    const flag = close ? 2 : 1;
+    if (Number.isFinite(features) && (features & flag) !== flag) return null;
+    return close ? 'close_valve' : 'open_valve';
+  }
+  const capabilities = getDesktopPinCapabilities(entity);
+  if (close ? !capabilities.canClose : !capabilities.canOpen) return null;
+  return close ? 'close_cover' : 'open_cover';
 }
 
 function toggleEntity(entity, { confirmUnlock = false } = {}) {
@@ -13455,16 +13474,10 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
       case 'automation':
         service = 'toggle';
         break;
-      case 'valve': {
-        // Home Assistant's ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no
-        // features is tried anyway, like a cover; one that cannot do the other way is left alone.
-        const features = Number(entity.attributes?.supported_features);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        const flag = shouldClose ? 2 : 1;
-        if (Number.isFinite(features) && (features & flag) !== flag) return;
-        service = shouldClose ? 'close_valve' : 'open_valve';
+      case 'valve':
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'lock':
         if (entity.state === 'locked' && confirmUnlock) {
           void confirmThenUnlock(entity);
@@ -13472,15 +13485,11 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
         }
         service = entity.state === 'locked' ? 'unlock' : 'lock';
         break;
-      case 'cover': {
+      case 'cover':
         cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
-        const capabilities = getDesktopPinCapabilities(entity);
-        const shouldClose = entity.state === 'open' || entity.state === 'opening';
-        if (shouldClose && !capabilities.canClose) return;
-        if (!shouldClose && !capabilities.canOpen) return;
-        service = shouldClose ? 'close_cover' : 'open_cover';
+        service = getOpenCloseService(entity);
+        if (!service) return;
         break;
-      }
       case 'scene':
       case 'script':
         service = 'turn_on';
@@ -13786,6 +13795,9 @@ function executeHotkeyAction(entity, action) {
     entity = state.STATES?.[entity?.entity_id] || entity;
     if (!isEntityAvailable(entity)) return;
     const domain = entity.entity_id.split('.')[0];
+    // An action the domain does not offer (a toggle saved on a lock by an older version) runs as
+    // the domain's first, which Settings shows for it.
+    action = entityHotkeys.resolveEntityHotkeyAction(entity.entity_id, action);
 
     // Validate numeric attributes to prevent NaN
     const brightnessValue = Number(entity.attributes?.brightness);
@@ -13831,6 +13843,34 @@ function executeHotkeyAction(entity, action) {
             .catch((error) => handleServiceError(error, entityName));
         }
         break;
+      case 'lock':
+        if (domain === 'lock') {
+          websocket
+            .callService('lock', 'lock', { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      case 'unlock':
+        // It asks first, as a click on the tile does. The chord can be pressed while the widget is
+        // hidden, where nobody would see the question, so the widget comes up to ask it.
+        if (domain === 'lock' && entity.state === 'locked') {
+          window.electronAPI?.showWindow?.()?.catch?.((error) => {
+            console.warn('Could not bring the widget up to ask about unlocking:', error);
+          });
+          void confirmThenUnlock(entity);
+        }
+        break;
+      case 'open':
+      case 'close': {
+        if (domain === 'cover') cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
+        const service = getOpenCloseService(entity, action === 'close');
+        if (service) {
+          websocket
+            .callService(domain, service, { entity_id: entity.entity_id })
+            .catch((error) => handleServiceError(error, entityName));
+        }
+        break;
+      }
       case 'trigger':
         // For automations
         if (domain === 'automation') {
@@ -14679,7 +14719,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       ? `
             <div class="brightness-color-temp">
               <div class="brightness-control-heading">
-                <span>${utils.escapeHtml(t('Color Temperature'))}</span>
+                <span>${utils.escapeHtml(t('Color temperature'))}</span>
                 <span id="light-color-temp-value">${reportedColorTemp === null ? '—' : formatKelvin(reportedColorTemp)}</span>
               </div>
               <input
@@ -14690,7 +14730,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                 value="${currentColorTemp}"
                 id="light-color-temp-slider"
                 class="light-color-temp-slider${reportedColorTemp === null ? ' is-unset' : ''}"
-                aria-label="${escapeHtmlAttribute(t('Color Temperature'))}"
+                aria-label="${escapeHtmlAttribute(t('Color temperature'))}"
                 ${reportedColorTemp === null ? '' : `aria-valuetext="${escapeHtmlAttribute(formatKelvin(reportedColorTemp))}"`}
               />
               <div class="brightness-slider-labels">
@@ -14712,7 +14752,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
                   value="${escapeHtmlAttribute(currentColorHex)}"
                   id="light-color-picker"
                   class="light-color-picker"
-                  aria-label="${escapeHtmlAttribute(t('Light Color'))}"
+                  aria-label="${escapeHtmlAttribute(t('Light color'))}"
                 />
                 <div class="light-color-swatches">
                   ${LIGHT_COLOR_PRESETS.map(
@@ -15478,6 +15518,16 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       return titleCase(normalizedMode.replace(/[_-]+/g, ' '));
     }
 
+    // A combined mode ("Heizen/Kühlen", "Chaud/Froid") is one word to the line breaker, and in a
+    // narrow window it ran past both edges of its chip. A break after each slash lets it wrap the
+    // way "Nur Ventilator" does; <wbr> leaves the text and the accessible name as they were.
+    function setChipLabel(element, label) {
+      label.split('/').forEach((part, index, parts) => {
+        if (index > 0) element.append(document.createElement('wbr'));
+        element.append(index < parts.length - 1 ? `${part}/` : part);
+      });
+    }
+
     if (modeButtonsContainer) {
       availableModes.forEach((mode) => {
         const modeValue = String(mode ?? '');
@@ -15495,7 +15545,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
 
         const label = document.createElement('span');
         label.className = 'climate-mode-label';
-        label.textContent = modeLabel;
+        setChipLabel(label, modeLabel);
         button.appendChild(label);
 
         modeButtonsContainer.appendChild(button);
@@ -15513,7 +15563,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
         button.dataset.mode = modeValue;
         button.title = modeLabel;
         button.setAttribute('aria-pressed', String(modeValue === currentValue));
-        button.textContent = modeLabel;
+        setChipLabel(button, modeLabel);
         container.appendChild(button);
       });
     }
@@ -15812,7 +15862,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
               <div class="fan-icon ${isOn ? 'spinning' : ''}" id="fan-icon">${lineIconMarkup('fan')}</div>
             </div>
             <div class="fan-speed-value" id="fan-speed-value">${capabilities.canSetPercentage ? formatPercent(currentSpeed) : utils.escapeHtml(getLocalizedEntityStateLabel(fanEntity.state))}</div>
-            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan Speed') : t('State'))}</div>
+            <div class="fan-speed-label">${utils.escapeHtml(capabilities.canSetPercentage ? t('Fan speed') : t('State'))}</div>
 
             ${
               capabilities.canSetPercentage
@@ -15825,7 +15875,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
                 value="${percentToSpeed(currentSpeed)}"
                 id="fan-slider"
                 class="fan-slider"
-                aria-label="${escapeHtmlAttribute(t('Fan Speed'))}"
+                aria-label="${escapeHtmlAttribute(t('Fan speed'))}"
                 aria-valuetext="${escapeHtmlAttribute(formatPercent(currentSpeed))}"
               />
             </div>
