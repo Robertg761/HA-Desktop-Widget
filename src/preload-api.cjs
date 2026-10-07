@@ -187,6 +187,7 @@ function createElectronApi(ipcRenderer, platform) {
     getDesktopBlurStatus: () => invoke('get-desktop-blur-status'),
     setDesktopBlur: (enabled) => invoke('set-desktop-blur', enabled),
     getWindowState: () => invoke('get-window-state'),
+    getWindowDisplays: () => invoke('get-window-displays'),
     getLoginItemSettings: () => invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => invoke('set-login-item-settings', openAtLogin),
     minimizeWindow: () => invoke('minimize-window'),

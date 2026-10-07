@@ -1,237 +1,39 @@
-name: Visual snapshots
-
-# Screenshots of the real app on Windows, macOS and Linux, uploaded as artifacts,
-# so layout and theming can be checked per OS without installing a build.
-# Each OS produces <os>-<scene>-page.png (web contents) and <os>-<scene>-screen.png
-# (the real screen around the window: acrylic, vibrancy, shadows, native fonts).
-# See scripts/visual-snapshots/run.cjs. Informational only: nothing is compared.
-#
-# Each OS runs the scenes in two jobs, one per half of the list (SNAPSHOT_SHARD, see
-# scripts/visual-snapshots/shard.cjs). With every scene in one job, a slow windows-latest runner
-# ran past the 45-minute limit. Each half uploads visual-snapshots-<OS>-shard-<k>, and the merge
-# job joins the two into the one artifact per OS that reviewers download: visual-snapshots-Windows,
-# visual-snapshots-Windows-11-arm, visual-snapshots-macOS and visual-snapshots-Linux.
-#
-# windows-latest is Windows Server 2025 at the time of writing (a job's "Set up job" log names the
-# system and image a run used). windows-11-arm is the only hosted Windows 11 image (free
-# for public repositories; ARM64 rather than x64), and its captures, in
-# visual-snapshots-Windows-11-arm, show the Windows 11 shell: taskbar, fonts. Neither draws
-# acrylic: hosted runners have no GPU, so both show the solid panel even with transparency effects
-# on, which keeps square corners and no edge of its own for 4.0. Only a real Windows 11 machine
-# shows how Windows draws the corners and edge, with acrylic and without
-# (docs/testing/PLATFORM-TEST-PLAN-4.0.md, WIN11-3).
-
+name: Issue 184 native monitor validation
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'index.html'
-      - 'styles.css'
-      - 'dashboard-workflows.css'
-      - 'renderer.js'
-      - 'main.js'
-      - 'preload.js'
-      - 'src/**'
-      - 'packages/widget-renderer/**'
-      - 'fonts/**'
-      - 'locales/**'
-      - 'locale-packs/**'
-      - 'scripts/visual-snapshots/**'
-      - '.github/workflows/visual-snapshots.yml'
-
 permissions:
   contents: read
-
-concurrency:
-  group: visual-snapshots-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  snapshots:
-    name: snapshots (${{ matrix.os }}, shard ${{ matrix.shard }})
+  native-monitors:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, windows-11-arm, macos-latest, ubuntu-latest]
-        shard: [1, 2]
-        # The OS in the artifact names. Both Windows images report runner.os Windows, so the
-        # Windows 11 one gets its own.
-        include:
-          - os: windows-latest
-            artifact: Windows
-          - os: windows-11-arm
-            artifact: Windows-11-arm
-          - os: macos-latest
-            artifact: macOS
-          - os: ubuntu-latest
-            artifact: Linux
+        os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # On a healthy runner, setup takes 1 to 7 minutes and a half of the scenes 7 to 9.
-    timeout-minutes: 30
-    env:
-      # The number after the slash is the length of the shard list above.
-      SNAPSHOT_SHARD: ${{ matrix.shard }}/2
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      # The snapshot runner drives the app over CDP with Node's global WebSocket (Node 22+).
-      - name: Use Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: 'npm'
-
-      # The app bundles Latin, Cyrillic, Greek and Vietnamese fonts only, and the image has no
-      # Devanagari font, so every Hindi string in the hi-* scenes was drawn as boxes. fonts-noto-core
-      # has Noto Sans Devanagari, the font most Linux desktops fall back to for Hindi. It also has
-      # Noto Sans Arabic, as Ubuntu desktops do, so from the first run with it the Linux ar-* captures
-      # may draw Arabic in a different font. That change is the runner's, not the app's.
-      - name: Install native build dependencies and fonts (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libx11-dev libxtst-dev libxt-dev libxinerama-dev libxrandr-dev libxext-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libxkbfile-dev libpng-dev xvfb imagemagick fonts-noto-core
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build renderer
-        run: npm run build:renderer
-
-      # Electron downloads its binary on first use rather than at install time; fetch it now so
-      # the Linux sandbox helper below exists and the snapshot timeouts don't include a download.
-      - name: Download Electron
-        run: node -e "require('electron')"
-
-      - name: Take snapshots (Linux)
-        timeout-minutes: 20
-        if: runner.os == 'Linux'
-        run: |
-          # The npm-installed Electron's sandbox helper lacks the setuid bit.
-          sandbox=node_modules/electron/dist/chrome-sandbox
-          if [ -f "$sandbox" ]; then
-            sudo chown root:root "$sandbox"
-            sudo chmod 4755 "$sandbox"
-          fi
-          xvfb-run -a -s "-screen 0 1280x900x24" dbus-run-session -- \
-            node scripts/visual-snapshots/run.cjs visual-snapshots
-
-      # Windows 11 draws acrylic only while transparency effects are on, which a fresh VM may have
-      # off. Turn them on and tell running apps the setting changed.
-      - name: Turn on transparency effects (Windows 11)
-        if: matrix.os == 'windows-11-arm'
-        shell: pwsh
-        run: |
-          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-          if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
-          Set-ItemProperty -Path $key -Name EnableTransparency -Value 1 -Type DWord
-          Add-Type -Namespace Win32 -Name Native -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);'
-          $result = [System.UIntPtr]::Zero
-          # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG
-          [Win32.Native]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'ImmersiveColorSet', 2, 5000, [ref]$result) | Out-Null
-          Get-ItemProperty -Path $key | Select-Object EnableTransparency
-
-      # The Windows 11 image opens the first-run "Choose privacy settings for your device" window
-      # (hosted by WWAHost) at sign-in, and closing it leaves the Start menu open; both sit over
-      # the widget in the screen captures. Close them (the Start menu host restarts hidden), and
-      # log what else has a window in case a later image changes what opens.
-      - name: Close first-run windows (Windows 11)
-        if: matrix.os == 'windows-11-arm'
-        shell: pwsh
-        run: |
-          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } |
-            Format-Table ProcessName, Id, MainWindowTitle -AutoSize | Out-String -Width 200
-          Get-Process | Where-Object {
-            $_.ProcessName -in @('WWAHost', 'CloudExperienceHostBroker') -or $_.MainWindowTitle -match 'privacy'
-          } | ForEach-Object {
-            Write-Output "Closing $($_.ProcessName) ($($_.Id)): $($_.MainWindowTitle)"
-            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-          }
-          Start-Sleep -Seconds 2
-          Get-Process -Name StartMenuExperienceHost, SearchHost -ErrorAction SilentlyContinue |
-            ForEach-Object {
-              Write-Output "Closing $($_.ProcessName) ($($_.Id))"
-              Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-            }
-          Start-Sleep -Seconds 2
-
-      # The runner's own windows were in the screen captures: the agent's console behind the
-      # widget, and on Windows 11 a console in which wsl.exe asks for a WSL update. Pins sit on the
-      # desktop under every window, so that console hid 13 of the Windows 11 pin captures outright.
-      # The pointer, resting where the widget opens, also left a tile's tooltip in the first
-      # capture. The script ends the WSL prompt, minimizes every window but the desktop and the
-      # taskbar, parks the pointer and lists what is still on screen as warnings.
-      - name: Clear the desktop (Windows)
+          cache: npm
+      - run: npm ci
+      - run: npm run build:renderer
+      - run: node -e "require('electron')"
+      - name: Compile macOS virtual display helper
+        if: runner.os == 'macOS'
+        run: clang -fobjc-arc -framework Cocoa -framework CoreGraphics scripts/monitor-validation/mac-displays.m -o scripts/monitor-validation/mac-displays
+      - name: Install Windows virtual outputs
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/visual-snapshots/windows-desktop.ps1
-
-      # The runner's windows can open after the desktop was cleared: on Windows 11 the WSL console
-      # opened minutes into the run and sat under every pin captured after it. On Windows the run
-      # clears the screen around the app again before each capture and names any capture a window
-      # was still over (desktop-keeper.cjs). macOS ignores the setting.
-      - name: Take snapshots (Windows, macOS)
-        timeout-minutes: 20
-        if: runner.os != 'Linux'
-        env:
-          SNAPSHOT_CLEAR_DESKTOP: '1'
-        run: node scripts/visual-snapshots/run.cjs visual-snapshots
-
-      # A window that opens during the run is in the captures from then on, so the desktop is
-      # listed again, also after a failed run.
-      - name: Check the desktop after the snapshots (Windows)
-        if: always() && runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/visual-snapshots/windows-desktop.ps1 -Check
-
-      # Only the merge job reads this one. It is kept for a day so that re-running one failed half
-      # can merge again with the other half from the first attempt. A re-run keeps the run's
-      # artifacts, so a half run again finds its first attempt's captures under this name (this
-      # step runs after a failure too). The new captures replace them: without overwrite, the
-      # upload failed on the name it found.
-      - name: Upload snapshots
+        shell: powershell
+        run: ./scripts/monitor-validation/windows-setup.ps1
+      - name: Native monitor tests
+        run: node scripts/monitor-validation/run.cjs
+      - name: Monitor regression tests
         if: always()
-        uses: actions/upload-artifact@v6
+        run: npx jest --runInBand tests/unit/window-display.test.js tests/unit/window-display-main.test.js tests/unit/window-display-settings.test.js tests/unit/window-display-config.test.js tests/unit/main-window-startup.test.js tests/unit/main-display-changes.test.js tests/unit/tray-menu-main.test.js tests/integration/settings-config.test.js
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: visual-snapshots-${{ matrix.artifact }}-shard-${{ matrix.shard }}
-          path: visual-snapshots/
-          if-no-files-found: warn
-          retention-days: 1
-          overwrite: true
-
-  # One artifact per OS, as before the suite was split. The scene files of the two halves have
-  # different names, so they merge into one folder without overwriting each other. It runs after a
-  # half has failed too, so that half's captures, the -failed ones included, still arrive. That
-  # takes always() and not !cancelled(): a job that runs out of time ends as cancelled.
-  #
-  # Re-running a failed half re-runs this job as well, and the first attempt's
-  # visual-snapshots-<OS> is still on the run. upload-artifact/merge has no overwrite, so it failed
-  # on that name. The halves are downloaded into one folder and uploaded with overwrite instead.
-  merge:
-    needs: snapshots
-    if: always()
-    strategy:
-      fail-fast: false
-      matrix:
-        artifact: [Windows, Windows-11-arm, macOS, Linux]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Download the halves
-        uses: actions/download-artifact@v7
-        with:
-          pattern: visual-snapshots-${{ matrix.artifact }}-shard-*
-          path: visual-snapshots
-          merge-multiple: true
-
-      # An OS whose halves both stopped before uploading anything has nothing to merge, and the
-      # job says so, as upload-artifact/merge did.
-      - name: Merge the halves
-        uses: actions/upload-artifact@v6
-        with:
-          name: visual-snapshots-${{ matrix.artifact }}
-          path: visual-snapshots/
-          if-no-files-found: error
-          retention-days: 14
-          overwrite: true
+          name: monitor-validation-${{ runner.os }}
+          path: monitor-validation-results/

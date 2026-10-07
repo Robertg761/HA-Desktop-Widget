@@ -1232,6 +1232,8 @@ Ref: MP-22, MP-10, MP-18
 
 ### MON-2 Resizing and new pins
 
+Before the resize checks, on Windows, macOS, and Linux X11, select monitor 2 using **Settings > General > Window & behavior > Display**. Save and restart. Unplug monitor 2, restart with it disconnected, and reconnect it. The widget should fall back to an available screen and return to monitor 2 at its saved position. Its separate desktop pins should keep their own positions. Repeat the selection from the tray's **Move to Monitor** menu, including while Settings is open. An untouched Display field should follow the tray; an unsaved edit should remain. Drag to the other monitor and check that the tray selection follows. Reset Position should use the selected monitor. Choose Automatic and confirm ordinary dragging and restart still remember the window position.
+
 1. Drag a pin's corner towards the edge between the two monitors, and across it.
 2. At Text and control size 115%, 130% and 150% (Settings > Appearance > Readability), resize a pin to its minimum from each corner.
 3. Pin seven tiles in a row. Unpin the second and pin another.

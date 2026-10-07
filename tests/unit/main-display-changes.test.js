@@ -17,6 +17,7 @@ const {
 } = require('../../src/window-placement.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+const { resolveWindowDisplayPosition } = require('../../src/window-display.cjs');
 
 function sliceMain(startMarker, endMarker) {
   const start = mainSource.indexOf(startMarker);
@@ -39,8 +40,8 @@ function createScreen(workAreas) {
         : best
     );
   Object.assign(screen, {
-    getAllDisplays: () => areas.map((workArea) => ({ workArea })),
-    getPrimaryDisplay: () => ({ workArea: areas[0] }),
+    getAllDisplays: () => areas.map((workArea, index) => ({ id: index + 1, workArea })),
+    getPrimaryDisplay: () => ({ id: 1, workArea: areas[0] }),
     getDisplayMatching: (bounds) => ({ workArea: nearest(bounds) }),
     setDisplays: (next) => {
       areas = next;
@@ -193,6 +194,9 @@ describe('the widget after the monitors change', () => {
       desktopPinWindows: new Map([['light.desk', pinWindow]]),
       applyDesktopPinBoundsToWindowIfMoved: jest.fn(),
       refreshTrayIconForDisplayScale: jest.fn(),
+      refreshTrayMenu: jest.fn(),
+      pushConfigToRenderer: jest.fn(),
+      resolveWindowDisplayPosition,
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
       runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
       saveConfig: jest.fn(),
@@ -229,6 +233,19 @@ describe('the widget after the monitors change', () => {
     // Hanging slightly off the edge is the user's choice.
     expect(mainWindow.setPosition).not.toHaveBeenCalled();
     expect(context.saveConfig).not.toHaveBeenCalled();
+  });
+
+  it('returns to the selected monitor when it reconnects, retaining its saved offset', () => {
+    const { context, electronScreen, mainWindow } = loadDisplays();
+    const preference = { id: '2', label: 'Desk', offset: { x: 180, y: 120 } };
+    context.config.windowDisplay = preference;
+    context.recoverWindowsAfterDisplayChange();
+    expect(mainWindow.setPosition).toHaveBeenLastCalledWith(180, 120);
+    expect(context.config.windowDisplay).toEqual(preference);
+    electronScreen.setDisplays([PRIMARY, SECONDARY]);
+    context.recoverWindowsAfterDisplayChange();
+    expect(mainWindow.setPosition).toHaveBeenLastCalledWith(2100, 120);
+    expect(context.config.windowDisplay).toEqual(preference);
   });
 
   it('re-places the pins, so a returning monitor gets its pins back', () => {

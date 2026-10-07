@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,17 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن حفظ التفويض. شغّلها أو افتح قفلها، ثم أعد تشغيل الأداة.",
     "Tray: Heat/Cool": "ت/ت",
     "Tray: Fan only": "مرو",
-    "Home Assistant alert": "تنبيه Home Assistant"
+    "Home Assistant alert": "تنبيه Home Assistant",
+    "Display": "الشاشة",
+    "Display {{number}}": "الشاشة {{number}}",
+    "{{display}} (disconnected)": "{{display}} (غير متصلة)",
+    "{{display}} (primary)": "{{display}} (رئيسية)",
+    "Could not load displays. Reopen Settings to try again.": "تعذر تحميل الشاشات. أعد فتح الإعدادات للمحاولة مرة أخرى.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "اختر مكان فتح الودجت. يتذكر الخيار التلقائي المكان الذي تسحبها إليه. تحتفظ البلاطات المثبتة على سطح المكتب بمواضعها الخاصة.",
+    "Use Move to Monitor in the tray menu on this desktop.": "على سطح المكتب هذا، استخدم النقل إلى شاشة من قائمة علبة النظام.",
+    "Your desktop manages window placement.": "يتولى سطح المكتب إدارة مواضع النوافذ.",
+    "Invalid display selection": "اختيار الشاشة غير صالح",
+    "The selected display is no longer connected": "الشاشة المحددة لم تعد متصلة",
+    "Display selection is managed by the desktop": "يتولى سطح المكتب إدارة اختيار الشاشة"
   }
 }

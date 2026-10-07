@@ -188,6 +188,51 @@ function loadCreateWindow({
 }
 
 describe('main window creation', () => {
+  it.each([
+    [
+      'scaled',
+      [
+        { id: 1, x: 0, width: 1280 },
+        { id: 2, x: 1280, width: 853 },
+      ],
+      1380,
+    ],
+    [
+      'rearranged',
+      [
+        { id: 1, x: 1280, width: 1920 },
+        { id: 2, x: 0, width: 1280 },
+      ],
+      100,
+    ],
+    ['disconnected', [{ id: 1, x: 0, width: 1920 }], 100],
+  ])(
+    'restores the preferred display after it was %s while the app was closed',
+    (_case, layout, x) => {
+      const { context, windows } = loadCreateWindow();
+      const displays = layout.map((display) => ({
+        id: display.id,
+        workArea: { x: display.x, y: 0, width: display.width, height: 533 },
+        workAreaSize: { width: display.width, height: 533 },
+      }));
+      context.electronScreen.getAllDisplays = () => displays;
+      context.electronScreen.getPrimaryDisplay = () => displays[0];
+      context.resolveWindowDisplayPosition =
+        require('../../src/window-display.cjs').resolveWindowDisplayPosition;
+      context.clampPositionToWorkAreas =
+        require('../../src/window-placement.cjs').clampPositionToWorkAreas;
+      context.config.windowPosition = { x: 2020, y: 100 };
+      context.config.windowSize = { width: 400, height: 400 };
+      context.config.windowDisplay = { id: '2', offset: { x: 100, y: 100 } };
+
+      context.createWindow();
+
+      expect(windows[0].options).toMatchObject({ x, y: 100 });
+      expect(context.config.windowPosition).toEqual({ x, y: 100 });
+      expect(context.config.windowDisplay).toEqual({ id: '2', offset: { x: 100, y: 100 } });
+    }
+  );
+
   it('opens hidden and waits for the first real frame', () => {
     const { context, windows, holdSpy } = loadCreateWindow();
     context.createWindow();

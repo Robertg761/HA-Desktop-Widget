@@ -113,6 +113,7 @@ describe('preload Electron API', () => {
       ['previewWindowEffects', [objectArg], 'preview-window-effects', [objectArg]],
       ['setAlwaysOnTop', [true], 'set-always-on-top', [true]],
       ['getWindowState', [], 'get-window-state', []],
+      ['getWindowDisplays', [], 'get-window-displays', []],
       ['getLoginItemSettings', [], 'get-login-item-settings', []],
       ['setLoginItemSettings', [true], 'set-login-item-settings', [true]],
       ['minimizeWindow', [], 'minimize-window', []],

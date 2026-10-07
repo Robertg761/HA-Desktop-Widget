@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.71",
+  "version": "1.2.72",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,17 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "Le trousseau de clés du système est verrouillé ou ne fonctionne pas, l'autorisation ne peut donc pas être enregistrée. Lancez-le ou déverrouillez-le, puis redémarrez le widget.",
     "Tray: Heat/Cool": "C/F",
     "Tray: Fan only": "VE",
-    "Home Assistant alert": "Alerte Home Assistant"
+    "Home Assistant alert": "Alerte Home Assistant",
+    "Display": "Écran",
+    "Display {{number}}": "Écran {{number}}",
+    "{{display}} (disconnected)": "{{display}} (déconnecté)",
+    "{{display}} (primary)": "{{display}} (principal)",
+    "Could not load displays. Reopen Settings to try again.": "Impossible de charger les écrans. Rouvrez les paramètres pour réessayer.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Choisissez où le widget s'ouvre. Automatique mémorise l'endroit où vous le déplacez. Les tuiles épinglées au bureau conservent leurs propres positions.",
+    "Use Move to Monitor in the tray menu on this desktop.": "Sur ce bureau, utilisez Déplacer vers un écran dans le menu de la zone de notification.",
+    "Your desktop manages window placement.": "Votre bureau gère la position des fenêtres.",
+    "Invalid display selection": "Sélection d'écran non valide",
+    "The selected display is no longer connected": "L'écran sélectionné n'est plus connecté",
+    "Display selection is managed by the desktop": "La sélection de l'écran est gérée par le bureau"
   }
 }
