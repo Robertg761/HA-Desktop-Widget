@@ -6022,6 +6022,9 @@ body.theme-light:not(.high-contrast)
 
 .climate-mode-btn {
   flex-direction: column;
+  /* The dialog opens scrolled to the mode that is on where that is under the fold. Without a
+     margin the chip ended on the footer's rule. */
+  scroll-margin-block: var(--space-2);
 }
 
 .climate-fan-mode-btn,

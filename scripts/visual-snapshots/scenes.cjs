@@ -843,6 +843,17 @@ const CLIMATE_CHIPS_IN_FULL_ROWS = `[...document.querySelectorAll(
 const CLIMATE_LABELS_IN_CHIPS = `[...document.querySelectorAll(
   '.climate-modal :is(.climate-mode-btn, .climate-fan-mode-btn, .climate-preset-mode-btn)'
 )].every((chip) => (chip.querySelector('.climate-mode-label') || chip).scrollWidth <= chip.clientWidth)`;
+// The mode that is on lies whole inside the dialog's body when it opens. A heat pump's five modes
+// take two rows, and in the default window its Heat/Cool began under the fold, showing only the top
+// of its icon.
+const shownInClimateBody = (selector) => `(() => {
+  const body = document.querySelector('.climate-modal .modal-body')?.getBoundingClientRect();
+  const box = document.querySelector('.climate-modal ${selector}')?.getBoundingClientRect();
+  return !!body && !!box && box.top >= body.top && box.bottom <= body.bottom;
+})()`;
+const CLIMATE_ACTIVE_MODE_SHOWN = shownInClimateBody('.climate-mode-btn.active');
+// It is not shown at the cost of the readings: where both do not fit, the dialog opens on those.
+const CLIMATE_READINGS_SHOWN = shownInClimateBody('.climate-temp-display');
 const openUnavailable = (open) => async (ctx) => {
   await open(ctx);
   await ctx.waitForExpression(
@@ -3231,6 +3242,8 @@ const scenes = [
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
       await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+      await ctx.expect(CLIMATE_ACTIVE_MODE_SHOWN, 'the mode that is on is in view');
+      await ctx.expect(CLIMATE_READINGS_SHOWN, 'the readings are in view too');
     },
   },
   {
@@ -3245,6 +3258,7 @@ const scenes = [
       );
       await ctx.expect(CLIMATE_CHIPS_IN_FULL_ROWS, 'no mode or option alone on its row');
       await ctx.expect(CLIMATE_LABELS_IN_CHIPS, 'every label inside its chip');
+      await ctx.expect(CLIMATE_READINGS_SHOWN, 'the dialog opens on the readings');
     },
   },
   // German names the heat pump's modes at their longest; the picture is of the modes, which sit
