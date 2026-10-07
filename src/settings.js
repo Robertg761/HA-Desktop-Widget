@@ -165,7 +165,7 @@ let loadedStartAtLogin = null;
 let profileSyncStatusCache = null;
 let profileSyncErrorObserver = null;
 let localePackListCache = [];
-let localePackListError = '';
+let localePackListFailed = false;
 let languagePackRefreshPromise = Promise.resolve();
 let languagePackRefreshGeneration = 0;
 const PERSONALIZATION_SECTION_STATE_KEY = 'personalizationSectionsCollapsed';
@@ -5111,19 +5111,21 @@ function renderLanguagePackList() {
   const statusEl = document.getElementById('language-pack-status');
   if (!container) return;
 
+  // Translate on each render so a cached failure follows language changes while Settings is open.
+  const errorMessage = localePackListFailed ? t('Unable to load language packs right now.') : '';
   container.innerHTML = '';
   if (statusEl) {
-    statusEl.classList.toggle('hidden', !localePackListError);
-    statusEl.textContent = localePackListError;
+    statusEl.classList.toggle('hidden', !localePackListFailed);
+    statusEl.textContent = errorMessage;
   }
 
   if (!localePackListCache.length) {
     // The status line already shows the load error; don't repeat it in the list.
-    if (localePackListError && statusEl) return;
+    if (localePackListFailed && statusEl) return;
     const empty = document.createElement('div');
     empty.className = 'help-text';
     empty.textContent =
-      localePackListError || t('No downloadable language packs are currently available.');
+      errorMessage || t('No downloadable language packs are currently available.');
     container.appendChild(empty);
     return;
   }
@@ -5214,7 +5216,7 @@ function renderLanguagePackList() {
 async function refreshLanguagePackList(forceRefresh = false) {
   const generation = ++languagePackRefreshGeneration;
   try {
-    localePackListError = '';
+    localePackListFailed = false;
     if (!window?.electronAPI?.getLocalePacks) {
       localePackListCache = [];
     } else {
@@ -5224,14 +5226,14 @@ async function refreshLanguagePackList(forceRefresh = false) {
         localePackListCache = result;
       } else {
         localePackListCache = Array.isArray(result?.installedPacks) ? result.installedPacks : [];
-        localePackListError = t('Unable to load language packs right now.');
+        localePackListFailed = true;
       }
     }
   } catch (error) {
     if (generation !== languagePackRefreshGeneration) return;
     log.error('Failed to load locale packs:', error);
     localePackListCache = Array.isArray(error?.installedPacks) ? error.installedPacks : [];
-    localePackListError = t('Unable to load language packs right now.');
+    localePackListFailed = true;
   }
   syncLanguageSelectOptions();
   renderLanguagePackList();
