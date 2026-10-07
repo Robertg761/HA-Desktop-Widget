@@ -153,6 +153,33 @@ describe('holiday art beside controls', () => {
     }
   });
 
+  // Easter puts an egg in a bottom corner of the tiles in the first and third columns: in the third,
+  // the purple egg sat on the end of the purple trend line, over the newest reading.
+  it.each([
+    ['a trend line', "data-chart-type='line'", 'none'],
+    ['a gauge', "data-chart-type='gauge'", 'none'],
+    ['no graph', "data-chart-type='none'", "''"],
+  ])("leaves Easter's egg off a number sensor that draws %s", (_, chart, content) => {
+    document.body.dataset.season = 'easter';
+    const sensor = `<div class="control-item sensor-numeric-entity" ${chart}></div>`;
+    const tile = '<div class="control-item"></div>';
+    document.body.innerHTML = `<div id="quick-controls">
+      ${[sensor, tile, sensor, tile, tile, tile].join('')}
+    </div>`;
+    try {
+      const tiles = document.querySelectorAll('.control-item');
+      // In the first column and in the third, where the newest reading is.
+      expect(pseudoValue(tiles[0], '::before', 'content')).toBe(content);
+      expect(pseudoValue(tiles[2], '::before', 'content')).toBe(content);
+      // The other tiles of those columns keep theirs.
+      expect(pseudoValue(tiles[3], '::before', 'content')).toBe("''");
+      expect(pseudoValue(tiles[5], '::before', 'content')).toBe("''");
+    } finally {
+      delete document.body.dataset.season;
+      document.body.innerHTML = '';
+    }
+  });
+
   it("gives the weather card the clock card's piece where it has none of its own", () => {
     expect(declared('body[data-season] .weather-card', '--season-sit')).toBe(
       'var(--season-weather-sit, var(--season-time-sit))'

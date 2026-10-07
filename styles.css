@@ -16801,9 +16801,13 @@ body[data-season] .modal-content::after {
 
 /* A number sensor draws its trend line, or its gauge, along the foot of the tile, and the newest
    reading ends in the corner where the piece sits. Both take the holiday's colour, so the gift or
-   the pumpkin hid the last part of the trend. Such a tile goes without it. */
+   the pumpkin hid the last part of the trend. Such a tile goes without it, and without Easter's
+   egg, which sits in a bottom corner of the other tiles: in the third column the purple egg sat on
+   the end of the purple line. */
 body[data-season]
-  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after {
+  .control-item.sensor-numeric-entity:nth-child(3n + 2):not([data-chart-type='none'])::after,
+body[data-season='easter']
+  .control-item.sensor-numeric-entity:not([data-chart-type='none'])::before {
   content: none;
 }
 

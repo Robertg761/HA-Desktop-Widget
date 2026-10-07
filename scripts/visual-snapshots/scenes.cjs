@@ -1445,12 +1445,19 @@ const waitForCameraTiles = (ctx) =>
   );
 
 // A holiday sits a gift, a pumpkin or a turkey in the bottom end corner of every third tile, where
-// a number sensor's trend line ends with its newest reading, in the same colour.
+// a number sensor's trend line ends with its newest reading, in the same colour, and Easter an egg
+// in a bottom corner of the others. No piece of either kind is on the lower half of such a tile.
 const SENSOR_GRAPHS_UNDECORATED = `(() => {
   const graphs = [...document.querySelectorAll(
     '#quick-controls .control-item.sensor-numeric-entity:not([data-chart-type="none"])'
   )];
-  return graphs.length > 0 && graphs.every((tile) => getComputedStyle(tile, '::after').content === 'none');
+  const onTheGraph = (tile, pseudo) => {
+    const piece = getComputedStyle(tile, pseudo);
+    return piece.content !== 'none' &&
+      parseFloat(piece.top) + parseFloat(piece.height) / 2 > tile.clientHeight / 2;
+  };
+  return graphs.length > 0 &&
+    graphs.every((tile) => !onTheGraph(tile, '::before') && !onTheGraph(tile, '::after'));
 })()`;
 // Forced colours take the status colours away, so a tile that needs attention keeps a doubled edge
 // as well as its badge: with a lit tile's single line, an armed alarm and one that went off
@@ -2957,9 +2964,12 @@ const scenes = [
     name: 'new-year-light',
     ui: { theme: 'light', seasonal: holiday('new-year') },
   },
+  // The office temperature is in the third column, whose egg sat on the end of its trend line.
   {
     name: 'easter-light',
     ui: { theme: 'light', seasonal: holiday('easter') },
+    setup: (ctx) =>
+      ctx.expect(SENSOR_GRAPHS_UNDECORATED, "no holiday piece on a number sensor's line"),
   },
   // Where holiday art meets controls: the cobweb behind a dialog's close button, the egg and the
   // bunny in the Settings header and rail, and the pumpkins under a tile row that reaches the
