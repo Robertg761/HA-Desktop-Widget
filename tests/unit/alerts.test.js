@@ -610,7 +610,7 @@ describe('alerts module', () => {
             '{{name}} is now {{newState}}': '{{name}} ist jetzt {{newState}}',
             On: 'An',
             Off: 'Aus',
-            'Home Assistant Alert': 'Home Assistant-Warnung',
+            'Home Assistant alert': 'Home Assistant-Warnung',
           },
         });
         mockState.CONFIG.entityAlerts.alerts['light.living_room'] = { onStateChange: true };
@@ -781,7 +781,7 @@ describe('alerts module', () => {
       alerts.checkEntityAlerts('light.living_room', 'off');
 
       expect(global.Notification.lastNotification).toBeTruthy();
-      expect(global.Notification.lastNotification.title).toBe('Home Assistant Alert');
+      expect(global.Notification.lastNotification.title).toBe('Home Assistant alert');
       expect(global.Notification.lastNotification.options.body).toContain('Living Room Light');
       expect(global.Notification.lastNotification.options.tag).toBe('ha-alert-light.living_room');
     });

@@ -132,7 +132,6 @@
   "Failed to clear weather entity": "Wetterentität konnte nicht zurückgesetzt werden",
   "Connected to Home Assistant": "Mit Home Assistant verbunden",
   "Disconnected from Home Assistant": "Von Home Assistant getrennt",
-  "Home Assistant Alert": "Home-Assistant-Warnung",
   "Entity alerts enabled": "Entitätswarnungen aktiviert",
   "Entity alerts disabled": "Entitätswarnungen deaktiviert",
   "Error toggling alerts": "Fehler beim Umschalten der Warnungen",
@@ -1658,5 +1657,6 @@
   "Slow down {{entity}}": "Geschwindigkeit von {{entity}} verringern",
   "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "Der Systemschlüsselbund ist gesperrt oder läuft nicht, daher kann die Autorisierung nicht gespeichert werden. Starte oder entsperre ihn und starte das Widget dann neu.",
   "Tray: Heat/Cool": "H/K",
-  "Tray: Fan only": "VE"
+  "Tray: Fan only": "VE",
+  "Home Assistant alert": "Home-Assistant-Warnung"
 }

@@ -170,7 +170,7 @@ function renderNotificationIcon(glyph) {
 function showDesktopNotification(message, entityId, glyph) {
   try {
     const icon = renderNotificationIcon(glyph);
-    const notification = new Notification(t('Home Assistant Alert'), {
+    const notification = new Notification(t('Home Assistant alert'), {
       body: message,
       ...(icon ? { icon } : {}),
       tag: `ha-alert-${entityId}`,

@@ -1922,5 +1922,9 @@
   "Cooling": {
     "retiredIn": "4.0.0",
     "reason": "A heat/cool pin names its sliders by their modes (Heat, Cool)"
+  },
+  "Home Assistant Alert": {
+    "retiredIn": "4.0.0",
+    "reason": "Written in sentence case like the app's other notification titles"
   }
 }
