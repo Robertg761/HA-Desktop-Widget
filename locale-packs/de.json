@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2155,6 +2155,7 @@
     "Token accepted. Home Assistant is reachable. Select Save and close to keep it.": "Token akzeptiert. Home Assistant ist erreichbar. Wähle „Speichern und schließen“, um es zu übernehmen.",
     "Remove every custom icon? Nothing changes for good until you select Save and close.": "Alle eigenen Symbole entfernen? Erst mit „Speichern und schließen“ wird die Änderung übernommen.",
     "Blur changes take effect immediately, without saving.": "Änderungen an der Unschärfe werden sofort wirksam, ohne sie erst speichern zu müssen.",
-    "Could not save custom colors. Press Save and close in Settings to try again.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern und schließen“ in den Einstellungen."
+    "Could not save custom colors. Press Save and close in Settings to try again.": "Eigene Farben konnten nicht gespeichert werden. Versuche es mit „Speichern und schließen“ in den Einstellungen.",
+    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "Hoher Kontrast verwendet den dunklen Modus. Deine Theme-Auswahl gilt wieder, sobald hoher Kontrast ausgeschaltet ist."
   }
 }

@@ -1659,5 +1659,6 @@
   "Token accepted. Home Assistant is reachable. Select Save and close to keep it.": "Token accepted. Home Assistant is reachable. Select Save and close to keep it.",
   "Remove every custom icon? Nothing changes for good until you select Save and close.": "Remove every custom icon? Nothing changes for good until you select Save and close.",
   "Blur changes take effect immediately, without saving.": "Blur changes take effect immediately, without saving.",
-  "Could not save custom colors. Press Save and close in Settings to try again.": "Could not save custom colors. Press Save and close in Settings to try again."
+  "Could not save custom colors. Press Save and close in Settings to try again.": "Could not save custom colors. Press Save and close in Settings to try again.",
+  "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off."
 }

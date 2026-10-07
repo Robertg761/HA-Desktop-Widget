@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2155,6 +2155,7 @@
     "Token accepted. Home Assistant is reachable. Select Save and close to keep it.": "Jeton accepté. Home Assistant est joignable. Sélectionnez « Enregistrer et fermer » pour le conserver.",
     "Remove every custom icon? Nothing changes for good until you select Save and close.": "Supprimer toutes les icônes personnalisées ? Rien n'est définitif tant que vous n'avez pas sélectionné « Enregistrer et fermer ».",
     "Blur changes take effect immediately, without saving.": "Les modifications du flou s'appliquent immédiatement, sans enregistrer.",
-    "Could not save custom colors. Press Save and close in Settings to try again.": "Impossible de conserver les couleurs personnalisées. Essayez Enregistrer et fermer dans les paramètres."
+    "Could not save custom colors. Press Save and close in Settings to try again.": "Impossible de conserver les couleurs personnalisées. Essayez Enregistrer et fermer dans les paramètres.",
+    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "Le contraste élevé utilise le mode sombre. Votre choix de thème est rétabli lorsque le contraste élevé est désactivé."
   }
 }

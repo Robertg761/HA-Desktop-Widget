@@ -409,6 +409,7 @@ function createSettingsModalDOM() {
       </div>
 
       <div id="personalization-tab" class="tab-content">
+        <p id="theme-mode-contrast-note" hidden></p>
         <div id="theme-mode-control" role="radiogroup">
           <button type="button" data-theme-mode="auto">Auto</button>
           <button type="button" data-theme-mode="dark">Dark</button>
@@ -1672,6 +1673,180 @@ describe('Settings + Config Integration', () => {
   describe('Theme mode control', () => {
     const checkedMode = () =>
       document.querySelector('#theme-mode-control [aria-checked="true"]')?.dataset.themeMode;
+
+    describe('high contrast theme override', () => {
+      const realUi = jest.requireActual('../../src/ui-utils.js');
+      const paletteHelpers = ['getSeasonalColors', 'hexToRgb', 'mixRgb', 'contrastBetween'];
+      const togglePreset = (checked) => {
+        const preset = document.getElementById('readable-preset');
+        preset.checked = checked;
+        preset.dispatchEvent(new Event('change'));
+      };
+      const expectOverride = (enabled) => {
+        const control = document.getElementById('theme-mode-control');
+        expect(control.classList.contains('is-disabled')).toBe(enabled);
+        for (const option of control.querySelectorAll('[data-theme-mode]')) {
+          expect(option.disabled).toBe(enabled);
+        }
+        expect(document.getElementById('theme-mode-contrast-note').hidden).toBe(!enabled);
+        expect(control.getAttribute('aria-describedby')).toBe(
+          enabled ? 'theme-mode-contrast-note' : null
+        );
+        if (enabled) {
+          expect(checkedMode()).toBe('dark');
+          expect(document.body.classList.contains('theme-dark')).toBe(true);
+          expect(document.body.classList.contains('theme-light')).toBe(false);
+        }
+      };
+
+      beforeEach(() => {
+        // Keep the real palette/theme interaction; only the Electron boundary stays mocked.
+        for (const name of paletteHelpers) mockUiUtils[name] = realUi[name];
+        mockUiUtils.applyTheme.mockImplementation(realUi.applyTheme);
+        mockUiUtils.applyUiPreferences.mockImplementation(realUi.applyUiPreferences);
+        realUi.applyUiPreferences({});
+      });
+
+      afterEach(() => {
+        settings.closeSettings();
+        require('../../src/desktop-appearance.js').applyDesktopAppearance({ ui: {} });
+        realUi.applyUiPreferences({});
+        for (const name of paletteHelpers) delete mockUiUtils[name];
+        mockUiUtils.applyTheme.mockReset();
+        mockUiUtils.applyUiPreferences.mockReset();
+      });
+
+      test.each(['light', 'auto'])(
+        'shows Dark while enabled and preserves %s through Save and reopening',
+        async (theme) => {
+          state.CONFIG.ui.theme = theme;
+          realUi.applyTheme(theme);
+          await settings.openSettings();
+          expect(checkedMode()).toBe(theme);
+          expectOverride(false);
+
+          togglePreset(true);
+          expectOverride(true);
+          expect(state.CONFIG.ui.theme).toBe(theme);
+          await settings.saveSettings();
+          expect(state.CONFIG.ui).toMatchObject({ theme, highContrast: true, opaquePanels: true });
+          await settings.openSettings();
+          expectOverride(true);
+
+          togglePreset(false);
+          expectOverride(false);
+          expect(checkedMode()).toBe(theme);
+          if (theme === 'light') expect(document.body.classList.contains('theme-light')).toBe(true);
+          await settings.saveSettings();
+          expect(state.CONFIG.ui).toMatchObject({
+            theme,
+            highContrast: false,
+            opaquePanels: false,
+          });
+        }
+      );
+
+      test('keeps a pending Light choice when the preset is toggled and saved', async () => {
+        state.CONFIG.ui.theme = 'dark';
+        realUi.applyTheme('dark');
+        await settings.openSettings();
+        document.querySelector('[data-theme-mode="light"]').click();
+        togglePreset(true);
+        expectOverride(true);
+        // Simulate the renderer resetting the appearance from a saved-config echo first.
+        realUi.applyTheme(state.CONFIG.ui.theme);
+        realUi.applyUiPreferences(state.CONFIG.ui);
+        settings.reapplySettingsPreviews();
+        expectOverride(true);
+        togglePreset(false);
+        expect(checkedMode()).toBe('light');
+        expect(document.body.classList.contains('theme-light')).toBe(true);
+        togglePreset(true);
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.theme).toBe('light');
+        await settings.openSettings();
+        expectOverride(true);
+      });
+
+      test('cancel restores the saved Light theme and selector on reopening', async () => {
+        state.CONFIG.ui.theme = 'light';
+        realUi.applyTheme('light');
+        await settings.openSettings();
+        togglePreset(true);
+        expectOverride(true);
+        settings.closeSettings();
+        expect(state.CONFIG.ui.highContrast).toBe(false);
+        expect(document.body.classList.contains('theme-light')).toBe(true);
+        await settings.openSettings();
+        expect(checkedMode()).toBe('light');
+        expectOverride(false);
+      });
+
+      test('shows Dark for high contrast even without opaque panels', async () => {
+        state.CONFIG.ui = {
+          ...state.CONFIG.ui,
+          theme: 'light',
+          highContrast: true,
+          opaquePanels: false,
+        };
+        realUi.applyTheme('light');
+        realUi.applyUiPreferences(state.CONFIG.ui);
+        await settings.openSettings();
+        expect(document.getElementById('readable-preset').checked).toBe(false);
+        expectOverride(true);
+        await settings.saveSettings();
+        expect(state.CONFIG.ui).toMatchObject({
+          theme: 'light',
+          highContrast: true,
+          opaquePanels: false,
+        });
+      });
+
+      test('a disabled mode cannot replace the saved theme through keyboard input', async () => {
+        state.CONFIG.ui.theme = 'light';
+        await settings.openSettings();
+        togglePreset(true);
+        expectOverride(true);
+        document
+          .querySelector('[data-theme-mode="dark"]')
+          .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+        await settings.saveSettings();
+        expect(state.CONFIG.ui.theme).toBe('light');
+      });
+
+      test('takes precedence over a followed light palette and restores its locked selector', async () => {
+        state.CONFIG.ui = { ...state.CONFIG.ui, theme: 'auto', followOmarchy: true };
+        state.CONFIG.desktopAppearance = {
+          mode: 'light',
+          background: '#fafafa',
+          foreground: '#222222',
+          accent: '#ff8800',
+          border: '#222222',
+          selection: '#cccccc',
+        };
+        document
+          .getElementById('theme-mode-control')
+          .insertAdjacentHTML('afterend', '<input id="follow-omarchy" type="checkbox" />');
+        realUi.applyTheme('light');
+        await settings.openSettings();
+        expect(checkedMode()).toBe('light');
+        togglePreset(true);
+        expectOverride(true);
+        const follow = document.getElementById('follow-omarchy');
+        follow.checked = false;
+        follow.dispatchEvent(new Event('change'));
+        expectOverride(true);
+        follow.checked = true;
+        follow.dispatchEvent(new Event('change'));
+        expectOverride(true);
+        togglePreset(false);
+        expect(checkedMode()).toBe('light');
+        expect(document.body.classList.contains('theme-light')).toBe(true);
+        expect(document.querySelector('[data-theme-mode="light"]').disabled).toBe(true);
+        expect(document.getElementById('theme-mode-contrast-note').hidden).toBe(true);
+        expect(state.CONFIG.ui.theme).toBe('auto');
+      });
+    });
 
     test('reflects the saved theme when settings open', async () => {
       state.CONFIG.ui = { ...(state.CONFIG.ui || {}), theme: 'light' };
