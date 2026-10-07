@@ -15436,6 +15436,15 @@ body.theme-light
   background: var(--surface-2);
 }
 
+/* Until a folder is chosen the field is as wide as its hint, so where the hint and the button do not
+   fit one row the button goes under the field: at 220px French cut the hint to "Choisissez un
+   dossier synchronis...". */
+#settings-modal .profile-sync-file-row > input[readonly]:placeholder-shown {
+  flex-basis: auto;
+  width: auto;
+  field-sizing: content;
+}
+
 /* Backup names are long; give them the whole line and put Restore under them. A closed
    select cuts its text, so it gets an ellipsis and room for the arrow. */
 #settings-modal .profile-sync-backup-row > select {

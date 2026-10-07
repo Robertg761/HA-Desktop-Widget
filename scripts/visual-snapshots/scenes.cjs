@@ -1037,6 +1037,18 @@ const selectShowsItsValue = (selector) => `(() => {
   return context.measureText(text).width <= room;
 })()`;
 
+// So does the hint an empty field shows: French cut the sync folder's to "Choisissez un dossier
+// synchronis...".
+const fieldShowsItsHint = (selector) => `(() => {
+  const field = document.querySelector(${JSON.stringify(selector)});
+  if (!field?.placeholder || field.value) return false;
+  const style = getComputedStyle(field);
+  const context = document.createElement('canvas').getContext('2d');
+  context.font = style.font;
+  const room = field.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return context.measureText(field.placeholder).width <= room;
+})()`;
+
 // The search field and the count of matches under it are inside the visible part of the page.
 const SEARCH_BOX_IN_VIEW = `(() => {
   const page = document.querySelector('#settings-modal .modal-body');
@@ -1948,6 +1960,10 @@ const scenes = [
           .map(selectShowsItsValue)
           .join(' && '),
         'the sync app and scope show their whole value'
+      );
+      await ctx.expect(
+        fieldShowsItsHint('#profile-sync-folder-path'),
+        'the folder field shows its whole hint'
       );
     },
   },
