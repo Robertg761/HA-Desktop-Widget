@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2106,6 +2106,8 @@
     "Copy & switch": "Kopieren & wechseln",
     "Keep current": "Aktuellen behalten",
     "Use that file": "Diese Datei verwenden",
+    "Command copied": "Befehl kopiert",
+    "Select and copy the command manually.": "Markiere den Befehl und kopiere ihn manuell.",
     "Download, update, or remove offline language packs. English and German are always available offline.": "Lade Offline-Sprachpakete herunter, aktualisiere oder entferne sie. Englisch und Deutsch sind immer offline verfügbar.",
     "1 icon matches “{{query}}”.": "1 Symbol passt zu „{{query}}“.",
     "{{count}} icons match “{{query}}”.": "{{count}} Symbole passen zu „{{query}}“.",

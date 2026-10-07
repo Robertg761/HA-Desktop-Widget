@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2106,6 +2106,8 @@
     "Copy & switch": "Copiar y cambiar",
     "Keep current": "Mantener la actual",
     "Use that file": "Usar ese archivo",
+    "Command copied": "Comando copiado",
+    "Select and copy the command manually.": "Selecciona y copia el comando manualmente.",
     "Download, update, or remove offline language packs. English and German are always available offline.": "Descarga, actualiza o elimina paquetes de idioma sin conexión. El inglés y el alemán siempre están disponibles sin conexión.",
     "1 icon matches “{{query}}”.": "1 icono coincide con «{{query}}».",
     "{{count}} icons match “{{query}}”.": "{{count}} iconos coinciden con «{{query}}».",

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.68",
+  "version": "1.2.69",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2106,6 +2106,8 @@
     "Copy & switch": "कॉपी करें और बदलें",
     "Keep current": "मौजूदा रखें",
     "Use that file": "वही फ़ाइल उपयोग करें",
+    "Command copied": "कमांड कॉपी हो गई",
+    "Select and copy the command manually.": "कमांड को चुनकर मैन्युअल रूप से कॉपी करें।",
     "Download, update, or remove offline language packs. English and German are always available offline.": "ऑफलाइन भाषा पैक डाउनलोड करें, अपडेट करें या हटाएं। अंग्रेज़ी और जर्मन हमेशा ऑफलाइन उपलब्ध हैं।",
     "1 icon matches “{{query}}”.": "“{{query}}” से 1 आइकन मेल खाता है।",
     "{{count}} icons match “{{query}}”.": "“{{query}}” से {{count}} आइकन मेल खाते हैं।",

@@ -1626,6 +1626,8 @@
   "Copy & switch": "Copy & switch",
   "Keep current": "Keep current",
   "Use that file": "Use that file",
+  "Command copied": "Command copied",
+  "Select and copy the command manually.": "Select and copy the command manually.",
   "Download, update, or remove offline language packs. English and German are always available offline.": "Download, update, or remove offline language packs. English and German are always available offline.",
   "1 icon matches “{{query}}”.": "1 icon matches “{{query}}”.",
   "{{count}} icons match “{{query}}”.": "{{count}} icons match “{{query}}”.",

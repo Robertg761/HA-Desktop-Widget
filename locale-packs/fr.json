@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.67",
+  "version": "1.2.68",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2106,6 +2106,8 @@
     "Copy & switch": "Copier et basculer",
     "Keep current": "Conserver l'actuel",
     "Use that file": "Utiliser ce fichier",
+    "Command copied": "Commande copiée",
+    "Select and copy the command manually.": "Sélectionnez et copiez la commande manuellement.",
     "Download, update, or remove offline language packs. English and German are always available offline.": "Téléchargez, mettez à jour ou supprimez des packs de langue hors ligne. L'anglais et l'allemand sont toujours disponibles hors ligne.",
     "1 icon matches “{{query}}”.": "1 icône correspond à « {{query}} ».",
     "{{count}} icons match “{{query}}”.": "{{count}} icônes correspondent à « {{query}} ».",

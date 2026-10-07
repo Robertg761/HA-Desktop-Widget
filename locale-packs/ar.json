@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.68",
+  "version": "1.2.69",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2106,6 +2106,8 @@
     "Copy & switch": "نسخ وتبديل",
     "Keep current": "الإبقاء على الحالي",
     "Use that file": "استخدام ذلك الملف",
+    "Command copied": "تم نسخ الأمر",
+    "Select and copy the command manually.": "حدّد الأمر وانسخه يدويًا.",
     "Download, update, or remove offline language packs. English and German are always available offline.": "قم بتنزيل حزم اللغات دون اتصال أو تحديثها أو إزالتها. الإنجليزية والألمانية متاحتان دائمًا دون اتصال.",
     "1 icon matches “{{query}}”.": "أيقونة واحدة تطابق «{{query}}».",
     "{{count}} icons match “{{query}}”.": "{{count}} من الأيقونات تطابق «{{query}}».",
