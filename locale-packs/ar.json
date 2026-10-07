@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.72",
+  "version": "1.2.73",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2146,6 +2146,7 @@
     "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن حفظ التفويض. شغّلها أو افتح قفلها، ثم أعد تشغيل الأداة.",
     "Tray: Heat/Cool": "ت/ت",
     "Tray: Fan only": "مرو",
-    "Home Assistant alert": "تنبيه Home Assistant"
+    "Home Assistant alert": "تنبيه Home Assistant",
+    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "يستخدم التباين العالي الوضع الداكن. يعود اختيارك للسمة عند إيقاف التباين العالي."
   }
 }

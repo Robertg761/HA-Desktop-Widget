@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Show Dark in the theme selector while high contrast is on, with an explanation, and restore the saved theme choice when it is turned off.
+
 ## [4.0.0] - Unreleased
 
 ### Added

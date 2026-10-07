@@ -2294,17 +2294,24 @@ function isFollowingDesktopPalette() {
   return !!followOmarchy && !followOmarchy.disabled && followOmarchy.checked;
 }
 
-function updateThemeModeControl() {
+function updateThemeModeControl(ui = getAppearanceFromInputs()) {
   const control = document.getElementById('theme-mode-control');
   if (!control) return;
-  // A followed desktop palette decides light or dark itself, so the control shows the mode the
-  // palette is in rather than a pick it ignores.
-  const locked = isFollowingDesktopPalette();
+  // High contrast forces Dark even over a followed desktop palette. Keep the underlying choice
+  // in pendingThemeMode/config so disabling the override restores it instead of saving Dark.
+  const highContrast = !!ui.highContrast;
+  const followingPalette = isFollowingDesktopPalette();
+  const locked = highContrast || followingPalette;
   const paletteMode = state.CONFIG?.desktopAppearance?.mode;
-  const mode =
-    locked && THEME_MODES.includes(paletteMode)
+  const mode = highContrast
+    ? 'dark'
+    : followingPalette && THEME_MODES.includes(paletteMode)
       ? paletteMode
       : pendingThemeMode || getSavedThemeMode();
+  const note = document.getElementById('theme-mode-contrast-note');
+  if (note) note.hidden = !highContrast;
+  if (highContrast) control.setAttribute('aria-describedby', 'theme-mode-contrast-note');
+  else control.removeAttribute('aria-describedby');
   control.classList.toggle('is-disabled', locked);
   control.querySelectorAll('[data-theme-mode]').forEach((option) => {
     const selected = option.dataset.themeMode === mode;
@@ -2322,6 +2329,7 @@ function updateThemeModeControl() {
  * @param {string} mode - 'auto', 'dark' or 'light'.
  */
 function previewThemeMode(mode) {
+  if (isFollowingDesktopPalette() || getAppearanceFromInputs().highContrast) return;
   const nextMode = normalizeThemeMode(mode);
   if (nextMode !== (pendingThemeMode || getSavedThemeMode())) markSettingsTouched('ui.theme');
   pendingThemeMode = nextMode;
@@ -3631,7 +3639,9 @@ function restorePreviewWindowEffects() {
 function reapplySettingsPreviews() {
   if (!previewState) return;
   setCustomThemes(pendingCustomColors);
-  applyUiPreferences(getAppearanceFromInputs());
+  const ui = getAppearanceFromInputs();
+  applyUiPreferences(ui);
+  updateThemeModeControl(ui);
   // The echo put the saved mode back, while the Mode control still shows the pick. A followed
   // palette decides the mode itself (and was just applied), so it keeps its say.
   if (pendingThemeMode && !isFollowingDesktopPalette()) applyTheme(pendingThemeMode);
@@ -5441,6 +5451,7 @@ function previewAppearance() {
   syncSeasonalControls(ui);
   syncReadablePresetOverrides(ui);
   applyUiPreferences(ui);
+  updateThemeModeControl(ui);
 }
 
 function bindSeasonalSettingsUi(ui) {
@@ -5502,6 +5513,7 @@ function bindAppearanceSettingsUi() {
     control.onchange = previewAppearance;
   }
   syncReadablePresetOverrides(ui);
+  updateThemeModeControl(ui);
   bindSeasonalSettingsUi(ui);
 }
 
