@@ -1560,7 +1560,6 @@
   "Choose rooms and entities": "Choose rooms and entities",
   "My entities": "My entities",
   "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.": "Your connection is saved. Preview a room or choose entities to create your first page. You can also do this later from the empty dashboard.",
-  "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.",
   "Resize only": "Resize only",
   "Not connected to Home Assistant. Changes can't be sent right now.": "Not connected to Home Assistant. Changes can't be sent right now.",
   "Can't reach the widget. Changes can't be sent right now.": "Can't reach the widget. Changes can't be sent right now.",
@@ -1654,5 +1653,6 @@
   "Brighten {{entity}}": "Brighten {{entity}}",
   "Dim {{entity}}": "Dim {{entity}}",
   "Speed up {{entity}}": "Speed up {{entity}}",
-  "Slow down {{entity}}": "Slow down {{entity}}"
+  "Slow down {{entity}}": "Slow down {{entity}}",
+  "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget."
 }

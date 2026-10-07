@@ -118,7 +118,7 @@ describe('Home Assistant authorization failure messages', () => {
       expect(
         describeHomeAssistantOAuthFailure({ result: { code: 'OAUTH_KEYRING_CANNOT_SAVE' } })
       ).toBe(
-        '[fr] Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.'
+        '[fr] Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.'
       );
     });
 

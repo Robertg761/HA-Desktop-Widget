@@ -2119,6 +2119,7 @@
     "Brighten {{entity}}": "زيادة سطوع {{entity}}",
     "Dim {{entity}}": "خفض سطوع {{entity}}",
     "Speed up {{entity}}": "زيادة سرعة {{entity}}",
-    "Slow down {{entity}}": "خفض سرعة {{entity}}"
+    "Slow down {{entity}}": "خفض سرعة {{entity}}",
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "سلسلة مفاتيح النظام مقفلة أو لا تعمل، لذا لا يمكن حفظ التفويض. شغّلها أو افتح قفلها، ثم أعد تشغيل الأداة."
   }
 }

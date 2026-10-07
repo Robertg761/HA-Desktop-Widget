@@ -2119,6 +2119,7 @@
     "Brighten {{entity}}": "提高 {{entity}} 的亮度",
     "Dim {{entity}}": "降低 {{entity}} 的亮度",
     "Speed up {{entity}}": "提高 {{entity}} 的速度",
-    "Slow down {{entity}}": "降低 {{entity}} 的速度"
+    "Slow down {{entity}}": "降低 {{entity}} 的速度",
+    "Your system keyring is locked or not running, so the authorization cannot be saved. Start or unlock it, then restart the widget.": "系统密钥环已锁定或未运行，因此无法保存授权。请启动或解锁密钥环，然后重新启动小组件。"
   }
 }

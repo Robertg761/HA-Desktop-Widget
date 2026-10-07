@@ -1834,5 +1834,9 @@
   "The saved Home Assistant authorization cannot be read until the system keyring is unlocked. Unlock it, then restart the widget.": {
     "retiredIn": "4.0.0",
     "reason": "Reworded: the panel said the keyring was locked, but one that is not running looks the same to the widget, so the title and message no longer name either cause"
+  },
+  "Your system keyring is locked or not running, so the authorization cannot be saved. Unlock the keyring, then restart the widget.": {
+    "retiredIn": "4.0.0",
+    "reason": "Reworded: it asked only to unlock the keyring, though it may not be running; it now asks to start or unlock it, as the keyring panels do"
   }
 }
