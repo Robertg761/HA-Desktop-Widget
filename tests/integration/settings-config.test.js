@@ -10083,14 +10083,12 @@ describe('Settings + Config Integration', () => {
       test('words the toggle note in a language chosen while Settings is open', async () => {
         const i18n = require('../../src/i18n.js');
         const command = '/home/u/.local/bin/ha-desktop-widget --toggle';
-        window.electronAPI.getDesktopIntegration = jest
-          .fn()
-          .mockResolvedValue({
-            shortcuts: [],
-            hyprland: false,
-            layerMode: true,
-            toggleCommand: command,
-          });
+        window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue({
+          shortcuts: [],
+          hyprland: false,
+          layerMode: true,
+          toggleCommand: command,
+        });
         try {
           await openPanel();
           i18n.setLocaleBootstrap({
