@@ -964,6 +964,24 @@ describe('stylesheet one-offs', () => {
       expect(resolvedValue(status, 'min-height')).toBe('1.4em');
     });
 
+    // In the minimum window step 3's note was cut off above a blank band where the empty line sat:
+    // the card fills the window there, so the line held the buttons nowhere.
+    it('gives the empty line’s room to the text first in a short window', () => {
+      render(step('<p class="first-run-security-note">Your password never enters this app.</p>'));
+      const status = document.querySelector('.first-run-status');
+      const short = { viewport: { width: 320, height: 360 } };
+
+      expect(resolvedValue(status, 'flex', short)).toBe('0 1000 auto');
+      expect(resolvedValue(status, 'min-height', short)).toBe('0');
+      // Its gap is part of its height, so that yields too; where the card fits, the room is the same.
+      expect(resolvedValue(status, 'margin-top', short)).toBe('0');
+      expect(resolvedValue(status, 'height', short)).toBe('calc(1.4em + 0.5rem)');
+      // A message keeps its lines.
+      status.classList.remove('connection-status-empty');
+      expect(resolvedValue(status, 'flex', short)).toBe('none');
+      expect(resolvedValue(status, 'min-height', short)).toBe('1.4em');
+    });
+
     it('leaves the welcome step, which has no status line to show, as it was', () => {
       render(step('<p class="first-run-copy">Connect your server.</p>'));
       const status = document.querySelector('.first-run-status');

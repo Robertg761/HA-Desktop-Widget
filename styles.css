@@ -9722,6 +9722,21 @@ body.theme-light:not(.high-contrast)
   clip-path: none;
 }
 
+/* In a short window a step too tall for the card gives the empty line's room, gap and all, to its
+   text before the text gives up any of its own. The card fills the window then and its buttons sit
+   at its foot, so the reserved line held nothing in place and only cut the text short: the minimum
+   window showed a blank band above Back and Connect while step 3's note was cut off. Where the card
+   still fits, the line keeps its room. */
+@media (max-height: 480px) {
+  .first-run-content:has(.first-run-label, .first-run-security-note)
+    + .first-run-status.connection-status-empty {
+    flex: 0 1000 auto;
+    height: calc(1.4em + var(--space-3));
+    min-height: 0;
+    margin-top: 0;
+  }
+}
+
 .first-run-actions {
   display: flex;
   justify-content: flex-end;

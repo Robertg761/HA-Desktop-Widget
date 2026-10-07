@@ -3528,6 +3528,14 @@ const scenes = [
     setup: async (ctx) => {
       await showFirstRunAuthorize(ctx, 'homeassistant.local:8123');
       await ctx.expect(WIZARD_ACTIONS_IN_VIEW, 'Back and Connect in view');
+      await ctx.expect(
+        `(() => {
+          const text = document.querySelector('.first-run-content');
+          const status = document.querySelector('.first-run-status');
+          return text.scrollHeight <= text.clientHeight || status.getBoundingClientRect().height === 0;
+        })()`,
+        'no empty status line under text that is cut off'
+      );
     },
   },
   {
