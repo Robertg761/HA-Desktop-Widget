@@ -1926,5 +1926,37 @@
   "Home Assistant Alert": {
     "retiredIn": "4.0.0",
     "reason": "Written in sentence case like the app's other notification titles"
+  },
+  "Icon applied. Click Save to persist changes.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Custom icon cleared. Click Save to persist changes.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Custom icon reset. Click Save to persist changes.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "All custom icons cleared. Click Save to persist changes.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Token accepted. Home Assistant is reachable. Select Save to keep it.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Remove every custom icon? Nothing changes for good until you select Save.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Blur changes take effect immediately, without Save.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
+  },
+  "Could not save custom colors. Press Save in Settings to try again.": {
+    "retiredIn": "4.0.0",
+    "reason": "Settings Save button renamed to Save and close."
   }
 }
