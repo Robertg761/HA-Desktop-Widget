@@ -225,8 +225,12 @@ describe('buildTrayEntityPresentation', () => {
 
   // A thermostat that reports no temperature (a heat/cool one has only its two targets) shows its
   // mode. Cut to fit, "Heat/Cool" read "HEAT", the same as heat mode, and with no language heat_cool
-  // read "AUTO", the same as auto.
-  it('never gives two HVAC modes the same label, in any language', () => {
+  // read "AUTO", the same as auto. A short form wider than the 16px Windows icon at every size
+  // ("VENT", and by a hair "FAN") was drawn as an ellipsis. Measured here at 0.62em a letter, the
+  // app's own estimate without a canvas, four Latin capitals never fit; the short forms in other
+  // scripts were checked by drawing them.
+  it('never gives two HVAC modes the same label, or an ellipsis, in any language', () => {
+    const measure = (text, fontSize) => Array.from(text).length * fontSize * 0.62;
     const fs = require('fs');
     const path = require('path');
     const packDir = path.resolve(__dirname, '../../locale-packs');
@@ -249,6 +253,13 @@ describe('buildTrayEntityPresentation', () => {
         const { candidates } = buildTrayEntityPresentation(entity('climate.hall', mode), {
           translate,
         });
+        // The icons are always drawn through a catalog; untranslated, a label is the bitmap's own.
+        if (messages && candidates.every((label) => /^[\p{Script=Latin}\p{P}]+$/u.test(label))) {
+          const { text } = chooseTrayLabelLayout(candidates, measure, {
+            maxWidth: getTrayIconSizeForPlatform('win32') - 2,
+          });
+          expect({ language, mode, text }).not.toEqual({ language, mode, text: '…' });
+        }
         for (const label of candidates) {
           expect({ language, label, modes: [owners.get(label) ?? mode, mode] }).toEqual({
             language,
