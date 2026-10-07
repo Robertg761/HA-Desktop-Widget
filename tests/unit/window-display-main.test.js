@@ -9,6 +9,7 @@ function load({ supported = true, saved = true } = {}) {
   let displays = [primary, secondary];
   const context = {
     ...displayHelpers,
+    process: { platform: 'linux' },
     config: { windowPosition: { x: 100, y: 100 }, windowSize: { width: 500, height: 600 } },
     usesCompositorOwnedPlacement: !supported,
     clampToMinimumWindowSize: ({ width, height }) => ({ width, height }),
@@ -34,7 +35,7 @@ function load({ supported = true, saved = true } = {}) {
     clearTimeout,
     log: { warn: jest.fn() },
   };
-  const start = source.indexOf('function getWindowDisplaySettings(');
+  const start = source.indexOf('function moveMainWindowToPosition(');
   const end = source.indexOf('// Save the monitor choice', start);
   if (start >= 0) vm.runInNewContext(source.slice(start, end), context);
   return {
@@ -85,6 +86,26 @@ test('clearing a preference leaves the current window in place', async () => {
   await context.applyWindowDisplayChoice('');
   expect(context.config.windowDisplay).toBeNull();
   expect(context.mainWindow.setPosition).not.toHaveBeenCalled();
+});
+
+test('moving to a differently scaled Windows display preserves the intended DIP size', async () => {
+  const { context } = load();
+  context.process = { platform: 'win32' };
+  let bounds = { x: 100, y: 100, width: 500, height: 600 };
+  context.mainWindow.getBounds = () => ({ ...bounds });
+  // The first native move can apply WM_DPICHANGED using the source display's scale.
+  context.mainWindow.setPosition.mockImplementation((x, y) => {
+    bounds = { x, y, width: 750, height: 900 };
+  });
+  context.mainWindow.setBounds = jest.fn((next) => {
+    bounds = { ...next };
+  });
+
+  await context.applyWindowDisplayChoice('2');
+
+  expect(bounds).toEqual({ x: 2020, y: 100, width: 500, height: 600 });
+  expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
+  expect(context.config.windowDisplay.offset).toEqual({ x: 100, y: 100 });
 });
 
 test('Automatic durably keeps a drag that has not reached the bounds save timer yet', async () => {

@@ -7404,21 +7404,31 @@ function recoverWindowsAfterDisplayChange() {
     !mainWindow.isFullScreen()
   ) {
     const bounds = mainWindow.getBounds();
+    // Windows can resize the native window while crossing a DPI boundary. The saved
+    // dimensions remain the user's intended size in logical pixels.
+    const placementSize =
+      config.windowDisplay && process.platform === 'win32' ? config.windowSize : bounds;
     if (config.windowDisplay) {
       mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
     }
     const position =
-      (config.windowDisplay && resolveWindowDisplayPosition(config, electronScreen, bounds)) ||
+      (config.windowDisplay &&
+        resolveWindowDisplayPosition(config, electronScreen, placementSize)) ||
       clampPositionToWorkAreas(
         bounds,
         electronScreen.getAllDisplays().map((display) => display.workArea)
       );
-    if (position.x !== bounds.x || position.y !== bounds.y) {
+    if (
+      position.x !== bounds.x ||
+      position.y !== bounds.y ||
+      placementSize.width !== bounds.width ||
+      placementSize.height !== bounds.height
+    ) {
       log.info(
         `Display layout changed; moving the widget from ${bounds.x},${bounds.y} to ${position.x},${position.y}`
       );
       if (config.windowDisplay) config.windowPosition = position;
-      mainWindow.setPosition(position.x, position.y);
+      moveMainWindowToPosition(position, placementSize);
       // A programmatic move is not always reported as one (Windows only reports a user's), so
       // save it here rather than counting on the bounds watcher.
       const targetWindow = mainWindow;
@@ -7727,6 +7737,23 @@ function createWindow() {
   });
 }
 
+function moveMainWindowToPosition(position, size) {
+  mainWindow.setPosition(position.x, position.y);
+  if (process.platform === 'win32') {
+    const actual = mainWindow.getBounds();
+    // The first move can still use the source display's DPI. A second bounds update
+    // uses the destination DPI; keep the dimensions captured before that first move.
+    if (
+      actual.x !== position.x ||
+      actual.y !== position.y ||
+      actual.width !== size.width ||
+      actual.height !== size.height
+    ) {
+      mainWindow.setBounds({ ...position, width: size.width, height: size.height });
+    }
+  }
+}
+
 function getWindowDisplaySettings() {
   return getWindowDisplayState(config, electronScreen, !usesCompositorOwnedPlacement);
 }
@@ -7745,13 +7772,14 @@ function getWindowDisplayChoicePatch(id) {
 function applyPreferredWindowDisplay() {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
-  const position = resolveWindowDisplayPosition(config, electronScreen, mainWindow.getBounds());
+  const bounds = mainWindow.getBounds();
+  const position = resolveWindowDisplayPosition(config, electronScreen, bounds);
   clearTimeout(windowStateSaveTimer);
   windowStateSaveTimer = null;
   pendingWindowBounds = null;
   if (!position) return;
   config.windowPosition = position;
-  mainWindow.setPosition(position.x, position.y);
+  moveMainWindowToPosition(position, bounds);
 }
 
 function applyWindowDisplayChoice(id) {

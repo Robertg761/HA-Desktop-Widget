@@ -182,6 +182,7 @@ describe('the widget after the monitors change', () => {
     const pinWindow = { isDestroyed: () => false };
     const context = {
       electronScreen,
+      process: { platform: 'linux' },
       clampPositionToWorkAreas,
       mainWindow,
       usesCompositorOwnedPlacement: false,
@@ -206,7 +207,10 @@ describe('the widget after the monitors change', () => {
       ...overrides,
     };
     vm.runInNewContext(
-      sliceMain('const DISPLAY_CHANGE_RECOVERY_DELAY_MS', "/**\n * The main window's minimum size"),
+      sliceMain(
+        'const DISPLAY_CHANGE_RECOVERY_DELAY_MS',
+        "/**\n * The main window's minimum size"
+      ) + sliceMain('function moveMainWindowToPosition(', 'function getWindowDisplaySettings('),
       context
     );
     return { context, electronScreen, mainWindow, pinWindow };
@@ -246,6 +250,27 @@ describe('the widget after the monitors change', () => {
     context.recoverWindowsAfterDisplayChange();
     expect(mainWindow.setPosition).toHaveBeenLastCalledWith(2100, 120);
     expect(context.config.windowDisplay).toEqual(preference);
+  });
+
+  it.each([
+    ['unchanged position', { x: 0, y: 0, width: 1920, height: 1040 }],
+    ['smaller fallback display', { x: 0, y: 0, width: 1024, height: 720 }],
+  ])('recovers the saved Windows DIP size with an %s', (_case, workArea) => {
+    const { context, electronScreen, mainWindow } = loadDisplays({
+      bounds: { x: 100, y: 100, width: 750, height: 900 },
+      process: { platform: 'win32' },
+    });
+    electronScreen.setDisplays([workArea]);
+    context.config.windowSize = { width: 500, height: 600 };
+    context.config.windowDisplay = { id: '2', offset: { x: 100, y: 100 } };
+    mainWindow.setBounds.mockImplementation((bounds) => {
+      mainWindow.bounds = { ...bounds };
+    });
+
+    context.recoverWindowsAfterDisplayChange();
+
+    expect(mainWindow.getBounds()).toEqual({ x: 100, y: 100, width: 500, height: 600 });
+    expect(context.config.windowDisplay).toEqual({ id: '2', offset: { x: 100, y: 100 } });
   });
 
   it('re-places the pins, so a returning monitor gets its pins back', () => {

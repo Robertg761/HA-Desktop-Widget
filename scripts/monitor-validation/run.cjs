@@ -37,7 +37,19 @@ async function launch(){
  appProcess=spawn(require('electron'),[path.join(dir,'boot.cjs'),`--user-data-dir=${profile}`,'--disable-gpu'],{cwd:root,env,stdio:['ignore',fd,fd]});fs.closeSync(fd);
  await until(async()=>rpc('!!mainWindow && !mainWindow.webContents.isLoading()'),'app ready',45000);
 }
-async function stop(){if(!appProcess||appProcess.exitCode!==null)return;const exited=new Promise(r=>appProcess.once('exit',r));await rpc('(setTimeout(()=>app.quit(),20),true)').catch(()=>{});await Promise.race([exited,pause(10000)]);if(appProcess.exitCode===null){appProcess.kill();await pause(500);}}
+async function stop(){
+ if(!appProcess||appProcess.exitCode!==null||appProcess.signalCode!==null)return;
+ const child=appProcess;
+ const exited=new Promise(r=>child.once('exit',r));
+ await rpc('(setTimeout(()=>app.quit(),20),true)').catch(()=>{});
+ await Promise.race([exited,pause(25000)]);
+ if(child.exitCode===null&&child.signalCode===null){
+  fs.appendFileSync(path.join(out,'shutdown.log'),'Graceful quit exceeded 25s; terminating test process before restart\n');
+  child.kill('SIGKILL');await Promise.race([exited,pause(5000)]);
+ }
+ assert(child.exitCode!==null||child.signalCode!==null,'Previous Electron process must exit before restart');
+ await pause(300);
+}
 const closeTo=(a,b)=>Math.abs(a-b)<=1;
 function expected(s,id,offset){const d=s.displays.find(d=>String(d.id)===id)||s.displays.find(d=>String(d.id)===s.primaryId);const a=d.workArea;return {x:Math.round(a.x+Math.max(0,Math.min(offset.x,a.width-s.bounds.width))),y:Math.round(a.y+Math.max(0,Math.min(offset.y,a.height-s.bounds.height)))};}
 function at(s,p){return closeTo(s.bounds.x,p.x)&&closeTo(s.bounds.y,p.y);}
