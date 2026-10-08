@@ -7560,17 +7560,20 @@ function watchDisplayChanges() {
         const timer = displayChangeTimer;
         if (process.platform === 'win32' || process.platform === 'darwin')
           await refreshDisplayIdentities();
-        // A newer display event invalidates the inventory read and this recovery.
-        if (timer !== displayChangeTimer) return;
-        displayChangeTimer = null;
-        try {
-          recoverWindowsAfterDisplayChange();
-        } catch (error) {
-          log.warn('Failed to recover windows after a display change:', error.message);
-        }
-        refreshTrayIconForDisplayScale();
-        refreshTrayMenu();
-        pushConfigToRenderer();
+        // Reconcile after any in-flight choice commits, retaining native user
+        // intent while queued. A newer topology event invalidates this recovery.
+        runBackgroundConfigMutation(() => {
+          if (timer !== displayChangeTimer) return;
+          displayChangeTimer = null;
+          try {
+            recoverWindowsAfterDisplayChange();
+          } catch (error) {
+            log.warn('Failed to recover windows after a display change:', error.message);
+          }
+          refreshTrayIconForDisplayScale();
+          refreshTrayMenu();
+          pushConfigToRenderer();
+        }, 'display change recovery');
       }, DISPLAY_CHANGE_RECOVERY_DELAY_MS);
     });
   });

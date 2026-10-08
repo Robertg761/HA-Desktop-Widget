@@ -354,6 +354,20 @@ describe('the widget after the monitors change', () => {
     { platform: 'win32', kind: 'move', laterChoice: true },
     { platform: 'win32', kind: 'move', laterChoice: true, duringChoice: 'resize' },
     { platform: 'darwin', kind: 'move', laterChoice: true, duringChoice: 'move' },
+    {
+      platform: 'win32',
+      kind: 'move',
+      laterChoice: true,
+      duringChoice: 'resize',
+      recoverDuringSave: true,
+    },
+    {
+      platform: 'darwin',
+      kind: 'move',
+      laterChoice: true,
+      duringChoice: 'move',
+      recoverDuringSave: true,
+    },
   ])(
     'preserves $kind intent while identity recovery waits ($platform, $disconnected, $missingIdentities, $superseded, $unsettled)',
     async ({
@@ -365,6 +379,7 @@ describe('the widget after the monitors change', () => {
       unsettled = false,
       laterChoice = false,
       duringChoice,
+      recoverDuringSave = false,
     }) => {
       let identities = { 1: 'laptop', 2: 'desk' };
       const completions = [];
@@ -428,8 +443,11 @@ describe('the widget after the monitors change', () => {
       if (laterChoice) {
         // A choice can finish its own inventory read before delayed recovery resumes.
         identities = { 1: 'laptop', 2: 'desk' };
+        let queue = Promise.resolve();
+        const serialize = (fn) => (queue = queue.then(fn));
         Object.assign(context, require('../../src/window-display.cjs'), {
-          runSerializedConfigMutation: (fn) => Promise.resolve().then(fn),
+          runSerializedConfigMutation: serialize,
+          runBackgroundConfigMutation: serialize,
           saveConfigDurably: async () => {
             rememberSaved();
             if (duringChoice) {
@@ -439,6 +457,10 @@ describe('the widget after the monitors change', () => {
                   : { x: 250, y: 180, width: 550, height: 600 };
               mainWindow.emit(duringChoice === 'move' ? 'will-move' : 'will-resize', {}, newer);
               mainWindow.bounds = newer;
+            }
+            if (recoverDuringSave) {
+              completions.at(-1)();
+              await jest.advanceTimersByTimeAsync(0);
             }
             return { success: true };
           },
