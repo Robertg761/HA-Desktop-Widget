@@ -28,6 +28,7 @@ function load({ supported = true, saved = true } = {}) {
       success: saved,
       error: saved ? undefined : 'disk full',
     })),
+    saveConfig: jest.fn(),
     refreshTrayMenu: jest.fn(),
     pushConfigToRenderer: jest.fn(),
     windowStateSaveTimer: null,
@@ -251,6 +252,69 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
     jest.useRealTimers();
   }
 });
+
+test.each([false, true])(
+  'preserves a resize during the durable choice save (queued: %s)',
+  async (queuedSave) => {
+    jest.useFakeTimers();
+    try {
+      const { context } = load();
+      let bounds = { x: 100, y: 100, width: 500, height: 600 };
+      let resized, finishSave, persisted;
+      const queued = [];
+      Object.assign(context, {
+        process: { platform: 'win32' },
+        displayChangeTimer: null,
+        isLayerShellChildProcess: false,
+        setTimeout,
+        clearTimeout,
+        mainWindowMatchesSavedBounds: () => false,
+        onWindowBoundsChanged: (_window, handlers) => {
+          resized = handlers.onResize;
+        },
+        runBackgroundConfigMutation: (fn) => queued.push(fn),
+        saveConfig: jest.fn(() => {
+          persisted = JSON.parse(JSON.stringify(context.config));
+        }),
+      });
+      context.mainWindow.getBounds = () => ({ ...bounds });
+      context.mainWindow.setPosition.mockImplementation((x, y) => {
+        bounds = { ...bounds, x, y };
+      });
+      context.mainWindow.setBounds = jest.fn((next) => {
+        bounds = { ...next };
+      });
+      const start = source.indexOf('function watchMainWindowBounds(');
+      vm.runInNewContext(
+        source.slice(start, source.indexOf('const DISPLAY_CHANGE_RECOVERY_DELAY_MS', start)),
+        context
+      );
+      context.watchMainWindowBounds(context.mainWindow);
+      context.saveConfigDurably.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishSave = resolve;
+          })
+      );
+      const selection = context.applyWindowDisplayChoice('2');
+      await Promise.resolve();
+      bounds.width = 501;
+      resized();
+      if (queuedSave) jest.advanceTimersByTime(400);
+      finishSave({ success: true });
+      await selection;
+      for (const fn of queued) fn();
+      jest.advanceTimersByTime(400);
+
+      expect(bounds).toEqual({ x: 2020, y: 100, width: 501, height: 600 });
+      expect(persisted.windowSize).toEqual({ width: 501, height: 600 });
+      expect(persisted.windowDisplay.id).toBe('2');
+      expect(persisted.windowPosition).toEqual({ x: 2020, y: 100 });
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);
 
 test('dragging to another monitor refreshes the tray with the new preference', () => {
   jest.useFakeTimers();
