@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const fs = require('fs');
 const vm = require('vm');
+const { EventEmitter } = require('events');
 const displayHelpers = require('../../src/window-display.cjs');
 const source = fs.readFileSync(require.resolve('../../main.js'), 'utf8');
 const primary = { id: 1, label: 'Laptop', workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
@@ -18,11 +19,11 @@ function load({ supported = true, saved = true } = {}) {
       getPrimaryDisplay: () => primary,
       getDisplayMatching: (bounds) => (bounds.x >= 1920 ? secondary : primary),
     },
-    mainWindow: {
+    mainWindow: Object.assign(new EventEmitter(), {
       isDestroyed: () => false,
       getBounds: () => ({ x: 100, y: 100, width: 500, height: 600 }),
       setPosition: jest.fn(),
-    },
+    }),
     runSerializedConfigMutation: (fn) => Promise.resolve().then(fn),
     saveConfigDurably: jest.fn(async () => ({
       success: saved,
@@ -256,6 +257,27 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
 test.each([
   {
     platform: 'win32',
+    queuedSave: false,
+    manualMove: true,
+    settled: false,
+    choice: '1',
+    edit: { x: 2220, y: 120, width: 750, height: 900 },
+    want: { x: 2220, y: 120, width: 750, height: 900 },
+    id: '2',
+    offset: { x: 300, y: 120 },
+  },
+  ...[false, true].map((queuedSave) => ({
+    platform: 'win32',
+    queuedSave,
+    manualMove: true,
+    choice: '1',
+    edit: { x: 2220, y: 120, width: 750, height: 900 },
+    want: { x: 2220, y: 120, width: 750, height: 900 },
+    id: '2',
+    offset: { x: 300, y: 120 },
+  })),
+  {
+    platform: 'win32',
     queuedSave: true,
     primeFractionalDpi: true,
     choice: '1',
@@ -318,6 +340,8 @@ test.each([
     id,
     offset,
     primeFractionalDpi = false,
+    manualMove = false,
+    settled = true,
     choice = '2',
   }) => {
     jest.useFakeTimers();
@@ -372,8 +396,9 @@ test.each([
       );
       const selection = context.applyWindowDisplayChoice(choice);
       await Promise.resolve();
+      if (manualMove) context.mainWindow.emit('will-move', {}, { ...bounds, ...edit });
       Object.assign(bounds, edit);
-      resized();
+      if (settled) resized();
       if (queuedSave) jest.advanceTimersByTime(400);
       finishSave({ success: true });
       await selection;

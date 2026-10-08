@@ -78,6 +78,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
  let pref;
  await test('Native display discovery and selector inventory',async()=>{assert(s.choice.supported);assert(s.choice.displays.length>=2);return {target,primary};});
  if(process.platform==='win32') await test('Windows persistent display keys match native target hashes',async()=>{
+  await rpc('ensureDisplayIdentities()');
   const identities=await rpc(`require('./src/windows-display-identity.cjs').loadWindowsDisplayIdentities()`);
   const versions=await rpc('process.versions');
   s=await state();
@@ -92,6 +93,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   return {identities,versions};
  });
  if(process.platform==='darwin') await test('macOS persistent UUIDs match native display IDs',async()=>{
+  await rpc('ensureDisplayIdentities()');
   const identities=await rpc(`require('./src/macos-display-identity.cjs').loadMacOSDisplayIdentities()`);
   s=await state();
   const nativeIdentities=await mac('identities');
@@ -210,6 +212,72 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   const details={runtimeIdBefore:target,runtimeIdAfter:nextId,runtimeIdChanged:target!==nextId,beforeMap,afterMap,preference:before.preference,restored};
   fs.writeFileSync(path.join(out,'macos-recreation-identities.json'),JSON.stringify(details,null,2));return details;
  });
+ if(process.platform==='win32'){
+  // This final scenario intentionally permits Windows to change the DIP size during
+  // the OS drag. Compare with actual post-drag geometry, not test()'s 400-DIP fixture.
+  const name='Windows native cross-DPI user drag supersedes a monitor choice awaiting durable save';
+  const details={};
+  const saveDrag=()=>fs.writeFileSync(path.join(out,'windows-user-drag.json'),JSON.stringify(details,null,2));
+  try{
+   let current=await state();
+   const primaryDisplay=current.displays.find(d=>String(d.id)===current.primaryId);
+   const highDpi=current.displays.filter(d=>d.scaleFactor>primaryDisplay.scaleFactor).sort((a,b)=>b.scaleFactor-a.scaleFactor)[0];
+   assert(highDpi,'Native drag requires a higher-DPI target after adapter restart');
+   const primaryId=String(primaryDisplay.id),dragTargetId=String(highDpi.id);
+   await tray(primaryId);await pause(700);
+   await rpc('(mainWindow.show(),mainWindow.focus(),true)');
+   details.before=await until(value=>value.mainDisplayId===primaryId,'native drag begins on primary');
+   details.dragRegion=await renderer(`(()=>{const e=document.querySelector('.drag-area');if(!e)throw Error('No widget drag area');const r=e.getBoundingClientRect();return {x:r.x+Math.min(30,r.width/2),y:r.y+r.height/2,width:r.width,height:r.height,appRegion:getComputedStyle(e.closest('.widget-header')).getPropertyValue('-webkit-app-region')};})()`);
+   assert.equal(details.dragRegion.appRegion,'drag');
+   assert(details.dragRegion.width>0&&details.dragRegion.height>0,'Drag area must be visible');
+   const dragOrigin={x:Math.round(details.before.bounds.x+details.dragRegion.x),y:Math.round(details.before.bounds.y+details.dragRegion.y)};
+   const dragDestination={x:Math.round(highDpi.workArea.x+highDpi.workArea.width/2),y:Math.round(highDpi.workArea.y+Math.min(70,highDpi.workArea.height/6))};
+   details.input=await rpc(`({handle:mainWindow.getNativeWindowHandle().readBigUInt64LE().toString(),pid:process.pid,start:electronScreen.dipToScreenPoint(${JSON.stringify(dragOrigin)}),end:electronScreen.dipToScreenPoint(${JSON.stringify(dragDestination)})})`);
+   await rpc(`(()=>{
+    const probe=globalThis.__ha184Drag={events:[],gateEntered:false,released:false,done:false,originalSave:saveConfigDurably};
+    probe.listeners={};
+    for(const event of ['will-move','move','moved','resize','resized']){
+     probe.listeners[event]=(...args)=>probe.events.push({event,time:Date.now(),bounds:mainWindow.getBounds(),newBounds:event==='will-move'?args[1]:undefined,userMoveRevision:mainWindow.__userMoveRevision||0});
+     mainWindow.on(event,probe.listeners[event]);
+    }
+    const gate=new Promise(resolve=>probe.release=resolve);
+    saveConfigDurably=async function(...args){probe.gateEntered=true;await gate;return probe.originalSave.apply(this,args);};
+    probe.choice=applyWindowDisplayChoice(${JSON.stringify(primaryId)}).then(()=>{probe.done=true;});
+    return true;
+   })()`);
+   await until(async()=>rpc('globalThis.__ha184Drag.gateEntered'),'durable monitor choice reaches blocked save');
+   details.atGate=await state();
+   assert.equal(details.atGate.preference.id,primaryId);
+   assert.equal(await rpc('globalThis.__ha184Drag.done'),false);
+   const input=details.input;
+   details.native=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(dir,'windows-user-drag.ps1'),'-WindowHandle',input.handle,'-OwnerProcessId',String(input.pid),'-StartX',String(input.start.x),'-StartY',String(input.start.y),'-EndX',String(input.end.x),'-EndY',String(input.end.y)],{encoding:'utf8',timeout:20000}).trim());
+   details.afterDrag=await until(value=>value.mainDisplayId===dragTargetId,'OS drag crosses to higher-DPI monitor');
+   details.events=await rpc('globalThis.__ha184Drag.events');
+   assert(details.events.some(event=>event.event==='will-move'),'SendInput must produce a real native will-move event');
+   assert.equal(await rpc('globalThis.__ha184Drag.done'),false,'Choice must remain blocked throughout native input');
+   details.sizeChanged=['width','height'].some(axis=>details.afterDrag.bounds[axis]!==details.before.bounds[axis]);
+   details.expectedOffset={x:details.afterDrag.bounds.x-highDpi.workArea.x,y:details.afterDrag.bounds.y-highDpi.workArea.y};
+   saveDrag();
+   await rpc('(()=>{const probe=globalThis.__ha184Drag;saveConfigDurably=probe.originalSave;probe.released=true;probe.release();return probe.choice;})()');
+   await rpc('runSerializedConfigMutation(()=>true)');
+   await until(value=>value.preference?.id===dragTargetId&&disk().windowDisplay?.id===dragTargetId,'native drag preference persisted');
+   await pause(700);
+   details.afterRelease=await state();details.saved=disk();
+   assert.equal(details.afterRelease.mainDisplayId,dragTargetId);
+   assert.equal(details.afterRelease.preference.persistentId,highDpi.persistentId);
+   assert.deepEqual(details.afterRelease.preference.offset,details.expectedOffset,'Durable choice must retain the actual drag offset');
+   for(const axis of ['x','y','width','height'])assert(closeTo(details.afterRelease.bounds[axis],details.afterDrag.bounds[axis]),`Choice changed post-drag ${axis}`);
+   assert.deepEqual(details.saved.windowDisplay,details.afterRelease.preference);
+   assert.deepEqual(details.saved.windowSize,{width:details.afterDrag.bounds.width,height:details.afterDrag.bounds.height});
+   assert.deepEqual(details.saved.windowPosition,{x:details.afterDrag.bounds.x,y:details.afterDrag.bounds.y});
+   rows.push({name,status:'PASS',details});console.log('PASS '+name);save();
+  }catch(error){details.error=error.stack;rows.push({name,status:'FAIL',error:error.stack,details});save();throw error;}
+  finally{
+   details.events=await rpc('globalThis.__ha184Drag?.events').catch(()=>details.events);
+   await rpc(`(()=>{const probe=globalThis.__ha184Drag;if(!probe)return;saveConfigDurably=probe.originalSave;probe.release();for(const [event,listener]of Object.entries(probe.listeners))mainWindow.removeListener(event,listener);return true;})()`).catch(()=>{});
+   saveDrag();
+  }
+ }
  await screenshot('final-window');
  console.log(JSON.stringify({passed:rows.filter(r=>r.status==='PASS').length,blocked:rows.filter(r=>r.status==='BLOCKED').length}));
 })().catch(async error=>{
