@@ -3,6 +3,7 @@
  */
 
 const { EventEmitter } = require('events');
+const http = require('http');
 
 const {
   MEDIA_ARTWORK_MAX_RESPONSE_BYTES,
@@ -943,9 +944,11 @@ describe('pinned DNS binary fetcher', () => {
       requestObject.end = () => {
         const plan = responsePlanByHost[parsedUrl.hostname];
         const response = new EventEmitter();
+        connection.response = response;
         response.statusCode = plan.statusCode;
         response.headers = plan.headers || {};
         response.resume = () => {};
+        response.destroy = () => requestObject.destroy();
         process.nextTick(() => {
           onResponse(response);
           if (plan.body !== undefined) {
@@ -958,6 +961,73 @@ describe('pinned DNS binary fetcher', () => {
     });
     return { request, connections };
   }
+
+  it.each([['/image'], [undefined]])(
+    'closes an unfinished redirect body with Location %s',
+    async (location) => {
+      let redirectResponse;
+      let resolveClosed;
+      const closed = new Promise((resolve) => {
+        resolveClosed = resolve;
+      });
+      const server = http.createServer((request, response) => {
+        if (request.url === '/redirect') {
+          redirectResponse = response;
+          response.on('close', () => resolveClosed(true));
+          response.writeHead(302, location ? { Location: location } : {});
+          // Headers are enough to follow a redirect. Its body may never finish.
+          response.write('unfinished redirect body');
+        } else {
+          response.writeHead(200, { 'Content-Type': 'image/png' });
+          response.end('image');
+        }
+      });
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const fetchBinary = createPinnedDnsBinaryFetcher({
+        resolvePinnedAddress: async (href) => ({ href, address: '127.0.0.1', family: 4 }),
+      });
+      let closeTimeout;
+      try {
+        const result = await fetchBinary(
+          `http://artwork.example.test:${server.address().port}/redirect`,
+          {},
+          1000,
+          { maxBytes: 5 }
+        );
+        expect(result.status).toBe(location ? 200 : 302);
+        expect(result.data.toString()).toBe(location ? 'image' : '');
+        const didClose = await Promise.race([
+          closed,
+          new Promise((resolve) => {
+            closeTimeout = setTimeout(() => resolve(false), 1500);
+          }),
+        ]);
+        expect(didClose).toBe(true);
+        expect(redirectResponse.destroyed).toBe(true);
+      } finally {
+        clearTimeout(closeTimeout);
+        server.closeAllConnections();
+        await new Promise((resolve) => server.close(resolve));
+      }
+    }
+  );
+
+  it('handles response errors after discarding a redirect body', async () => {
+    const transport = createMockTransport({
+      'cdn.example.test': { statusCode: 302 },
+    });
+    const fetchBinary = createPinnedDnsBinaryFetcher({
+      httpsModule: transport,
+      resolvePinnedAddress: async (href) => ({ href, address: '93.184.216.34', family: 4 }),
+    });
+
+    const result = await fetchBinary('https://cdn.example.test/artwork.png', {}, 1000);
+
+    expect(result.status).toBe(302);
+    expect(() => {
+      transport.connections[0].response.emit('error', new Error('connection reset'));
+    }).not.toThrow();
+  });
 
   it('connects to the pre-validated address and re-pins each redirect hop', async () => {
     const lookupsByHost = {
