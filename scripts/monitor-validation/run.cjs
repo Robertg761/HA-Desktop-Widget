@@ -64,6 +64,10 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   macSetup=await mac('setup');fs.writeFileSync(path.join(out,'mac-setup.json'),JSON.stringify(macSetup,null,2));await pause(2000);
   const retina=await mac('retina');fs.writeFileSync(path.join(out,'mac-retina.json'),JSON.stringify(retina,null,2));await pause(1000);
  }
+ if(process.platform==='darwin'){
+  const nativeIdentities=await mac('identities');fs.writeFileSync(path.join(out,'macos-native-identities.json'),JSON.stringify(nativeIdentities,null,2));
+  try { await require(path.join(root,'src/macos-display-identity.cjs')).loadMacOSDisplayIdentities({execFile:(exe,args,options,callback)=>require('node:child_process').execFile(exe,args,options,(err,stdout,stderr)=>{fs.writeFileSync(path.join(out,'macos-provider-raw.json'),JSON.stringify({stdout,stderr,error:err?.message},null,2));callback(err,stdout);})}); }catch(error){console.log('Provider probe: '+error.stack);}
+ }
  fs.writeFileSync(path.join(profile,'config.json'),JSON.stringify({windowPosition:{x:100,y:100},windowSize:{width:400,height:400},alwaysOnTop:false,opacity:1,frostedGlass:false,globalHotkeys:{enabled:false,hotkeys:{}},ui:{language:'en',theme:'dark',scale:1},desktopPins:{'light.virtual_test':{x:100,y:520,width:168,height:148}},omarchyThemeDefaultApplied:true}));
  await launch();await pause(1200);
  let s=await state();fs.writeFileSync(path.join(out,'initial-displays.json'),JSON.stringify(s,null,2));
