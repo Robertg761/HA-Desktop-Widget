@@ -315,10 +315,8 @@ describe('the widget after the monitors change', () => {
     const completions = [];
     const { context, electronScreen, mainWindow } = loadDisplays({
       process: { platform: 'win32' },
-      invalidateWindowsDisplayIdentities: jest.fn(),
-      refreshWindowsDisplayIdentities: jest.fn(
-        () => new Promise((resolve) => completions.push(resolve))
-      ),
+      invalidateDisplayIdentities: jest.fn(),
+      refreshDisplayIdentities: jest.fn(() => new Promise((resolve) => completions.push(resolve))),
     });
     context.watchDisplayChanges();
     electronScreen.emit('display-removed');
@@ -332,7 +330,7 @@ describe('the widget after the monitors change', () => {
     completions[1]();
     await jest.advanceTimersByTimeAsync(0);
     expect(mainWindow.setPosition).toHaveBeenCalledTimes(1);
-    expect(context.invalidateWindowsDisplayIdentities).toHaveBeenCalledTimes(2);
+    expect(context.invalidateDisplayIdentities).toHaveBeenCalledTimes(2);
   });
 
   it('survives a failure while recovering', () => {
@@ -399,57 +397,59 @@ describe('Reset Position', () => {
   });
 });
 
-describe('Windows identity inventory', () => {
+describe.each(['win32', 'darwin'])('%s identity inventory', (platform) => {
   it('awaits a fresh inventory when startup discovery was invalidated', async () => {
     const pending = [];
     const context = {
-      process: { platform: 'win32' },
-      windowsDisplayIdentityRevision: 0,
-      windowsDisplayIdentityRead: null,
-      windowsDisplayIdentities: {},
+      process: { platform },
+      displayIdentityRevision: 0,
+      displayIdentityRead: null,
+      displayIdentities: {},
       nativeElectronScreen: { getAllDisplays: () => [{ id: 2 }] },
-      loadWindowsDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
+      loadPlatformDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
       log: { warn: jest.fn() },
     };
     vm.runInNewContext(
-      sliceMain('function invalidateWindowsDisplayIdentities()', 'const { onWindowBoundsChanged }'),
+      sliceMain('function invalidateDisplayIdentities()', 'const { onWindowBoundsChanged }'),
       context
     );
     let ready = false;
-    const waiting = context.ensureWindowsDisplayIdentities().then(() => {
+    const waiting = context.ensureDisplayIdentities().then(() => {
       ready = true;
     });
-    context.invalidateWindowsDisplayIdentities();
+    expect(pending).toHaveLength(1);
+    context.invalidateDisplayIdentities();
     pending[0]({ 2: 'stale-device' });
     await new Promise(setImmediate);
     expect(ready).toBe(false);
     expect(pending).toHaveLength(2);
     pending[1]({ 2: 'current-device' });
     await waiting;
-    expect(context.windowsDisplayIdentities).toEqual({ 2: 'current-device' });
+    expect(context.displayIdentities).toEqual({ 2: 'current-device' });
   });
 
   it('does not publish an inventory invalidated by a later display event', async () => {
     const pending = [];
     const context = {
-      process: { platform: 'win32' },
-      windowsDisplayIdentityRevision: 0,
-      windowsDisplayIdentityRead: null,
-      windowsDisplayIdentities: { old: 'old-device' },
-      loadWindowsDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
+      process: { platform },
+      displayIdentityRevision: 0,
+      displayIdentityRead: null,
+      displayIdentities: { old: 'old-device' },
+      loadPlatformDisplayIdentities: () => new Promise((resolve) => pending.push(resolve)),
       log: { warn: jest.fn() },
     };
     vm.runInNewContext(
-      sliceMain('function invalidateWindowsDisplayIdentities()', 'const { onWindowBoundsChanged }'),
+      sliceMain('function invalidateDisplayIdentities()', 'const { onWindowBoundsChanged }'),
       context
     );
-    const first = context.refreshWindowsDisplayIdentities();
-    context.invalidateWindowsDisplayIdentities();
-    const second = context.refreshWindowsDisplayIdentities();
+    const first = context.refreshDisplayIdentities();
+    context.invalidateDisplayIdentities();
+    const second = context.refreshDisplayIdentities();
+    expect(pending).toHaveLength(2);
     pending[1]({ current: 'current-device' });
     await second;
     pending[0]({ stale: 'stale-device' });
     await first;
-    expect(context.windowsDisplayIdentities).toEqual({ current: 'current-device' });
+    expect(context.displayIdentities).toEqual({ current: 'current-device' });
   });
 });

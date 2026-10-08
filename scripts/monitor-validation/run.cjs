@@ -87,6 +87,14 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   assert.equal(new Set(s.displays.map(d=>d.persistentId)).size,3,'All three native monitor keys must be distinct');
   return {identities,versions};
  });
+ if(process.platform==='darwin') await test('macOS persistent UUIDs match native display IDs',async()=>{
+  const identities=await rpc(`require('./src/macos-display-identity.cjs').loadMacOSDisplayIdentities()`);
+  s=await state();
+  fs.writeFileSync(path.join(out,'macos-display-identities.json'),JSON.stringify({identities,displays:s.displays},null,2));
+  assert.deepEqual(Object.keys(identities).sort(),s.displays.map(d=>String(d.id)).sort());
+  for(const display of s.displays){assert.equal(typeof display.persistentId,'string');assert.equal(display.persistentId,identities[String(display.id)]);}
+  assert.equal(new Set(s.displays.map(d=>d.persistentId)).size,s.displays.length);
+ });
  const scales=[...new Set(s.displays.map(d=>d.scaleFactor))];
  if(scales.length<2){rows.push({name:'OS provides mixed per-monitor DPI',status:'BLOCKED',scales,reason:'Runner/driver exposed only one scale factor'});save();}
  else await test('OS provides mixed per-monitor DPI',async()=>({scales}));
@@ -94,7 +102,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
   const before=await state(),source=before.displays.find(d=>String(d.id)===before.mainDisplayId);
   const offset={x:before.bounds.x-source.workArea.x,y:before.bounds.y-source.workArea.y};
   await tray(target);s=await until(s=>at(s,expected(s,target,offset)),'tray geometry');pref=s.preference;
-  if(process.platform==='win32'){
+  if(process.platform==='win32'||process.platform==='darwin'){
    assert.equal(typeof pref.persistentId,'string','Chosen monitor must persist its stable key');
    assert(pref.persistentId.length>0,'Chosen monitor key cannot be empty');
    assert.equal(pref.persistentId,s.displays.find(d=>String(d.id)===target).persistentId);

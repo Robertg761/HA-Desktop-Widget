@@ -253,9 +253,38 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
   }
 });
 
-test.each([false, true])(
-  'preserves a resize during the durable choice save (queued: %s)',
-  async (queuedSave) => {
+test.each(
+  ['win32', 'darwin', 'linux'].flatMap((platform) =>
+    [false, true].flatMap((queuedSave) => [
+      {
+        platform,
+        queuedSave,
+        edit: { width: 501 },
+        want: { x: 2020, y: 100, width: 501, height: 600 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { x: 280, y: 150 },
+        want: { x: 280, y: 150, width: 500, height: 600 },
+        id: '1',
+        offset: { x: 280, y: 150 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { x: 2220, y: 180 },
+        want: { x: 2220, y: 180, width: 500, height: 600 },
+        id: '2',
+        offset: { x: 300, y: 180 },
+      },
+    ])
+  )
+)(
+  'preserves newer user geometry during the durable choice save ($platform, queued: $queuedSave, edit: $edit)',
+  async ({ platform, queuedSave, edit, want, id, offset }) => {
     jest.useFakeTimers();
     try {
       const { context } = load();
@@ -263,7 +292,7 @@ test.each([false, true])(
       let resized, finishSave, persisted;
       const queued = [];
       Object.assign(context, {
-        process: { platform: 'win32' },
+        process: { platform },
         displayChangeTimer: null,
         isLayerShellChildProcess: false,
         setTimeout,
@@ -298,7 +327,7 @@ test.each([false, true])(
       );
       const selection = context.applyWindowDisplayChoice('2');
       await Promise.resolve();
-      bounds.width = 501;
+      Object.assign(bounds, edit);
       resized();
       if (queuedSave) jest.advanceTimersByTime(400);
       finishSave({ success: true });
@@ -306,10 +335,10 @@ test.each([false, true])(
       for (const fn of queued) fn();
       jest.advanceTimersByTime(400);
 
-      expect(bounds).toEqual({ x: 2020, y: 100, width: 501, height: 600 });
-      expect(persisted.windowSize).toEqual({ width: 501, height: 600 });
-      expect(persisted.windowDisplay.id).toBe('2');
-      expect(persisted.windowPosition).toEqual({ x: 2020, y: 100 });
+      expect(bounds).toEqual(want);
+      expect(persisted.windowSize).toEqual({ width: want.width, height: want.height });
+      expect(persisted.windowDisplay).toMatchObject({ id, offset });
+      expect(persisted.windowPosition).toEqual({ x: want.x, y: want.y });
     } finally {
       jest.useRealTimers();
     }

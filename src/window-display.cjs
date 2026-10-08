@@ -24,8 +24,8 @@ function preference(config) {
     : null;
 }
 
-// Windows runtime display IDs change when an adapter restarts. Prefer the OS
-// monitor device path when available, and never fall back to a reused runtime ID.
+// Runtime display IDs can change after a restart. Prefer the persistent OS
+// monitor identity when available, and never fall back to a reused runtime ID.
 function findPreferredWindowDisplay(config, screen) {
   const saved = preference(config);
   if (!saved) return null;
