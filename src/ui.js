@@ -7015,7 +7015,7 @@ function createDesktopPinClimateControlElement(entity) {
   bindDesktopPinSlider(slider, {
     entityId: entity.entity_id,
     getImmediateValue: (input) =>
-      Math.round((Number(input?.value) || climateValue.targetTemp) * 10) / 10,
+      getOptionalFiniteControlNumber(input?.value) ?? climateValue.targetTemp,
     applyVisualValue: (nextValue) => {
       applyDesktopPinClimateVisualState(root, {
         ...getDesktopPinClimateValue(liveEntity()),
