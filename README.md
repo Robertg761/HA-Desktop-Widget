@@ -206,6 +206,8 @@ Assistant can flag out-of-date desktops.
 
 ## How to Use
 
+On Windows, macOS, and Linux X11, choose the widget's display in **Settings > General > Window & behavior > Display**, or use **Move to Monitor** in the tray menu. The choice stays on this computer. If the display disconnects, the widget moves to an available display and returns when the selected one reconnects. Dragging onto another connected display updates the selection. **Automatic** remembers the last window position without choosing a preferred display. Individual desktop pins keep their own positions. Linux desktop-layer mode continues to use its tray monitor menu.
+
 ### Quick Access Management
 
 - **Start with a useful dashboard**: After browser authorization, choose **Choose rooms and entities** or **Skip for now**. The same action is available from an empty Quick Access dashboard. A populated room is suggested with up to eight available everyday controls selected; review the preview, search and adjust the entities, name the page, and choose **Add Page**. Beside other pages, an empty page offers **Fill this page** instead and keeps its name. Either way, pages that already hold entities are never replaced. If room registry access is unavailable, choose directly from your entities; the list shows the first 100 matches, so type to narrow it. The picker waits for the connection to finish starting; use **Retry** if it cannot connect.

@@ -2,6 +2,7 @@ import { applyDesktopAppearance } from './desktop-appearance.js';
 import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
+import { createWindowDisplaySettings } from './window-display-settings.js';
 import { createEmojiSupportCheck } from './emoji-support.js';
 import { getEmojiNameLanguage, loadEmojiNames } from './emoji-names.js';
 import { clearFieldError, clearFieldErrors, showFieldError } from './field-errors.js';
@@ -5670,6 +5671,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
   if (!force && signature === settingsLocaleSignature) return;
   settingsLocaleSignature = signature;
   try {
+    windowDisplaySettings?.relocalize();
     updateHomeAssistantAuthStatusText();
     const weatherSelect = document.getElementById('weather-entity-select');
     const pendingWeather = weatherSelect?.value;
@@ -5772,6 +5774,10 @@ const PROFILE_SYNCED_SETTINGS = [
 ];
 // The config the open form was filled from.
 let settingsFormBaseConfig = null;
+let windowDisplaySettings = null;
+export function refreshWindowDisplaySettings() {
+  if (isSettingsModalOpen()) void windowDisplaySettings?.load();
+}
 // Synced settings the user has changed since the form opened ('key' or
 // 'ui.key'). An explicit choice wins even when it equals the value the form
 // opened with. Native controls are tracked through their input and change
@@ -5898,6 +5904,13 @@ async function openSettings(uiHooks) {
     setSettingsConnectionTestStatus('', '');
     setSettingsConnectionTestBusy(false);
     populateWeatherEntitySelect();
+    windowDisplaySettings = createWindowDisplaySettings({
+      document,
+      getDisplays: () => window.electronAPI.getWindowDisplays(),
+      t,
+      layerMode: !!state.CONFIG.desktopCapabilities?.layerMode,
+    });
+    void windowDisplaySettings.load();
     if (alwaysOnTop) {
       alwaysOnTop.checked =
         !state.CONFIG.desktopCapabilities?.layerMode && state.CONFIG.alwaysOnTop !== false;
@@ -6744,6 +6757,8 @@ async function persistSettings() {
       }
     }
     if (alwaysOnTop && !alwaysOnTop.disabled) nextConfig.alwaysOnTop = alwaysOnTop.checked;
+    const windowDisplayChoice = windowDisplaySettings?.choice();
+    if (windowDisplayChoice !== undefined) nextConfig.windowDisplayChoice = windowDisplayChoice;
     if (hideOnBlur && !hideOnBlur.disabled) nextConfig.hideOnBlur = hideOnBlur.checked;
     if (frostedGlass && !frostedGlass.disabled) nextConfig.frostedGlass = frostedGlass.checked;
     delete nextConfig.frostedGlassStrength;

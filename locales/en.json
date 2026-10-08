@@ -1660,5 +1660,16 @@
   "Remove every custom icon? Nothing changes for good until you select Save and close.": "Remove every custom icon? Nothing changes for good until you select Save and close.",
   "Blur changes take effect immediately, without saving.": "Blur changes take effect immediately, without saving.",
   "Could not save custom colors. Press Save and close in Settings to try again.": "Could not save custom colors. Press Save and close in Settings to try again.",
-  "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off."
+  "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.",
+  "Display": "Display",
+  "Display {{number}}": "Display {{number}}",
+  "{{display}} (disconnected)": "{{display}} (disconnected)",
+  "{{display}} (primary)": "{{display}} (primary)",
+  "Could not load displays. Reopen Settings to try again.": "Could not load displays. Reopen Settings to try again.",
+  "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.",
+  "Use Move to Monitor in the tray menu on this desktop.": "Use Move to Monitor in the tray menu on this desktop.",
+  "Your desktop manages window placement.": "Your desktop manages window placement.",
+  "Invalid display selection": "Invalid display selection",
+  "The selected display is no longer connected": "The selected display is no longer connected",
+  "Display selection is managed by the desktop": "Display selection is managed by the desktop"
 }

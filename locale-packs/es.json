@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.73",
+  "version": "1.2.74",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2156,6 +2156,17 @@
     "Remove every custom icon? Nothing changes for good until you select Save and close.": "¿Quitar todos los iconos personalizados? Nada cambia de forma definitiva hasta que selecciones «Guardar y cerrar».",
     "Blur changes take effect immediately, without saving.": "Los cambios del desenfoque se aplican de inmediato, sin guardar.",
     "Could not save custom colors. Press Save and close in Settings to try again.": "No se pudieron guardar los colores personalizados. Prueba a pulsar Guardar y cerrar en la configuración.",
-    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "El alto contraste usa el modo oscuro. Tu elección de tema se restaura al desactivar el alto contraste."
+    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "El alto contraste usa el modo oscuro. Tu elección de tema se restaura al desactivar el alto contraste.",
+    "Display": "Pantalla",
+    "Display {{number}}": "Pantalla {{number}}",
+    "{{display}} (disconnected)": "{{display}} (desconectada)",
+    "{{display}} (primary)": "{{display}} (principal)",
+    "Could not load displays. Reopen Settings to try again.": "No se pudieron cargar las pantallas. Vuelve a abrir Configuración para intentarlo de nuevo.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "Elige dónde se abre el widget. Automático recuerda dónde lo arrastras. Los mosaicos anclados al escritorio conservan sus propias posiciones.",
+    "Use Move to Monitor in the tray menu on this desktop.": "En este escritorio, usa Mover a monitor en el menú de la bandeja del sistema.",
+    "Your desktop manages window placement.": "Tu escritorio gestiona la posición de las ventanas.",
+    "Invalid display selection": "Selección de pantalla no válida",
+    "The selected display is no longer connected": "La pantalla seleccionada ya no está conectada",
+    "Display selection is managed by the desktop": "El escritorio gestiona la selección de pantalla"
   }
 }

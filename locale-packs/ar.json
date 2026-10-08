@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.74",
+  "version": "1.2.75",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2156,6 +2156,17 @@
     "Remove every custom icon? Nothing changes for good until you select Save and close.": "هل تريد إزالة كل الأيقونات المخصصة؟ لن يُحفظ أي تغيير نهائيًا حتى تختار «حفظ وإغلاق».",
     "Blur changes take effect immediately, without saving.": "تسري تغييرات الطمس فورًا، دون الحاجة إلى حفظ.",
     "Could not save custom colors. Press Save and close in Settings to try again.": "تعذّر حفظ الألوان المخصصة. جرّب «حفظ وإغلاق» في الإعدادات.",
-    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "يستخدم التباين العالي الوضع الداكن. يعود اختيارك للسمة عند إيقاف التباين العالي."
+    "High contrast uses Dark mode. Your theme choice returns when high contrast is turned off.": "يستخدم التباين العالي الوضع الداكن. يعود اختيارك للسمة عند إيقاف التباين العالي.",
+    "Display": "الشاشة",
+    "Display {{number}}": "الشاشة {{number}}",
+    "{{display}} (disconnected)": "{{display}} (غير متصلة)",
+    "{{display}} (primary)": "{{display}} (رئيسية)",
+    "Could not load displays. Reopen Settings to try again.": "تعذر تحميل الشاشات. أعد فتح الإعدادات للمحاولة مرة أخرى.",
+    "Choose where the widget opens. Automatic remembers where you drag it. Desktop pins keep their own positions.": "اختر مكان فتح الودجت. يتذكر الخيار التلقائي المكان الذي تسحبها إليه. تحتفظ البلاطات المثبتة على سطح المكتب بمواضعها الخاصة.",
+    "Use Move to Monitor in the tray menu on this desktop.": "على سطح المكتب هذا، استخدم النقل إلى شاشة من قائمة علبة النظام.",
+    "Your desktop manages window placement.": "يتولى سطح المكتب إدارة مواضع النوافذ.",
+    "Invalid display selection": "اختيار الشاشة غير صالح",
+    "The selected display is no longer connected": "الشاشة المحددة لم تعد متصلة",
+    "Display selection is managed by the desktop": "يتولى سطح المكتب إدارة اختيار الشاشة"
   }
 }
