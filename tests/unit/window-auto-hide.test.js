@@ -505,7 +505,10 @@ describe('optional hide on focus loss', () => {
         windowAutoHide: r.controller,
         showMainWindowFromTray: jest.fn(() => r.presenter.showAboveFullScreen(r.window)),
         getHomeAssistantOAuthClient: () => ({
-          pair: () => new Promise((resolve, reject) => (settle = { resolve, reject })),
+          pair: (_url, { commit }) =>
+            new Promise((resolve, reject) => (settle = { resolve, reject })).then((session) =>
+              commit(() => session)
+            ),
         }),
         runSerializedConfigMutation: (task) => Promise.resolve().then(task),
         applyHomeAssistantOAuthSession: jest.fn(async () => ({ homeAssistant: {} })),
