@@ -90,7 +90,9 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
  if(process.platform==='darwin') await test('macOS persistent UUIDs match native display IDs',async()=>{
   const identities=await rpc(`require('./src/macos-display-identity.cjs').loadMacOSDisplayIdentities()`);
   s=await state();
-  fs.writeFileSync(path.join(out,'macos-display-identities.json'),JSON.stringify({identities,displays:s.displays},null,2));
+  const nativeIdentities=await mac('identities');
+  fs.writeFileSync(path.join(out,'macos-display-identities.json'),JSON.stringify({identities,nativeIdentities,displays:s.displays},null,2));
+  assert.deepEqual(identities,nativeIdentities,'JXA UUID mapping must equal independent native ColorSync query');
   assert.deepEqual(Object.keys(identities).sort(),s.displays.map(d=>String(d.id)).sort());
   for(const display of s.displays){assert.equal(typeof display.persistentId,'string');assert.equal(display.persistentId,identities[String(display.id)]);}
   assert.equal(new Set(s.displays.map(d=>d.persistentId)).size,s.displays.length);
@@ -188,6 +190,22 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
    }
   }catch(error){experiment.error=error.stack;throw error;}finally{saveExperiment();}
  }
+ if(process.platform==='darwin') await test('macOS restores the same UUID after virtual display recreation',async()=>{
+  await tray(target);const before=await state(),beforeMap=await mac('identities');
+  assert.equal(before.preference.persistentId,beforeMap[target]);
+  await mac('destroy-target');await until(current=>!current.displays.some(d=>String(d.id)===target),'destroyed mac target');
+  await stop();
+  const recreated=await mac('recreate-target');assert(!recreated.error,JSON.stringify(recreated));
+  await pause(1000);await mac('retina');await pause(1000);
+  const afterMap=await mac('identities'),nextId=String(recreated.id);
+  assert.equal(afterMap[nextId],before.preference.persistentId,'Recreated monitor with identical hardware identity must retain UUID');
+  await launch();
+  const restored=await until(current=>current.mainDisplayId===nextId&&at(current,expected(current,nextId,before.preference.offset)),'mac UUID restoration');
+  assert.deepEqual(restored.preference,before.preference);
+  assert.equal(restored.choice.selectedId,nextId);
+  const details={runtimeIdBefore:target,runtimeIdAfter:nextId,runtimeIdChanged:target!==nextId,beforeMap,afterMap,preference:before.preference,restored};
+  fs.writeFileSync(path.join(out,'macos-recreation-identities.json'),JSON.stringify(details,null,2));return details;
+ });
  await screenshot('final-window');
  console.log(JSON.stringify({passed:rows.filter(r=>r.status==='PASS').length,blocked:rows.filter(r=>r.status==='BLOCKED').length}));
 })().catch(async error=>{

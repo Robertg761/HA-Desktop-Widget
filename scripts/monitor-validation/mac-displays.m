@@ -2,6 +2,7 @@
 // ui/display/mac/test/virtual_display_util_mac.mm. Never included in the app.
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <ColorSync/ColorSync.h>
 #import <dlfcn.h>
 @interface CGVirtualDisplayDescriptor : NSObject
 @property unsigned int vendorID, productID, serialNum, serialNumber, maxPixelsWide, maxPixelsHigh;
@@ -23,6 +24,8 @@
 - (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
 @end
 static NSMutableDictionary<NSString *, CGVirtualDisplay *> *displays;
+static int targetOriginalX;
+static BOOL targetWasConfigured;
 static NSDictionary *createDisplay(NSString *key, BOOL retina, int x, int y) {
   CGVirtualDisplayDescriptor *d = [NSClassFromString(@"CGVirtualDisplayDescriptor") new];
   d.name = [@"HA184-" stringByAppendingString:key];
@@ -59,9 +62,46 @@ static NSDictionary *command(NSDictionary *c) {
  NSString *op=c[@"op"];
  if([op isEqual:@"setup"]){
   int origin=CGDisplayBounds(CGMainDisplayID()).size.width;
+  targetOriginalX=origin+1920;
+  targetWasConfigured=YES;
   NSDictionary *one=createDisplay(@"1",NO,origin,0);
-  NSDictionary *two=createDisplay(@"2",YES,origin+1920,0);
+  NSDictionary *two=createDisplay(@"2",YES,targetOriginalX,0);
   return @{@"one":one,@"two":two};
+ }
+ if([op isEqual:@"identities"]){
+  // Independent native oracle for the production JXA provider. This uses the
+  // same OS API but none of its enumeration, bridge, or JSON parsing code.
+  CGDirectDisplayID active[1024];
+  CGDisplayCount count=0;
+  CGError result=CGGetActiveDisplayList(1024,active,&count);
+  if(result!=kCGErrorSuccess)return @{@"error":@"CGGetActiveDisplayList failed",@"result":@(result)};
+  NSMutableDictionary *identities=[NSMutableDictionary new];
+  for(CGDisplayCount index=0;index<count;index++){
+   CFUUIDRef uuid=CGDisplayCreateUUIDFromDisplayID(active[index]);
+   if(!uuid)return @{@"error":@"CGDisplayCreateUUIDFromDisplayID failed",@"id":@(active[index])};
+   CFStringRef value=CFUUIDCreateString(kCFAllocatorDefault,uuid);
+   CFRelease(uuid);
+   if(!value)return @{@"error":@"CFUUIDCreateString failed",@"id":@(active[index])};
+   identities[[@(active[index]) stringValue]]=[(__bridge NSString *)value lowercaseString];
+   CFRelease(value);
+  }
+  return identities;
+ }
+ if([op isEqual:@"destroy-target"]){
+  if(!displays[@"2"])return @{@"error":@"Target display is already absent"};
+  CGDirectDisplayID previous=displays[@"2"].displayID;
+  [displays removeObjectForKey:@"2"];
+  // ARC releases the last retained virtual display here. The caller must wait
+  // for its removal from Electron before sending recreate-target; the main
+  // run loop stays free between these two commands to deliver notifications.
+  return @{@"id":@(previous),@"destroyed":@YES};
+ }
+ if([op isEqual:@"recreate-target"]){
+  if(!targetWasConfigured)return @{@"error":@"Run setup before recreating the target"};
+  if(displays[@"2"])return @{@"error":@"Destroy the target and await removal before recreating"};
+  // Key 2 restores the original vendor/product/serial values, even when the
+  // WindowServer assigns a different transient CGDirectDisplayID.
+  return createDisplay(@"2",YES,targetOriginalX,0);
  }
  if([op isEqual:@"off"] || [op isEqual:@"on"]){
   typedef CGError (*EnableFn)(CGDisplayConfigRef,CGDirectDisplayID,bool);

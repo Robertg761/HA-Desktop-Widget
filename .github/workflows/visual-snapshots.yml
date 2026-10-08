@@ -22,7 +22,7 @@ jobs:
       - run: node -e "require('electron')"
       - name: Compile macOS virtual display helper
         if: runner.os == 'macOS'
-        run: clang -fobjc-arc -framework Cocoa -framework CoreGraphics scripts/monitor-validation/mac-displays.m -o scripts/monitor-validation/mac-displays
+        run: clang -fobjc-arc -framework Cocoa -framework CoreGraphics -framework ColorSync scripts/monitor-validation/mac-displays.m -o scripts/monitor-validation/mac-displays
       - name: Install Windows virtual outputs
         if: runner.os == 'Windows'
         shell: powershell
