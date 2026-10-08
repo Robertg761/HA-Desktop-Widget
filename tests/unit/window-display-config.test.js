@@ -86,6 +86,7 @@ test('a compositor-owned window rejects a normal display request', async () => {
 test('Settings preserves a drag made while its display selection is being saved', async () => {
   const desktop = device();
   let bounds = { x: 100, y: 100, width: 500, height: 600 };
+  let moved;
   Object.assign(desktop.context, {
     mainWindow: {
       isDestroyed: () => false,
@@ -95,6 +96,13 @@ test('Settings preserves a drag made while its display selection is being saved'
       },
     },
     pendingWindowBounds: null,
+    displayChangeTimer: null,
+    isLayerShellChildProcess: false,
+    setTimeout: () => 1,
+    mainWindowMatchesSavedBounds: () => false,
+    onWindowBoundsChanged: (_window, handlers) => {
+      moved = handlers.onMove;
+    },
     windowStateSaveTimer: null,
     clearTimeout,
     clampToMinimumWindowSize: ({ width, height }) => ({ width, height }),
@@ -102,15 +110,17 @@ test('Settings preserves a drag made while its display selection is being saved'
     refreshTrayMenu: () => {},
   });
   for (const [startMarker, endMarker] of [
+    ['function watchMainWindowBounds(', 'const DISPLAY_CHANGE_RECOVERY_DELAY_MS'],
     ['function moveMainWindowToPosition(', 'function getWindowDisplaySettings('],
     ['function applyMainWindowSettingSideEffects(', 'function configSectionChanged('],
   ]) {
     const start = source.indexOf(startMarker);
     vm.runInContext(source.slice(start, source.indexOf(endMarker, start)), desktop.context);
   }
+  desktop.context.watchMainWindowBounds(desktop.context.mainWindow);
   desktop.context.saveConfigDurably = async () => {
     bounds = { x: 320, y: 190, width: 500, height: 600 };
-    desktop.context.pendingWindowBounds = { ...bounds };
+    moved();
     return { success: true, persistenceWarnings: [] };
   };
   const result = await desktop.invoke('update-config', { windowDisplayChoice: '2' });

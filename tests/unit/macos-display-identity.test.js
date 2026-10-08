@@ -1,4 +1,5 @@
 /** @jest-environment node */
+const vm = require('node:vm');
 const {
   parseMacOSDisplayIdentities,
   loadMacOSDisplayIdentities,
@@ -91,6 +92,41 @@ test('queries through bounded asynchronous osascript execution without a shell',
   await expect(loadMacOSDisplayIdentities({ platform: 'darwin', execFile })).resolves.toEqual({
     23: '01234567-89ab-cdef-0123-456789abcdef',
     42: 'fedcba98-7654-3210-fedc-ba9876543210',
+  });
+});
+
+test('converts a Core Foundation string reference before serializing the native UUID', async () => {
+  // macOS returned [{"displayId":1}] when ObjC.unwrap received a CFStringRef:
+  // opaque CF pointers are not wrapped Objective-C NSString objects.
+  const uuidRef = {};
+  const stringRef = {};
+  const nsString = { js: firstUUID };
+  const execFile = (_executable, args, _options, callback) => {
+    const stdout = vm.runInNewContext(args[3], {
+      ObjC: {
+        import() {},
+        castRefToObject: (value) => (value === stringRef ? nsString : undefined),
+        unwrap: (value) => value?.js,
+      },
+      $: {
+        NSScreen: {
+          screens: {
+            count: 1,
+            objectAtIndex: () => ({
+              deviceDescription: {
+                objectForKey: (key) => (key === 'NSScreenNumber' ? { unsignedIntValue: 23 } : null),
+              },
+            }),
+          },
+        },
+        CGDisplayCreateUUIDFromDisplayID: (id) => (id === 23 ? uuidRef : null),
+        CFUUIDCreateString: (_allocator, value) => (value === uuidRef ? stringRef : null),
+      },
+    });
+    callback(null, stdout, '');
+  };
+  await expect(loadMacOSDisplayIdentities({ platform: 'darwin', execFile })).resolves.toEqual({
+    23: '01234567-89ab-cdef-0123-456789abcdef',
   });
 });
 

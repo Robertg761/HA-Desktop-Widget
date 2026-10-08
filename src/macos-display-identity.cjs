@@ -18,7 +18,8 @@ for (var index = 0; index < screens.count; index++) {
   var displayId = screen.deviceDescription.objectForKey('NSScreenNumber').unsignedIntValue;
   var uuid = $.CGDisplayCreateUUIDFromDisplayID(displayId);
   var uuidString = $.CFUUIDCreateString(null, uuid);
-  records.push({ displayId: displayId, uuid: ObjC.unwrap(uuidString) });
+  // CFStringRef is an opaque Ref in JXA; unwrap needs an Objective-C object.
+  records.push({ displayId: displayId, uuid: ObjC.unwrap(ObjC.castRefToObject(uuidString)) });
 }
 JSON.stringify(records);
 `;

@@ -253,9 +253,35 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
   }
 });
 
-test.each(
-  ['win32', 'darwin', 'linux'].flatMap((platform) =>
+test.each([
+  {
+    platform: 'win32',
+    queuedSave: true,
+    primeFractionalDpi: true,
+    choice: '1',
+    edit: { x: 2220, y: 180 },
+    want: { x: 2220, y: 180, width: 501, height: 600 },
+    id: '2',
+    offset: { x: 300, y: 180 },
+  },
+  ...['win32', 'darwin', 'linux'].flatMap((platform) =>
     [false, true].flatMap((queuedSave) => [
+      {
+        platform,
+        queuedSave,
+        edit: { x: 50, width: 550 },
+        want: { x: 2020, y: 100, width: 550, height: 600 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { y: 40, height: 660 },
+        want: { x: 2020, y: 100, width: 500, height: 660 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
       {
         platform,
         queuedSave,
@@ -281,10 +307,19 @@ test.each(
         offset: { x: 300, y: 180 },
       },
     ])
-  )
-)(
+  ),
+])(
   'preserves newer user geometry during the durable choice save ($platform, queued: $queuedSave, edit: $edit)',
-  async ({ platform, queuedSave, edit, want, id, offset }) => {
+  async ({
+    platform,
+    queuedSave,
+    edit,
+    want,
+    id,
+    offset,
+    primeFractionalDpi = false,
+    choice = '2',
+  }) => {
     jest.useFakeTimers();
     try {
       const { context } = load();
@@ -319,13 +354,23 @@ test.each(
         context
       );
       context.watchMainWindowBounds(context.mainWindow);
+      if (primeFractionalDpi) {
+        context.mainWindow.setPosition.mockImplementation((x, y) => {
+          bounds = { ...bounds, x, y, width: 501 };
+        });
+        context.mainWindow.setBounds.mockImplementation((next) => {
+          bounds = { ...next, width: next.x >= 1920 ? 501 : next.width };
+        });
+        await context.applyWindowDisplayChoice('2');
+        expect(bounds.width).toBe(501);
+      }
       context.saveConfigDurably.mockImplementation(
         () =>
           new Promise((resolve) => {
             finishSave = resolve;
           })
       );
-      const selection = context.applyWindowDisplayChoice('2');
+      const selection = context.applyWindowDisplayChoice(choice);
       await Promise.resolve();
       Object.assign(bounds, edit);
       resized();

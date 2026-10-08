@@ -3720,9 +3720,9 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
   });
 }
 
-function applyMainWindowSettingSideEffects(previousConfig, nextConfig, displayChoiceBounds) {
+function applyMainWindowSettingSideEffects(previousConfig, nextConfig, displayChoiceMoveRevision) {
   if (JSON.stringify(previousConfig?.windowDisplay) !== JSON.stringify(nextConfig?.windowDisplay)) {
-    applyPreferredWindowDisplay(displayChoiceBounds);
+    applyPreferredWindowDisplay(displayChoiceMoveRevision);
     refreshTrayMenu();
   }
   // Config mutations stage values before disk writes finish. Activate this
@@ -7350,12 +7350,19 @@ function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
 
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
+  targetWindow.__lastObservedBounds = targetWindow.getBounds();
   const changeWin = () => {
+    const previousBounds = targetWindow.__lastObservedBounds;
+    const bounds = targetWindow.getBounds();
+    const movedWithoutResizing =
+      bounds.width === previousBounds.width &&
+      bounds.height === previousBounds.height &&
+      (bounds.x !== previousBounds.x || bounds.y !== previousBounds.y);
+    targetWindow.__lastObservedBounds = bounds;
     // The OS can move a window before the display-change recovery timer runs.
     if (config.windowDisplay && displayChangeTimer !== null) return;
     // A maximized or full-screen size is the window manager's, not a size the user chose.
     if (targetWindow.isMaximized?.() || targetWindow.isFullScreen?.()) return;
-    const bounds = targetWindow.getBounds();
     // Linux reports programmatic moves too (restoring the saved position after a show,
     // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
     // save, and drops any position still queued from a drag that ended back there.
@@ -7365,6 +7372,10 @@ function watchMainWindowBounds(targetWindow) {
       pendingWindowBounds = null;
       return;
     }
+    // Top/left resize edges also move the origin. Only a position change at
+    // the same size supersedes a monitor choice whose durable save is pending.
+    if (movedWithoutResizing)
+      targetWindow.__userMoveRevision = (targetWindow.__userMoveRevision || 0) + 1;
     pendingWindowBounds = bounds;
     const placementRevision = targetWindow.__displayPlacementRevision || 0;
     if (windowStateSaveTimer) {
@@ -7830,6 +7841,9 @@ function getWindowDisplaySettings() {
 function getWindowDisplayChoicePatch(id) {
   if (usesCompositorOwnedPlacement) throw new Error('Display selection is managed by the desktop');
   const bounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+  // Windows does not emit settled user events for app-driven placement. Refresh
+  // the baseline before a choice so a prior DPI-rounded move is not a user resize.
+  if (bounds) mainWindow.__lastObservedBounds = { ...bounds };
   if (bounds && process.platform === 'win32' && !pendingWindowBounds) {
     // Fractional DPI can round native bounds up by one DIP. Keep the intended size
     // across repeated selections, while a pending user resize takes precedence.
@@ -7847,7 +7861,7 @@ function getWindowDisplayChoicePatch(id) {
   return patch;
 }
 
-function applyPreferredWindowDisplay(displayChoiceBounds) {
+function applyPreferredWindowDisplay(displayChoiceMoveRevision) {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
   const bounds = mainWindow.getBounds();
@@ -7857,8 +7871,8 @@ function applyPreferredWindowDisplay(displayChoiceBounds) {
   if (userBounds) {
     config.windowSize = clampToMinimumWindowSize(userBounds);
     if (
-      displayChoiceBounds &&
-      (userBounds.x !== displayChoiceBounds.x || userBounds.y !== displayChoiceBounds.y)
+      displayChoiceMoveRevision !== undefined &&
+      (mainWindow.__userMoveRevision || 0) !== displayChoiceMoveRevision
     ) {
       config.windowDisplay = rememberWindowDisplayPosition(config, electronScreen, userBounds);
     }
@@ -7880,8 +7894,7 @@ function applyPreferredWindowDisplay(displayChoiceBounds) {
 function applyWindowDisplayChoice(id) {
   return runSerializedConfigMutation(async () => {
     if (electronScreen.ensureDisplayIdentities) await electronScreen.ensureDisplayIdentities(id);
-    const displayChoiceBounds =
-      mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
+    const displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
     const patch = getWindowDisplayChoicePatch(id);
     const previous = config;
     config = { ...config, ...patch };
@@ -7892,7 +7905,7 @@ function applyWindowDisplayChoice(id) {
       log.warn('Failed to save display selection:', persistence.error);
       return;
     }
-    applyPreferredWindowDisplay(displayChoiceBounds);
+    applyPreferredWindowDisplay(displayChoiceMoveRevision);
     refreshTrayMenu();
     pushConfigToRenderer();
   }).catch((error) => {
@@ -8873,14 +8886,13 @@ ipcMain.handle(
     log.debug('Updating configuration');
     const prevConfig = config;
     let windowDisplayPatch = {};
-    let displayChoiceBounds;
+    let displayChoiceMoveRevision;
     if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
       try {
         if (electronScreen.ensureDisplayIdentities) {
           await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
         }
-        displayChoiceBounds =
-          mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
+        displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
         windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
       } catch (error) {
         return {
@@ -9135,7 +9147,7 @@ ipcMain.handle(
     });
 
     await runPostSaveSideEffect(runtimeWarnings, 'main window settings', () =>
-      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceBounds)
+      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceMoveRevision)
     );
     await runPostSaveSideEffect(runtimeWarnings, 'runtime settings', () =>
       applyRuntimeConfigSideEffects(prevConfig, config, 'settings update')
