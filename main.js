@@ -11545,9 +11545,35 @@ ipcMain.handle('quit-and-install', async (event) => {
   if (!autoUpdateDownloaded) {
     return { success: false, error: 'No downloaded update is ready to install' };
   }
+  let recoverInstallFailure = null;
   try {
     const autoUpdater = getAutoUpdater();
+    const nativeUpdater = require('electron').autoUpdater;
     await flushConfigForBoundedExit('installing the update');
+    let installError = null;
+    const stopWatchingInstall = () => {
+      autoUpdater.removeListener('error', onInstallError);
+      nativeUpdater.removeListener('before-quit-for-update', stopWatchingInstall);
+      app.removeListener('before-quit', stopWatchingInstall);
+      recoverInstallFailure = null;
+    };
+    const onInstallError = (error) => {
+      installError = error;
+      stopWatchingInstall();
+      quitFinalized = false;
+      quitFinalizationStarted = false;
+      isQuitting = false;
+      configMutationQueueClosed = false;
+      configShutdownPending = false;
+      setupProfileSyncInterval();
+    };
+    // electron-updater reports installer failures through events, including errors
+    // emitted after quitAndInstall returns. Recover only this prepared install,
+    // and stop as soon as Electron starts closing windows for a real exit.
+    recoverInstallFailure = onInstallError;
+    autoUpdater.on('error', onInstallError);
+    nativeUpdater.once('before-quit-for-update', stopWatchingInstall);
+    app.once('before-quit', stopWatchingInstall);
     // electron-updater closes windows before Electron emits before-quit, so the
     // config and pending window bounds must already be durable at this point.
     quitFinalized = true;
@@ -11555,16 +11581,12 @@ ipcMain.handle('quit-and-install', async (event) => {
     // layer-shell child environment was already restored at whenReady, so the new
     // build redetects the compositor and hands off afresh.
     autoUpdater.quitAndInstall();
+    if (installError) {
+      return { success: false, error: installError?.message || String(installError) };
+    }
     return { success: true };
   } catch (error) {
-    if (quitFinalized) {
-      quitFinalized = false;
-      quitFinalizationStarted = false;
-      isQuitting = false;
-      configMutationQueueClosed = false;
-      configShutdownPending = false;
-      setupProfileSyncInterval();
-    }
+    recoverInstallFailure?.(error);
     log.warn('Failed to install downloaded update:', error.message);
     return { success: false, error: error?.message || String(error) };
   }
