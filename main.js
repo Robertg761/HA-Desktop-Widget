@@ -7418,6 +7418,13 @@ function watchMainWindowBounds(targetWindow) {
   // A layer surface is placed by the app and moved through its own drag path, which saves
   // layerPositions when the drag ends; its bounds events are never user moves.
   if (isLayerShellChildProcess) return;
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    // Native user-move intent survives a DPI transition that also changes size.
+    // App-driven placement and dragging a resize edge do not emit will-move.
+    targetWindow.on('will-move', () => {
+      targetWindow.__userMoveRevision = (targetWindow.__userMoveRevision || 0) + 1;
+    });
+  }
   onWindowBoundsChanged(targetWindow, {
     platform: process.platform,
     onMove: changeWin,
@@ -7867,13 +7874,14 @@ function applyPreferredWindowDisplay(displayChoiceMoveRevision) {
   const bounds = mainWindow.getBounds();
   // A drag after the choice supersedes its target and offset. A resize alone
   // retains the choice while supplying the latest dimensions.
-  const userBounds = pendingWindowBounds;
+  const userMoved =
+    displayChoiceMoveRevision !== undefined &&
+    (mainWindow.__userMoveRevision || 0) !== displayChoiceMoveRevision;
+  // A Windows drag may still be in progress, before its settled bounds event.
+  const userBounds = userMoved ? bounds : pendingWindowBounds;
   if (userBounds) {
     config.windowSize = clampToMinimumWindowSize(userBounds);
-    if (
-      displayChoiceMoveRevision !== undefined &&
-      (mainWindow.__userMoveRevision || 0) !== displayChoiceMoveRevision
-    ) {
+    if (userMoved) {
       config.windowDisplay = rememberWindowDisplayPosition(config, electronScreen, userBounds);
     }
   }
@@ -13887,16 +13895,22 @@ app
       }
     }
 
-    return ensureDisplayIdentities()
-      .catch((error) => {
-        log.warn('Starting without complete monitor identities:', error.message);
-      })
-      .then(() => {
-        createWindow();
-        setupAutoUpdates();
-        setupUsagePing();
-        schedulePostWindowStartupTasks();
-      });
+    const startWindow = () => {
+      createWindow();
+      setupAutoUpdates();
+      setupUsagePing();
+      schedulePostWindowStartupTasks();
+    };
+    // Only restoring a persistent monitor preference needs the background inventory.
+    // New and Automatic configurations can open while discovery is still running.
+    if (config.windowDisplay?.persistentId) {
+      return ensureDisplayIdentities()
+        .catch((error) => {
+          log.warn('Starting without complete monitor identities:', error.message);
+        })
+        .then(startWindow);
+    }
+    startWindow();
   })
   .catch((error) => {
     log.error('Application startup failed:', error);
