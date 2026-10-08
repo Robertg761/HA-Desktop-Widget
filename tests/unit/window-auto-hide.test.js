@@ -507,7 +507,7 @@ describe('optional hide on focus loss', () => {
         getHomeAssistantOAuthClient: () => ({
           pair: (_url, { commit }) =>
             new Promise((resolve, reject) => (settle = { resolve, reject })).then((session) =>
-              commit(() => session)
+              commit((persistSession) => persistSession(session))
             ),
         }),
         runSerializedConfigMutation: (task) => Promise.resolve().then(task),
