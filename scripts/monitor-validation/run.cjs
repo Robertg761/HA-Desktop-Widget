@@ -29,6 +29,9 @@ function windows(action){
  fs.appendFileSync(path.join(out,'windows-control.log'),`${action}\n${output}\n`);
  return output;
 }
+function windowsUserDrag(input){
+ return JSON.parse(execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(dir,'windows-user-drag.ps1'),'-WindowHandle',input.handle,'-OwnerProcessId',String(input.pid),'-StartX',String(input.start.x),'-StartY',String(input.start.y),'-EndX',String(input.end.x),'-EndY',String(input.end.y)],{encoding:'utf8',timeout:20000}).trim());
+}
 async function displayOp(op){return process.platform==='darwin'?mac(op):windows(op);}
 async function launch(){
  if(process.platform!=='win32')fs.rmSync(control,{force:true});
@@ -250,7 +253,7 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
    assert.equal(details.atGate.preference.id,primaryId);
    assert.equal(await rpc('globalThis.__ha184Drag.done'),false);
    const input=details.input;
-   details.native=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(dir,'windows-user-drag.ps1'),'-WindowHandle',input.handle,'-OwnerProcessId',String(input.pid),'-StartX',String(input.start.x),'-StartY',String(input.start.y),'-EndX',String(input.end.x),'-EndY',String(input.end.y)],{encoding:'utf8',timeout:20000}).trim());
+   details.native=windowsUserDrag(input);
    details.afterDrag=await until(value=>value.mainDisplayId===dragTargetId,'OS drag crosses to higher-DPI monitor');
    details.events=await rpc('globalThis.__ha184Drag.events');
    assert(details.events.some(event=>event.event==='will-move'),'SendInput must produce a real native will-move event');
@@ -276,6 +279,76 @@ async function screenshot(name){await rpc(`mainWindow.capturePage().then(image=>
    details.events=await rpc('globalThis.__ha184Drag?.events').catch(()=>details.events);
    await rpc(`(()=>{const probe=globalThis.__ha184Drag;if(!probe)return;saveConfigDurably=probe.originalSave;probe.release();for(const [event,listener]of Object.entries(probe.listeners))mainWindow.removeListener(event,listener);return true;})()`).catch(()=>{});
    saveDrag();
+  }
+ }
+ if(process.platform==='win32'){
+  const name='Windows native drag during unplug identity refresh survives delayed recovery';
+  const details={topologyTrigger:'Actual GDI detach of both virtual displays'};
+  const saveRecoveryDrag=()=>fs.writeFileSync(path.join(out,'windows-recovery-user-drag.json'),JSON.stringify(details,null,2));
+  try{
+   let current=await state();
+   const primaryDisplay=current.displays.find(d=>String(d.id)===current.primaryId);
+   const highDpi=current.displays.filter(d=>d.scaleFactor>primaryDisplay.scaleFactor).sort((a,b)=>b.scaleFactor-a.scaleFactor)[0];
+   assert(highDpi,'Unplug drag fixture requires a higher-DPI virtual monitor');
+   const disconnectedId=String(highDpi.id);
+   await tray(disconnectedId);await pause(700);
+   details.before=await until(value=>value.mainDisplayId===disconnectedId,'unplug drag begins on selected virtual monitor');
+   await rpc(`(()=>{
+    const probe=globalThis.__ha184RecoveryDrag={events:[],gateEntered:false,released:false,refreshCalls:0,originalRefresh:refreshDisplayIdentities};
+    probe.listeners={};
+    for(const event of ['will-move','will-resize','move','moved','resize','resized']){
+     probe.listeners[event]=(...args)=>probe.events.push({event,time:Date.now(),bounds:mainWindow.getBounds(),newBounds:event.startsWith('will-')?args[1]:undefined,recoveryPending:displayChangeTimer!==null});
+     mainWindow.on(event,probe.listeners[event]);
+    }
+    const gate=new Promise(resolve=>probe.release=resolve);
+    refreshDisplayIdentities=async function(...args){probe.gateEntered=true;probe.refreshCalls++;await gate;return probe.originalRefresh.apply(this,args);};
+    return true;
+   })()`);
+   details.disconnect=windows('off');
+   await until(async value=>!value.displays.some(d=>String(d.id)===disconnectedId)&&await rpc('globalThis.__ha184RecoveryDrag.gateEntered&&displayChangeTimer!==null'),'native unplug reaches delayed identity refresh');
+   await rpc('(mainWindow.show(),mainWindow.focus(),true)');
+   details.atGate=await state();
+   assert.equal(details.atGate.displays.length,1,'Disconnect fixture must leave only the physical host display');
+   assert.equal(details.atGate.mainDisplayId,details.atGate.primaryId,'OS must move the disconnected window onto the remaining monitor');
+   assert.deepEqual(details.atGate.preference,details.before.preference,'Pending recovery must retain the disconnected monitor preference');
+   details.dragRegion=await renderer(`(()=>{const e=document.querySelector('.drag-area');if(!e)throw Error('No widget drag area');const r=e.getBoundingClientRect();return {x:r.x+Math.min(30,r.width/2),y:r.y+r.height/2,width:r.width,height:r.height,appRegion:getComputedStyle(e.closest('.widget-header')).getPropertyValue('-webkit-app-region')};})()`);
+   assert.equal(details.dragRegion.appRegion,'drag');
+   assert(details.dragRegion.width>0&&details.dragRegion.height>0,'Drag area must be visible after OS fallback');
+   const area=details.atGate.displays[0].workArea,bounds=details.atGate.bounds;
+   const left=area.x+24,right=area.x+area.width-bounds.width-24;
+   assert(right>left,'Remaining work area must fit the dragged window');
+   const desiredX=Math.abs(bounds.x-left)>Math.abs(bounds.x-right)?left:right;
+   const desiredY=area.y+Math.min(45,Math.max(0,area.height-bounds.height));
+   const dragOrigin={x:Math.round(bounds.x+details.dragRegion.x),y:Math.round(bounds.y+details.dragRegion.y)};
+   const dragDestination={x:Math.round(desiredX+details.dragRegion.x),y:Math.round(desiredY+details.dragRegion.y)};
+   assert(dragOrigin.x>=area.x&&dragOrigin.x<area.x+area.width&&dragOrigin.y>=area.y&&dragOrigin.y<area.y+area.height,'OS fallback must leave a visible native caption to drag');
+   details.input=await rpc(`({handle:mainWindow.getNativeWindowHandle().readBigUInt64LE().toString(),pid:process.pid,start:electronScreen.dipToScreenPoint(${JSON.stringify(dragOrigin)}),end:electronScreen.dipToScreenPoint(${JSON.stringify(dragDestination)})})`);
+   details.native=windowsUserDrag(details.input);
+   details.afterDrag=await state();
+   details.events=await rpc('globalThis.__ha184RecoveryDrag.events');
+   assert(details.events.some(event=>event.event==='will-move'&&event.recoveryPending),'Native drag must occur while topology recovery is awaiting identity refresh');
+   assert.equal(await rpc('displayChangeTimer!==null&&!globalThis.__ha184RecoveryDrag.released'),true,'Recovery must remain blocked throughout native input');
+   assert(Math.abs(details.afterDrag.bounds.x-bounds.x)>30||Math.abs(details.afterDrag.bounds.y-bounds.y)>30,'Actual user drag must change the OS fallback position');
+   const userBounds=details.afterDrag.bounds;
+   assert(userBounds.x>=area.x&&userBounds.y>=area.y&&userBounds.x+userBounds.width<=area.x+area.width+1&&userBounds.y+userBounds.height<=area.y+area.height+1,'Dragged bounds must already fit the remaining work area');
+   saveRecoveryDrag();
+   await rpc('(()=>{const probe=globalThis.__ha184RecoveryDrag;refreshDisplayIdentities=probe.originalRefresh;probe.released=true;probe.release();return true;})()');
+   await until(async()=>rpc('displayChangeTimer===null'),'identity query and topology recovery finish');
+   await rpc('runSerializedConfigMutation(()=>true)');
+   await until(()=>{const saved=disk();return closeTo(saved.windowPosition.x,userBounds.x)&&closeTo(saved.windowPosition.y,userBounds.y);},'dragged geometry saved after delayed topology recovery');
+   await pause(700);
+   details.afterRelease=await state();details.saved=disk();
+   for(const axis of ['x','y','width','height'])assert(closeTo(details.afterRelease.bounds[axis],userBounds[axis]),`Delayed recovery changed user's ${axis}`);
+   assert.deepEqual(details.afterRelease.preference,details.before.preference,'Dragging on fallback must retain the disconnected monitor preference');
+   assert.deepEqual(details.saved.windowDisplay,details.before.preference);
+   assert.deepEqual(details.saved.windowPosition,{x:userBounds.x,y:userBounds.y});
+   assert.deepEqual(details.saved.windowSize,{width:userBounds.width,height:userBounds.height});
+   rows.push({name,status:'PASS',details});console.log('PASS '+name);save();
+  }catch(error){details.error=error.stack;rows.push({name,status:'FAIL',error:error.stack,details});save();throw error;}
+  finally{
+   details.events=await rpc('globalThis.__ha184RecoveryDrag?.events').catch(()=>details.events);
+   await rpc(`(()=>{const probe=globalThis.__ha184RecoveryDrag;if(!probe)return;refreshDisplayIdentities=probe.originalRefresh;probe.release();for(const [event,listener]of Object.entries(probe.listeners))mainWindow.removeListener(event,listener);return true;})()`).catch(()=>{});
+   saveRecoveryDrag();
   }
  }
  await screenshot('final-window');

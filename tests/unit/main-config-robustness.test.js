@@ -115,6 +115,7 @@ describe('the size saved after a resize', () => {
     expect(saves).toEqual([
       'config.windowSize = clampToMinimumWindowSize(boundsToPersist);',
       'config.windowSize = clampToMinimumWindowSize(userBounds);',
+      'config.windowSize = clampToMinimumWindowSize(userBounds);',
       'config.windowSize = clampToMinimumWindowSize(defaultBounds);',
       'config.windowSize = clampToMinimumWindowSize(pendingWindowBounds);',
     ]);

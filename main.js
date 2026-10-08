@@ -3720,9 +3720,9 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
   });
 }
 
-function applyMainWindowSettingSideEffects(previousConfig, nextConfig, displayChoiceMoveRevision) {
+function applyMainWindowSettingSideEffects(previousConfig, nextConfig, displayChoiceState) {
   if (JSON.stringify(previousConfig?.windowDisplay) !== JSON.stringify(nextConfig?.windowDisplay)) {
-    applyPreferredWindowDisplay(displayChoiceMoveRevision);
+    applyPreferredWindowDisplay(displayChoiceState);
     refreshTrayMenu();
   }
   // Config mutations stage values before disk writes finish. Activate this
@@ -7359,7 +7359,8 @@ function watchMainWindowBounds(targetWindow) {
       bounds.height === previousBounds.height &&
       (bounds.x !== previousBounds.x || bounds.y !== previousBounds.y);
     targetWindow.__lastObservedBounds = bounds;
-    // The OS can move a window before the display-change recovery timer runs.
+    // OS relocation must not overwrite the saved monitor. Explicit native user
+    // intent is retained separately until the identity inventory is ready.
     if (config.windowDisplay && displayChangeTimer !== null) return;
     // A maximized or full-screen size is the window manager's, not a size the user chose.
     if (targetWindow.isMaximized?.() || targetWindow.isFullScreen?.()) return;
@@ -7419,11 +7420,16 @@ function watchMainWindowBounds(targetWindow) {
   // layerPositions when the drag ends; its bounds events are never user moves.
   if (isLayerShellChildProcess) return;
   if (process.platform === 'win32' || process.platform === 'darwin') {
+    const rememberRecoveryBounds = (_event, bounds) => {
+      if (displayChangeTimer !== null) targetWindow.__displayRecoveryUserBounds = { ...bounds };
+    };
     // Native user-move intent survives a DPI transition that also changes size.
     // App-driven placement and dragging a resize edge do not emit will-move.
-    targetWindow.on('will-move', () => {
+    targetWindow.on('will-move', (event, bounds) => {
       targetWindow.__userMoveRevision = (targetWindow.__userMoveRevision || 0) + 1;
+      rememberRecoveryBounds(event, bounds);
     });
+    targetWindow.on('will-resize', rememberRecoveryBounds);
   }
   onWindowBoundsChanged(targetWindow, {
     platform: process.platform,
@@ -7471,6 +7477,8 @@ function getDefaultMainWindowBounds() {
  * return) and are only placed on screen, so a returning monitor gets them back.
  */
 function recoverWindowsAfterDisplayChange() {
+  const userBounds = mainWindow?.__displayRecoveryUserBounds;
+  if (mainWindow) delete mainWindow.__displayRecoveryUserBounds;
   if (usesCompositorOwnedPlacement || isQuitting) return;
   if (
     mainWindow &&
@@ -7479,21 +7487,34 @@ function recoverWindowsAfterDisplayChange() {
     !mainWindow.isFullScreen()
   ) {
     const bounds = mainWindow.getBounds();
+    if (userBounds) {
+      config.windowSize = clampToMinimumWindowSize(userBounds);
+      if (config.windowDisplay) {
+        config.windowDisplay = rememberWindowDisplayPosition(config, electronScreen, userBounds);
+      }
+      clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+      pendingWindowBounds = null;
+    }
     // Windows can resize the native window while crossing a DPI boundary. The saved
     // dimensions remain the user's intended size in logical pixels.
     const placementSize =
-      config.windowDisplay && process.platform === 'win32' ? config.windowSize : bounds;
+      userBounds || (config.windowDisplay && process.platform === 'win32')
+        ? config.windowSize
+        : bounds;
     if (config.windowDisplay) {
       mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
     }
     const position =
-      (config.windowDisplay &&
+      (!userBounds &&
+        config.windowDisplay &&
         resolveWindowDisplayPosition(config, electronScreen, placementSize)) ||
       clampPositionToWorkAreas(
-        bounds,
+        userBounds ? { ...userBounds, ...placementSize } : bounds,
         electronScreen.getAllDisplays().map((display) => display.workArea)
       );
     if (
+      userBounds ||
       position.x !== bounds.x ||
       position.y !== bounds.y ||
       placementSize.width !== bounds.width ||
@@ -7868,17 +7889,24 @@ function getWindowDisplayChoicePatch(id) {
   return patch;
 }
 
-function applyPreferredWindowDisplay(displayChoiceMoveRevision) {
+function applyPreferredWindowDisplay(displayChoiceState) {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
   const bounds = mainWindow.getBounds();
   // A drag after the choice supersedes its target and offset. A resize alone
   // retains the choice while supplying the latest dimensions.
   const userMoved =
-    displayChoiceMoveRevision !== undefined &&
-    (mainWindow.__userMoveRevision || 0) !== displayChoiceMoveRevision;
+    displayChoiceState && (mainWindow.__userMoveRevision || 0) !== displayChoiceState.moveRevision;
   // A Windows drag may still be in progress, before its settled bounds event.
-  const userBounds = userMoved ? bounds : pendingWindowBounds;
+  const recoveryBounds =
+    displayChoiceState &&
+    mainWindow.__displayRecoveryUserBounds !== displayChoiceState.recoveryBounds
+      ? mainWindow.__displayRecoveryUserBounds
+      : null;
+  const userBounds = userMoved ? bounds : recoveryBounds || pendingWindowBounds;
+  // The successful choice consumes older recovery intent and any newer input
+  // reconciled here. A later topology recovery must not replay either snapshot.
+  if (displayChoiceState) delete mainWindow.__displayRecoveryUserBounds;
   if (userBounds) {
     config.windowSize = clampToMinimumWindowSize(userBounds);
     if (userMoved) {
@@ -7902,7 +7930,10 @@ function applyPreferredWindowDisplay(displayChoiceMoveRevision) {
 function applyWindowDisplayChoice(id) {
   return runSerializedConfigMutation(async () => {
     if (electronScreen.ensureDisplayIdentities) await electronScreen.ensureDisplayIdentities(id);
-    const displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
+    const displayChoiceState = {
+      moveRevision: mainWindow?.__userMoveRevision || 0,
+      recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
+    };
     const patch = getWindowDisplayChoicePatch(id);
     const previous = config;
     config = { ...config, ...patch };
@@ -7913,7 +7944,7 @@ function applyWindowDisplayChoice(id) {
       log.warn('Failed to save display selection:', persistence.error);
       return;
     }
-    applyPreferredWindowDisplay(displayChoiceMoveRevision);
+    applyPreferredWindowDisplay(displayChoiceState);
     refreshTrayMenu();
     pushConfigToRenderer();
   }).catch((error) => {
@@ -8894,13 +8925,16 @@ ipcMain.handle(
     log.debug('Updating configuration');
     const prevConfig = config;
     let windowDisplayPatch = {};
-    let displayChoiceMoveRevision;
+    let displayChoiceState;
     if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
       try {
         if (electronScreen.ensureDisplayIdentities) {
           await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
         }
-        displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
+        displayChoiceState = {
+          moveRevision: mainWindow?.__userMoveRevision || 0,
+          recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
+        };
         windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
       } catch (error) {
         return {
@@ -9155,7 +9189,7 @@ ipcMain.handle(
     });
 
     await runPostSaveSideEffect(runtimeWarnings, 'main window settings', () =>
-      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceMoveRevision)
+      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceState)
     );
     await runPostSaveSideEffect(runtimeWarnings, 'runtime settings', () =>
       applyRuntimeConfigSideEffects(prevConfig, config, 'settings update')
