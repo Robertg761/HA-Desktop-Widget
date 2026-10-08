@@ -253,9 +253,73 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
   }
 });
 
-test.each([false, true])(
-  'preserves a resize during the durable choice save (queued: %s)',
-  async (queuedSave) => {
+test.each([
+  {
+    platform: 'win32',
+    queuedSave: true,
+    primeFractionalDpi: true,
+    choice: '1',
+    edit: { x: 2220, y: 180 },
+    want: { x: 2220, y: 180, width: 501, height: 600 },
+    id: '2',
+    offset: { x: 300, y: 180 },
+  },
+  ...['win32', 'darwin', 'linux'].flatMap((platform) =>
+    [false, true].flatMap((queuedSave) => [
+      {
+        platform,
+        queuedSave,
+        edit: { x: 50, width: 550 },
+        want: { x: 2020, y: 100, width: 550, height: 600 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { y: 40, height: 660 },
+        want: { x: 2020, y: 100, width: 500, height: 660 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { width: 501 },
+        want: { x: 2020, y: 100, width: 501, height: 600 },
+        id: '2',
+        offset: { x: 100, y: 100 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { x: 280, y: 150 },
+        want: { x: 280, y: 150, width: 500, height: 600 },
+        id: '1',
+        offset: { x: 280, y: 150 },
+      },
+      {
+        platform,
+        queuedSave,
+        edit: { x: 2220, y: 180 },
+        want: { x: 2220, y: 180, width: 500, height: 600 },
+        id: '2',
+        offset: { x: 300, y: 180 },
+      },
+    ])
+  ),
+])(
+  'preserves newer user geometry during the durable choice save ($platform, queued: $queuedSave, edit: $edit)',
+  async ({
+    platform,
+    queuedSave,
+    edit,
+    want,
+    id,
+    offset,
+    primeFractionalDpi = false,
+    choice = '2',
+  }) => {
     jest.useFakeTimers();
     try {
       const { context } = load();
@@ -263,7 +327,7 @@ test.each([false, true])(
       let resized, finishSave, persisted;
       const queued = [];
       Object.assign(context, {
-        process: { platform: 'win32' },
+        process: { platform },
         displayChangeTimer: null,
         isLayerShellChildProcess: false,
         setTimeout,
@@ -290,15 +354,25 @@ test.each([false, true])(
         context
       );
       context.watchMainWindowBounds(context.mainWindow);
+      if (primeFractionalDpi) {
+        context.mainWindow.setPosition.mockImplementation((x, y) => {
+          bounds = { ...bounds, x, y, width: 501 };
+        });
+        context.mainWindow.setBounds.mockImplementation((next) => {
+          bounds = { ...next, width: next.x >= 1920 ? 501 : next.width };
+        });
+        await context.applyWindowDisplayChoice('2');
+        expect(bounds.width).toBe(501);
+      }
       context.saveConfigDurably.mockImplementation(
         () =>
           new Promise((resolve) => {
             finishSave = resolve;
           })
       );
-      const selection = context.applyWindowDisplayChoice('2');
+      const selection = context.applyWindowDisplayChoice(choice);
       await Promise.resolve();
-      bounds.width = 501;
+      Object.assign(bounds, edit);
       resized();
       if (queuedSave) jest.advanceTimersByTime(400);
       finishSave({ success: true });
@@ -306,10 +380,10 @@ test.each([false, true])(
       for (const fn of queued) fn();
       jest.advanceTimersByTime(400);
 
-      expect(bounds).toEqual({ x: 2020, y: 100, width: 501, height: 600 });
-      expect(persisted.windowSize).toEqual({ width: 501, height: 600 });
-      expect(persisted.windowDisplay.id).toBe('2');
-      expect(persisted.windowPosition).toEqual({ x: 2020, y: 100 });
+      expect(bounds).toEqual(want);
+      expect(persisted.windowSize).toEqual({ width: want.width, height: want.height });
+      expect(persisted.windowDisplay).toMatchObject({ id, offset });
+      expect(persisted.windowPosition).toEqual({ x: want.x, y: want.y });
     } finally {
       jest.useRealTimers();
     }

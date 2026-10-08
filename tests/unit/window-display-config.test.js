@@ -82,3 +82,50 @@ test('a compositor-owned window rejects a normal display request', async () => {
   expect((await desktop.invoke('update-config', { windowDisplayChoice: '2' })).success).toBe(false);
   expect(desktop.config.windowDisplay).toBeUndefined();
 });
+
+test('Settings preserves a drag made while its display selection is being saved', async () => {
+  const desktop = device();
+  let bounds = { x: 100, y: 100, width: 500, height: 600 };
+  let moved;
+  Object.assign(desktop.context, {
+    mainWindow: {
+      isDestroyed: () => false,
+      getBounds: () => ({ ...bounds }),
+      setPosition: (x, y) => {
+        bounds = { ...bounds, x, y };
+      },
+    },
+    pendingWindowBounds: null,
+    displayChangeTimer: null,
+    isLayerShellChildProcess: false,
+    setTimeout: () => 1,
+    mainWindowMatchesSavedBounds: () => false,
+    onWindowBoundsChanged: (_window, handlers) => {
+      moved = handlers.onMove;
+    },
+    windowStateSaveTimer: null,
+    clearTimeout,
+    clampToMinimumWindowSize: ({ width, height }) => ({ width, height }),
+    desktopPinWindows: new Map(),
+    refreshTrayMenu: () => {},
+  });
+  for (const [startMarker, endMarker] of [
+    ['function watchMainWindowBounds(', 'const DISPLAY_CHANGE_RECOVERY_DELAY_MS'],
+    ['function moveMainWindowToPosition(', 'function getWindowDisplaySettings('],
+    ['function applyMainWindowSettingSideEffects(', 'function configSectionChanged('],
+  ]) {
+    const start = source.indexOf(startMarker);
+    vm.runInContext(source.slice(start, source.indexOf(endMarker, start)), desktop.context);
+  }
+  desktop.context.watchMainWindowBounds(desktop.context.mainWindow);
+  desktop.context.saveConfigDurably = async () => {
+    bounds = { x: 320, y: 190, width: 500, height: 600 };
+    moved();
+    return { success: true, persistenceWarnings: [] };
+  };
+  const result = await desktop.invoke('update-config', { windowDisplayChoice: '2' });
+  expect(result.success).not.toBe(false);
+  expect(bounds).toEqual({ x: 320, y: 190, width: 500, height: 600 });
+  expect(desktop.config.windowDisplay).toMatchObject({ id: '1', offset: { x: 320, y: 190 } });
+  expect(desktop.config.windowPosition).toEqual({ x: 320, y: 190 });
+});

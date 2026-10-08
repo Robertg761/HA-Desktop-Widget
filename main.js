@@ -446,42 +446,45 @@ const {
   formatWindowDisplayLabel,
 } = require('./src/window-display.cjs');
 const { loadWindowsDisplayIdentities } = require('./src/windows-display-identity.cjs');
-let windowsDisplayIdentities = {};
-let windowsDisplayIdentityRevision = 0;
-let windowsDisplayIdentityRead = null;
+const { loadMacOSDisplayIdentities } = require('./src/macos-display-identity.cjs');
+const loadPlatformDisplayIdentities =
+  process.platform === 'darwin' ? loadMacOSDisplayIdentities : loadWindowsDisplayIdentities;
+let displayIdentities = {};
+let displayIdentityRevision = 0;
+let displayIdentityRead = null;
 const electronScreen =
-  process.platform === 'win32'
+  process.platform === 'win32' || process.platform === 'darwin'
     ? createDisplayIdentityScreen(
         nativeElectronScreen,
-        () => windowsDisplayIdentities,
-        ensureWindowsDisplayIdentities
+        () => displayIdentities,
+        ensureDisplayIdentities
       )
     : nativeElectronScreen;
 
-function invalidateWindowsDisplayIdentities() {
-  windowsDisplayIdentityRevision += 1;
-  windowsDisplayIdentities = {};
+function invalidateDisplayIdentities() {
+  displayIdentityRevision += 1;
+  displayIdentities = {};
 }
 
-async function refreshWindowsDisplayIdentities() {
-  if (process.platform !== 'win32') return;
-  const revision = ++windowsDisplayIdentityRevision;
-  const read = loadWindowsDisplayIdentities()
+async function refreshDisplayIdentities() {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  const revision = ++displayIdentityRevision;
+  const read = loadPlatformDisplayIdentities()
     .then((identities) => {
-      if (revision === windowsDisplayIdentityRevision) windowsDisplayIdentities = identities;
+      if (revision === displayIdentityRevision) displayIdentities = identities;
     })
     .catch((error) => {
-      log.warn('Could not read Windows monitor identities:', error.message);
+      log.warn('Could not read persistent monitor identities:', error.message);
     })
     .finally(() => {
-      if (windowsDisplayIdentityRead === read) windowsDisplayIdentityRead = null;
+      if (displayIdentityRead === read) displayIdentityRead = null;
     });
-  windowsDisplayIdentityRead = read;
+  displayIdentityRead = read;
   return read;
 }
 
-async function ensureWindowsDisplayIdentities(id) {
-  if (process.platform !== 'win32' || id === '') return;
+async function ensureDisplayIdentities(id) {
+  if ((process.platform !== 'win32' && process.platform !== 'darwin') || id === '') return;
   const ready = () => {
     const ids = id
       ? [id]
@@ -489,12 +492,12 @@ async function ensureWindowsDisplayIdentities(id) {
           .getAllDisplays()
           .filter((display) => display.id >= 0)
           .map((display) => String(display.id));
-    return ids.every((key) => windowsDisplayIdentities[key]);
+    return ids.every((key) => displayIdentities[key]);
   };
   // An event may invalidate an in-flight query. Await a fresh inventory rather
   // than downgrading a persistent preference to an ephemeral runtime ID.
   for (let attempt = 0; attempt < 2 && !ready(); attempt += 1) {
-    await (windowsDisplayIdentityRead || refreshWindowsDisplayIdentities());
+    await (displayIdentityRead || refreshDisplayIdentities());
   }
   if (!ready()) throw new Error('Could not load displays. Reopen Settings to try again.');
 }
@@ -3717,9 +3720,9 @@ function syncDesktopPinWindowsWithConfig(options = {}) {
   });
 }
 
-function applyMainWindowSettingSideEffects(previousConfig, nextConfig) {
+function applyMainWindowSettingSideEffects(previousConfig, nextConfig, displayChoiceMoveRevision) {
   if (JSON.stringify(previousConfig?.windowDisplay) !== JSON.stringify(nextConfig?.windowDisplay)) {
-    applyPreferredWindowDisplay();
+    applyPreferredWindowDisplay(displayChoiceMoveRevision);
     refreshTrayMenu();
   }
   // Config mutations stage values before disk writes finish. Activate this
@@ -7347,12 +7350,19 @@ function clampToMinimumWindowSize({ width, height }, targetConfig = config) {
 
 /** Save the main window's position and size after the user moves or resizes it. */
 function watchMainWindowBounds(targetWindow) {
+  targetWindow.__lastObservedBounds = targetWindow.getBounds();
   const changeWin = () => {
+    const previousBounds = targetWindow.__lastObservedBounds;
+    const bounds = targetWindow.getBounds();
+    const movedWithoutResizing =
+      bounds.width === previousBounds.width &&
+      bounds.height === previousBounds.height &&
+      (bounds.x !== previousBounds.x || bounds.y !== previousBounds.y);
+    targetWindow.__lastObservedBounds = bounds;
     // The OS can move a window before the display-change recovery timer runs.
     if (config.windowDisplay && displayChangeTimer !== null) return;
     // A maximized or full-screen size is the window manager's, not a size the user chose.
     if (targetWindow.isMaximized?.() || targetWindow.isFullScreen?.()) return;
-    const bounds = targetWindow.getBounds();
     // Linux reports programmatic moves too (restoring the saved position after a show,
     // resetting it, restoring the saved size). Landing on the saved bounds leaves nothing to
     // save, and drops any position still queued from a drag that ended back there.
@@ -7362,6 +7372,10 @@ function watchMainWindowBounds(targetWindow) {
       pendingWindowBounds = null;
       return;
     }
+    // Top/left resize edges also move the origin. Only a position change at
+    // the same size supersedes a monitor choice whose durable save is pending.
+    if (movedWithoutResizing)
+      targetWindow.__userMoveRevision = (targetWindow.__userMoveRevision || 0) + 1;
     pendingWindowBounds = bounds;
     const placementRevision = targetWindow.__displayPlacementRevision || 0;
     if (windowStateSaveTimer) {
@@ -7505,7 +7519,8 @@ function recoverWindowsAfterDisplayChange() {
 function watchDisplayChanges() {
   ['display-added', 'display-removed', 'display-metrics-changed'].forEach((eventName) => {
     electronScreen.on(eventName, () => {
-      if (process.platform === 'win32') invalidateWindowsDisplayIdentities();
+      if (process.platform === 'win32' || process.platform === 'darwin')
+        invalidateDisplayIdentities();
       if (config.windowDisplay) {
         clearTimeout(windowStateSaveTimer);
         windowStateSaveTimer = null;
@@ -7515,7 +7530,8 @@ function watchDisplayChanges() {
       clearTimeout(displayChangeTimer);
       displayChangeTimer = setTimeout(async () => {
         const timer = displayChangeTimer;
-        if (process.platform === 'win32') await refreshWindowsDisplayIdentities();
+        if (process.platform === 'win32' || process.platform === 'darwin')
+          await refreshDisplayIdentities();
         // A newer display event invalidates the inventory read and this recovery.
         if (timer !== displayChangeTimer) return;
         displayChangeTimer = null;
@@ -7825,6 +7841,9 @@ function getWindowDisplaySettings() {
 function getWindowDisplayChoicePatch(id) {
   if (usesCompositorOwnedPlacement) throw new Error('Display selection is managed by the desktop');
   const bounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+  // Windows does not emit settled user events for app-driven placement. Refresh
+  // the baseline before a choice so a prior DPI-rounded move is not a user resize.
+  if (bounds) mainWindow.__lastObservedBounds = { ...bounds };
   if (bounds && process.platform === 'win32' && !pendingWindowBounds) {
     // Fractional DPI can round native bounds up by one DIP. Keep the intended size
     // across repeated selections, while a pending user resize takes precedence.
@@ -7842,14 +7861,22 @@ function getWindowDisplayChoicePatch(id) {
   return patch;
 }
 
-function applyPreferredWindowDisplay() {
+function applyPreferredWindowDisplay(displayChoiceMoveRevision) {
   if (usesCompositorOwnedPlacement || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.__displayPlacementRevision = (mainWindow.__displayPlacementRevision || 0) + 1;
   const bounds = mainWindow.getBounds();
-  // The durable choice save can overlap a user resize. Its newer geometry wins
-  // over the snapshot captured when the choice was made, even if its save is queued.
+  // A drag after the choice supersedes its target and offset. A resize alone
+  // retains the choice while supplying the latest dimensions.
   const userBounds = pendingWindowBounds;
-  if (userBounds) config.windowSize = clampToMinimumWindowSize(userBounds);
+  if (userBounds) {
+    config.windowSize = clampToMinimumWindowSize(userBounds);
+    if (
+      displayChoiceMoveRevision !== undefined &&
+      (mainWindow.__userMoveRevision || 0) !== displayChoiceMoveRevision
+    ) {
+      config.windowDisplay = rememberWindowDisplayPosition(config, electronScreen, userBounds);
+    }
+  }
   const placementSize = process.platform === 'win32' ? config.windowSize : bounds;
   const position = resolveWindowDisplayPosition(config, electronScreen, placementSize);
   clearTimeout(windowStateSaveTimer);
@@ -7867,6 +7894,7 @@ function applyPreferredWindowDisplay() {
 function applyWindowDisplayChoice(id) {
   return runSerializedConfigMutation(async () => {
     if (electronScreen.ensureDisplayIdentities) await electronScreen.ensureDisplayIdentities(id);
+    const displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
     const patch = getWindowDisplayChoicePatch(id);
     const previous = config;
     config = { ...config, ...patch };
@@ -7877,7 +7905,7 @@ function applyWindowDisplayChoice(id) {
       log.warn('Failed to save display selection:', persistence.error);
       return;
     }
-    applyPreferredWindowDisplay();
+    applyPreferredWindowDisplay(displayChoiceMoveRevision);
     refreshTrayMenu();
     pushConfigToRenderer();
   }).catch((error) => {
@@ -8858,11 +8886,13 @@ ipcMain.handle(
     log.debug('Updating configuration');
     const prevConfig = config;
     let windowDisplayPatch = {};
+    let displayChoiceMoveRevision;
     if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
       try {
         if (electronScreen.ensureDisplayIdentities) {
           await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
         }
+        displayChoiceMoveRevision = mainWindow?.__userMoveRevision || 0;
         windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
       } catch (error) {
         return {
@@ -9117,7 +9147,7 @@ ipcMain.handle(
     });
 
     await runPostSaveSideEffect(runtimeWarnings, 'main window settings', () =>
-      applyMainWindowSettingSideEffects(prevConfig, config)
+      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceMoveRevision)
     );
     await runPostSaveSideEffect(runtimeWarnings, 'runtime settings', () =>
       applyRuntimeConfigSideEffects(prevConfig, config, 'settings update')
@@ -13695,7 +13725,7 @@ app
     // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
     if (!gotSingleInstanceLock) return;
     watchDisplayChanges();
-    void refreshWindowsDisplayIdentities();
+    void refreshDisplayIdentities();
 
     // Inside a layer-shell child the inherited environment says "already handed off"
     // and points WAYLAND_DISPLAY at the helper's private socket. Only this browser
@@ -13857,9 +13887,9 @@ app
       }
     }
 
-    return ensureWindowsDisplayIdentities()
+    return ensureDisplayIdentities()
       .catch((error) => {
-        log.warn('Starting without complete Windows monitor identities:', error.message);
+        log.warn('Starting without complete monitor identities:', error.message);
       })
       .then(() => {
         createWindow();
