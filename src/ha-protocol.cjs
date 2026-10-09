@@ -504,10 +504,13 @@ function requestPinnedBinaryOnce(pinned, headers, deadline, options, httpModule,
       (response) => {
         const statusCode = response.statusCode || 0;
         const responseHeaders = response.headers || {};
+        response.on('error', fail);
 
         if (REDIRECT_STATUS_CODES.has(statusCode)) {
           finish(() => {
-            response.resume();
+            // Redirect bodies are unused and may never end. Close the connection
+            // when this hop finishes instead of draining beyond its deadline.
+            response.destroy();
             resolve({ status: statusCode, headers: responseHeaders, data: Buffer.alloc(0) });
           });
           return;
@@ -559,8 +562,6 @@ function requestPinnedBinaryOnce(pinned, headers, deadline, options, httpModule,
             });
           });
         });
-
-        response.on('error', fail);
       }
     );
 
