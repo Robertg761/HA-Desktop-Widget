@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const vm = require('vm');
 const { HomeAssistantOAuthClient } = require('../../src/ha-oauth.cjs');
+const { createSerializedTaskRunner } = require('../../src/serialized-task-runner.cjs');
 
 const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const pairingSource = source.slice(
@@ -49,7 +50,7 @@ describe('OAuth pairing commit', () => {
 
   function setup({
     postForm = async () => tokenResponse('new-token'),
-    mutate = (task) => task(),
+    mutate = createSerializedTaskRunner(),
   } = {}) {
     const client = new HomeAssistantOAuthClient({
       userDataPath: directory,
@@ -166,6 +167,117 @@ describe('OAuth pairing commit', () => {
     expect(await pending).toMatchObject({ success: true });
     expect(canceled).toBe(false);
     expect(client.readCredentials().baseUrl).toBe('http://new.test');
+  });
+
+  test('failed config persistence preserves previous credential bytes and session for restore', async () => {
+    const { client, context, pair } = setup();
+    expect(await pair('http://old.test')).toMatchObject({ success: true });
+    const previousConfig = context.config;
+    const previousSession = client.publicSession();
+    const previousCredentials = fs.readFileSync(client.credentialsPath);
+    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'EACCES' });
+    expect(await pair('http://new.test')).toMatchObject({ success: false });
+    expect(context.config).toBe(previousConfig);
+    expect(fs.readFileSync(client.credentialsPath)).toEqual(previousCredentials);
+    expect(client.publicSession()).toEqual(previousSession);
+    await vm.runInContext('restoreHomeAssistantOAuthSession()', context);
+    expect(context.config.homeAssistant.url).toBe('http://old.test');
+  });
+
+  test('failed first-login persistence removes the new authorization', async () => {
+    const { client, context, pair } = setup();
+    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'EACCES' });
+    expect(await pair('http://new.test')).toMatchObject({ success: false });
+    expect(client.readCredentials()).toBeNull();
+    expect(client.publicSession()).toBeNull();
+    expect(context.config.homeAssistant.url).toBe('http://previous.test');
+  });
+
+  test('a thrown persistence failure restores the prior configuration and credentials', async () => {
+    const { client, context, pair } = setup();
+    expect(await pair('http://old.test')).toMatchObject({ success: true });
+    const previousConfig = context.config;
+    const previousCredentials = fs.readFileSync(client.credentialsPath);
+    context.saveConfigDurably.mockRejectedValue(new Error('disk failure'));
+    expect(await pair('http://new.test')).toMatchObject({ success: false });
+    expect(context.config).toBe(previousConfig);
+    expect(fs.readFileSync(client.credentialsPath)).toEqual(previousCredentials);
+    expect(client.publicSession().baseUrl).toBe('http://old.test');
+  });
+
+  test('credential write failure leaves the prior login and config untouched', async () => {
+    const { client, context, pair } = setup();
+    expect(await pair('http://old.test')).toMatchObject({ success: true });
+    const previousConfig = context.config;
+    const previousCredentials = fs.readFileSync(client.credentialsPath);
+    const saveCount = context.saveConfigDurably.mock.calls.length;
+    const rename = jest.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    });
+    try {
+      expect(await pair('http://new.test')).toMatchObject({
+        success: false,
+        code: 'OAUTH_STORE_WRITE',
+      });
+      expect(context.config).toBe(previousConfig);
+      expect(fs.readFileSync(client.credentialsPath)).toEqual(previousCredentials);
+      expect(client.publicSession().baseUrl).toBe('http://old.test');
+      expect(context.saveConfigDurably).toHaveBeenCalledTimes(saveCount);
+    } finally {
+      rename.mockRestore();
+    }
+  });
+
+  test('rollback completes before a queued replacement authorization commits', async () => {
+    const queued = deferred();
+    const saving = deferred();
+    const failedSave = deferred();
+    const serial = createSerializedTaskRunner();
+    let commits = 0;
+    const { client, context, pair } = setup({
+      mutate: (task) => {
+        commits += 1;
+        if (commits === 3) queued.resolve();
+        return serial(task);
+      },
+    });
+    expect(await pair('http://old.test')).toMatchObject({ success: true });
+    context.saveConfigDurably.mockImplementationOnce(async () => {
+      saving.resolve();
+      await failedSave.promise;
+      return { success: false, error: 'EACCES' };
+    });
+    const failed = pair('http://failed.test');
+    await saving.promise;
+    const replacement = pair('http://replacement.test');
+    await queued.promise;
+    failedSave.resolve();
+    expect(await failed).toMatchObject({ success: false });
+    expect(await replacement).toMatchObject({ success: true });
+    expect(client.readCredentials().baseUrl).toBe('http://replacement.test');
+    expect(client.publicSession().baseUrl).toBe('http://replacement.test');
+    expect(context.config.homeAssistant.url).toBe('http://replacement.test');
+  });
+
+  test('notification failure after a durable save retains the committed authorization', async () => {
+    const { client, context, pair } = setup();
+    context.pushConfigToRenderer.mockImplementation(() => {
+      throw new Error('WebContents destroyed');
+    });
+    expect(await pair('http://new.test')).toMatchObject({ success: true });
+    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(context.config.homeAssistant.url).toBe('http://new.test');
+    expect(client.readCredentials().baseUrl).toBe('http://new.test');
+    expect(client.publicSession().baseUrl).toBe('http://new.test');
+    expect(context.broadcastDesktopPinConfigUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  test('failed persistence retains the encrypted-token recovery copy', async () => {
+    const { context, pair } = setup();
+    context.preservedEncryptedTokenForRecovery = 'previous-encrypted-token';
+    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'EACCES' });
+    expect(await pair('http://new.test')).toMatchObject({ success: false });
+    expect(context.preservedEncryptedTokenForRecovery).toBe('previous-encrypted-token');
   });
 
   test('successful pairing saves credentials and configuration through the queue', async () => {

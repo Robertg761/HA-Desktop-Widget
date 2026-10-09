@@ -9327,6 +9327,7 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
     throw new Error('Home Assistant OAuth did not return a usable session');
   }
   const previousConfig = config;
+  const previousRecoveryToken = preservedEncryptedTokenForRecovery;
   const nextConfig = {
     ...config,
     homeAssistant: {
@@ -9349,16 +9350,34 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
   preservedEncryptedTokenForRecovery = null;
 
   if (options.persist === true) {
-    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-    if (!persistence.success) {
+    try {
+      const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+      if (!persistence.success) {
+        throw new Error(`Failed to save Home Assistant authorization: ${persistence.error}`);
+      }
+    } catch (error) {
       config = previousConfig;
-      throw new Error(`Failed to save Home Assistant authorization: ${persistence.error}`);
+      preservedEncryptedTokenForRecovery = previousRecoveryToken;
+      throw error;
     }
   }
 
-  scheduleHomeAssistantOAuthRefresh(session.expiresAt);
-  pushConfigToRenderer();
-  broadcastDesktopPinConfigUpdate();
+  for (const [context, apply] of [
+    ['OAuth refresh timer', () => scheduleHomeAssistantOAuthRefresh(session.expiresAt)],
+    ['OAuth renderer update', () => pushConfigToRenderer()],
+    ['OAuth desktop pin update', () => broadcastDesktopPinConfigUpdate()],
+  ]) {
+    try {
+      apply();
+    } catch (error) {
+      if (options.persist !== true) throw error;
+      // A notification failure cannot undo an authorization already saved to disk.
+      log.warn(
+        `Failed to apply ${context} after authorization was saved:`,
+        error?.message || String(error)
+      );
+    }
+  }
   return sanitizeConfigForRenderer(config);
 }
 
@@ -9440,11 +9459,13 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   const resumeAutoHide = windowAutoHide.suspend();
   try {
     return await getHomeAssistantOAuthClient().pair(rawUrl, {
-      commit: (createSession) =>
-        runSerializedConfigMutation(async () => ({
-          success: true,
-          config: await applyHomeAssistantOAuthSession(createSession(), { persist: true }),
-        })),
+      commit: (commitSession) =>
+        runSerializedConfigMutation(() =>
+          commitSession(async (session) => ({
+            success: true,
+            config: await applyHomeAssistantOAuthSession(session, { persist: true }),
+          }))
+        ),
     });
   } catch (error) {
     return {

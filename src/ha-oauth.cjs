@@ -535,6 +535,10 @@ class HomeAssistantOAuthClient {
       null,
       2
     );
+    this.writeCredentialPayload(payload);
+  }
+
+  writeCredentialPayload(payload) {
     fs.mkdirSync(this.userDataPath, { recursive: true });
     const temporaryPath = `${this.credentialsPath}.${nodeCrypto.randomBytes(8).toString('hex')}.tmp`;
     try {
@@ -555,6 +559,36 @@ class HomeAssistantOAuthClient {
         error?.message || 'Could not store Home Assistant authorization',
         'OAUTH_STORE_WRITE'
       );
+    }
+  }
+
+  async commitPairingSession(credentials, tokens, persistSession = (session) => session) {
+    // Preserve the encrypted bytes, even if the old authorization cannot be
+    // decrypted. A failed replacement must not destroy the user's recovery copy.
+    let previousPayload = null;
+    try {
+      previousPayload = fs.readFileSync(this.credentialsPath);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    const previousSession = this.session;
+    this.writeCredentials(credentials);
+    const session = this.createSession(credentials, tokens);
+    const committedSession = this.session;
+    try {
+      return await persistSession(session);
+    } catch (error) {
+      // Main-process commits share the configuration queue. Also avoid undoing
+      // a newer authorization if a different caller commits while this awaits.
+      if (this.session === committedSession) {
+        try {
+          if (previousPayload !== null) this.writeCredentialPayload(previousPayload);
+          else this.clearCredentials();
+        } finally {
+          this.session = previousSession;
+        }
+      }
+      throw error;
     }
   }
 
@@ -651,13 +685,12 @@ class HomeAssistantOAuthClient {
             }
           };
           assertActive();
-          return commit(() => {
+          return commit((persistSession) => {
             assertActive();
-            this.writeCredentials(credentials);
             // The durable commit has begun. Cancel can no longer report success
             // while configuration persistence is finishing this authorization.
             this.pairingController = null;
-            return this.createSession(credentials, tokens);
+            return this.commitPairingSession(credentials, tokens, persistSession);
           });
         },
       });
