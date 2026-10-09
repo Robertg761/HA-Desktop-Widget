@@ -3,6 +3,8 @@
 Reviewed September 29, 2026, starting at `306c86b1709a75b568f4b78283e46e53669f339c`.
 These results describe the original audit baseline. The later [feature audit and implementation follow-up](FEATURE-AUDIT-4.0.md) records the remaining app fixes and PR stack. Final CI and native release checks are still required.
 
+For the October 9 beta preparation, current evidence, and the outstanding stable-release gates, see the [beta.17 verification record](testing/RELEASE-4.0-BETA-17.md). The website is on hold at the maintainer's request.
+
 ## Findings fixed
 
 The follow-up behavioral review reproduced these app defects before applying fixes:
