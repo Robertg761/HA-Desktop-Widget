@@ -7522,6 +7522,52 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(read()).toEqual({ status: 'Ready', meter: 'Off' });
     });
 
+    it.each([
+      ['zero', 0, 0.5, -10, 35],
+      ['quarter degree', 20.25, 0.25, -10, 35],
+      ['hundredth degree', 20.01, 0.01, -10, 35],
+      ['negative quarter degree', -0.25, 0.25, -10, 35],
+      ['minimum', -10.25, 0.25, -10.25, 35.25],
+      ['maximum', 35.25, 0.25, -10.25, 35.25],
+    ])(
+      'sends the selected %s climate pin setpoint without changing its precision',
+      async (_label, requested, step, minTemp, maxTemp) => {
+        jest.useFakeTimers();
+        try {
+          const entity = {
+            ...sampleStates['climate.thermostat'],
+            attributes: {
+              ...sampleStates['climate.thermostat'].attributes,
+              temperature: 20,
+              min_temp: minTemp,
+              max_temp: maxTemp,
+              target_temp_step: step,
+              supported_features: 1,
+            },
+          };
+          state.setStates({ [entity.entity_id]: entity });
+          ui.renderDesktopPinnedTile(entity.entity_id, entity);
+
+          const slider = document.querySelector('.desktop-pin-climate-slider');
+          expect(slider).not.toBeNull();
+          slider.value = String(requested);
+          slider.dispatchEvent(new Event('input', { bubbles: true }));
+          slider.dispatchEvent(new Event('change', { bubbles: true }));
+          await jest.advanceTimersByTimeAsync(1000);
+
+          expect(mockCallService).toHaveBeenCalledTimes(1);
+          expect(mockCallService).toHaveBeenCalledWith('climate', 'set_temperature', {
+            entity_id: entity.entity_id,
+            temperature: requested,
+          });
+          expect(slider.value).toBe(String(requested));
+        } finally {
+          jest.clearAllTimers();
+          jest.useRealTimers();
+        }
+      }
+    );
+
     it('renders compact climate controls and sends hvac mode changes', () => {
       state.setStates({
         'climate.thermostat': {
