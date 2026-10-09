@@ -88,6 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Refresh relative date labels at local midnight and after sleep, including date sensors pinned to the desktop, without waiting for Home Assistant state changes.
+- Preserve saved Follow Omarchy theme choices when upgrading; enable the default only when no choice is stored.
 - Keep a canceled Home Assistant sign-in from replacing the current connection while it waits for a settings save; a newer sign-in takes precedence.
 - Restore the previous encrypted Home Assistant authorization and configuration if saving a replacement sign-in fails. A failed first sign-in leaves no new saved authorization.
 - Recover settings saves and background profile sync after an update installer reports failure, including failures reported after the install request returns.
