@@ -601,7 +601,10 @@ class HomeAssistantOAuthClient {
     };
   }
 
-  async pair(baseUrl) {
+  // The main process supplies a commit callback so credentials and configuration
+  // enter its mutation queue together. Until that callback creates the session,
+  // Cancel and a replacement pairing can still discard the pending authorization.
+  async pair(baseUrl, { commit = (createSession) => createSession() } = {}) {
     const normalizedBaseUrl = normalizeHomeAssistantBaseUrl(baseUrl);
     if (this.pairingPromise) {
       // A second request for the same server joins the pairing already waiting in the browser.
@@ -639,8 +642,23 @@ class HomeAssistantOAuthClient {
             redirectUri,
             refreshToken: tokens.refreshToken,
           };
-          this.writeCredentials(credentials);
-          return this.createSession(credentials, tokens);
+          const assertActive = () => {
+            if (controller.signal.aborted || this.pairingController !== controller) {
+              throw createOAuthError(
+                'Home Assistant authorization was canceled',
+                'OAUTH_AUTHORIZATION_CANCELED'
+              );
+            }
+          };
+          assertActive();
+          return commit(() => {
+            assertActive();
+            this.writeCredentials(credentials);
+            // The durable commit has begun. Cancel can no longer report success
+            // while configuration persistence is finishing this authorization.
+            this.pairingController = null;
+            return this.createSession(credentials, tokens);
+          });
         },
       });
     })();

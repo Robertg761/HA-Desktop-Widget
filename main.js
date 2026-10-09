@@ -9439,11 +9439,13 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
   // is lost" on, the widget would be gone by the time the person comes back to it.
   const resumeAutoHide = windowAutoHide.suspend();
   try {
-    const session = await getHomeAssistantOAuthClient().pair(rawUrl);
-    return await runSerializedConfigMutation(async () => ({
-      success: true,
-      config: await applyHomeAssistantOAuthSession(session, { persist: true }),
-    }));
+    return await getHomeAssistantOAuthClient().pair(rawUrl, {
+      commit: (createSession) =>
+        runSerializedConfigMutation(async () => ({
+          success: true,
+          config: await applyHomeAssistantOAuthSession(createSession(), { persist: true }),
+        })),
+    });
   } catch (error) {
     return {
       success: false,
