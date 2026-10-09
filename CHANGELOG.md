@@ -88,6 +88,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep a canceled Home Assistant sign-in from replacing the current connection while it waits for a settings save; a newer sign-in takes precedence.
+- Restore the previous encrypted Home Assistant authorization and configuration if saving a replacement sign-in fails. A failed first sign-in leaves no new saved authorization.
+- Recover settings saves and background profile sync after an update installer reports failure, including failures reported after the install request returns.
+- Preserve zero and fractional temperature setpoints from desktop climate pins instead of substituting the previous target or rounding to one decimal place.
+- Close unused artwork redirect responses promptly, so a stalled redirect body cannot leave its connection open or raise an unhandled stream error.
+
 - Preserve existing pages and omitted settings when applying partial companion profiles. Include weather/media selection and tile spans in the profile round-trip, while keeping UI scale and Omarchy theme following local. A profile applied from Home Assistant can be undone from Undo and Restore dashboard.
 - Serialize companion commands and share the result of duplicate in-flight deliveries. Stop obsolete session initialization and send an initial layout snapshot to each new session. Retry a companion session that failed to start, and accept commands from a computer whose clock runs a little ahead of Home Assistant.
 - Guard unavailable and unsupported media, fan, to-do, and hotkey actions. Read-only to-do lists no longer expose writes; live task counts and sensor detail values stay current.
@@ -141,6 +147,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names and Windows/Linux icon colors, full macOS menu-bar values, localized state labels,
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
   sleep, and renderer failures. Stable builds keep these preferences without showing the feature.
+
+## [4.0.0-beta.17] - 2026-10-09
+
+This beta includes the five fixes merged after beta.16. It is a testing release;
+4.0.0 stable has not been published.
+
+### Fixed
+
+- Keep a canceled Home Assistant sign-in from replacing the current connection while it waits for a settings save; a newer sign-in takes precedence.
+- Restore the previous encrypted Home Assistant authorization and configuration if saving a replacement sign-in fails. A failed first sign-in leaves no new saved authorization.
+- Recover settings saves and background profile sync after an update installer reports failure, including failures reported after the install request returns.
+- Preserve zero and fractional temperature setpoints from desktop climate pins instead of substituting the previous target or rounding to one decimal place.
+- Close unused artwork redirect responses promptly, so a stalled redirect body cannot leave its connection open or raise an unhandled stream error.
+
+### Testing focus
+
+- Reauthorize with Home Assistant, cancel and retry sign-in, and confirm the selected connection survives a restart.
+- Change a desktop thermostat pin to zero or a fractional temperature supported by your device, and compare its target with Home Assistant.
+- Exercise the Windows installer or Linux AppImage update path with a disposable profile. If installation fails, settings and profile sync must remain usable.
+- Open media artwork that redirects and check that subsequent artwork continues loading.
+- Test a backed-up 3.x profile upgrade, encrypted folder sync between two computers, sleep/reconnect, desktop pins, and the deployed companion/panel.
+
+See the [beta verification record and reporting checklist](https://github.com/Robertg761/HA-Desktop-Widget/blob/v4.0.0-beta.17/docs/testing/RELEASE-4.0-BETA-17.md).
+Live tray values remain beta-only; the stable release will use the regular tray.
 
 ## [3.11.0] - 2026-09-24
 
