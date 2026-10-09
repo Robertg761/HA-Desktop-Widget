@@ -14565,6 +14565,26 @@ function handleCameraModalClosed(event) {
 
 document.addEventListener('camera-modal-closed', handleCameraModalClosed);
 
+// Relative date labels depend on the local calendar day even when the HA state is unchanged.
+// Visit mounted controls, including primary cards and desktop pins, instead of fetching states
+// or rebuilding the dashboard. The existing update paths preserve focus and control identity.
+function updateDateDisplays() {
+  const entityIds = new Set(
+    Array.from(
+      document.querySelectorAll('.control-item[data-entity-id]'),
+      (tile) => tile.dataset.entityId
+    )
+  );
+  for (const entityId of entityIds) {
+    const entity = state.STATES?.[entityId];
+    const domain = getEntityDomain(entityId);
+    if (!['sensor', 'date', 'datetime', 'input_datetime'].includes(domain)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(entity?.state || '')) continue;
+    if (utils.isTimerLikeSensor(entity)) continue;
+    updateEntityInUI(entity);
+  }
+}
+
 function updateTimerDisplays() {
   try {
     if (!hasVisibleTimerEntities) return;
@@ -16790,6 +16810,7 @@ export {
   relocalizeUpdateStatus,
   updateTimeDisplay,
   updateTimerDisplays,
+  updateDateDisplays,
   renderPrimaryCards,
   toggleReorganizeMode,
   exitReorganizeMode,

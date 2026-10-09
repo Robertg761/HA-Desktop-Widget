@@ -252,6 +252,7 @@ let reconnectTimerId = null;
 let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
 let uiTickNudgeTimerId = null;
+let uiTickDate = null;
 let offlineConnectionToastShown = false;
 // Kinds of connection failure already reported in this outage, and the toasts showing them.
 const shownConnectionToastKeys = new Set();
@@ -2642,13 +2643,26 @@ function clearUiTickTimer() {
 function scheduleNextUiTick(tickTargets) {
   clearUiTickTimer();
   if (!uiTickSchedulerStarted || shouldPauseUiTick()) return;
-  uiTickTimerId = setTimeout(runUiTick, getNextUiTickDelay(tickTargets));
+  // Even an idle date tile must wake at local midnight. Construct the next calendar day
+  // rather than adding 24 hours, so daylight-saving transitions keep the boundary correct.
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const delay = Math.min(getNextUiTickDelay(tickTargets), midnight.getTime() - now.getTime());
+  uiTickTimerId = setTimeout(runUiTick, delay);
 }
 
 function runUiTick() {
   if (shouldPauseUiTick()) {
     clearUiTickTimer();
     return;
+  }
+
+  // Also runs when a hidden window returns or focus resumes after sleep; no entity update
+  // is needed to change Tomorrow to Today. Keep ordinary second/minute ticks inexpensive.
+  const today = new Date().toDateString();
+  if (uiTickDate !== today) {
+    ui.updateDateDisplays?.();
+    uiTickDate = today;
   }
 
   if (IS_DESKTOP_PIN_MODE) {

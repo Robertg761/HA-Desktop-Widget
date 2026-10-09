@@ -20,6 +20,7 @@ describe('Renderer UI tick scheduler', () => {
   };
 
   const loadRenderer = async ({
+    desktopPin = false,
     hidden = false,
     focused = false,
     tickTargets = {
@@ -44,7 +45,13 @@ describe('Renderer UI tick scheduler', () => {
     });
 
     document.body.innerHTML = '<main class="widget-content"></main>';
-    window.history.replaceState({}, '', 'http://localhost/');
+    window.history.replaceState(
+      {},
+      '',
+      desktopPin
+        ? 'http://localhost/?mode=desktop-pin&entityId=sensor.appointment'
+        : 'http://localhost/'
+    );
     window.electronAPI = createMockElectronAPI();
 
     const mockLogger = {
@@ -71,6 +78,9 @@ describe('Renderer UI tick scheduler', () => {
       selectWeatherEntity: jest.fn(),
       updateTimeDisplay: jest.fn(),
       updateTimerDisplays: jest.fn(),
+      updateDateDisplays: jest.fn(),
+      renderDesktopPinnedTile: jest.fn(),
+      getDesktopPinTickTargets: jest.fn(() => tickTargets),
       updateMediaSeekBar: jest.fn(),
       refreshVisibleEntityCache: jest.fn(),
       executeHotkeyAction: jest.fn(),
@@ -242,6 +252,38 @@ describe('Renderer UI tick scheduler', () => {
 
     jest.advanceTimersByTime(14000);
     expect(mockUi.getTickTargets).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])(
+    'refreshes dates at local midnight without a clock or active timer (pin: %s)',
+    async (desktopPin) => {
+      await loadRenderer({
+        desktopPin,
+        tickTargets: { timeVisible: false, hasVisibleTimers: false, mediaEntity: null },
+      });
+      jest.setSystemTime(new Date(2026, 9, 8, 23, 59, 59));
+      window.dispatchEvent(new Event('focus'));
+      mockUi.updateDateDisplays.mockClear();
+
+      jest.advanceTimersByTime(1100);
+      expect(mockUi.updateDateDisplays).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(60000);
+      expect(mockUi.updateDateDisplays).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('refreshes dates when a hidden window returns after sleep', async () => {
+    await loadRenderer();
+    mockUi.updateDateDisplays.mockClear();
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    jest.setSystemTime(new Date(2026, 9, 10, 12));
+    jest.advanceTimersByTime(60000);
+    expect(mockUi.updateDateDisplays).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(mockUi.updateDateDisplays).toHaveBeenCalledTimes(1);
   });
 
   describe('when a live update changes whether a visible entity counts down', () => {

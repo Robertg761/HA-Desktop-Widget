@@ -2164,20 +2164,16 @@ function ensureDateTimeFormatConfigDefaults(target, options = {}) {
 }
 
 /**
- * Following the Omarchy palette is on by default. It used to be off, and Settings wrote that
- * unticked default back on every save on Omarchy, so a saved `false` from before is not a
- * choice anyone made: turn it on once, then keep whatever the user picks afterwards. The
- * marker is top-level config, which a Settings save keeps even though it never sends it.
+ * Default new profiles to the Omarchy palette, but preserve either saved boolean. Older
+ * versions exposed the same switch, so false may be a deliberate opt-out, not just a default.
  */
 function ensureFollowOmarchyDefault(target) {
   if (!target || typeof target !== 'object') return target;
   target.ui = target.ui && typeof target.ui === 'object' ? target.ui : {};
-  if (target.omarchyThemeDefaultApplied !== true) {
-    target.ui.followOmarchy = true;
-    target.omarchyThemeDefaultApplied = true;
-  } else if (typeof target.ui.followOmarchy !== 'boolean') {
+  if (typeof target.ui.followOmarchy !== 'boolean') {
     target.ui.followOmarchy = true;
   }
+  target.omarchyThemeDefaultApplied = true;
   return target;
 }
 

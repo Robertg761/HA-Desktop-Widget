@@ -166,6 +166,43 @@ describe('ui.js translations and number formatting', () => {
     jest.restoreAllMocks();
   });
 
+  it.each([
+    ['date.appointment', '2026-10-09', {}],
+    ['sensor.appointment', '2026-10-09', { device_class: 'date' }],
+    ['sensor.next_alarm', '2026-10-09T08:00:00', { device_class: 'timestamp' }],
+    ['sensor.next_event', '2026-10-09T08:00:00', {}],
+    ['input_datetime.appointment', '2026-10-09 08:00:00', { has_time: true }],
+  ])('refreshes unchanged %s after midnight and sleep', (id, value, attributes) => {
+    jest.setSystemTime(new Date(2026, 9, 8, 23, 59));
+    const appointment = entity(id, value, attributes);
+    renderTiles([appointment]);
+    state.setConfig({ ...state.CONFIG, primaryCards: [id, 'none'] });
+    ui.renderPrimaryCards();
+    const hasPin = id.startsWith('sensor.');
+    if (hasPin) ui.renderDesktopPinnedTile(id, appointment);
+    expect(tile(id).querySelector('.control-state').textContent).toContain('Tomorrow');
+    if (hasPin) expect(text('#desktop-pin-content .desktop-pin-panel-value')).toContain('Tomorrow');
+    expect(text('#weather-card .control-state')).toContain('Tomorrow');
+    const originalTile = tile(id);
+    const originalPin = document.querySelector('#desktop-pin-content .control-item');
+
+    jest.setSystemTime(new Date(2026, 9, 9, 0, 1));
+    ui.updateDateDisplays();
+
+    expect(tile(id).querySelector('.control-state').textContent).toContain('Today');
+    if (hasPin) expect(text('#desktop-pin-content .desktop-pin-panel-value')).toContain('Today');
+    expect(text('#weather-card .control-state')).toContain('Today');
+    expect(tile(id)).toBe(originalTile);
+    expect(document.querySelector('#desktop-pin-content .control-item')).toBe(originalPin);
+
+    // A suspended window can miss more than one midnight.
+    jest.setSystemTime(new Date(2026, 9, 10, 12));
+    ui.updateDateDisplays();
+    expect(tile(id).querySelector('.control-state').textContent).toContain('Yesterday');
+    if (hasPin)
+      expect(text('#desktop-pin-content .desktop-pin-panel-value')).toContain('Yesterday');
+  });
+
   it('translates the light dialog', () => {
     useGerman({
       Brightness: 'Helligkeit',

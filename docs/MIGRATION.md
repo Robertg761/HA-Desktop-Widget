@@ -51,6 +51,8 @@ There is no automatic conversion of a version 3 sync file back to the 3.x format
 
 ## What looks or behaves differently
 
+Saved Follow Omarchy theme choices are preserved when upgrading. New profiles follow the palette by default. If an earlier 4.0 beta already switched this on despite your opt-out, turn it off again under Settings → Appearance; the previous choice cannot be recovered from the migrated value.
+
 - **Closing hides the widget.** The title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 hide the widget to the system tray and it keeps running; in 3.x the X quit it. Choose Quit from the tray menu (or the app menu on macOS) to exit.
 - **Offline devices can notify you.** A State Change alert now also tells you when its entity has been unavailable or unknown for 30 seconds, at most once every 15 minutes for each entity. Turn off **Notify when unavailable or unknown** on an alert to keep the old behavior.
 - **Windows without frosted glass draws a solid panel.** Frosted glass needs Windows 11 version 22H2 or later; Windows 10 and older Windows 11 builds show the solid panel instead of a thin tint.

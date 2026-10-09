@@ -21,10 +21,17 @@ describe('Follow Omarchy theme default', () => {
     });
   });
 
-  it('turns on the unticked default that earlier versions saved, once', () => {
+  it('preserves a saved opt-out when upgrading a profile without the new marker', () => {
     const config = ensure({ ui: { followOmarchy: false, theme: 'dark' } });
-    expect(config.ui).toEqual({ followOmarchy: true, theme: 'dark' });
+    expect(config.ui).toEqual({ followOmarchy: false, theme: 'dark' });
     expect(config.omarchyThemeDefaultApplied).toBe(true);
+  });
+
+  it.each([true, false])('preserves a saved %s choice across repeated loads', (choice) => {
+    const config = { ui: { followOmarchy: choice } };
+    ensure(config);
+    ensure(config);
+    expect(config.ui.followOmarchy).toBe(choice);
   });
 
   it('keeps a choice made after the default was applied', () => {
