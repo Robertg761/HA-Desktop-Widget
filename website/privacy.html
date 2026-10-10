@@ -4,21 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy | HA Desktop Widget</title>
-  <meta name="description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
+  <meta name="description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the Cloud Sync service privacy policy.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0c10">
   <link rel="canonical" href="https://hadesktopwidget.com/privacy">
   <link rel="icon" type="image/png" href="/assets/icon.png">
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
   <meta property="og:title" content="Privacy | HA Desktop Widget">
-  <meta property="og:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
+  <meta property="og:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the Cloud Sync service privacy policy.">
   <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <meta property="og:url" content="https://hadesktopwidget.com/privacy">
   <meta property="og:site_name" content="HA Desktop Widget">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Privacy | HA Desktop Widget">
-  <meta name="twitter:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the draft policy for the planned Cloud Sync service.">
+  <meta name="twitter:description" content="What HA Desktop Widget and this website do with your data: Home Assistant sign-in, update checks, language packs and the site's own requests. Includes the Cloud Sync service privacy policy.">
   <meta name="twitter:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -51,8 +51,8 @@
 
   <main class="legal-page" id="main">
     <h1>Privacy policy</h1>
-    <p class="legal-meta">Updated 4 October 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
-    <p>This page covers the HA Desktop Widget desktop app, this website, and a hosted Cloud Sync service that is only planned. The app and the website are live today. The Cloud Sync section at the end is a draft.</p>
+    <p class="legal-meta">Updated 10 October 2026 · Operator: Robert Gordon · <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a></p>
+    <p>This page covers the HA Desktop Widget desktop app, this website, and the Cloud Sync service.</p>
 
     <h2>The desktop app</h2>
     <p>The app has no accounts and does not send telemetry, analytics or crash reports. The one exception is an anonymous install count that stays off unless you turn it on (see below). Otherwise the app talks only to your own Home Assistant server and to GitHub, as described below. Your settings, layout and logs stay on your computer.</p>
@@ -78,9 +78,8 @@
       <li>Download buttons and other links go to GitHub, which has its own policy.</li>
     </ul>
 
-    <h2>Planned Cloud Sync service (draft)</h2>
-    <p><strong>Planned service.</strong> This draft describes a proposed hosted Cloud Sync service and its account data. The service does not exist yet, and the desktop app has no hosted account, Google or GitHub sign-in, subscription or Delete Account controls. Final privacy information will be published when that service becomes available. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
-    <p>Cloud Sync would be an optional service for HA Desktop Widget. It would keep the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync.</p>
+    <h2>Cloud Sync service</h2>
+    <p>Cloud Sync is an optional service for HA Desktop Widget. It keeps the settings you choose to sync available across your computers. You can use the desktop app without Cloud Sync. Free folder Profile Sync writes to a file you choose and does not create a hosted Cloud Sync account.</p>
 
     <h3>Information we handle</h3>
     <ul>
@@ -88,6 +87,7 @@
       <li>We store your synced profile and a revision number. A profile may include your widget appearance, Quick Access layout, alerts, and connection or media preferences. If you enable the app's profile encryption, the service stores the encrypted profile and cannot read its contents. Without it, the service can read the profile.</li>
       <li>We store a hash of each Cloud Sync session token, the device name supplied during sign-in, and session creation and last-use times. The app encrypts its local copy of the token using Electron's secure storage API.</li>
       <li>If you subscribe, we store your Stripe customer and subscription IDs, subscription status, and billing period information. Stripe handles payment details; Cloud Sync does not store your card number.</li>
+      <li>When an account is deleted, we keep a keyed hash of each sign-in method's provider and user ID with the date the trial began. This prevents a deleted account from starting a new trial by signing up again. No email address or raw provider ID is stored.</li>
       <li>Service providers may process network and account information needed to deliver Cloud Sync.</li>
     </ul>
 
@@ -98,11 +98,11 @@
     <p>Cloudflare hosts the Cloud Sync service and database. Google or GitHub provides sign-in, and Stripe processes subscriptions. We share information with these providers as needed for those functions. We may also disclose information when required by law or to protect the service and its users. Each provider may handle data under its own privacy policy.</p>
 
     <h3>Retention and your choices</h3>
-    <p>The planned client would remove a device's service session on sign-out, and sessions would expire after 180 days without use. Its proposed Delete Account action would first try to cancel an active subscription. If cancellation failed, the account would stay in place so billing was not left running without an account. After successful cancellation, the service would delete your identities, sessions, profile, and subscription record from its active database. To stop a deleted account's free trial from starting over, it would keep a keyed hash of each sign-in method's provider and user ID, with the date the trial began, but not your email address or the user ID itself. Copies could remain temporarily in Cloudflare backup and recovery systems, and Stripe could retain payment records under its own legal obligations. The desktop app has no hosted Delete Account action.</p>
+    <p>A device's service session is removed on sign-out, and sessions expire after 180 days without use. The Delete Account action first tries to cancel an active subscription. If cancellation fails, the account stays in place so billing is not left running without an account. After successful cancellation, the service deletes your identities, sessions, profile, and subscription record from its active database. To stop a deleted account's free trial from starting over, we keep a keyed hash of each sign-in method's provider and user ID, with the date the trial began, but not your email address or the user ID itself. Copies may remain temporarily in Cloudflare backup and recovery systems, and Stripe may retain payment records under its own legal obligations.</p>
     <p>If your trial or subscription ends, you can still download your stored profile. Saving new changes requires an active entitlement. You can also use the app's free folder sync instead of Cloud Sync.</p>
 
     <h3>Security</h3>
-    <p>The service would use HTTPS, store only hashes of service session tokens, and check profile revisions before accepting changes. Optional profile encryption is available in the app.</p>
+    <p>The service uses HTTPS, stores only hashes of service session tokens, and checks profile revisions before accepting changes. Optional profile encryption is available in the app.</p>
 
     <h2>Requests and changes</h2>
     <p>To request access, correction, account deletion help, or to report a privacy or security issue, email <a href="mailto:robertgordon761@gmail.com">robertgordon761@gmail.com</a>.</p>

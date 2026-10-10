@@ -6,7 +6,7 @@ const { OAUTH_CALLBACK_PATH, sendCallbackPage, statesMatch } = require('./ha-oau
 
 // The hosted sync service this build talks to. Empty keeps the Cloud option
 // hidden; set it (or HA_WIDGET_CLOUD_SYNC_URL) once the service is deployed.
-const DEFAULT_CLOUD_SYNC_SERVICE_URL = '';
+const DEFAULT_CLOUD_SYNC_SERVICE_URL = 'https://sync.hadesktopwidget.com';
 const CLOUD_SYNC_CREDENTIALS_VERSION = 1;
 const CLOUD_SYNC_CREDENTIALS_FILE = 'cloud-sync-account.json';
 // Which account was signed in last, kept after signing out (never the token), so

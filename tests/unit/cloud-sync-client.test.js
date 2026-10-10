@@ -406,7 +406,7 @@ describe('cloud sync client', () => {
     expect(resolveCloudSyncServiceUrl({ HA_WIDGET_CLOUD_SYNC_URL: 'https://a.example' })).toBe(
       'https://a.example'
     );
-    expect(resolveCloudSyncServiceUrl({})).toBe('');
+    expect(resolveCloudSyncServiceUrl({})).toBe('https://sync.hadesktopwidget.com');
     expect(parseEtagRevision('"12"')).toBe(12);
     expect(parseEtagRevision('W/"3"')).toBe(3);
     expect(parseEtagRevision('abc')).toBeNull();
