@@ -1,4 +1,11 @@
-import { errorResponse, isAllowedEmail, json, randomToken, sha256Hex } from './util.js';
+import {
+  errorResponse,
+  hmacSha256Hex,
+  isAllowedEmail,
+  json,
+  randomToken,
+  sha256Hex,
+} from './util.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // A session unused for this long stops working; signing in again replaces it.
@@ -74,6 +81,7 @@ export async function getEntitlement(env, deps, session) {
   )
     .bind(session.userId)
     .first();
+  // created_at is when the trial began; a re-created account keeps its deleted one's start.
   const trialEndsAt = session.userCreatedAt + trialDays(env) * DAY_MS;
   const status = subscription?.status || null;
   const currentPeriodEnd = subscription?.current_period_end
@@ -125,6 +133,18 @@ function findIdentity(env, provider, providerUserId) {
     .first();
 }
 
+/**
+ * A keyed hash of a provider identity, which is all that is kept about it after the account
+ * is deleted. Provider user IDs are short and guessable, so the hash is keyed with that
+ * provider's OAuth client secret rather than left as a plain digest. Rotating the secret only
+ * means identities deleted before then can start a new trial.
+ */
+function identityHash(env, deps, provider, providerUserId) {
+  const key = env[`${String(provider).toUpperCase()}_CLIENT_SECRET`];
+  const message = `${provider}:${providerUserId}`;
+  return key ? hmacSha256Hex(deps.crypto, key, message) : sha256Hex(deps.crypto, message);
+}
+
 async function createIdentity(env, deps, { provider, providerUserId, email }) {
   const now = deps.now();
   let userId = null;
@@ -137,11 +157,19 @@ async function createIdentity(env, deps, { provider, providerUserId, email }) {
   const statements = [];
   if (!userId) {
     userId = deps.crypto.randomUUID();
+    // The trial runs from created_at. A sign-in that already had its trial under a deleted
+    // account takes that account's start, so deleting and signing up again gains nothing.
+    const consumed = await env.DB.prepare(
+      'SELECT trial_started_at FROM consumed_trials WHERE identity_hash = ?'
+    )
+      .bind(await identityHash(env, deps, provider, providerUserId))
+      .first();
+    const createdAt = consumed ? Math.min(now, consumed.trial_started_at) : now;
     statements.push(
       env.DB.prepare('INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)').bind(
         userId,
         email || null,
-        now
+        createdAt
       )
     );
   }
@@ -273,18 +301,36 @@ export async function handleDeleteAccount(
       );
     }
     const userId = session.userId;
-    await env.DB.batch(
-      [
-        'DELETE FROM profiles WHERE user_id = ?',
-        'DELETE FROM sessions WHERE user_id = ?',
-        'DELETE FROM handoff_codes WHERE user_id = ?',
-        'DELETE FROM subscriptions WHERE user_id = ?',
-        'DELETE FROM billing_checkouts WHERE user_id = ?',
-        'DELETE FROM billing_operations WHERE user_id = ?',
-        'DELETE FROM identities WHERE user_id = ?',
-        'DELETE FROM users WHERE id = ?',
-      ].map((sql) => env.DB.prepare(sql).bind(userId))
+    // Remember that these sign-ins have had their trial, as hashes only, so signing in again
+    // does not start another. Written in the same batch, so it exists only if the deletion does.
+    const identities = await env.DB.prepare(
+      'SELECT provider, provider_user_id FROM identities WHERE user_id = ?'
+    )
+      .bind(userId)
+      .all();
+    const trialMarkers = await Promise.all(
+      (identities.results || []).map(async (identity) =>
+        env.DB.prepare(
+          `INSERT INTO consumed_trials (identity_hash, trial_started_at) VALUES (?, ?)
+           ON CONFLICT(identity_hash) DO UPDATE SET
+             trial_started_at = MIN(consumed_trials.trial_started_at, excluded.trial_started_at)`
+        ).bind(
+          await identityHash(env, deps, identity.provider, identity.provider_user_id),
+          session.userCreatedAt
+        )
+      )
     );
+    const deletions = [
+      'DELETE FROM profiles WHERE user_id = ?',
+      'DELETE FROM sessions WHERE user_id = ?',
+      'DELETE FROM handoff_codes WHERE user_id = ?',
+      'DELETE FROM subscriptions WHERE user_id = ?',
+      'DELETE FROM billing_checkouts WHERE user_id = ?',
+      'DELETE FROM billing_operations WHERE user_id = ?',
+      'DELETE FROM identities WHERE user_id = ?',
+      'DELETE FROM users WHERE id = ?',
+    ].map((sql) => env.DB.prepare(sql).bind(userId));
+    await env.DB.batch([...trialMarkers, ...deletions]);
     return json({ ok: true });
   } finally {
     await releaseBillingLock(env, session.userId, lock);

@@ -479,6 +479,75 @@ describe('cloud sync service', () => {
     });
   });
 
+  describe('free trial after account deletion', () => {
+    const account = async (world, token) => (await world.authed(token, '/v1/account')).json();
+    const deleteAccount = (world, token) =>
+      world.authed(token, '/v1/account', { method: 'DELETE' });
+
+    test('signing in again after deleting the account does not start a new trial', async () => {
+      const world = createWorld();
+      world.googleUsers.set('g', { sub: 'google-1', email: 'a@b.c', email_verified: true });
+      const started = world.now();
+      const first = await world.signIn('google', 'g');
+      world.advance(10 * DAY);
+      expect((await deleteAccount(world, first.body.token)).status).toBe(200);
+
+      const again = await world.signIn('google', 'g');
+      expect(again.body.user.id).not.toBe(first.body.user.id);
+      expect((await account(world, again.body.token)).entitlement).toMatchObject({
+        entitled: true,
+        reason: 'trial',
+        trialEndsAt: started + 14 * DAY,
+      });
+      world.advance(5 * DAY);
+      expect((await account(world, again.body.token)).entitlement).toMatchObject({
+        entitled: false,
+        reason: 'none',
+      });
+      // Deleting the re-created account keeps the original start, not the new one.
+      expect((await deleteAccount(world, again.body.token)).status).toBe(200);
+      const third = await world.signIn('google', 'g');
+      expect((await account(world, third.body.token)).entitlement.entitled).toBe(false);
+    });
+
+    test('a different sign-in still gets its own trial, and the marker holds no identity', async () => {
+      const world = createWorld();
+      world.googleUsers.set('g', { sub: 'google-1', email: 'a@b.c', email_verified: true });
+      world.googleUsers.set('other', { sub: 'google-2', email: 'x@y.z', email_verified: true });
+      const first = await world.signIn('google', 'g');
+      world.advance(20 * DAY);
+      await deleteAccount(world, first.body.token);
+
+      const other = await world.signIn('google', 'other');
+      expect((await account(world, other.body.token)).entitlement).toMatchObject({
+        entitled: true,
+        reason: 'trial',
+      });
+      const rows = world.env.DB.raw.prepare('SELECT * FROM consumed_trials').all();
+      expect(rows).toHaveLength(1);
+      expect(Object.keys(rows[0]).sort()).toEqual(['identity_hash', 'trial_started_at']);
+      expect(rows[0].identity_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(rows)).not.toMatch(/google-1|a@b\.c/);
+    });
+
+    test('every sign-in method of a deleted account stays out of a new trial', async () => {
+      const world = createWorld();
+      world.googleUsers.set('g', { sub: 'google-1', email: 'a@b.c', email_verified: true });
+      world.githubUsers.set('h', {
+        profile: { id: 42, login: 'octo' },
+        emails: [{ email: 'a@b.c', primary: true, verified: true }],
+      });
+      const first = await world.signIn('google', 'g');
+      await world.signIn('github', 'h');
+      world.advance(20 * DAY);
+      await deleteAccount(world, first.body.token);
+      expect(world.env.DB.raw.prepare('SELECT * FROM consumed_trials').all()).toHaveLength(2);
+
+      const viaGithub = await world.signIn('github', 'h');
+      expect((await account(world, viaGithub.body.token)).entitlement.entitled).toBe(false);
+    });
+  });
+
   describe('billing', () => {
     async function signedIn() {
       const world = createWorld({ TRIAL_DAYS: '0' });

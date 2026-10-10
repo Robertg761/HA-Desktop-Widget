@@ -221,6 +221,13 @@ stored, deletion waits for that page's expiry. Checkout creation and deletion ca
 at the same time for one account. Checkout stays unavailable until the API key, price ID,
 and webhook signing secret are all configured.
 
+Migration `0004_consumed_trials.sql` adds the `consumed_trials` table. Account deletion
+leaves one row per sign-in method: a keyed hash of the provider and provider user ID
+(HMAC-SHA-256, keyed with that provider's `_CLIENT_SECRET`) and the time the trial began, so
+signing up again with the same Google or GitHub account does not start a new free trial.
+It holds no email address and no raw provider ID. Rotating a provider's client secret means
+accounts deleted before the change can start a new trial.
+
 ## 6. Point the app at the service
 
 Set `DEFAULT_CLOUD_SYNC_SERVICE_URL` in `src/cloud-sync-client.cjs` to your `PUBLIC_URL` and
