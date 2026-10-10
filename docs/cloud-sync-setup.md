@@ -196,6 +196,17 @@ sessions; it still accepts signed Stripe webhooks for allowlisted customers. An 
 nonempty launch mode remains closed. Keep the Stripe live webhook disabled until the
 public route points to the live Worker.
 
+Migration `0003_unique_user_email.sql` adds a unique index on `users.email`, which fails if
+two accounts already share an address. Before migrating a database that has had sign-ins,
+check production for duplicates:
+
+```sh
+npx wrangler d1 execute ha-widget-cloud-sync-production --remote --config wrangler.production.toml --command "SELECT email, COUNT(*) FROM users WHERE email IS NOT NULL GROUP BY email HAVING COUNT(*) > 1;"
+```
+
+If it lists any address, merge those accounts or clear the extra `users.email` values first,
+then migrate.
+
 Apply all pending D1 migrations before deploying an updated Worker:
 
 ```sh
