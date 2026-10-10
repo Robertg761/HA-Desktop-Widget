@@ -10957,6 +10957,13 @@ async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
+  // Signing out left this error behind; it is wrong now whichever way sign-in goes on,
+  // including when a pending key change holds sync back and no run replaces it.
+  if (profileSync.lastSyncError === mainT('Sign in to Cloud Sync to keep syncing')) {
+    profileSync.lastSyncStatus = 'idle';
+    profileSync.lastSyncError = '';
+    saveConfig();
+  }
   const sameAccount = isSameCloudSyncAccount(previousAccount, account);
   if (hasProfileSyncCredentialTransitionPending(profileSync)) {
     // The recovery needs the history it was staged against, so it is kept rather than

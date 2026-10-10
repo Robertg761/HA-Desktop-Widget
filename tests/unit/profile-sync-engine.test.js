@@ -1286,6 +1286,9 @@ describe('profile sync through Cloud Sync', () => {
     const account = desktopClient.getStoredAccount();
     for (const pending of [{ encryptionChangePending: true }, { remoteRewritePending: true }]) {
       Object.assign(desktop.config.profileSync, pending);
+      // Signing out said to sign in again; that no longer holds once signed in.
+      await desktop.invoke('cloud-sync-sign-out');
+      expect(desktop.status().lastSyncError).toBe('Sign in to Cloud Sync to keep syncing');
       await expect(
         desktop.context.startHostedProfileSyncAfterSignIn(account, account)
       ).resolves.toBe('recovery_pending');
@@ -1293,6 +1296,7 @@ describe('profile sync through Cloud Sync', () => {
         syncBaseline: baseline,
         firstEnableResolutionPending: false,
       });
+      expect(desktop.status()).toMatchObject({ lastSyncStatus: 'idle', lastSyncError: '' });
       desktop.config.profileSync.encryptionChangePending = null;
       desktop.config.profileSync.remoteRewritePending = false;
     }
