@@ -239,6 +239,11 @@ class CloudSyncClient {
   }
 
   readToken() {
+    return this.readSession().token;
+  }
+
+  /** The session token, and the sealed form it is saved in, which names this sign-in. */
+  readSession() {
     this.assertAvailable();
     const stored = this.readStoredCredentials();
     if (!stored) {
@@ -248,7 +253,7 @@ class CloudSyncClient {
     try {
       const token = this.safeStorage.decryptString(Buffer.from(stored.tokenEncrypted, 'base64'));
       if (!token) throw new Error('empty token');
-      return token;
+      return { token, tokenEncrypted: stored.tokenEncrypted };
     } catch {
       throw createCloudSyncError(
         'The saved Cloud Sync sign-in could not be read. Sign in again.',
@@ -328,11 +333,16 @@ class CloudSyncClient {
   /**
    * An authenticated request. An expired or revoked session clears the saved
    * sign-in, so the app shows the signed-out state instead of retrying forever.
+   * A sign-in made while the request was under way is kept: only the session
+   * the service refused is forgotten.
    */
   async authedRequest(pathname, options = {}) {
-    const response = await this.request(pathname, { ...options, token: this.readToken() });
+    const session = this.readSession();
+    const response = await this.request(pathname, { ...options, token: session.token });
     if (response.status === 401) {
-      this.clearCredentials();
+      if (this.readStoredCredentials()?.tokenEncrypted === session.tokenEncrypted) {
+        this.clearCredentials();
+      }
       throw createCloudSyncError(
         'Sign in to Cloud Sync again to keep syncing',
         'CLOUD_SYNC_SIGNED_OUT',

@@ -132,6 +132,26 @@ describe('cloud sync client', () => {
     await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
   });
 
+  test('a refusal of a session already replaced by signing in again keeps the new one', async () => {
+    const { world, client } = setup();
+    await client.signIn('google');
+    const realFetch = client.fetchImpl;
+    client.fetchImpl = async (url, init) => {
+      if (!String(url).endsWith('/v1/profile')) return realFetch(url, init);
+      client.fetchImpl = realFetch;
+      // The request is on its way with the old token when the user signs in again
+      // and the old session ends, so the service refuses it.
+      await client.signIn('google');
+      await world.authed(init.headers.Authorization.replace('Bearer ', ''), '/v1/auth/signout', {
+        method: 'POST',
+      });
+      return realFetch(url, init);
+    };
+    await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
+    expect(client.getStoredAccount()).toMatchObject({ email: 'me@x.io' });
+    await expect(client.readProfile()).resolves.toMatchObject({ exists: false });
+  });
+
   test('a canceled subscriber can start checkout again using the existing customer', async () => {
     const { world, client, opened } = setup();
     await client.signIn('google');
