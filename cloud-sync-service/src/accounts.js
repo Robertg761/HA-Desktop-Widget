@@ -100,22 +100,33 @@ export async function getEntitlement(env, deps, session) {
  * the provider has verified, since whoever controls it controls the account.
  */
 export async function findOrCreateUser(env, deps, { provider, providerUserId, email }) {
-  const identity = await env.DB.prepare(
-    'SELECT user_id FROM identities WHERE provider = ? AND provider_user_id = ?'
+  const existingIdentity = await findIdentity(env, provider, providerUserId);
+  if (existingIdentity) {
+    await refreshIdentityEmail(env, existingIdentity, { provider, providerUserId, email });
+    return existingIdentity.user_id;
+  }
+  try {
+    return await createIdentity(env, deps, { provider, providerUserId, email });
+  } catch (error) {
+    // Another sign-in created the same identity or a user with this email in the
+    // meantime (users.email is unique). Its rows are committed, so join them.
+    const raced = await findIdentity(env, provider, providerUserId);
+    if (raced) return raced.user_id;
+    if (email) return createIdentity(env, deps, { provider, providerUserId, email });
+    throw error;
+  }
+}
+
+function findIdentity(env, provider, providerUserId) {
+  return env.DB.prepare(
+    'SELECT user_id, email FROM identities WHERE provider = ? AND provider_user_id = ?'
   )
     .bind(provider, providerUserId)
     .first();
+}
+
+async function createIdentity(env, deps, { provider, providerUserId, email }) {
   const now = deps.now();
-  if (identity) {
-    if (email) {
-      await env.DB.prepare(
-        'UPDATE identities SET email = ? WHERE provider = ? AND provider_user_id = ?'
-      )
-        .bind(email, provider, providerUserId)
-        .run();
-    }
-    return identity.user_id;
-  }
   let userId = null;
   if (email) {
     const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
@@ -141,6 +152,28 @@ export async function findOrCreateUser(env, deps, { provider, providerUserId, em
   );
   await env.DB.batch(statements);
   return userId;
+}
+
+/**
+ * Keeps an identity's email current. The account's own email follows when this
+ * identity supplied it (or it had none), unless another account already uses the
+ * new address; that account keeps it, since email decides which account a new
+ * sign-in joins.
+ */
+async function refreshIdentityEmail(env, identity, { provider, providerUserId, email }) {
+  if (!email || email === identity.email) return;
+  await env.DB.prepare(
+    'UPDATE identities SET email = ? WHERE provider = ? AND provider_user_id = ?'
+  )
+    .bind(email, provider, providerUserId)
+    .run();
+  await env.DB.prepare(
+    `UPDATE users SET email = ?
+     WHERE id = ? AND (email IS NULL OR email = ?)
+       AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = ? AND other.id != ?)`
+  )
+    .bind(email, identity.user_id, identity.email, email, identity.user_id)
+    .run();
 }
 
 export async function handleGetAccount(request, env, deps, { reconcileCheckout } = {}) {

@@ -4,6 +4,7 @@
 
 // Runs the Cloud Sync Worker end to end (see tests/helpers/cloud-sync-world.js).
 
+const { findOrCreateUser } = require('../../cloud-sync-service/src/accounts.js');
 const { encodeStripeParams } = require('../../cloud-sync-service/src/billing.js');
 const { readTextBody } = require('../../cloud-sync-service/src/util.js');
 const { BASE, DAY, createWorld } = require('../helpers/cloud-sync-world.js');
@@ -287,6 +288,59 @@ describe('cloud sync service', () => {
       const google = await world.signIn('google', 'g-code');
       const github = await world.signIn('github', 'gh-code');
       expect(github.body.user.id).not.toBe(google.body.user.id);
+    });
+
+    test('two first sign-ins with one email at the same time make one account', async () => {
+      const world = createWorld();
+      const deps = { crypto, now: world.now };
+      const users = () => world.env.DB.raw.prepare('SELECT id FROM users').all();
+      // The GitHub sign-in looked for a user with this email just before the Google
+      // sign-in created one.
+      const prepare = world.env.DB.prepare;
+      let staleLookups = 1;
+      const env = {
+        ...world.env,
+        DB: {
+          ...world.env.DB,
+          prepare: (sql) => {
+            const statement = prepare(sql);
+            if (!sql.startsWith('SELECT id FROM users WHERE email') || staleLookups === 0) {
+              return statement;
+            }
+            staleLookups -= 1;
+            return { bind: () => ({ first: async () => null }) };
+          },
+        },
+      };
+      const google = await findOrCreateUser(world.env, deps, {
+        provider: 'google',
+        providerUserId: 'google-1',
+        email: 'me@x.io',
+      });
+      const github = await findOrCreateUser(env, deps, {
+        provider: 'github',
+        providerUserId: '42',
+        email: 'me@x.io',
+      });
+      expect(github).toBe(google);
+      expect(users()).toHaveLength(1);
+      expect(world.env.DB.raw.prepare('SELECT provider FROM identities').all()).toHaveLength(2);
+    });
+
+    test("a changed provider email becomes the account's email unless another account has it", async () => {
+      const world = createWorld();
+      world.googleUsers.set('g1', { sub: 'google-1', email: 'old@x.io', email_verified: true });
+      world.googleUsers.set('g2', { sub: 'google-1', email: 'new@x.io', email_verified: true });
+      world.googleUsers.set('o1', { sub: 'google-2', email: 'taken@x.io', email_verified: true });
+      world.googleUsers.set('g3', { sub: 'google-1', email: 'taken@x.io', email_verified: true });
+      const first = await world.signIn('google', 'g1');
+      const renamed = await world.signIn('google', 'g2');
+      expect(renamed.body.user).toEqual({ id: first.body.user.id, email: 'new@x.io' });
+
+      const other = await world.signIn('google', 'o1');
+      const clash = await world.signIn('google', 'g3');
+      expect(clash.body.user).toEqual({ id: first.body.user.id, email: 'new@x.io' });
+      expect(other.body.user.email).toBe('taken@x.io');
     });
 
     test('sessions end on sign-out and after long disuse', async () => {
