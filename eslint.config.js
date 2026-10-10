@@ -29,6 +29,7 @@ module.exports = [
       'babel.config.js',
       'scripts/*.cjs',
       'scripts/**/*.cjs',
+      'src/cloud-sync-client.cjs',
       'src/desktop-pin-ipc.cjs',
       'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',
@@ -116,6 +117,22 @@ module.exports = [
       globals: {
         ...globals.serviceworker,
       },
+    },
+  },
+  // Cloud Sync service (Cloudflare Worker, ES Modules, Web APIs only)
+  {
+    files: ['cloud-sync-service/src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.serviceworker,
+        AbortSignal: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-console': 'off',
     },
   },
   // Renderer process files (ES Modules - bundled by Vite)

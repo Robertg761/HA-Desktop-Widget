@@ -146,6 +146,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
    * @param {number} [options.clockOffsetMs] how far this device's clock is ahead
    * @param {object} [options.safeStorage] OS credential store, see createSafeStorage
    * @param {boolean} [options.syncing] whether the device starts with sync on (default true)
+   * @param {object} [options.cloudClient] a Cloud Sync client signed in to a test service
    */
   function createDevice(
     name,
@@ -155,6 +156,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       clockOffsetMs = 0,
       safeStorage = createDefaultSafeStorage(),
       syncing = true,
+      cloudClient = null,
     } = {}
   ) {
     const userData = path.join(tempRoot, `${name}-userData`);
@@ -199,6 +201,14 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       // The real check: path.relative alone calls a path on another Windows drive inside.
       isPathInsideDirectory,
       preservedEncryptedTokenForRecovery: null,
+      // Cloud Sync: a real client against the test service, or a build without it.
+      getCloudSyncClient: () =>
+        cloudClient || {
+          isAvailable: () => false,
+          getStoredAccount: () => null,
+          serviceUrl: '',
+          signInController: null,
+        },
       mainWindow: null,
       tray: null,
       autoUpdaterInstance: null,
@@ -239,8 +249,11 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      }
      function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
      function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
+     function runSerializedConfigMutation(task) { return Promise.resolve().then(task); }
      function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
      function setupProfileSyncInterval() {}
+     // No pause before reading a damaged file again; a test can replace it to change the file.
+     async function waitForSyncFileToSettle() {}
      async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }
      function applyMainWindowSettingSideEffects() {}
      function applyRuntimeConfigSideEffects() {}
@@ -329,6 +342,10 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
           .map((file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')));
       },
       userData,
+      /** Moves this device's clock forward, as time passing before its next edit would. */
+      advanceClock(ms) {
+        clockOffsetMs += ms;
+      },
       /** Calls an IPC handler as the renderer would. */
       invoke(channel, ...args) {
         if (!handlers[channel]) throw new Error(`No handler registered for ${channel}`);
@@ -401,6 +418,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
   return {
     setup,
     teardown,
+    tempRoot: () => tempRoot,
     syncFilePath,
     readSyncFile,
     baseContent,

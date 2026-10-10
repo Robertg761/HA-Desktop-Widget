@@ -75,14 +75,13 @@ describe('the website pages', () => {
 });
 
 describe('the legal pages', () => {
-  it('present Cloud Sync as the draft of a service that does not exist yet', () => {
-    expect(html.terms).toMatch(/<title>Draft Cloud Sync terms/);
-    expect(html.terms).toMatch(/<h1>[^<]*\(draft\)<\/h1>/);
-    expect(html.terms).toMatch(/name="description" content="Draft terms/);
-    expect(html.privacy).toMatch(/<h2>Planned Cloud Sync service \(draft\)<\/h2>/);
-    expect(html.privacy).not.toMatch(
-      /name="description" content="How HA Desktop Widget Cloud Sync handles/
-    );
+  it('present Cloud Sync as a live service', () => {
+    expect(html.terms).toMatch(/<title>Cloud Sync terms/);
+    expect(html.terms).not.toMatch(/<title>Draft Cloud Sync terms/);
+    expect(html.terms).toMatch(/<h1>Cloud Sync subscription terms<\/h1>/);
+    expect(html.terms).not.toMatch(/name="description" content="Draft terms/);
+    expect(html.privacy).toMatch(/<h2>Cloud Sync service<\/h2>/);
+    expect(html.privacy).not.toMatch(/<h2>Planned Cloud Sync service \(draft\)<\/h2>/);
   });
 
   it('keeps the subscription price and trial off the home page', () => {

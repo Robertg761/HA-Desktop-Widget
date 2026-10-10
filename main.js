@@ -561,6 +561,7 @@ const {
   probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
+const { CloudSyncClient, resolveCloudSyncServiceUrl } = require('./src/cloud-sync-client.cjs');
 
 const {
   UpdateCheckScheduler,
@@ -908,6 +909,9 @@ const serializeConfigMutationHandler =
     return runSerializedConfigMutation(() => handler(...args));
   };
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
+// After Cloud Sync refuses a save for want of a subscription, automatic runs only download
+// for this long; Sync now, signing in and a renewed subscription try saving straight away.
+const CLOUD_SYNC_WRITE_RETRY_MS = 6 * 60 * 60 * 1000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
 const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
@@ -916,11 +920,20 @@ const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
+// Backups holding edits a run threw away (the losing side of a conflict, a stale copy of the
+// file) are kept longer: the newest 20, and any younger than 30 days up to 100 in all. A lost
+// edit may only be noticed weeks later, long after routine pulls would have pruned it.
+const PROFILE_SYNC_DISCARD_BACKUP_KEEP = 20;
+const PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const PROFILE_SYNC_DISCARD_BACKUP_LIMIT = 100;
 // Pulls remembered for recognising config updates built before them.
 const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
+// Sync through a hosted account (Cloud Sync) rather than a file in a folder.
+const PROFILE_SYNC_HOSTED_PROVIDER = 'hostedAccount';
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
+  PROFILE_SYNC_HOSTED_PROVIDER,
   'cloudFile',
   'googleDrive',
   'dropbox',
@@ -967,6 +980,10 @@ const profileSyncRuntime = {
   // first pull it missed. Kept after an update is answered, since another one
   // built earlier (a rollback snapshot) can still follow.
   pendingPulls: [],
+  // Cloud Sync revision of the last read; the next write expects it unchanged.
+  hostedRevision: null,
+  // When Cloud Sync last refused a save because the account has no subscription (0: never).
+  cloudSyncWriteRefusedAt: 0,
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -1370,6 +1387,7 @@ let deferredPlaintextTokenMigrationPending = false;
 let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
 let homeAssistantOAuthClient = null;
+let cloudSyncClient = null;
 let homeAssistantOAuthRefreshTimer = null;
 
 // The OS build cannot change while the app runs. Windows before 11 22H2 cannot blur behind the
@@ -1988,6 +2006,23 @@ function normalizeProfileSyncStringMap(value) {
   );
 }
 
+/** Keeps the agreed-version entries ({hash, updatedAt}) of known sections. */
+function normalizeProfileSyncAgreedMap(value) {
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([key, entry]) =>
+          profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) &&
+          isPlainObject(entry) &&
+          typeof entry.hash === 'string' &&
+          typeof entry.updatedAt === 'string' &&
+          !Number.isNaN(Date.parse(entry.updatedAt))
+      )
+      .map(([key, entry]) => [key, { hash: entry.hash, updatedAt: entry.updatedAt }])
+  );
+}
+
 function getDefaultProfileSyncConfig() {
   return {
     enabled: false,
@@ -2006,8 +2041,11 @@ function getDefaultProfileSyncConfig() {
     lastSyncError: '',
     profileUpdatedAt: null,
     // Main-process-owned merge state: each section's hash after the last
-    // successful sync, and when each section last changed on this device.
+    // successful sync, the edit time of that agreed version ({hash, updatedAt},
+    // ignored once the hash no longer matches the baseline), and when each
+    // section last changed on this device.
     syncBaseline: {},
+    syncBaselineUpdatedAt: {},
     sectionUpdatedAt: {},
     firstEnableResolutionPending: false,
     remoteRewritePending: false,
@@ -2068,6 +2106,9 @@ function ensureProfileSyncConfigDefaults(target) {
     target.profileSync.lastSuccessfulSyncAt = null;
   }
   target.profileSync.syncBaseline = normalizeProfileSyncStringMap(target.profileSync.syncBaseline);
+  target.profileSync.syncBaselineUpdatedAt = normalizeProfileSyncAgreedMap(
+    target.profileSync.syncBaselineUpdatedAt
+  );
   target.profileSync.sectionUpdatedAt = normalizeProfileSyncStringMap(
     target.profileSync.sectionUpdatedAt
   );
@@ -2203,6 +2244,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     delete cloned.profileSync.storedPassphrase;
     delete cloned.profileSync.passphraseTransition;
     delete cloned.profileSync.syncBaseline;
+    delete cloned.profileSync.syncBaselineUpdatedAt;
     delete cloned.profileSync.sectionUpdatedAt;
     cloned.profileSync.cloudFilePath = getRendererSyncFilePath(cloned.profileSync.cloudFilePath);
   }
@@ -3909,6 +3951,7 @@ function buildProfileSyncStatus(extra = {}) {
     enabled: !!profileSync.enabled,
     provider: normalizeProfileSyncProvider(profileSync.provider),
     cloudFilePath: getRendererSyncFilePath(profileSync.cloudFilePath),
+    cloudSync: getCloudSyncStatus(),
     syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
@@ -3980,6 +4023,8 @@ function hasProfileSyncCredentialTransitionPending(profileSync = getProfileSyncC
 function collectProfileSyncFolderWarnings() {
   const profileSync = getProfileSyncConfig();
   const warnings = [];
+  // Folder warnings describe a sync folder; Cloud Sync has none.
+  if (isHostedProfileSyncProvider(profileSync.provider)) return warnings;
 
   if (profileSync.enabled && isProfileSyncFolderUnsynced(profileSync.cloudFilePath)) {
     warnings.push('unsynced_folder');
@@ -3997,6 +4042,19 @@ function collectProfileSyncFolderWarnings() {
   }
 
   return warnings;
+}
+
+/** Cloud Sync as the settings show it, from local state only (no network). */
+function getCloudSyncStatus() {
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  return {
+    available: client.isAvailable(),
+    signedIn: !!account,
+    email: account?.email || '',
+    provider: account?.provider || '',
+    signInPending: !!client.signInController,
+  };
 }
 
 // Written by main as syncs run and as settings change. A renderer snapshot taken
@@ -4290,7 +4348,7 @@ async function stageProfileSyncRewrite({
   if (profileSync.passphraseTransition) {
     throw new Error(mainT('A sync-key rewrite is already pending recovery'));
   }
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     throw new Error(
       mainT('Profile sync must have an active remote file before it can be rewritten')
     );
@@ -4316,7 +4374,7 @@ async function stageProfileSyncRewrite({
   const transaction = createProfileSyncRewriteTransaction({
     reason,
     provider: normalizeProfileSyncProvider(profileSync.provider),
-    cloudFilePath: profileSync.cloudFilePath,
+    cloudFilePath: getProfileSyncEndpoint(profileSync),
     expectedRemoteIdentity: getSyncEnvelopeIdentity(baselineRemote),
     targetRemoteIdentity: getSyncEnvelopeIdentity({ exists: true, envelope: targetEnvelope }),
     targetEnvelopeSerialized,
@@ -4350,13 +4408,7 @@ async function executePendingProfileSyncRewrite() {
   if (!transaction) {
     throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
   }
-  if (
-    !profileSyncRewriteEndpointMatches(
-      transaction,
-      normalizeProfileSyncProvider(profileSync.provider),
-      profileSync.cloudFilePath
-    )
-  ) {
+  if (!profileSyncRewriteTargetMatches(transaction, profileSync)) {
     throw new Error(
       mainT(
         'The sync provider or file changed during key recovery. Restore the original target before retrying.'
@@ -4403,12 +4455,17 @@ async function executePendingProfileSyncRewrite() {
           await profileSyncCore.decodeEnvelopeSections(targetEnvelope, newPassphrase)
         ).sections;
         const writtenBaseline = {};
+        const writtenBaselineUpdatedAt = {};
         profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope()).forEach((key) => {
           if (writtenSections[key]) {
             writtenBaseline[key] = profileSyncCore.computeSectionHash(
               key,
               writtenSections[key].data
             );
+            writtenBaselineUpdatedAt[key] = {
+              hash: writtenBaseline[key],
+              updatedAt: writtenSections[key].updatedAt,
+            };
           }
         });
         const previous = {
@@ -4427,6 +4484,7 @@ async function executePendingProfileSyncRewrite() {
           profileUpdatedAt: profileSync.profileUpdatedAt,
           localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
           syncBaseline: profileSync.syncBaseline,
+          syncBaselineUpdatedAt: profileSync.syncBaselineUpdatedAt,
           lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt,
         };
 
@@ -4455,6 +4513,7 @@ async function executePendingProfileSyncRewrite() {
         profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.syncBaseline = writtenBaseline;
+        profileSync.syncBaselineUpdatedAt = writtenBaselineUpdatedAt;
         profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
 
         const persistence = await saveConfigDurably({ allowDebouncedPush: false });
@@ -4474,6 +4533,7 @@ async function executePendingProfileSyncRewrite() {
           profileSync.profileUpdatedAt = previous.profileUpdatedAt;
           profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
           profileSync.syncBaseline = previous.syncBaseline;
+          profileSync.syncBaselineUpdatedAt = previous.syncBaselineUpdatedAt;
           profileSync.lastSuccessfulSyncAt = previous.lastSuccessfulSyncAt;
           const error = new Error(
             mainT(
@@ -4600,13 +4660,53 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
   }
   await requireExistingSyncParentDirectory(filePath, fs);
-  const tempPath = `${filePath}.tmp-${Date.now()}`;
+  // Hidden, and unique to this write, so a crash leaves nothing a person sees in the folder
+  // and two writers never share one; removeStaleSyncTempFiles clears what a crash leaves.
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.tmp-${Date.now()}-${nodeCrypto.randomBytes(4).toString('hex')}`
+  );
+  let handle = null;
   try {
-    await fs.promises.writeFile(tempPath, serialized, 'utf8');
+    await fs.promises.writeFile(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
+    // On disk before the rename, so a crash or power cut cannot leave the sync file pointing
+    // at contents that were never written. fsync covers the file whichever handle asks.
+    handle = await fs.promises.open(tempPath, 'r+');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    // Replaces the file in one step, on Windows too.
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
+    await handle?.close().catch(() => {});
     await fs.promises.unlink(tempPath).catch(() => {});
     throwSyncFileSystemError(error);
+  }
+}
+
+const PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Deletes temporary files a crashed write left beside the sync file, once they are an hour
+ * old: they would otherwise replicate to every computer. Includes the visible ones earlier
+ * versions wrote. Best effort; a folder that cannot be read is left alone.
+ */
+async function removeStaleSyncTempFiles(filePath) {
+  if (!filePath) return;
+  const folder = path.dirname(filePath);
+  const name = path.basename(filePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^(\\.${name}\\.tmp-\\d+-[0-9a-f]+|${name}\\.tmp-\\d+)$`);
+  try {
+    for (const entry of await fs.promises.readdir(folder)) {
+      if (!pattern.test(entry)) continue;
+      const target = path.join(folder, entry);
+      const stats = await fs.promises.stat(target).catch(() => null);
+      if (stats?.isFile() && Date.now() - stats.mtimeMs > PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS) {
+        await fs.promises.unlink(target).catch(() => {});
+      }
+    }
+  } catch {
+    // nothing to clean up in a folder that cannot be read
   }
 }
 
@@ -4681,7 +4781,9 @@ async function readConfiguredSyncEnvelope({ allowDamaged = false } = {}) {
   // but the last answer stands while a read is under way so the form does not flicker.
   let result;
   try {
-    result = await readCloudFileEnvelope(profileSync.cloudFilePath);
+    result = isHostedProfileSyncProvider(profileSync.provider)
+      ? await readHostedSyncEnvelope()
+      : await readCloudFileEnvelope(profileSync.cloudFilePath);
   } catch (error) {
     profileSyncRuntime.remoteEncrypted = null;
     throw error;
@@ -4697,7 +4799,165 @@ async function writeConfiguredSyncEnvelope(envelope) {
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
+  if (isHostedProfileSyncProvider(profileSync.provider)) return writeHostedSyncEnvelope(envelope);
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
+}
+
+function isHostedProfileSyncProvider(provider) {
+  return provider === PROFILE_SYNC_HOSTED_PROVIDER;
+}
+
+/**
+ * Whether sync has somewhere to go: a file path, or for Cloud Sync, a build
+ * that knows the service and a signed-in account.
+ */
+function hasProfileSyncTarget(profileSync = getProfileSyncConfig()) {
+  if (isHostedProfileSyncProvider(profileSync.provider)) {
+    const client = getCloudSyncClient();
+    return client.isAvailable() && !!client.getStoredAccount();
+  }
+  return !!profileSync.cloudFilePath;
+}
+
+function describeMissingProfileSyncTarget(profileSync = getProfileSyncConfig()) {
+  if (!isHostedProfileSyncProvider(profileSync.provider)) {
+    return mainT('Profile sync file is not configured');
+  }
+  return getCloudSyncClient().isAvailable()
+    ? mainT('Sign in to Cloud Sync to keep syncing')
+    : mainT('Cloud Sync is not available in this version of the app');
+}
+
+/**
+ * Names where the synced profile lives, for the key-rewrite transaction to bind
+ * to: the file path, or for Cloud Sync the service and account. The account is
+ * named by its id, since an email can be empty (GitHub without a verified one);
+ * a sign-in saved before ids were kept still names it by email.
+ */
+function getProfileSyncEndpoint(profileSync = getProfileSyncConfig()) {
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return profileSync.cloudFilePath;
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  return `cloud-sync:${client.serviceUrl}:${account?.id || account?.email || 'account'}`;
+}
+
+/**
+ * Whether a key-rewrite transaction was staged for where sync points now. One staged
+ * against Cloud Sync before account ids were kept names the account by email, and still
+ * matches once signing in again has saved the id.
+ */
+function profileSyncRewriteTargetMatches(transaction, profileSync = getProfileSyncConfig()) {
+  const provider = normalizeProfileSyncProvider(profileSync.provider);
+  const endpoint = getProfileSyncEndpoint(profileSync);
+  if (profileSyncRewriteEndpointMatches(transaction, provider, endpoint)) return true;
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return false;
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  if (!account?.id || !account.email) return false;
+  return profileSyncRewriteEndpointMatches(
+    transaction,
+    provider,
+    `cloud-sync:${client.serviceUrl}:${account.email}`
+  );
+}
+
+/**
+ * Whether two Cloud Sync sign-ins are the same account: by id, or by email for a
+ * sign-in saved before ids were kept. Two accounts without an email never match.
+ */
+function isSameCloudSyncAccount(previousAccount, account) {
+  if (!previousAccount || !account) return false;
+  if (previousAccount.id && account.id) return previousAccount.id === account.id;
+  return !!previousAccount.email && previousAccount.email === account.email;
+}
+
+const CLOUD_SYNC_ERROR_MESSAGES = {
+  CLOUD_SYNC_SIGNED_OUT: 'Sign in to Cloud Sync to keep syncing',
+  CLOUD_SYNC_SUBSCRIPTION_REQUIRED: 'Cloud Sync needs a subscription to save changes',
+  CLOUD_SYNC_CONFLICT: 'Sync file kept changing on the other device; try again',
+  CLOUD_SYNC_NETWORK: 'Cloud Sync could not be reached. Check your connection.',
+  CLOUD_SYNC_TIMEOUT: 'Cloud Sync could not be reached. Check your connection.',
+  CLOUD_SYNC_UNAVAILABLE: 'Cloud Sync is not available in this version of the app',
+  CLOUD_SYNC_SECURE_STORAGE_UNAVAILABLE:
+    'Cloud Sync needs secure credential storage, which is unavailable on this system',
+  CLOUD_SYNC_TOO_LARGE: 'Sync file exceeds size limit (512 KB)',
+  CLOUD_SYNC_SIGN_IN_CANCELED: 'Sign-in was canceled',
+  CLOUD_SYNC_SIGN_IN_DECLINED: 'Sign-in was declined in the browser',
+  CLOUD_SYNC_SIGN_IN_FAILED: 'Sign-in did not complete. Try again.',
+  CLOUD_SYNC_SIGN_IN_TIMEOUT: 'Sign-in timed out. Try again.',
+  CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
+  CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
+  CLOUD_SYNC_BILLING_BUSY: 'A billing change is in progress. Try again shortly.',
+  CLOUD_SYNC_BILLING_PENDING: 'Your payment is being processed. Try again shortly.',
+  CLOUD_SYNC_SUBSCRIPTION_EXISTS: 'You already have a subscription. Reopen Settings to manage it.',
+  CLOUD_SYNC_NOT_LAUNCHED: 'Cloud Sync is not available yet.',
+};
+
+/**
+ * Whether an automatic run should only download because Cloud Sync recently refused a save
+ * for want of a subscription. Sync now always tries again.
+ */
+function shouldHoldCloudSyncWrites(profileSync, source) {
+  if (!isHostedProfileSyncProvider(profileSync.provider) || source === 'manual') return false;
+  const refusedAt = profileSyncRuntime.cloudSyncWriteRefusedAt;
+  return !!refusedAt && Date.now() - refusedAt < CLOUD_SYNC_WRITE_RETRY_MS;
+}
+
+/** Lets the next run save again, and queues one when edits may be waiting. */
+function resumeCloudSyncWrites() {
+  if (!profileSyncRuntime.cloudSyncWriteRefusedAt) return;
+  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
+  scheduleDebouncedProfileSyncPush('subscription_restored');
+}
+
+/** Gives a Cloud Sync failure a translated message, keeping its code. */
+function toCloudSyncError(error) {
+  const key = CLOUD_SYNC_ERROR_MESSAGES[error?.code];
+  const translated = new Error(
+    key
+      ? mainT(key)
+      : mainT('Cloud Sync failed: {{error}}', { error: error?.message || String(error) })
+  );
+  translated.code = error?.code;
+  return translated;
+}
+
+async function readHostedSyncEnvelope() {
+  let result;
+  try {
+    result = await getCloudSyncClient().readProfile();
+  } catch (error) {
+    throw toCloudSyncError(error);
+  }
+  // Writes are compare-and-swap against the revision last read.
+  profileSyncRuntime.hostedRevision = result.exists ? result.revision : null;
+  if (!result.exists) return { exists: false, envelope: null };
+  if (Buffer.byteLength(result.text, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
+  try {
+    return { exists: true, envelope: profileSyncCore.parseSyncEnvelope(result.text) };
+  } catch (error) {
+    // Handed back like a damaged sync file, so only the callers that may replace it see it.
+    return { exists: true, envelope: null, damaged: { raw: result.text, error } };
+  }
+}
+
+async function writeHostedSyncEnvelope(envelope) {
+  const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
+  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
+  try {
+    // A null revision means none existed at the last read, so this only creates.
+    const { revision } = await getCloudSyncClient().writeProfile(
+      serialized,
+      profileSyncRuntime.hostedRevision ?? null
+    );
+    profileSyncRuntime.hostedRevision = revision;
+  } catch (error) {
+    throw toCloudSyncError(error);
+  }
 }
 
 /**
@@ -4731,6 +4991,7 @@ async function hasRemoteSyncEnvelopeChanged(previousResult) {
  * @returns {Promise<string[]>} conflict-copy filenames, empty when none
  */
 async function findProfileSyncConflictCopies() {
+  if (isHostedProfileSyncProvider(getProfileSyncConfig().provider)) return [];
   const filePath = getProfileSyncConfig().cloudFilePath;
   if (!filePath) return [];
 
@@ -4805,26 +5066,50 @@ function pickSections(sections, keys) {
 // Why a backup was taken. Syncing replaces settings routinely, many times a day with
 // several computers; an import or a restore is the person's own undo. The two are kept
 // in separate groups, so a busy stretch of syncing cannot push out the one backup
-// someone is counting on.
+// someone is counting on. A sync backup that holds edits the run discarded (`discarded`
+// names their sections) goes in a third group, kept longer still.
 const PROFILE_SYNC_MANUAL_BACKUP_REASONS = new Set(['import', 'restore']);
 
-async function writeProfileSyncBackup(prefix, contents, reason = 'pull') {
+async function writeProfileSyncBackup(prefix, contents, reason = 'pull', { discarded = [] } = {}) {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
   await fs.promises.mkdir(backupDir, { recursive: true });
   await fs.promises.writeFile(
     path.join(backupDir, `${prefix}-${Date.now()}.json`),
-    JSON.stringify({ backedUpAt: new Date().toISOString(), reason, ...contents }, null, 2),
+    JSON.stringify(
+      {
+        backedUpAt: new Date().toISOString(),
+        reason,
+        ...(discarded.length > 0 ? { discarded } : {}),
+        ...contents,
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`), async (name) => {
     try {
       const saved = JSON.parse(await fs.promises.readFile(path.join(backupDir, name), 'utf8'));
-      return PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason) ? 'manual' : 'routine';
+      if (PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason)) return 'manual';
+      return Array.isArray(saved?.discarded) && saved.discarded.length > 0
+        ? 'discarded'
+        : 'routine';
     } catch {
       return 'routine';
     }
   });
+}
+
+/** Whether pruning should delete the oldest of a group's backups (oldest first in `names`). */
+function shouldPruneOldestProfileSyncBackup(group, names) {
+  if (group !== 'discarded') return names.length > PROFILE_SYNC_BACKUP_KEEP;
+  if (names.length > PROFILE_SYNC_DISCARD_BACKUP_LIMIT) return true;
+  const takenAt = Number(names[0].match(/-(\d+)\.[a-z]+$/)?.[1]);
+  return (
+    names.length > PROFILE_SYNC_DISCARD_BACKUP_KEEP &&
+    Date.now() - takenAt > PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS
+  );
 }
 
 /**
@@ -4843,8 +5128,8 @@ async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () =>
       const group = await groupOf(name);
       groups.set(group, [...(groups.get(group) || []), name]);
     }
-    for (const names of groups.values()) {
-      while (names.length > PROFILE_SYNC_BACKUP_KEEP) {
+    for (const [group, names] of groups) {
+      while (shouldPruneOldestProfileSyncBackup(group, names)) {
         await fs.promises.unlink(path.join(backupDir, names.shift()));
       }
     }
@@ -4881,10 +5166,15 @@ function backupDamagedSyncFile(raw) {
   );
 }
 
+/**
+ * Keeps this device's sections before something replaces them. `discarded` names the ones
+ * holding edits the replacement throws away, which keeps the backup longer.
+ */
 async function backupLocalProfileBeforePullApply(
   sectionKeys,
   incomingSections = null,
-  reason = 'pull'
+  reason = 'pull',
+  { discarded = [] } = {}
 ) {
   try {
     const sections = profileSyncCore.scopeBackupToIncoming(
@@ -4894,7 +5184,7 @@ async function backupLocalProfileBeforePullApply(
       }),
       incomingSections
     );
-    await writeProfileSyncBackup('local-profile', { sections }, reason);
+    await writeProfileSyncBackup('local-profile', { sections }, reason, { discarded });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
@@ -4908,10 +5198,13 @@ async function backupLocalProfileBeforePullApply(
 /**
  * Keeps a copy of sections another device wrote before this device's newer
  * edits replace them in the file. Pushing without one would lose them for good.
+ * `discarded` is as for backupLocalProfileBeforePullApply.
  */
-async function backupRemoteSectionsBeforePush(remoteSections) {
+async function backupRemoteSectionsBeforePush(remoteSections, { discarded = [] } = {}) {
   try {
-    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push');
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push', {
+      discarded,
+    });
   } catch (error) {
     log.warn('Failed to back up remote profile sections before pushing:', error.message);
     throw new Error(
@@ -4949,8 +5242,16 @@ async function applySyncedProfileToConfig(pulledSections) {
     Object.entries(pulledSections).map(([key, entry]) => [key, entry.data])
   );
   const merged = profileSyncCore.mergeSectionsIntoConfig(config, sectionData);
+  // An edit time from a clock ahead of this one is recorded as now. File times count as at
+  // most five minutes ahead in a conflict, so a future one kept here would make a pulled
+  // section look like a newer edit of this device's. The agreed version keeps the time as
+  // written, but an edit made after this pull is stamped at most five minutes ahead of now
+  // (see stampLocalSectionEdit).
+  const nowIso = new Date().toISOString();
+  const notAfterNow = (value) =>
+    profileSyncCore.compareIsoTimestamps(value, nowIso) > 0 ? nowIso : value;
   const latestPulledAt = Object.values(pulledSections)
-    .map((entry) => entry.updatedAt)
+    .map((entry) => notAfterNow(entry.updatedAt))
     .reduce(
       (latest, value) => (profileSyncCore.compareIsoTimestamps(value, latest) > 0 ? value : latest),
       null
@@ -4962,7 +5263,7 @@ async function applySyncedProfileToConfig(pulledSections) {
     sectionUpdatedAt: {
       ...(previous.profileSync?.sectionUpdatedAt || {}),
       ...Object.fromEntries(
-        Object.entries(pulledSections).map(([key, entry]) => [key, entry.updatedAt])
+        Object.entries(pulledSections).map(([key, entry]) => [key, notAfterNow(entry.updatedAt)])
       ),
     },
     profileUpdatedAt: latestPulledAt || new Date().toISOString(),
@@ -5356,10 +5657,11 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
   if (config?.profileSync) {
     config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
+    const nowMs = Date.parse(profileSyncRuntime.localProfileUpdatedAt);
     config.profileSync.sectionUpdatedAt = {
       ...(config.profileSync.sectionUpdatedAt || {}),
       ...Object.fromEntries(
-        changedSections.map((key) => [key, profileSyncRuntime.localProfileUpdatedAt])
+        changedSections.map((key) => [key, stampLocalSectionEdit(config.profileSync, key, nowMs)])
       ),
     };
   }
@@ -5367,6 +5669,52 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   if (allowDebouncedPush) {
     scheduleDebouncedProfileSyncPush('config_change');
   }
+}
+
+/**
+ * The latest edit time this device knows for a section: its own last edit or pull, or the
+ * version it last agreed on with the file, as that version's writer recorded it.
+ */
+function getKnownSectionUpdatedAt(profileSync, key) {
+  return [
+    profileSync?.sectionUpdatedAt?.[key],
+    profileSync?.syncBaselineUpdatedAt?.[key]?.updatedAt,
+  ].reduce(
+    (latest, value) =>
+      typeof value === 'string' && profileSyncCore.compareIsoTimestamps(value, latest) > 0
+        ? value
+        : latest,
+    null
+  );
+}
+
+/**
+ * The edit time of a section changed on this device: now, or just after the version it
+ * replaced when this clock is slightly behind the one that wrote that version. An edit made
+ * after a pull then beats what it replaced, and no device takes it for a stale copy of the
+ * file. It never carries more of another clock's lead than the sync clock tolerance, or one
+ * pull from a clock a day ahead would stamp every later edit here a day ahead as well, and
+ * those would win conflicts they should lose.
+ */
+function stampLocalSectionEdit(profileSync, key, nowMs = Date.now()) {
+  const knownMs = Date.parse(getKnownSectionUpdatedAt(profileSync, key) || '');
+  const latestMs = nowMs + profileSyncCore.SYNC_FUTURE_TOLERANCE_MS;
+  return new Date(
+    Number.isNaN(knownMs) ? nowMs : Math.min(Math.max(nowMs, knownMs + 1), latestMs)
+  ).toISOString();
+}
+
+/**
+ * The edit time written for a pushed section. It is always later than the file's version it
+ * replaces, so no other device takes it for a stale copy of the file: Sync up and Keep local
+ * can push a section this device last changed before the file's version was written.
+ */
+function stampPushedSection(profileSync, key, remoteEntry) {
+  const own = getKnownSectionUpdatedAt(profileSync, key) || new Date().toISOString();
+  const remoteMs = Date.parse(remoteEntry?.updatedAt || '');
+  return Number.isNaN(remoteMs) || Date.parse(own) > remoteMs
+    ? own
+    : new Date(remoteMs + 1).toISOString();
 }
 
 /**
@@ -6486,7 +6834,7 @@ function setupProfileSyncInterval() {
     profileSyncRuntime.needsResolution ||
     profileSync.firstEnableResolutionPending ||
     hasProfileSyncCredentialTransitionPending(profileSync) ||
-    !profileSync.cloudFilePath
+    !hasProfileSyncTarget(profileSync)
   ) {
     return;
   }
@@ -6518,7 +6866,7 @@ async function findProfileSyncConflictSections(envelope) {
     // A file whose content cannot be read is damaged in every section.
     if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
     const everySection = Object.keys(localSections);
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   const { sections: remoteSections, malformed } = decoded;
   const baseline = getProfileSyncConfig().syncBaseline || {};
@@ -6552,18 +6900,29 @@ async function prepareProfileSyncFirstEnableResolution() {
   profileSyncRuntime.conflictSections = [];
   profileSyncRuntime.damagedConflictSections = [];
 
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     return { needsResolution: false };
   }
 
-  const readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+  let readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   if (!readResult.exists) {
     return { needsResolution: false };
   }
 
-  const { sections: conflictSections, damaged } =
-    await findProfileSyncConflictSectionsInRead(readResult);
+  let conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  if (conflicts.unreadable) {
+    // A file the provider is still delivering reads as damaged for a moment, and the choice
+    // offered for a damaged file replaces it. It is read once more before that is offered.
+    await waitForSyncFileToSettle();
+    readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+    profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
+    if (!readResult.exists) {
+      return { needsResolution: false };
+    }
+    conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  }
+  const { sections: conflictSections, damaged } = conflicts;
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
@@ -6579,15 +6938,25 @@ async function prepareProfileSyncFirstEnableResolution() {
   return { needsResolution: true };
 }
 
-/** The conflict check for what a read returned, which may be a file that cannot be parsed. */
+/**
+ * The conflict check for what a read returned, which may be a file that cannot be parsed.
+ * `unreadable` says the whole file could not be read, rather than some of its sections.
+ */
 async function findProfileSyncConflictSectionsInRead(readResult) {
   if (readResult.damaged) {
     const everySection = Object.keys(
       profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope())
     );
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   return findProfileSyncConflictSections(readResult.envelope);
+}
+
+const PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS = 1500;
+
+/** The pause before reading again a sync file that read as damaged on first enable. */
+function waitForSyncFileToSettle() {
+  return new Promise((resolve) => setTimeout(resolve, PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS));
 }
 
 function getSyncEnvelopeIdentity(readResult) {
@@ -6657,9 +7026,29 @@ async function clearProfileSyncFirstEnableResolutionPending() {
   return persistence;
 }
 
+/** Words why a first sync stopped short, rather than handing its reason code to the status line. */
+function describeIncompleteFirstProfileSync(result) {
+  switch (result?.reason) {
+    case 'rewrite_pending':
+      return getProfileSyncConfig().passphraseTransition
+        ? mainT(
+            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
+          )
+        : mainT('The remote profile still needs its encryption update. Use Sync up to retry.');
+    case 'encryption_change_pending':
+      return mainT('Finish or cancel the pending encryption change first.');
+    case 'needs_resolution':
+      return mainT('The first-time conflict check did not complete. Retry it before syncing.');
+    case 'remote_changed':
+      return mainT('The remote profile changed before the initial sync could complete');
+    default:
+      return mainT('Initial profile sync did not complete');
+  }
+}
+
 async function completeProfileSyncFirstEnablePreparation(source) {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     clearProfileSyncTimers();
     return { ok: false, reason: 'not_configured', status: buildProfileSyncStatus() };
   }
@@ -6672,7 +7061,7 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
     throw new Error(
-      result?.error || result?.reason || mainT('Initial profile sync did not complete')
+      result?.error ? mainTError(result.error) : describeIncompleteFirstProfileSync(result)
     );
   }
   await clearProfileSyncFirstEnableResolutionPending();
@@ -6692,7 +7081,9 @@ function scheduleDebouncedProfileSyncPush(source = 'config_change') {
     hasProfileSyncCredentialTransitionPending(profileSync)
   )
     return;
-  if (!profileSync.cloudFilePath || !isProfileSyncProviderSupported(profileSync.provider)) return;
+  if (!hasProfileSyncTarget(profileSync) || !isProfileSyncProviderSupported(profileSync.provider)) {
+    return;
+  }
 
   if (profileSyncRuntime.pushDebounceTimer) {
     clearTimeout(profileSyncRuntime.pushDebounceTimer);
@@ -6727,8 +7118,8 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
-  if (!profileSync.cloudFilePath) {
-    throw new Error(mainT('Profile sync file is not configured'));
+  if (!hasProfileSyncTarget(profileSync)) {
+    throw new Error(describeMissingProfileSyncTarget(profileSync));
   }
   if (profileSync.passphraseTransition) {
     if (source === 'manual' || source === 'startup_rewrite_recovery') {
@@ -6804,12 +7195,33 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       throw error;
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
+    if (!isHostedProfileSyncProvider(profileSync.provider)) {
+      await removeStaleSyncTempFiles(profileSync.cloudFilePath);
+    }
 
     if (remoteResult.damaged) {
       // A file that cannot be read is only replaced by an explicit Sync up (or Keep
       // Local on first enable), and only after a copy is kept.
       if (direction !== 'push') throw remoteResult.damaged.error;
       await backupDamagedSyncFile(remoteResult.damaged.raw);
+    }
+    // No file where this device has synced with one before is more likely an unmounted drive,
+    // a file the provider evicted or a stopped sync client than a fresh start. Recreating it
+    // would leave only this device's sections, so only an explicit Sync up may.
+    if (
+      !remoteResult.exists &&
+      direction !== 'push' &&
+      Object.keys(profileSync.syncBaseline || {}).length > 0
+    ) {
+      throw new Error(
+        isHostedProfileSyncProvider(profileSync.provider)
+          ? mainT(
+              'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
+            )
+          : mainT(
+              'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
+            )
+      );
     }
 
     // A routine run never changes the file's encryption. Only the rewrite and
@@ -6889,33 +7301,54 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         profileSync.sectionUpdatedAt?.[key] || profileSync.profileUpdatedAt || null,
       ])
     );
+    const runStartedMs = Date.now();
     const plan = profileSyncCore.planSectionSync({
       sectionKeys,
       localSections,
       remoteSections,
       baseline: profileSync.syncBaseline,
+      agreedUpdatedAt: profileSync.syncBaselineUpdatedAt,
       localUpdatedAt,
       direction,
       forceSections: options.forceSections || null,
+      now: runStartedMs,
     });
     const nextBaseline = {};
+    // The edit time of each agreed version, which tells a stale copy of the file from an edit.
+    const nextBaselineUpdatedAt = {};
+    const previousAgreed = profileSync.syncBaselineUpdatedAt || {};
+    const agreeOnRemote = (key, hash) => {
+      nextBaseline[key] = hash;
+      // The same content in an older copy of the file (a restored version holding it, or
+      // another computer that wrote it earlier) must not move the agreed time back: a later
+      // stale copy would then no longer read as older than it.
+      const remoteAt = remoteSections[key].updatedAt;
+      const before = previousAgreed[key];
+      nextBaselineUpdatedAt[key] =
+        before?.hash === hash &&
+        profileSyncCore.compareIsoTimestamps(before.updatedAt, remoteAt) > 0
+          ? before.updatedAt
+          : remoteAt;
+    };
     plan.unchanged.forEach((key) => {
       if (plan.localHashes[key] === plan.remoteHashes[key]) {
-        nextBaseline[key] = plan.localHashes[key];
+        agreeOnRemote(key, plan.localHashes[key]);
       }
     });
 
     let currentLocalSections = localSections;
     const pushKeys = [...plan.push];
     if (plan.pull.length > 0) {
-      await backupLocalProfileBeforePullApply(plan.pull);
+      await backupLocalProfileBeforePullApply(plan.pull, null, 'pull', {
+        discarded: plan.discardsLocal,
+      });
       await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
       profileSync = getProfileSyncConfig();
       currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
       plan.pull.forEach((key) => {
         const appliedHash = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
         if (appliedHash === plan.remoteHashes[key]) {
-          nextBaseline[key] = appliedHash;
+          agreeOnRemote(key, appliedHash);
         } else {
           // The file lacked fields this version keeps (an older writer), so the
           // applied section still differs; write it back so both sides agree.
@@ -6931,6 +7364,51 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       !remoteEnvelope || remoteEncrypted === !!profileSync.encryptionEnabled;
     const rewriteRequired =
       !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
+    // Without a subscription Cloud Sync still serves the profile but refuses saves. The
+    // pulls above are kept and recorded; this device's own edits wait, unsaved, until a
+    // save is accepted. A pending encryption rewrite cannot wait like that, so it fails.
+    const mayHoldPushes = !rewriteRequired && !profileSync.remoteRewritePending;
+    const finishWithoutSaving = async () => {
+      await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
+      profileSyncRuntime.lastRemote = remoteEnvelope
+        ? {
+            updatedAt: remoteEnvelope.updatedAt,
+            updatedByDeviceId: remoteEnvelope.updatedByDeviceId,
+          }
+        : null;
+      profileSyncRuntime.lastRunSummary = {
+        at: new Date().toISOString(),
+        pushed: [],
+        pulled: plan.pull,
+        replacedLocal: plan.discardsLocal,
+        replacedRemote: [],
+        staleRemote: [],
+      };
+      updateProfileSyncStatus(
+        'error',
+        mainT(
+          'Cloud Sync needs a subscription to save changes. Changes from your other computers still download.'
+        )
+      );
+      setupProfileSyncInterval();
+      profileSyncRuntime.inFlight = false;
+      const status = buildProfileSyncStatus();
+      emitProfileSyncStatus();
+      const pulled = plan.pull.length > 0;
+      return {
+        ok: true,
+        action: pulled ? 'pull' : 'none',
+        reason: 'subscription_required',
+        pushed: [],
+        pulled: plan.pull,
+        status,
+        ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
+      };
+    };
+    if (pushKeys.length > 0 && mayHoldPushes && shouldHoldCloudSyncWrites(profileSync, source)) {
+      return await finishWithoutSaving();
+    }
+
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
       // A merge only replaces remote edits it reports as discarded. Sync up replaces
@@ -6938,7 +7416,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
       const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
       if (Object.keys(replacedRemoteSections).length > 0) {
-        await backupRemoteSectionsBeforePush(replacedRemoteSections);
+        await backupRemoteSectionsBeforePush(replacedRemoteSections, {
+          discarded: plan.discardsRemote.filter((key) => replacedRemoteSections[key]),
+        });
       }
       const now = new Date().toISOString();
       const nextSections = { ...damagedOutOfScope, ...remoteSections };
@@ -6948,7 +7428,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           currentLocalSections[key],
           remoteSections[key],
           {
-            updatedAt: profileSync.sectionUpdatedAt?.[key] || now,
+            updatedAt: stampPushedSection(profileSync, key, remoteSections[key]),
             deviceId: profileSync.deviceId,
           }
         );
@@ -6967,12 +7447,10 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         extensions: remoteExtensions,
       });
 
-      // Best-effort compare-before-write: encryption and provider replication take time, so
-      // another device can land a write between the read above and this one.
-      // Overwriting blind would silently drop it, so re-check and re-resolve.
-      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
-        log.info('Remote sync file changed while preparing a push; re-resolving direction');
-        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+      // Another device wrote first: keep what this run agreed on and merge again from
+      // what is there now.
+      const recheckAfterRemoteChange = async () => {
+        await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
         // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
         if (source === 'conflict_recheck' || direction !== 'auto') {
@@ -6985,19 +7463,41 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
+      };
+
+      // Best-effort compare-before-write: encryption and provider replication take time, so
+      // another device can land a write between the read above and this one.
+      // Overwriting blind would silently drop it, so re-check and re-resolve.
+      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
+        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+        return await recheckAfterRemoteChange();
       }
 
-      await writeConfiguredSyncEnvelope(envelopeToWrite);
+      try {
+        await writeConfiguredSyncEnvelope(envelopeToWrite);
+      } catch (error) {
+        // Cloud Sync refuses a write that lost the race after the check above, the same
+        // situation that check catches earlier.
+        if (error?.code === 'CLOUD_SYNC_CONFLICT') {
+          log.info('Cloud Sync profile changed during the push; re-resolving direction');
+          return await recheckAfterRemoteChange();
+        }
+        if (error?.code !== 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED' || !mayHoldPushes) throw error;
+        profileSyncRuntime.cloudSyncWriteRefusedAt = Date.now();
+        return await finishWithoutSaving();
+      }
+      profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
       wroteEnvelope = envelopeToWrite;
       pushKeys.forEach((key) => {
         nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+        nextBaselineUpdatedAt[key] = nextSections[key].updatedAt;
       });
       if (profileSync.remoteRewritePending) await completeProfileSyncRemoteRewrite();
     } else if (profileSync.remoteRewritePending && mayChangeEncryption && remoteModeMatches) {
       await completeProfileSyncRemoteRewrite();
     }
 
-    await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+    await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
     const finalEnvelope = wroteEnvelope || remoteEnvelope;
     profileSyncRuntime.lastRemote = finalEnvelope
       ? {
@@ -7010,7 +7510,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       pushed: pushKeys,
       pulled: plan.pull,
       replacedLocal: plan.discardsLocal,
-      replacedRemote: plan.discardsRemote,
+      // A stale copy was not an edit on another computer, so it is reported on its own.
+      replacedRemote: plan.discardsRemote.filter((key) => !plan.staleRemote.includes(key)),
+      staleRemote: plan.staleRemote,
     };
     updateProfileSyncStatus('success', '');
     setupProfileSyncInterval();
@@ -7076,20 +7578,32 @@ async function completeProfileSyncRemoteRewrite() {
 /**
  * Records which sections this device and the file now agree on. Sections that
  * are out of scope are forgotten, and ones whose outcome is still open (a
- * re-check is queued) keep their previous baseline.
+ * re-check is queued) keep their previous baseline. `agreedUpdatedAt` holds the
+ * edit time of each agreed version.
  */
-async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
+async function persistProfileSyncBaseline(agreedHashes, sectionKeys, agreedUpdatedAt = {}) {
   const profileSync = getProfileSyncConfig();
   const previous = profileSync.syncBaseline || {};
+  const previousUpdatedAt = profileSync.syncBaselineUpdatedAt || {};
   const next = {};
+  const nextUpdatedAt = {};
   sectionKeys.forEach((key) => {
-    if (agreedHashes[key]) next[key] = agreedHashes[key];
-    else if (previous[key]) next[key] = previous[key];
+    if (agreedHashes[key]) {
+      next[key] = agreedHashes[key];
+      if (typeof agreedUpdatedAt[key] === 'string') {
+        nextUpdatedAt[key] = { hash: agreedHashes[key], updatedAt: agreedUpdatedAt[key] };
+      }
+    } else if (previous[key]) {
+      next[key] = previous[key];
+      if (previousUpdatedAt[key]) nextUpdatedAt[key] = previousUpdatedAt[key];
+    }
   });
   profileSync.syncBaseline = next;
+  profileSync.syncBaselineUpdatedAt = nextUpdatedAt;
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
     profileSync.syncBaseline = previous;
+    profileSync.syncBaselineUpdatedAt = previousUpdatedAt;
     throw new Error(
       mainT('Failed to save profile sync state: {{error}}', { error: persistence.error })
     );
@@ -7105,7 +7619,7 @@ async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
  */
 function requestOpportunisticProfileSync(source) {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
   if (
     profileSyncRuntime.needsResolution ||
     profileSync.firstEnableResolutionPending ||
@@ -7185,7 +7699,7 @@ function isHomeAssistantOAuthSessionStale(now = Date.now()) {
 
 async function initializeProfileSyncOnStartupInternal() {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
   if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
 
   try {
@@ -9012,11 +9526,15 @@ ipcMain.handle(
       (typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '') ||
       getDefaultProfileSyncFilePath();
     const normalizedNextScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+    // Cloud Sync has no file, so a path left over from folder sync is not a target.
+    const pathChanged =
+      !isHostedProfileSyncProvider(normalizedNextProvider) &&
+      normalizedNextPath !== previousCloudFilePath;
     const remoteTargetChanged =
       prevSyncEnabled &&
       profileSync.enabled &&
       (normalizedNextProvider !== previousProvider ||
-        normalizedNextPath !== previousCloudFilePath ||
+        pathChanged ||
         JSON.stringify(normalizedNextScope) !== JSON.stringify(previousSyncScope));
     if (
       previousPassphraseMetadata.passphraseTransition &&
@@ -9038,9 +9556,7 @@ ipcMain.handle(
     // against: a new file or a fresh enable starts with no shared history, and a
     // narrower scope forgets sections this device no longer syncs.
     const syncFileChanged =
-      !prevSyncEnabled ||
-      normalizedNextProvider !== previousProvider ||
-      normalizedNextPath !== previousCloudFilePath;
+      !prevSyncEnabled || normalizedNextProvider !== previousProvider || pathChanged;
     const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
     // What was last read from the old file says nothing about the new one.
     if (syncFileChanged || !profileSync.enabled) profileSyncRuntime.remoteEncrypted = null;
@@ -9048,6 +9564,13 @@ ipcMain.handle(
       ? {}
       : Object.fromEntries(
           Object.entries(config.profileSync?.syncBaseline || {}).filter(([key]) =>
+            nextScopeKeys.has(key)
+          )
+        );
+    profileSync.syncBaselineUpdatedAt = syncFileChanged
+      ? {}
+      : Object.fromEntries(
+          Object.entries(config.profileSync?.syncBaselineUpdatedAt || {}).filter(([key]) =>
             nextScopeKeys.has(key)
           )
         );
@@ -9292,6 +9815,25 @@ function getHomeAssistantOAuthClient() {
     });
   }
   return homeAssistantOAuthClient;
+}
+
+function getCloudSyncClient() {
+  if (!cloudSyncClient) {
+    cloudSyncClient = new CloudSyncClient({
+      serviceUrl: resolveCloudSyncServiceUrl(),
+      safeStorage,
+      platform: process.platform,
+      userDataPath: app.getPath('userData'),
+      openExternal: (url) => shell.openExternal(url),
+      fetchImpl: (url, init) => net.fetch(url, init),
+      isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
+      // Names the session in the account without sending the computer's name.
+      deviceName: { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[process.platform] || '',
+      // The browser pages shown after signing in hand back to the app.
+      translate: (key) => mainT(key),
+    });
+  }
+  return cloudSyncClient;
 }
 
 function clearHomeAssistantOAuthRefreshTimer() {
@@ -10419,6 +10961,208 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
   }
 });
 
+/**
+ * Picks sync up after signing in to Cloud Sync while it is the enabled target.
+ * The same account carries on from its shared history; a different or first
+ * account is compared with this device the way enabling sync does. A sync-key
+ * change waiting for recovery is left to finish first, unless it was the other
+ * account's.
+ */
+async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
+  // A refusal belonged to the account signed in before; this one may be subscribed.
+  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
+  // Signing out left this error behind; it is wrong now whichever way sign-in goes on,
+  // including when a pending key change holds sync back and no run replaces it.
+  if (profileSync.lastSyncError === mainT('Sign in to Cloud Sync to keep syncing')) {
+    profileSync.lastSyncStatus = 'idle';
+    profileSync.lastSyncError = '';
+    saveConfig();
+  }
+  const sameAccount = isSameCloudSyncAccount(previousAccount, account);
+  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
+    // The recovery needs the history it was staged against, so it is kept rather than
+    // compared afresh; Settings shows what is pending, and Sync up resumes it.
+    if (sameAccount) {
+      setupProfileSyncInterval();
+      emitProfileSyncStatus();
+      return 'recovery_pending';
+    }
+    // Those markers name no account, but the work they describe was the other account's:
+    // its file is not this one's, and a staged rewrite refuses to run anywhere else. They
+    // are dropped so they cannot pause, or later be merged into, the account signed in now.
+    profileSync.encryptionChangePending = null;
+    profileSync.passphraseTransition = null;
+    profileSync.passphraseTransitionInvalid = false;
+    profileSync.remoteRewritePending = false;
+  }
+  if (
+    sameAccount &&
+    !profileSync.firstEnableResolutionPending &&
+    Object.keys(profileSync.syncBaseline || {}).length > 0
+  ) {
+    setupProfileSyncInterval();
+    return 'resume';
+  }
+  profileSync.syncBaseline = {};
+  profileSync.firstEnableResolutionPending = true;
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    throw new Error(mainT('Failed to save settings: {{error}}', { error: persistence.error }));
+  }
+  if (profileSync.encryptionEnabled && !getActiveProfileSyncPassphrase()) {
+    clearProfileSyncTimers();
+    emitProfileSyncStatus();
+    return 'needs_passphrase';
+  }
+  const resolution = await prepareProfileSyncFirstEnableResolution();
+  if (!resolution?.needsResolution) {
+    await completeProfileSyncFirstEnablePreparation('cloud_sign_in');
+  }
+  return 'prepared';
+}
+
+/** Stops syncing to an account this device is no longer signed in to, and says so. */
+function stopHostedProfileSyncAfterSignOut() {
+  const profileSync = getProfileSyncConfig();
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return;
+  clearProfileSyncTimers();
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
+  profileSyncRuntime.hostedRevision = null;
+  if (profileSync.enabled) {
+    updateProfileSyncStatus('error', mainT('Sign in to Cloud Sync to keep syncing'));
+  }
+}
+
+function cloudSyncFailure(error) {
+  return {
+    success: false,
+    code: error?.code || '',
+    error: toCloudSyncError(error).message,
+    status: buildProfileSyncStatus(),
+  };
+}
+
+ipcMain.handle('get-cloud-sync-account', async (event) => {
+  const sender = authorizeIpcSender(event, 'get-cloud-sync-account');
+  if (!sender) return rejectUnauthorizedIpc('get-cloud-sync-account');
+  const client = getCloudSyncClient();
+  const result = {
+    success: true,
+    ...getCloudSyncStatus(),
+    providers: [],
+    billingAvailable: false,
+    account: null,
+    error: '',
+  };
+  if (!result.available) return result;
+  try {
+    Object.assign(result, await client.getServiceConfig());
+  } catch (error) {
+    result.error = toCloudSyncError(error).message;
+  }
+  if (result.signedIn) {
+    try {
+      result.account = await client.getAccount();
+      if (result.account?.entitled) resumeCloudSyncWrites();
+    } catch (error) {
+      result.error = toCloudSyncError(error).message;
+      Object.assign(result, getCloudSyncStatus());
+    }
+  }
+  return result;
+});
+
+ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
+  const client = getCloudSyncClient();
+  // The account this device's sync history belongs to: the one signed in now, or the
+  // one signed in before a sign-out or expired session.
+  const previousAccount = client.getStoredAccount() || client.getLastAccount();
+  try {
+    const signingIn = client.signIn(typeof provider === 'string' ? provider : '');
+    emitProfileSyncStatus();
+    const account = await signingIn;
+    try {
+      // Signing out while this waited its turn leaves nothing to start.
+      const next = await runSerializedConfigMutation(() =>
+        client.getStoredAccount()
+          ? startHostedProfileSyncAfterSignIn(previousAccount, account)
+          : null
+      );
+      if (next === 'resume') void runProfileSync('auto', 'cloud_sign_in').catch(() => {});
+    } catch (error) {
+      // Signed in either way; the status line explains why sync did not start.
+      clearProfileSyncTimers();
+      updateProfileSyncStatus('error', error.message);
+    }
+    return { success: true, account, status: buildProfileSyncStatus() };
+  } catch (error) {
+    return cloudSyncFailure(error);
+  } finally {
+    emitProfileSyncStatus();
+  }
+});
+
+ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-cancel-sign-in');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-cancel-sign-in');
+  getCloudSyncClient().cancelSignIn();
+  return { success: true };
+});
+
+ipcMain.handle('cloud-sync-sign-out', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
+  // Also cancels a sign-in still waiting for the browser, which would sign back in.
+  await getCloudSyncClient().signOut();
+  stopHostedProfileSyncAfterSignOut();
+  emitProfileSyncStatus();
+  return { success: true, status: buildProfileSyncStatus() };
+});
+
+ipcMain.handle('cloud-sync-open-billing', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-open-billing');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-open-billing');
+  try {
+    return { success: true, ...(await getCloudSyncClient().openBilling()) };
+  } catch (error) {
+    return cloudSyncFailure(error);
+  }
+});
+
+ipcMain.handle('cloud-sync-delete-account', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-delete-account');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-delete-account');
+  try {
+    await getCloudSyncClient().deleteAccount();
+    stopHostedProfileSyncAfterSignOut();
+    return { success: true, status: buildProfileSyncStatus() };
+  } catch (error) {
+    // The service keeps the account when it cannot cancel the subscription first.
+    if (error?.code === 'CLOUD_SYNC_BILLING_UNAVAILABLE') {
+      return {
+        success: false,
+        code: error.code,
+        error: mainT(
+          'Your subscription could not be canceled, so the account was kept. Try again later.'
+        ),
+        status: buildProfileSyncStatus(),
+      };
+    }
+    return cloudSyncFailure(error);
+  } finally {
+    emitProfileSyncStatus();
+  }
+});
+
 ipcMain.handle('list-profile-sync-backups', async (event) => {
   const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
   if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
@@ -10590,7 +11334,7 @@ ipcMain.handle(
         }
 
         const remoteResult =
-          profileSync.enabled && profileSync.cloudFilePath
+          profileSync.enabled && hasProfileSyncTarget(profileSync)
             ? await readConfiguredSyncEnvelope()
             : { exists: false, envelope: null };
 

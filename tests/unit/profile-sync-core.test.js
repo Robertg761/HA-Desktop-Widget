@@ -297,6 +297,126 @@ describe('profile-sync-core', () => {
       expect(plan.push).toEqual([]);
     });
 
+    test('keeps this device’s section when the file holds a copy older than the agreed version', () => {
+      const agreed = {
+        visualPersonalization: {
+          hash: hashesFor(base).visualPersonalization,
+          updatedAt: '2026-03-01T00:00:00.000Z',
+        },
+      };
+      const stale = remoteOf(
+        { ...base, visualPersonalization: { opacity: 0.6 } },
+        '2026-02-01T00:00:00.000Z'
+      );
+      const plan = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: stale,
+        baseline: hashesFor(base),
+        agreedUpdatedAt: agreed,
+      });
+      expect(plan.push).toEqual(['visualPersonalization']);
+      expect(plan.staleRemote).toEqual(['visualPersonalization']);
+      expect(plan.discardsRemote).toEqual(['visualPersonalization']);
+      expect(plan.pull).toEqual([]);
+
+      // A newer file version is an edit, and an agreed time for another hash says nothing.
+      const newer = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: remoteOf(
+          { ...base, visualPersonalization: { opacity: 0.6 } },
+          '2026-04-01T00:00:00.000Z'
+        ),
+        baseline: hashesFor(base),
+        agreedUpdatedAt: agreed,
+      });
+      expect(newer.pull).toEqual(['visualPersonalization']);
+      expect(newer.staleRemote).toEqual([]);
+      const otherHash = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: stale,
+        baseline: hashesFor(base),
+        agreedUpdatedAt: {
+          visualPersonalization: { ...agreed.visualPersonalization, hash: 'other' },
+        },
+      });
+      expect(otherHash.pull).toEqual(['visualPersonalization']);
+    });
+
+    describe('telling a stale copy of the file from an edit', () => {
+      const now = Date.parse('2026-06-01T12:00:00.000Z');
+      const MINUTE = 60 * 1000;
+      const plan = (agreedAt, remoteAt) =>
+        planSectionSync({
+          sectionKeys: keys,
+          localSections: base,
+          remoteSections: remoteOf(
+            { ...base, visualPersonalization: { opacity: 0.6 } },
+            new Date(remoteAt).toISOString()
+          ),
+          baseline: hashesFor(base),
+          agreedUpdatedAt: {
+            visualPersonalization: {
+              hash: hashesFor(base).visualPersonalization,
+              updatedAt: new Date(agreedAt).toISOString(),
+            },
+          },
+          now,
+        });
+
+      test('takes a file section a few minutes behind the agreed version as an edit', () => {
+        // An edit from a computer whose clock runs a little behind reads as earlier than the
+        // version it replaced.
+        const slow = plan(now - 10 * MINUTE, now - 10 * MINUTE - 4 * MINUTE);
+        expect(slow.pull).toEqual(['visualPersonalization']);
+        expect(slow.staleRemote).toEqual([]);
+
+        const stale = plan(now - 10 * MINUTE, now - 10 * MINUTE - 6 * MINUTE);
+        expect(stale.push).toEqual(['visualPersonalization']);
+        expect(stale.staleRemote).toEqual(['visualPersonalization']);
+      });
+
+      test('does not call anything stale against an agreed time far in this device’s future', () => {
+        // The agreed version came from a clock a day ahead. An edit made an hour ago on a
+        // correct clock reads as a day earlier, and clamping the agreed time to five minutes
+        // ahead would still make it look an hour behind.
+        const agreedAt = now + 24 * 60 * MINUTE;
+        const edit = plan(agreedAt, now - 60 * MINUTE);
+        expect(edit.pull).toEqual(['visualPersonalization']);
+        expect(edit.staleRemote).toEqual([]);
+        expect(plan(agreedAt, now - 24 * 60 * MINUTE).staleRemote).toEqual([]);
+      });
+
+      test('still detects a stale copy against an agreed time inside the clock tolerance', () => {
+        const stale = plan(now + 2 * MINUTE, now - 10 * MINUTE);
+        expect(stale.staleRemote).toEqual(['visualPersonalization']);
+      });
+
+      test('pulls a file section stamped in this device’s future', () => {
+        const ahead = plan(now - 10 * MINUTE, now + 24 * 60 * MINUTE);
+        expect(ahead.pull).toEqual(['visualPersonalization']);
+        expect(ahead.staleRemote).toEqual([]);
+      });
+    });
+
+    test('counts a file edit time far in this device’s future as five minutes ahead', () => {
+      const now = Date.parse('2026-01-01T12:00:00.000Z');
+      const plan = planSectionSync({
+        sectionKeys: ['visualPersonalization'],
+        localSections: { visualPersonalization: { opacity: 0.7 } },
+        remoteSections: remoteOf(
+          { visualPersonalization: { opacity: 0.6 } },
+          '2026-01-01T18:00:00.000Z'
+        ),
+        baseline: {},
+        localUpdatedAt: { visualPersonalization: '2026-01-01T12:06:00.000Z' },
+        now,
+      });
+      expect(plan.push).toEqual(['visualPersonalization']);
+    });
+
     test('lets the newer edit win when both sides changed the same section', () => {
       const localSections = { ...base, visualPersonalization: { opacity: 0.7 } };
       const remoteSections = remoteOf(
@@ -506,11 +626,11 @@ describe('profile-sync-core', () => {
         'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
       );
 
+      // No ciphertext at all cannot come from a wrong passphrase.
       const tampered = JSON.parse(JSON.stringify(envelope));
       tampered.payload.ciphertext = '';
-      await expect(decodeEnvelopeSections(tampered, 'strong-passphrase')).rejects.toThrow(
-        'The sync passphrase does not match'
-      );
+      const error = await decodeEnvelopeSections(tampered, 'strong-passphrase').catch((e) => e);
+      expect(isSyncFileDamagedError(error)).toBe(true);
     });
 
     test('reads files from newer versions that still allow this reader', async () => {
@@ -872,6 +992,95 @@ describe('profile-sync-core', () => {
       }
       const wrong = await decodeEnvelopeSections(envelope, 'another passphrase').catch((e) => e);
       expect(isSyncFileDamagedError(wrong)).toBe(false);
+    });
+
+    test('reports cut-off ciphertext as damaged, even when every part still has a valid size', async () => {
+      const envelope = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+      });
+      const ciphertext = Buffer.from(envelope.payload.ciphertext, 'base64');
+      const cut = (payload) => {
+        const tampered = JSON.parse(JSON.stringify(envelope));
+        Object.assign(tampered.payload, payload);
+        return tampered;
+      };
+      const tamperedFiles = [
+        // Whole bytes missing from the end, written back as valid base64.
+        cut({ ciphertext: ciphertext.subarray(0, ciphertext.length - 7).toString('base64') }),
+        // Cut off in the middle of a base64 character group.
+        cut({ ciphertext: envelope.payload.ciphertext.slice(0, -3) }),
+        // Too short to hold any payload.
+        cut({ ciphertext: ciphertext.subarray(0, 8).toString('base64') }),
+      ];
+      for (const tampered of tamperedFiles) {
+        const error = await decodeEnvelopeSections(tampered, 'strong-passphrase').catch((e) => e);
+        expect(isSyncFileDamagedError(error)).toBe(true);
+      }
+      // The same cut file with the wrong passphrase still says so.
+      const wrong = await decodeEnvelopeSections(tamperedFiles[0], 'another passphrase').catch(
+        (e) => e
+      );
+      expect(isSyncFileDamagedError(wrong)).toBe(false);
+      expect(wrong.message).toContain('passphrase does not match');
+    });
+
+    test('derives the key with the scrypt cost a file names, within bounds', async () => {
+      const envelope = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+      });
+      // Today's files name no cost and are read with the defaults, named or not.
+      expect(envelope.payload.kdfParams).toBeUndefined();
+      const named = JSON.parse(JSON.stringify(envelope));
+      named.payload.kdfParams = { N: 16384, r: 8, p: 1 };
+      expect((await decodeEnvelopeSections(named, 'strong-passphrase')).sections).toEqual(sections);
+
+      // A file a later version encrypted at a higher cost.
+      const crypto = require('crypto');
+      const salt = crypto.randomBytes(16);
+      const iv = crypto.randomBytes(12);
+      const key = crypto.scryptSync('strong-passphrase', salt, 32, {
+        N: 32768,
+        r: 8,
+        p: 1,
+        maxmem: 64 * 1024 * 1024,
+      });
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const ciphertext = Buffer.concat([
+        cipher.update(JSON.stringify({ sections }), 'utf8'),
+        cipher.final(),
+      ]);
+      const costlier = JSON.parse(JSON.stringify(envelope));
+      Object.assign(costlier.payload, {
+        salt: salt.toString('base64'),
+        iv: iv.toString('base64'),
+        authTag: cipher.getAuthTag().toString('base64'),
+        ciphertext: ciphertext.toString('base64'),
+        kdfParams: { N: 32768, r: 8, p: 1 },
+      });
+      expect((await decodeEnvelopeSections(costlier, 'strong-passphrase')).sections).toEqual(
+        sections
+      );
+
+      // A cost this device should not spend, or that is not a cost at all, is refused unread.
+      for (const kdfParams of [
+        { N: 2 ** 21, r: 8, p: 1 },
+        { N: 20000, r: 8, p: 1 },
+        { N: 2 ** 20, r: 16, p: 1 },
+        { N: 16384, r: 8, p: 64 },
+        'fast',
+      ]) {
+        const unsafe = JSON.parse(JSON.stringify(envelope));
+        unsafe.payload.kdfParams = kdfParams;
+        const error = await decodeEnvelopeSections(unsafe, 'strong-passphrase').catch((e) => e);
+        expect(error.message).toBe('Unsupported encrypted payload format');
+        expect(isSyncFileDamagedError(error)).toBe(false);
+      }
     });
 
     test('converts version 2 files to sections in their scope, dropping machine-local fields', async () => {

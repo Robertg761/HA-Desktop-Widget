@@ -586,6 +586,29 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
+  it('only lets the main window drive Cloud Sync accounts', () => {
+    for (const channel of [
+      'get-cloud-sync-account',
+      'cloud-sync-sign-in',
+      'cloud-sync-cancel-sign-in',
+      'cloud-sync-sign-out',
+      'cloud-sync-open-billing',
+      'cloud-sync-delete-account',
+    ]) {
+      const start = mainSource.indexOf(`ipcMain.handle('${channel}'`);
+      expect(start).toBeGreaterThan(-1);
+      const handler = mainSource.slice(start, start + 400);
+      expect(handler).toContain(`authorizeIpcSender(event, '${channel}')`);
+      expect(handler).toContain(`rejectUnauthorizedIpc('${channel}')`);
+    }
+    // The session token never reaches the renderer: only status fields do.
+    const status = mainSource.slice(
+      mainSource.indexOf('function getCloudSyncStatus()'),
+      mainSource.indexOf('// Written by main as syncs run')
+    );
+    expect(status).not.toMatch(/token/i);
+  });
+
   it('keeps credential metadata main-owned across the config/passphrase IPC boundary', () => {
     const updateStart = mainSource.indexOf("'update-config'");
     const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
@@ -1116,7 +1139,7 @@ describe('profile sync runtime safeguards', () => {
     const pullApply = mainSource.indexOf(
       'await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));'
     );
-    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull);');
+    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull,');
     expect(backup).toBeGreaterThanOrEqual(0);
     expect(backup).toBeLessThan(pullApply);
     expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");

@@ -14,8 +14,8 @@ const {
 const fs = require('fs');
 const path = require('path');
 
-// node:sqlite (Node 22+) runs the real schema and SQL. CI on Node 20 skips
-// the database tests and still checks validation and auth.
+// node:sqlite (Node 22+) runs the real schema and SQL. CI runs on Node 22; on Node
+// 20 the database tests are skipped and validation and auth are still checked.
 let DatabaseSync = null;
 try {
   ({ DatabaseSync } = require('node:sqlite'));
