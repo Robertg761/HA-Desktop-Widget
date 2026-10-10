@@ -130,7 +130,7 @@ sign-ins lead to one account.
 2. **Product catalog → Add product**: "Cloud Sync", with a **recurring yearly** price. Copy
    the price ID (`price_...`) into `STRIPE_PRICE_ID` in `wrangler.toml`.
 3. Turn on the **customer portal** (**Settings → Billing → Customer portal**) and allow
-   cancelling and updating payment methods. The app's **Manage Subscription** button opens it.
+   cancelling and updating payment methods. The app's **Manage subscription** button opens it.
 4. Store the secret key (use the test-mode key first):
 
    ```sh
@@ -143,6 +143,12 @@ sign-ins lead to one account.
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+
+   The service reads each subscription back from Stripe rather than trusting the event's copy,
+   since Stripe may deliver events out of order. If an event cannot be applied, the endpoint
+   answers 500 and Stripe sends it again. When the app opens the account after Checkout, the
+   service also settles a paid Checkout whose events never arrived. A restricted key therefore
+   needs write access to Checkout Sessions, Customer portal and Subscriptions.
 
    Store its signing secret:
 
@@ -232,7 +238,7 @@ The app only accepts `https` addresses, plus `http` on this computer for local d
 | `STRIPE_AUTOMATIC_TAX`         | `[vars]` | `true` adds Stripe Tax to new Checkout subscriptions after registrations are configured.                                               |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | secret   | Google sign-in.                                                                                                                        |
 | `GITHUB_CLIENT_ID` / `_SECRET` | secret   | GitHub sign-in.                                                                                                                        |
-| `STRIPE_SECRET_KEY`            | secret   | Creating checkout and portal sessions, cancelling on account deletion.                                                                 |
+| `STRIPE_SECRET_KEY`            | secret   | Checkout and portal sessions, reading subscriptions and Checkouts, cancelling on account deletion.                                     |
 | `STRIPE_WEBHOOK_SECRET`        | secret   | Verifying webhook deliveries.                                                                                                          |
 
 ## Running it locally
