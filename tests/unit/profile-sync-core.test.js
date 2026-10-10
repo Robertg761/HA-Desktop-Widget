@@ -345,6 +345,62 @@ describe('profile-sync-core', () => {
       expect(otherHash.pull).toEqual(['visualPersonalization']);
     });
 
+    describe('telling a stale copy of the file from an edit', () => {
+      const now = Date.parse('2026-06-01T12:00:00.000Z');
+      const MINUTE = 60 * 1000;
+      const plan = (agreedAt, remoteAt) =>
+        planSectionSync({
+          sectionKeys: keys,
+          localSections: base,
+          remoteSections: remoteOf(
+            { ...base, visualPersonalization: { opacity: 0.6 } },
+            new Date(remoteAt).toISOString()
+          ),
+          baseline: hashesFor(base),
+          agreedUpdatedAt: {
+            visualPersonalization: {
+              hash: hashesFor(base).visualPersonalization,
+              updatedAt: new Date(agreedAt).toISOString(),
+            },
+          },
+          now,
+        });
+
+      test('takes a file section a few minutes behind the agreed version as an edit', () => {
+        // An edit from a computer whose clock runs a little behind reads as earlier than the
+        // version it replaced.
+        const slow = plan(now - 10 * MINUTE, now - 10 * MINUTE - 4 * MINUTE);
+        expect(slow.pull).toEqual(['visualPersonalization']);
+        expect(slow.staleRemote).toEqual([]);
+
+        const stale = plan(now - 10 * MINUTE, now - 10 * MINUTE - 6 * MINUTE);
+        expect(stale.push).toEqual(['visualPersonalization']);
+        expect(stale.staleRemote).toEqual(['visualPersonalization']);
+      });
+
+      test('does not call anything stale against an agreed time far in this device’s future', () => {
+        // The agreed version came from a clock a day ahead. An edit made an hour ago on a
+        // correct clock reads as a day earlier, and clamping the agreed time to five minutes
+        // ahead would still make it look an hour behind.
+        const agreedAt = now + 24 * 60 * MINUTE;
+        const edit = plan(agreedAt, now - 60 * MINUTE);
+        expect(edit.pull).toEqual(['visualPersonalization']);
+        expect(edit.staleRemote).toEqual([]);
+        expect(plan(agreedAt, now - 24 * 60 * MINUTE).staleRemote).toEqual([]);
+      });
+
+      test('still detects a stale copy against an agreed time inside the clock tolerance', () => {
+        const stale = plan(now + 2 * MINUTE, now - 10 * MINUTE);
+        expect(stale.staleRemote).toEqual(['visualPersonalization']);
+      });
+
+      test('pulls a file section stamped in this device’s future', () => {
+        const ahead = plan(now - 10 * MINUTE, now + 24 * 60 * MINUTE);
+        expect(ahead.pull).toEqual(['visualPersonalization']);
+        expect(ahead.staleRemote).toEqual([]);
+      });
+    });
+
     test('counts a file edit time far in this device’s future as five minutes ahead', () => {
       const now = Date.parse('2026-01-01T12:00:00.000Z');
       const plan = planSectionSync({

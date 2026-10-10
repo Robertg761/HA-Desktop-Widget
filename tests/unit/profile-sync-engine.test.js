@@ -1469,6 +1469,8 @@ describe('stale copies of the sync file', () => {
   test('an older copy of the file put back does not undo this computer’s pushed edit', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const olderCopy = readRaw();
+    // A copy that is only seconds older is within the clock tolerance, so time passes.
+    laptop.advanceClock(10 * 60 * 1000);
     laptop.edit((config) => {
       config.opacity = 0.6;
     });
@@ -1496,6 +1498,7 @@ describe('stale copies of the sync file', () => {
   test('the computer that lost a provider race keeps its edit and takes the winner’s', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const before = readRaw();
+    desktop.advanceClock(10 * 60 * 1000);
     desktop.edit((config) => {
       config.opacity = 0.7;
     });
@@ -1605,6 +1608,60 @@ describe('stale copies of the sync file', () => {
     // The desktop takes the laptop's newer edit rather than taking it for a stale copy.
     await desktop.sync();
     expect(desktop.config.opacity).toBe(0.8);
+  });
+
+  // Rewrites the file as another computer would have: this opacity, stamped `offsetMs` from now.
+  const writeOpacityEdit = (opacity, offsetMs) => {
+    const file = readSyncFile();
+    const section = file.payload.sections.visualPersonalization;
+    section.data.opacity = opacity;
+    section.updatedAt = new Date(Date.now() + offsetMs).toISOString();
+    fs.writeFileSync(syncFilePath(), JSON.stringify(file));
+  };
+
+  test('an edit stamped a few minutes before the version it replaced is still pulled', async () => {
+    const { desktop } = await createSyncedPair();
+    // A computer on an older build, with a clock three minutes behind, edits the file.
+    writeOpacityEdit(0.6, -3 * 60 * 1000);
+
+    const result = await desktop.sync();
+
+    expect(result.action).toBe('pull');
+    expect(desktop.config.opacity).toBe(0.6);
+    expect(desktop.status().lastRunSummary).toMatchObject({ staleRemote: [] });
+  });
+
+  test('a copy well before the agreed version is still a stale copy', async () => {
+    const { desktop } = await createSyncedPair();
+    writeOpacityEdit(0.6, -20 * 60 * 1000);
+
+    const result = await desktop.sync();
+
+    expect(result.pushed).toEqual(['visualPersonalization']);
+    expect(desktop.config.opacity).toBe(0.9);
+    expect(desktop.status().lastRunSummary).toMatchObject({
+      staleRemote: ['visualPersonalization'],
+    });
+  });
+
+  test('an edit from a correct clock is pulled by a computer that agreed on a clock a day ahead', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: { clockOffsetMs: 24 * 60 * 60 * 1000 },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.6);
+
+    // Another computer with a correct clock edited an hour ago.
+    writeOpacityEdit(0.8, -60 * 60 * 1000);
+    const result = await laptop.sync();
+
+    expect(result.action).toBe('pull');
+    expect(laptop.config.opacity).toBe(0.8);
+    expect(laptop.status().lastRunSummary).toMatchObject({ staleRemote: [] });
   });
 
   test('the agreed versions stay on this computer', async () => {

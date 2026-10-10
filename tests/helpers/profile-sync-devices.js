@@ -342,6 +342,10 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
           .map((file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')));
       },
       userData,
+      /** Moves this device's clock forward, as time passing before its next edit would. */
+      advanceClock(ms) {
+        clockOffsetMs += ms;
+      },
       /** Calls an IPC handler as the renderer would. */
       invoke(channel, ...args) {
         if (!handlers[channel]) throw new Error(`No handler registered for ${channel}`);

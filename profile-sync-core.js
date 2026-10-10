@@ -505,6 +505,28 @@ function clampFutureTimestamp(value, nowMs = Date.now()) {
 }
 
 /**
+ * Whether a file section stamped `remoteAt` is a stale copy of the version stamped `agreedAt`
+ * (an older version of the file) rather than an edit made by a device with a slow clock.
+ *
+ * Two clocks that disagree by a few minutes (a device on a build that does not stamp edits
+ * after what they replace, or one that has drifted) can make a genuine edit read as earlier
+ * than the version it replaced, so the file's stamp has to be earlier by more than the clock
+ * tolerance. A real stale copy is a whole version behind, normally much further than that.
+ *
+ * An agreed stamp further ahead than the tolerance came from a clock running ahead of this
+ * one, and a genuine newer edit made on a correct clock reads as earlier than it. Clamping it
+ * to now + tolerance does not help (an edit from an hour ago would still read as earlier), so
+ * such a version is not used to call anything stale: the section is pulled, as it was before
+ * stale copies were detected, until this clock catches up with the stamp.
+ */
+function isStaleFileCopy(remoteAt, agreedAt, nowMs) {
+  const agreedMs = Date.parse(agreedAt || '');
+  const remoteMs = Date.parse(remoteAt || 0) || 0;
+  if (Number.isNaN(agreedMs) || agreedMs > nowMs + SYNC_FUTURE_TOLERANCE_MS) return false;
+  return remoteMs < agreedMs - SYNC_FUTURE_TOLERANCE_MS;
+}
+
+/**
  * Decides, section by section, which side each in-scope section should come from.
  *
  * `baseline` holds each section's hash as it stood after this device's last
@@ -518,9 +540,10 @@ function clampFutureTimestamp(value, nowMs = Date.now()) {
  * edit: a restored version, a device that was offline uploading its old copy, or the losing
  * side of a provider race. Pulling it would quietly undo an edit that had already synced, so
  * this device's section is written back instead, and the stale one is reported (`staleRemote`,
- * and in `discardsRemote` so it is backed up). An edit always carries a later time than the
- * version it replaced (see stampLocalSectionEdit in main.js), even from a device whose clock
- * is behind.
+ * and in `discardsRemote` so it is backed up). An edit carries a later time than the version
+ * it replaced (see stampLocalSectionEdit in main.js), even from a device whose clock is
+ * behind, and only a copy earlier by more than the clock tolerance counts as stale (see
+ * isStaleFileCopy).
  *
  * @param {object} options
  * @param {string[]} options.sectionKeys in-scope sections on this device
@@ -592,10 +615,9 @@ function planSectionSync({
     } else if (base && localChanged && !remoteChanged) {
       winner = 'push';
     } else if (base && remoteChanged && !localChanged) {
-      // Two times from the file are compared as written: this device's clock plays no part.
       const agreed = safeAgreed[key];
       const agreedAt = isObject(agreed) && agreed.hash === base ? agreed.updatedAt : null;
-      if (agreedAt && compareIsoTimestamps(remoteEntry.updatedAt, agreedAt) < 0) {
+      if (isStaleFileCopy(remoteEntry.updatedAt, agreedAt, now)) {
         winner = 'push';
         plan.staleRemote.push(key);
       } else {
