@@ -920,6 +920,12 @@ const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
+// Backups holding edits a run threw away (the losing side of a conflict, a stale copy of the
+// file) are kept longer: the newest 20, and any younger than 30 days up to 100 in all. A lost
+// edit may only be noticed weeks later, long after routine pulls would have pruned it.
+const PROFILE_SYNC_DISCARD_BACKUP_KEEP = 20;
+const PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const PROFILE_SYNC_DISCARD_BACKUP_LIMIT = 100;
 // Pulls remembered for recognising config updates built before them.
 const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
@@ -4995,26 +5001,50 @@ function pickSections(sections, keys) {
 // Why a backup was taken. Syncing replaces settings routinely, many times a day with
 // several computers; an import or a restore is the person's own undo. The two are kept
 // in separate groups, so a busy stretch of syncing cannot push out the one backup
-// someone is counting on.
+// someone is counting on. A sync backup that holds edits the run discarded (`discarded`
+// names their sections) goes in a third group, kept longer still.
 const PROFILE_SYNC_MANUAL_BACKUP_REASONS = new Set(['import', 'restore']);
 
-async function writeProfileSyncBackup(prefix, contents, reason = 'pull') {
+async function writeProfileSyncBackup(prefix, contents, reason = 'pull', { discarded = [] } = {}) {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
   await fs.promises.mkdir(backupDir, { recursive: true });
   await fs.promises.writeFile(
     path.join(backupDir, `${prefix}-${Date.now()}.json`),
-    JSON.stringify({ backedUpAt: new Date().toISOString(), reason, ...contents }, null, 2),
+    JSON.stringify(
+      {
+        backedUpAt: new Date().toISOString(),
+        reason,
+        ...(discarded.length > 0 ? { discarded } : {}),
+        ...contents,
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`), async (name) => {
     try {
       const saved = JSON.parse(await fs.promises.readFile(path.join(backupDir, name), 'utf8'));
-      return PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason) ? 'manual' : 'routine';
+      if (PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason)) return 'manual';
+      return Array.isArray(saved?.discarded) && saved.discarded.length > 0
+        ? 'discarded'
+        : 'routine';
     } catch {
       return 'routine';
     }
   });
+}
+
+/** Whether pruning should delete the oldest of a group's backups (oldest first in `names`). */
+function shouldPruneOldestProfileSyncBackup(group, names) {
+  if (group !== 'discarded') return names.length > PROFILE_SYNC_BACKUP_KEEP;
+  if (names.length > PROFILE_SYNC_DISCARD_BACKUP_LIMIT) return true;
+  const takenAt = Number(names[0].match(/-(\d+)\.[a-z]+$/)?.[1]);
+  return (
+    names.length > PROFILE_SYNC_DISCARD_BACKUP_KEEP &&
+    Date.now() - takenAt > PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS
+  );
 }
 
 /**
@@ -5033,8 +5063,8 @@ async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () =>
       const group = await groupOf(name);
       groups.set(group, [...(groups.get(group) || []), name]);
     }
-    for (const names of groups.values()) {
-      while (names.length > PROFILE_SYNC_BACKUP_KEEP) {
+    for (const [group, names] of groups) {
+      while (shouldPruneOldestProfileSyncBackup(group, names)) {
         await fs.promises.unlink(path.join(backupDir, names.shift()));
       }
     }
@@ -5071,10 +5101,15 @@ function backupDamagedSyncFile(raw) {
   );
 }
 
+/**
+ * Keeps this device's sections before something replaces them. `discarded` names the ones
+ * holding edits the replacement throws away, which keeps the backup longer.
+ */
 async function backupLocalProfileBeforePullApply(
   sectionKeys,
   incomingSections = null,
-  reason = 'pull'
+  reason = 'pull',
+  { discarded = [] } = {}
 ) {
   try {
     const sections = profileSyncCore.scopeBackupToIncoming(
@@ -5084,7 +5119,7 @@ async function backupLocalProfileBeforePullApply(
       }),
       incomingSections
     );
-    await writeProfileSyncBackup('local-profile', { sections }, reason);
+    await writeProfileSyncBackup('local-profile', { sections }, reason, { discarded });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
@@ -5098,10 +5133,13 @@ async function backupLocalProfileBeforePullApply(
 /**
  * Keeps a copy of sections another device wrote before this device's newer
  * edits replace them in the file. Pushing without one would lose them for good.
+ * `discarded` is as for backupLocalProfileBeforePullApply.
  */
-async function backupRemoteSectionsBeforePush(remoteSections) {
+async function backupRemoteSectionsBeforePush(remoteSections, { discarded = [] } = {}) {
   try {
-    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push');
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push', {
+      discarded,
+    });
   } catch (error) {
     log.warn('Failed to back up remote profile sections before pushing:', error.message);
     throw new Error(
@@ -7158,7 +7196,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     let currentLocalSections = localSections;
     const pushKeys = [...plan.push];
     if (plan.pull.length > 0) {
-      await backupLocalProfileBeforePullApply(plan.pull);
+      await backupLocalProfileBeforePullApply(plan.pull, null, 'pull', {
+        discarded: plan.discardsLocal,
+      });
       await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
       profileSync = getProfileSyncConfig();
       currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
@@ -7233,7 +7273,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
       const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
       if (Object.keys(replacedRemoteSections).length > 0) {
-        await backupRemoteSectionsBeforePush(replacedRemoteSections);
+        await backupRemoteSectionsBeforePush(replacedRemoteSections, {
+          discarded: plan.discardsRemote.filter((key) => replacedRemoteSections[key]),
+        });
       }
       const now = new Date().toISOString();
       const nextSections = { ...damagedOutOfScope, ...remoteSections };
