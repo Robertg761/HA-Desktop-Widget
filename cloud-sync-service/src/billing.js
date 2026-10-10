@@ -136,11 +136,7 @@ export async function handleCheckout(request, env, deps) {
     )
       .bind(session.userId)
       .first();
-    if (
-      existing?.stripe_subscription_id &&
-      existing.status !== 'canceled' &&
-      existing.status !== 'incomplete_expired'
-    ) {
+    if (existing?.stripe_subscription_id && !ENDED_STATUSES.has(existing.status)) {
       return errorResponse(
         409,
         'subscription_exists',
@@ -159,14 +155,31 @@ export async function handleCheckout(request, env, deps) {
       );
       if (checkout.status === 'open') return json({ url: checkout.url });
       if (checkout.status === 'complete') {
-        if (checkout.subscription !== existing?.stripe_subscription_id) {
+        if (typeof checkout.subscription !== 'string') {
           return errorResponse(
             409,
             'billing_pending',
             'Your payment is being processed. Try again shortly.'
           );
         }
-        // The completed page belonged to the subscription that already ended.
+        if (checkout.subscription !== existing?.stripe_subscription_id) {
+          // Paid, but its webhook has not arrived: record it now rather than wait.
+          const status = await recordSubscriptionFromStripe(
+            env,
+            deps,
+            session.userId,
+            checkout.subscription,
+            Math.floor(deps.now() / 1000)
+          );
+          if (!ENDED_STATUSES.has(status)) {
+            return errorResponse(
+              409,
+              'subscription_exists',
+              'Manage your existing subscription from the billing portal.'
+            );
+          }
+        }
+        // The completed page belonged to a subscription that has already ended.
       } else if (checkout.status !== 'expired') throw new Error('Unknown Checkout status');
       pending = null;
     } else if (pending && pending.expires_at <= deps.now()) {
@@ -295,6 +308,81 @@ function periodEnd(subscription) {
   return ends.length ? Math.max(...ends) : null;
 }
 
+const ENDED_STATUSES = new Set(['canceled', 'incomplete_expired']);
+
+/**
+ * Reads a subscription from Stripe and stores its current state. Webhook payloads are a
+ * snapshot from when the event was created, and Stripe can deliver two events created in
+ * the same second in either order, so the stored status always comes from Stripe itself.
+ * `eventCreated` (seconds) still orders the write, so an event older than the last one
+ * applied changes nothing.
+ */
+export async function recordSubscriptionFromStripe(
+  env,
+  deps,
+  userId,
+  subscriptionId,
+  eventCreated
+) {
+  const subscription = await stripeRequest(
+    env,
+    deps,
+    'GET',
+    `/subscriptions/${encodeURIComponent(subscriptionId)}`
+  );
+  if (!subscription?.status) throw new Error('Subscription response is incomplete');
+  const status = String(subscription.status);
+  await upsertSubscription(
+    env,
+    deps,
+    userId,
+    {
+      customerId: typeof subscription.customer === 'string' ? subscription.customer : null,
+      subscriptionId,
+      status,
+      currentPeriodEnd: periodEnd(subscription),
+    },
+    eventCreated
+  );
+  return status;
+}
+
+/**
+ * Settles this user's Checkout without waiting for its webhook: a completed one records its
+ * subscription, and a finished one is forgotten. A paid subscriber whose webhook was lost or
+ * delayed is then entitled the next time the app asks. Returns the recorded status, if any.
+ */
+export async function reconcileCheckout(env, deps, userId) {
+  const pending = await env.DB.prepare(
+    'SELECT stripe_session_id FROM billing_checkouts WHERE user_id = ? AND stripe_session_id IS NOT NULL'
+  )
+    .bind(userId)
+    .first();
+  if (!pending) return null;
+  const checkout = await stripeRequest(
+    env,
+    deps,
+    'GET',
+    `/checkout/sessions/${encodeURIComponent(pending.stripe_session_id)}`
+  );
+  if (checkout.status === 'open') return null;
+  let status = null;
+  if (checkout.status === 'complete') {
+    if (typeof checkout.subscription !== 'string') return null;
+    status = await recordSubscriptionFromStripe(
+      env,
+      deps,
+      userId,
+      checkout.subscription,
+      Math.floor(deps.now() / 1000)
+    );
+  }
+  await env.DB.prepare('DELETE FROM billing_checkouts WHERE user_id = ? AND stripe_session_id = ?')
+    .bind(userId, pending.stripe_session_id)
+    .run();
+  return status;
+}
+
 async function userIdForStripeObject(env, metadataUserId, customerId) {
   if (typeof metadataUserId === 'string' && metadataUserId) {
     const user = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
@@ -380,41 +468,53 @@ export async function handleWebhook(request, env, deps) {
   const object = event?.data?.object || {};
   const created = Number(event.created) || 0;
 
-  if (event.type === 'checkout.session.completed' && object.mode === 'subscription') {
-    const userId = await userIdForStripeObject(
-      env,
-      object.client_reference_id || object.metadata?.user_id,
-      object.customer
-    );
-    if (userId) {
-      await upsertSubscription(
+  try {
+    if (event.type === 'checkout.session.completed' && object.mode === 'subscription') {
+      const userId = await userIdForStripeObject(
         env,
-        deps,
-        userId,
-        { customerId: object.customer, subscriptionId: object.subscription },
-        created
+        object.client_reference_id || object.metadata?.user_id,
+        object.customer
       );
+      if (userId) {
+        // Links the customer first, so a failed read below still leaves the portal usable.
+        await upsertSubscription(
+          env,
+          deps,
+          userId,
+          { customerId: object.customer, subscriptionId: object.subscription },
+          created
+        );
+        if (typeof object.subscription === 'string') {
+          await recordSubscriptionFromStripe(env, deps, userId, object.subscription, created);
+        }
+      }
+    } else if (
+      event.type === 'customer.subscription.created' ||
+      event.type === 'customer.subscription.updated' ||
+      event.type === 'customer.subscription.deleted'
+    ) {
+      const userId = await userIdForStripeObject(env, object.metadata?.user_id, object.customer);
+      if (userId && event.type === 'customer.subscription.deleted') {
+        // Deletion is final, so this snapshot cannot be stale; no need to ask Stripe.
+        await upsertSubscription(
+          env,
+          deps,
+          userId,
+          {
+            customerId: object.customer,
+            subscriptionId: object.id,
+            status: 'canceled',
+            currentPeriodEnd: periodEnd(object),
+          },
+          created
+        );
+      } else if (userId && typeof object.id === 'string') {
+        await recordSubscriptionFromStripe(env, deps, userId, object.id, created);
+      }
     }
-  } else if (
-    event.type === 'customer.subscription.created' ||
-    event.type === 'customer.subscription.updated' ||
-    event.type === 'customer.subscription.deleted'
-  ) {
-    const userId = await userIdForStripeObject(env, object.metadata?.user_id, object.customer);
-    if (userId) {
-      await upsertSubscription(
-        env,
-        deps,
-        userId,
-        {
-          customerId: object.customer,
-          subscriptionId: object.id,
-          status: event.type === 'customer.subscription.deleted' ? 'canceled' : object.status,
-          currentPeriodEnd: periodEnd(object),
-        },
-        created
-      );
-    }
+  } catch (error) {
+    console.error('Stripe webhook could not be applied', event.type, error);
+    return errorResponse(500, 'webhook_failed', 'The event could not be applied yet.');
   }
   // Every other event type is acknowledged so Stripe stops retrying it.
   return json({ received: true });

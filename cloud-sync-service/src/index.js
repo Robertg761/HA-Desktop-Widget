@@ -12,6 +12,7 @@ import {
   handlePortal,
   handleWebhook,
   isBillingConfigured,
+  reconcileCheckout,
 } from './billing.js';
 import {
   handleAuthCallback,
@@ -74,7 +75,7 @@ export async function handleRequest(request, env, deps = defaultDeps()) {
       return await handleSignOut(request, env, deps);
     }
     if (pathname === '/v1/account' && method === 'GET') {
-      return await handleGetAccount(request, env, deps);
+      return await handleGetAccount(request, env, deps, { reconcileCheckout });
     }
     if (pathname === '/v1/account' && method === 'DELETE') {
       return await handleDeleteAccount(request, env, deps, {

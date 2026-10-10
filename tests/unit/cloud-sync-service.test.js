@@ -419,6 +419,12 @@ describe('cloud sync service', () => {
       },
     });
 
+    // What Stripe reports for the subscription now, which the service reads on every event.
+    const setLiveSubscription = (world, userId, status, extra = {}) => {
+      const subscription = subscriptionEvent('', userId, status, 0, extra).data.object;
+      world.stripe.subscriptions.set(subscription.id, subscription);
+    };
+
     test('checkout starts a yearly subscription for this user', async () => {
       const { world, token, userId } = await signedIn();
       const response = await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
@@ -592,6 +598,7 @@ describe('cloud sync service', () => {
       expect((await save()).status).toBe(402);
 
       const t = Math.floor(world.now() / 1000);
+      setLiveSubscription(world, userId, 'active');
       expect(
         (
           await world.sendWebhook({
@@ -627,6 +634,7 @@ describe('cloud sync service', () => {
       const portal = await world.authed(token, '/v1/billing/portal', { method: 'POST' });
       expect(await portal.json()).toEqual({ url: 'https://billing.stripe.test/portal' });
 
+      setLiveSubscription(world, userId, 'canceled');
       await world.sendWebhook(
         subscriptionEvent('customer.subscription.deleted', userId, 'canceled', t + 3)
       );
@@ -692,6 +700,7 @@ describe('cloud sync service', () => {
     test('a same-second update cannot revive a canceled subscription', async () => {
       const { world, userId } = await signedIn();
       const t = Math.floor(world.now() / 1000);
+      setLiveSubscription(world, userId, 'canceled');
       await world.sendWebhook(
         subscriptionEvent('customer.subscription.deleted', userId, 'canceled', t)
       );
@@ -706,6 +715,8 @@ describe('cloud sync service', () => {
     test('a late cancellation for an old subscription cannot cancel its replacement', async () => {
       const { world, userId } = await signedIn();
       const t = Math.floor(world.now() / 1000);
+      setLiveSubscription(world, userId, 'active', { id: 'sub_new' });
+      setLiveSubscription(world, userId, 'canceled', { id: 'sub_old' });
       await world.sendWebhook(
         subscriptionEvent('customer.subscription.updated', userId, 'active', t, { id: 'sub_new' })
       );
@@ -717,6 +728,91 @@ describe('cloud sync service', () => {
       expect(
         world.env.DB.raw.prepare('SELECT status, stripe_subscription_id FROM subscriptions').get()
       ).toMatchObject({ status: 'active', stripe_subscription_id: 'sub_new' });
+    });
+
+    test('same-second events in either order leave the status Stripe reports now', async () => {
+      const { world, token, userId } = await signedIn();
+      const t = Math.floor(world.now() / 1000);
+      setLiveSubscription(world, userId, 'active');
+      // Stripe created the subscription incomplete and activated it within the same second,
+      // and delivered the activation first.
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.updated', userId, 'active', t)
+      );
+      await world.sendWebhook(
+        subscriptionEvent('customer.subscription.created', userId, 'incomplete', t)
+      );
+      const account = await (await world.authed(token, '/v1/account')).json();
+      expect(account.entitlement).toMatchObject({
+        entitled: true,
+        reason: 'subscription',
+        subscriptionStatus: 'active',
+        currentPeriodEnd: 1893456000 * 1000,
+      });
+    });
+
+    test('a webhook that cannot read the subscription asks Stripe to send it again', async () => {
+      const { world, userId } = await signedIn();
+      setLiveSubscription(world, userId, 'active');
+      world.stripe.failRead = true;
+      const event = subscriptionEvent('customer.subscription.updated', userId, 'active', 1);
+      expect((await world.sendWebhook(event)).status).toBe(500);
+      expect(world.env.DB.raw.prepare('SELECT * FROM subscriptions').all()).toHaveLength(0);
+      world.stripe.failRead = false;
+      expect((await world.sendWebhook(event)).status).toBe(200);
+      expect(world.env.DB.raw.prepare('SELECT status FROM subscriptions').get().status).toBe(
+        'active'
+      );
+    });
+
+    test('a paid Checkout whose webhooks were lost is recorded when the app asks', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      // Paid, but no webhook ever arrives.
+      Object.assign(world.stripe.checkouts.get('cs_1'), {
+        status: 'complete',
+        subscription: 'sub_1',
+      });
+      setLiveSubscription(world, userId, 'active');
+
+      const account = await (await world.authed(token, '/v1/account')).json();
+      expect(account.entitlement).toMatchObject({
+        entitled: true,
+        reason: 'subscription',
+        subscriptionStatus: 'active',
+        hasBillingAccount: true,
+      });
+      // Settled once: the next request does not ask Stripe about the Checkout again.
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_checkouts').all()).toHaveLength(0);
+      const checkoutReads = () =>
+        world.calls.filter((call) => call.url.includes('/checkout/sessions/cs_1')).length;
+      const before = checkoutReads();
+      await world.authed(token, '/v1/account');
+      expect(checkoutReads()).toBe(before);
+    });
+
+    test('an unpaid Checkout leaves the account as it was', async () => {
+      const { world, token } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      const account = await (await world.authed(token, '/v1/account')).json();
+      expect(account.entitlement).toMatchObject({ entitled: false, reason: 'none' });
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_checkouts').all()).toHaveLength(1);
+    });
+
+    test('checkout settles a paid page whose webhook was lost instead of waiting forever', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      Object.assign(world.stripe.checkouts.get('cs_1'), {
+        status: 'complete',
+        subscription: 'sub_1',
+      });
+      setLiveSubscription(world, userId, 'active');
+      const again = await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      expect(again.status).toBe(409);
+      expect((await again.json()).error).toBe('subscription_exists');
+      expect(world.env.DB.raw.prepare('SELECT status FROM subscriptions').get().status).toBe(
+        'active'
+      );
     });
 
     test('an existing subscription cannot start another checkout', async () => {

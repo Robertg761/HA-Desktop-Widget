@@ -143,7 +143,7 @@ export async function findOrCreateUser(env, deps, { provider, providerUserId, em
   return userId;
 }
 
-export async function handleGetAccount(request, env, deps) {
+export async function handleGetAccount(request, env, deps, { reconcileCheckout } = {}) {
   const session = await authenticate(request, env, deps);
   if (!session) return unauthorized();
   const identities = await env.DB.prepare(
@@ -151,11 +151,28 @@ export async function handleGetAccount(request, env, deps) {
   )
     .bind(session.userId)
     .all();
+  const billingAvailable = !!(
+    env.STRIPE_SECRET_KEY &&
+    env.STRIPE_PRICE_ID &&
+    env.STRIPE_WEBHOOK_SECRET
+  );
+  let entitlement = await getEntitlement(env, deps, session);
+  // The app asks again when it returns from Checkout. If the payment went through but its
+  // webhook is late or lost, settle the Checkout here so the subscriber is not refused.
+  if (billingAvailable && reconcileCheckout && entitlement.reason !== 'subscription') {
+    try {
+      if (await reconcileCheckout(env, deps, session.userId)) {
+        entitlement = await getEntitlement(env, deps, session);
+      }
+    } catch (error) {
+      console.error('Checkout could not be reconciled', error);
+    }
+  }
   return json({
     user: { id: session.userId, email: session.email },
     providers: (identities.results || []).map((row) => row.provider),
-    entitlement: await getEntitlement(env, deps, session),
-    billingAvailable: !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.STRIPE_WEBHOOK_SECRET),
+    entitlement,
+    billingAvailable,
   });
 }
 

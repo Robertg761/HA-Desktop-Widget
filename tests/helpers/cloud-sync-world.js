@@ -67,6 +67,10 @@ function createWorld(envOverrides = {}) {
     checkouts: new Map(),
     keys: new Map(),
     canceled: new Set(),
+    // Subscriptions Stripe knows, by id, as GET /v1/subscriptions/<id> returns them.
+    subscriptions: new Map(),
+    // When set, reading a subscription fails as if Stripe were unreachable.
+    failRead: false,
   };
   const fakeFetch = async (url, init = {}) => {
     const target = String(url);
@@ -120,9 +124,17 @@ function createWorld(envOverrides = {}) {
       return jsonResponse({ url: 'https://billing.stripe.test/portal' });
     }
     if (target.startsWith('https://api.stripe.com/v1/subscriptions/')) {
-      if (init.method === 'GET')
-        return jsonResponse({ status: stripe.canceled.has(target) ? 'canceled' : 'active' });
-      if (!stripe.failCancel) stripe.canceled.add(target);
+      const id = decodeURIComponent(target.split('/').pop());
+      const known = stripe.subscriptions.get(id);
+      if (init.method === 'GET') {
+        if (stripe.failRead) return jsonResponse({ error: { message: 'down' } }, 500);
+        if (known) return jsonResponse(known);
+        return jsonResponse({ id, status: stripe.canceled.has(target) ? 'canceled' : 'active' });
+      }
+      if (!stripe.failCancel) {
+        stripe.canceled.add(target);
+        if (known) known.status = 'canceled';
+      }
       return stripe.failCancel
         ? jsonResponse({ error: { message: 'down' } }, 500)
         : jsonResponse({ id: 'sub_1', status: 'canceled' });
