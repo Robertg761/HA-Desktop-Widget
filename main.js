@@ -10949,21 +10949,31 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
  * Picks sync up after signing in to Cloud Sync while it is the enabled target.
  * The same account carries on from its shared history; a different or first
  * account is compared with this device the way enabling sync does. A sync-key
- * change waiting for recovery is left to finish first.
+ * change waiting for recovery is left to finish first, unless it was the other
+ * account's.
  */
 async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   // A refusal belonged to the account signed in before; this one may be subscribed.
   profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
-  // The recovery needs the history it was staged against, so it is kept rather than
-  // compared afresh; Settings shows what is pending, and Sync up resumes it.
-  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
-    setupProfileSyncInterval();
-    emitProfileSyncStatus();
-    return 'recovery_pending';
-  }
   const sameAccount = isSameCloudSyncAccount(previousAccount, account);
+  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
+    // The recovery needs the history it was staged against, so it is kept rather than
+    // compared afresh; Settings shows what is pending, and Sync up resumes it.
+    if (sameAccount) {
+      setupProfileSyncInterval();
+      emitProfileSyncStatus();
+      return 'recovery_pending';
+    }
+    // Those markers name no account, but the work they describe was the other account's:
+    // its file is not this one's, and a staged rewrite refuses to run anywhere else. They
+    // are dropped so they cannot pause, or later be merged into, the account signed in now.
+    profileSync.encryptionChangePending = null;
+    profileSync.passphraseTransition = null;
+    profileSync.passphraseTransitionInvalid = false;
+    profileSync.remoteRewritePending = false;
+  }
   if (
     sameAccount &&
     !profileSync.firstEnableResolutionPending &&

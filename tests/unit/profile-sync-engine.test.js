@@ -1286,9 +1286,9 @@ describe('profile sync through Cloud Sync', () => {
     const account = desktopClient.getStoredAccount();
     for (const pending of [{ encryptionChangePending: true }, { remoteRewritePending: true }]) {
       Object.assign(desktop.config.profileSync, pending);
-      await expect(desktop.context.startHostedProfileSyncAfterSignIn(null, account)).resolves.toBe(
-        'recovery_pending'
-      );
+      await expect(
+        desktop.context.startHostedProfileSyncAfterSignIn(account, account)
+      ).resolves.toBe('recovery_pending');
       expect(desktop.config.profileSync).toMatchObject({
         syncBaseline: baseline,
         firstEnableResolutionPending: false,
@@ -1296,6 +1296,35 @@ describe('profile sync through Cloud Sync', () => {
       desktop.config.profileSync.encryptionChangePending = null;
       desktop.config.profileSync.remoteRewritePending = false;
     }
+  });
+
+  test("a different account does not inherit the last one's pending sync-key change", async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    const previousAccount = desktopClient.getStoredAccount();
+    const other = { id: 'someone-else', email: 'else@x.io' };
+    let comparisons = 0;
+    const prepare = desktop.context.prepareProfileSyncFirstEnableResolution;
+    desktop.context.prepareProfileSyncFirstEnableResolution = (...args) => {
+      comparisons += 1;
+      return prepare(...args);
+    };
+    Object.assign(desktop.config.profileSync, {
+      encryptionChangePending: true,
+      remoteRewritePending: true,
+      passphraseTransitionInvalid: true,
+    });
+    await expect(
+      desktop.context.startHostedProfileSyncAfterSignIn(previousAccount, other)
+    ).resolves.toBe('prepared');
+    // Compared afresh like a first sign-in, with nothing left pending from the old account.
+    expect(comparisons).toBe(1);
+    expect(desktop.config.profileSync).toMatchObject({
+      encryptionChangePending: null,
+      remoteRewritePending: false,
+      passphraseTransition: null,
+      passphraseTransitionInvalid: false,
+      firstEnableResolutionPending: false,
+    });
   });
 
   test('a first sync held back by a pending change says so in words', async () => {
