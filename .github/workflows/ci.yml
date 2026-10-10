@@ -43,9 +43,11 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Use Node.js
+        # Node 22 for the jobs that run jest: the Cloud Sync and usage counter tests
+        # run the real D1 SQL on node:sqlite, which Node 20 does not have.
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -105,9 +107,11 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Use Node.js
+        # Node 22 for the jobs that run jest: the Cloud Sync and usage counter tests
+        # run the real D1 SQL on node:sqlite, which Node 20 does not have.
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install native build dependencies (Linux)
