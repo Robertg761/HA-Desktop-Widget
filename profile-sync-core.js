@@ -660,6 +660,54 @@ function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt
   };
 }
 
+// The scrypt cost every version so far has encrypted with (Node's defaults), and the one a
+// file that names none was written with.
+const DEFAULT_KDF_PARAMS = { N: 16384, r: 8, p: 1 };
+// The most memory a file's own scrypt parameters may ask this device to spend (128 * N * r
+// bytes), so a file cannot make deriving its key take gigabytes.
+const MAX_KDF_MEMORY_BYTES = 256 * 1024 * 1024;
+// The shortest text an encrypted payload can hold: {"sections":{}}.
+const MIN_ENCRYPTED_PAYLOAD_BYTES = 15;
+
+/**
+ * The scrypt parameters to derive a file's key with: its own `kdfParams` when it names them,
+ * within bounds that keep the derivation affordable, or the defaults.
+ */
+function resolveKdfParams(kdfParams) {
+  if (kdfParams === undefined || kdfParams === null) return DEFAULT_KDF_PARAMS;
+  const { N, r, p } = isObject(kdfParams) ? kdfParams : {};
+  const valid =
+    Number.isInteger(N) &&
+    N >= 2 ** 14 &&
+    N <= 2 ** 20 &&
+    (N & (N - 1)) === 0 &&
+    Number.isInteger(r) &&
+    r >= 1 &&
+    r <= 16 &&
+    Number.isInteger(p) &&
+    p >= 1 &&
+    p <= 4 &&
+    128 * N * r <= MAX_KDF_MEMORY_BYTES;
+  if (!valid) throw new Error('Unsupported encrypted payload format');
+  return { N, r, p };
+}
+
+function deriveProfileKey(passphrase, salt, { N, r, p }) {
+  return scryptAsync(passphrase, salt, 32, { N, r, p, maxmem: 128 * N * r + 1024 * 1024 });
+}
+
+/**
+ * Whether decrypted bytes begin the way a payload's JSON does: an object whose first key is a
+ * plain name. With the wrong key they are random, and this matches about one time in tens of
+ * millions; with the right key it matches even when the end of the text or its tag is damaged.
+ */
+function looksLikePayloadStart(bytes) {
+  return /^\{"[A-Za-z0-9_]+("|$)/.test(bytes.subarray(0, 12).toString('latin1'));
+}
+
+// Files are still written with the default scrypt cost, no kdfParams and no associated data:
+// devices running an older version cannot read anything else, so raising the cost or binding
+// the envelope has to wait until every supported version reads kdfParams.
 async function encryptProfilePayload(profile, passphrase) {
   if (!passphrase || typeof passphrase !== 'string') {
     throw new Error('Passphrase is required for encryption');
@@ -704,17 +752,33 @@ async function decryptProfilePayload(payload, passphrase) {
   const authTag = Buffer.from(payload.authTag || '', 'base64');
   const ciphertext = Buffer.from(payload.ciphertext || '', 'base64');
   // Fields of the wrong size cannot come from a wrong passphrase: the file itself is damaged.
-  if (salt.length !== 16 || iv.length !== 12 || authTag.length !== 16) {
+  // So is ciphertext cut off mid-character (Node writes canonical base64) or too short to
+  // hold any payload.
+  if (
+    salt.length !== 16 ||
+    iv.length !== 12 ||
+    authTag.length !== 16 ||
+    typeof payload.ciphertext !== 'string' ||
+    ciphertext.toString('base64') !== payload.ciphertext ||
+    ciphertext.length < MIN_ENCRYPTED_PAYLOAD_BYTES
+  ) {
     throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
   }
-  const key = await scryptAsync(passphrase, salt, 32);
+  const key = await deriveProfileKey(passphrase, salt, resolveKdfParams(payload.kdfParams));
   const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
 
   let plaintext;
+  let decrypted = null;
   try {
-    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    decrypted = decipher.update(ciphertext);
+    plaintext = Buffer.concat([decrypted, decipher.final()]).toString('utf8');
   } catch {
+    // The tag does not check out. If the text still begins as a payload, the key was right
+    // and the ciphertext or its tag is what changed.
+    if (decrypted && looksLikePayloadStart(decrypted)) {
+      throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
+    }
     throw new Error('The sync passphrase does not match the one used to encrypt the sync file.');
   }
 

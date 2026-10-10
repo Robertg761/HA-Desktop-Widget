@@ -570,11 +570,11 @@ describe('profile-sync-core', () => {
         'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
       );
 
+      // No ciphertext at all cannot come from a wrong passphrase.
       const tampered = JSON.parse(JSON.stringify(envelope));
       tampered.payload.ciphertext = '';
-      await expect(decodeEnvelopeSections(tampered, 'strong-passphrase')).rejects.toThrow(
-        'The sync passphrase does not match'
-      );
+      const error = await decodeEnvelopeSections(tampered, 'strong-passphrase').catch((e) => e);
+      expect(isSyncFileDamagedError(error)).toBe(true);
     });
 
     test('reads files from newer versions that still allow this reader', async () => {
@@ -936,6 +936,95 @@ describe('profile-sync-core', () => {
       }
       const wrong = await decodeEnvelopeSections(envelope, 'another passphrase').catch((e) => e);
       expect(isSyncFileDamagedError(wrong)).toBe(false);
+    });
+
+    test('reports cut-off ciphertext as damaged, even when every part still has a valid size', async () => {
+      const envelope = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+      });
+      const ciphertext = Buffer.from(envelope.payload.ciphertext, 'base64');
+      const cut = (payload) => {
+        const tampered = JSON.parse(JSON.stringify(envelope));
+        Object.assign(tampered.payload, payload);
+        return tampered;
+      };
+      const tamperedFiles = [
+        // Whole bytes missing from the end, written back as valid base64.
+        cut({ ciphertext: ciphertext.subarray(0, ciphertext.length - 7).toString('base64') }),
+        // Cut off in the middle of a base64 character group.
+        cut({ ciphertext: envelope.payload.ciphertext.slice(0, -3) }),
+        // Too short to hold any payload.
+        cut({ ciphertext: ciphertext.subarray(0, 8).toString('base64') }),
+      ];
+      for (const tampered of tamperedFiles) {
+        const error = await decodeEnvelopeSections(tampered, 'strong-passphrase').catch((e) => e);
+        expect(isSyncFileDamagedError(error)).toBe(true);
+      }
+      // The same cut file with the wrong passphrase still says so.
+      const wrong = await decodeEnvelopeSections(tamperedFiles[0], 'another passphrase').catch(
+        (e) => e
+      );
+      expect(isSyncFileDamagedError(wrong)).toBe(false);
+      expect(wrong.message).toContain('passphrase does not match');
+    });
+
+    test('derives the key with the scrypt cost a file names, within bounds', async () => {
+      const envelope = await buildSyncEnvelope({
+        sections,
+        updatedByDeviceId: 'device-a',
+        encrypt: true,
+        passphrase: 'strong-passphrase',
+      });
+      // Today's files name no cost and are read with the defaults, named or not.
+      expect(envelope.payload.kdfParams).toBeUndefined();
+      const named = JSON.parse(JSON.stringify(envelope));
+      named.payload.kdfParams = { N: 16384, r: 8, p: 1 };
+      expect((await decodeEnvelopeSections(named, 'strong-passphrase')).sections).toEqual(sections);
+
+      // A file a later version encrypted at a higher cost.
+      const crypto = require('crypto');
+      const salt = crypto.randomBytes(16);
+      const iv = crypto.randomBytes(12);
+      const key = crypto.scryptSync('strong-passphrase', salt, 32, {
+        N: 32768,
+        r: 8,
+        p: 1,
+        maxmem: 64 * 1024 * 1024,
+      });
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const ciphertext = Buffer.concat([
+        cipher.update(JSON.stringify({ sections }), 'utf8'),
+        cipher.final(),
+      ]);
+      const costlier = JSON.parse(JSON.stringify(envelope));
+      Object.assign(costlier.payload, {
+        salt: salt.toString('base64'),
+        iv: iv.toString('base64'),
+        authTag: cipher.getAuthTag().toString('base64'),
+        ciphertext: ciphertext.toString('base64'),
+        kdfParams: { N: 32768, r: 8, p: 1 },
+      });
+      expect((await decodeEnvelopeSections(costlier, 'strong-passphrase')).sections).toEqual(
+        sections
+      );
+
+      // A cost this device should not spend, or that is not a cost at all, is refused unread.
+      for (const kdfParams of [
+        { N: 2 ** 21, r: 8, p: 1 },
+        { N: 20000, r: 8, p: 1 },
+        { N: 2 ** 20, r: 16, p: 1 },
+        { N: 16384, r: 8, p: 64 },
+        'fast',
+      ]) {
+        const unsafe = JSON.parse(JSON.stringify(envelope));
+        unsafe.payload.kdfParams = kdfParams;
+        const error = await decodeEnvelopeSections(unsafe, 'strong-passphrase').catch((e) => e);
+        expect(error.message).toBe('Unsupported encrypted payload format');
+        expect(isSyncFileDamagedError(error)).toBe(false);
+      }
     });
 
     test('converts version 2 files to sections in their scope, dropping machine-local fields', async () => {
