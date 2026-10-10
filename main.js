@@ -6840,6 +6840,26 @@ async function clearProfileSyncFirstEnableResolutionPending() {
   return persistence;
 }
 
+/** Words why a first sync stopped short, rather than handing its reason code to the status line. */
+function describeIncompleteFirstProfileSync(result) {
+  switch (result?.reason) {
+    case 'rewrite_pending':
+      return getProfileSyncConfig().passphraseTransition
+        ? mainT(
+            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
+          )
+        : mainT('The remote profile still needs its encryption update. Use Sync up to retry.');
+    case 'encryption_change_pending':
+      return mainT('Finish or cancel the pending encryption change first.');
+    case 'needs_resolution':
+      return mainT('The first-time conflict check did not complete. Retry it before syncing.');
+    case 'remote_changed':
+      return mainT('The remote profile changed before the initial sync could complete');
+    default:
+      return mainT('Initial profile sync did not complete');
+  }
+}
+
 async function completeProfileSyncFirstEnablePreparation(source) {
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
@@ -6855,7 +6875,7 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
     throw new Error(
-      result?.error || result?.reason || mainT('Initial profile sync did not complete')
+      result?.error ? mainTError(result.error) : describeIncompleteFirstProfileSync(result)
     );
   }
   await clearProfileSyncFirstEnableResolutionPending();
@@ -10679,13 +10699,21 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
 /**
  * Picks sync up after signing in to Cloud Sync while it is the enabled target.
  * The same account carries on from its shared history; a different or first
- * account is compared with this device the way enabling sync does.
+ * account is compared with this device the way enabling sync does. A sync-key
+ * change waiting for recovery is left to finish first.
  */
 async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   // A refusal belonged to the account signed in before; this one may be subscribed.
   profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
+  // The recovery needs the history it was staged against, so it is kept rather than
+  // compared afresh; Settings shows what is pending, and Sync up resumes it.
+  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
+    setupProfileSyncInterval();
+    emitProfileSyncStatus();
+    return 'recovery_pending';
+  }
   const sameAccount = isSameCloudSyncAccount(previousAccount, account);
   if (
     sameAccount &&

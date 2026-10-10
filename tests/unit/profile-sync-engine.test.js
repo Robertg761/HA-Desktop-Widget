@@ -1278,6 +1278,38 @@ describe('profile sync through Cloud Sync', () => {
     expect(comparisons).toBe(1);
   });
 
+  test('signing in again leaves a pending sync-key change to its recovery', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    const baseline = { ...desktop.config.profileSync.syncBaseline };
+    const account = desktopClient.getStoredAccount();
+    for (const pending of [{ encryptionChangePending: true }, { remoteRewritePending: true }]) {
+      Object.assign(desktop.config.profileSync, pending);
+      await expect(desktop.context.startHostedProfileSyncAfterSignIn(null, account)).resolves.toBe(
+        'recovery_pending'
+      );
+      expect(desktop.config.profileSync).toMatchObject({
+        syncBaseline: baseline,
+        firstEnableResolutionPending: false,
+      });
+      desktop.config.profileSync.encryptionChangePending = null;
+      desktop.config.profileSync.remoteRewritePending = false;
+    }
+  });
+
+  test('a first sync held back by a pending change says so in words', async () => {
+    const { desktop } = await createCloudPair();
+    const complete = () => desktop.context.completeProfileSyncFirstEnablePreparation('test');
+    desktop.config.profileSync.encryptionChangePending = true;
+    await expect(complete()).rejects.toThrow(
+      'Finish or cancel the pending encryption change first.'
+    );
+    desktop.config.profileSync.encryptionChangePending = null;
+    desktop.config.profileSync.remoteRewritePending = true;
+    await expect(complete()).rejects.toThrow(
+      'The remote profile still needs its encryption update. Use Sync up to retry.'
+    );
+  });
+
   test('a signed-out computer stops syncing and says why', async () => {
     const { desktop, desktopClient } = await createCloudPair();
     await desktopClient.signOut();
