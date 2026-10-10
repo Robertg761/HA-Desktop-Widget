@@ -351,8 +351,24 @@ export async function recordSubscriptionFromStripe(
  * Settles this user's Checkout without waiting for its webhook: a completed one records its
  * subscription, and a finished one is forgotten. A paid subscriber whose webhook was lost or
  * delayed is then entitled the next time the app asks. Returns the recorded status, if any.
+ *
+ * Holds the same per-user lock as Checkout creation and account deletion. Without it, a
+ * request from another device could record the subscription and forget the Checkout in the
+ * middle of a deletion, after the deletion saw no subscription but before it looked for a
+ * Checkout, so nothing would be cancelled. When the lock is busy this does nothing; the app
+ * asks again shortly, and whatever holds the lock deals with the Checkout itself.
  */
 export async function reconcileCheckout(env, deps, userId) {
+  const lock = await acquireBillingLock(env, deps, userId);
+  if (!lock) return null;
+  try {
+    return await settleCheckout(env, deps, userId);
+  } finally {
+    await releaseBillingLock(env, userId, lock);
+  }
+}
+
+async function settleCheckout(env, deps, userId) {
   const pending = await env.DB.prepare(
     'SELECT stripe_session_id FROM billing_checkouts WHERE user_id = ? AND stripe_session_id IS NOT NULL'
   )

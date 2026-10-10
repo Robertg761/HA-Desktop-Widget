@@ -874,6 +874,78 @@ describe('cloud sync service', () => {
       expect(checkoutReads()).toBe(before);
     });
 
+    test('settling a paid Checkout on another device cannot slip past an account deletion', async () => {
+      const { world, token } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      Object.assign(world.stripe.checkouts.get('cs_1'), {
+        status: 'complete',
+        subscription: 'sub_race',
+      });
+      // Hold the deletion after it has found no subscription, just before it looks for a Checkout.
+      let reached;
+      let resume;
+      const atCheckoutLookup = new Promise((resolve) => {
+        reached = resolve;
+      });
+      const resumed = new Promise((resolve) => {
+        resume = resolve;
+      });
+      const prepare = world.env.DB.prepare;
+      let armed = true;
+      world.env.DB.prepare = (sql) => {
+        const statement = prepare(sql);
+        if (!armed || sql !== 'SELECT * FROM billing_checkouts WHERE user_id = ?') return statement;
+        armed = false;
+        return {
+          bind: (...args) => ({
+            first: async () => {
+              reached();
+              await resumed;
+              return statement.bind(...args).first();
+            },
+          }),
+        };
+      };
+      const deletion = world.authed(token, '/v1/account', { method: 'DELETE' });
+      await atCheckoutLookup;
+      // The other device asks for the account while the deletion holds the billing lock.
+      const account = await world.authed(token, '/v1/account');
+      expect(account.status).toBe(200);
+      expect((await account.json()).entitlement).toMatchObject({ entitled: false });
+      resume();
+      expect((await deletion).status).toBe(200);
+      expect(
+        world.calls.some(
+          (call) => call.method === 'DELETE' && call.url.endsWith('/subscriptions/sub_race')
+        )
+      ).toBe(true);
+    });
+
+    test('while a billing change holds the lock the account is still returned and Checkout is kept', async () => {
+      const { world, token, userId } = await signedIn();
+      await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
+      Object.assign(world.stripe.checkouts.get('cs_1'), {
+        status: 'complete',
+        subscription: 'sub_1',
+      });
+      setLiveSubscription(world, userId, 'active');
+      world.env.DB.raw
+        .prepare('INSERT INTO billing_operations (user_id, token, expires_at) VALUES (?, ?, ?)')
+        .run(userId, 'held', world.now() + 60 * 1000);
+
+      const busy = await world.authed(token, '/v1/account');
+      expect(busy.status).toBe(200);
+      expect((await busy.json()).entitlement).toMatchObject({ entitled: false });
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_checkouts').all()).toHaveLength(1);
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_operations').all()).toHaveLength(1);
+
+      // Once the lock is free the next request settles it, and releases the lock afterwards.
+      world.env.DB.raw.prepare('DELETE FROM billing_operations').run();
+      const settled = await (await world.authed(token, '/v1/account')).json();
+      expect(settled.entitlement).toMatchObject({ entitled: true, reason: 'subscription' });
+      expect(world.env.DB.raw.prepare('SELECT * FROM billing_operations').all()).toHaveLength(0);
+    });
+
     test('an unpaid Checkout leaves the account as it was', async () => {
       const { world, token } = await signedIn();
       await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
