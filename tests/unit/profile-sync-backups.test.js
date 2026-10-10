@@ -152,9 +152,13 @@ describe('backups taken before settings are replaced', () => {
   test('backups of discarded edits keep the newest 20 and any from the last 30 days', async () => {
     const { laptop } = await createSyncedPair();
     const day = 24 * 60 * 60 * 1000;
+    // One clock reading for every seeded name. Reading Date.now() per file lets the clock move on
+    // while the files are written, and a slow disk (Windows CI) then makes `Date.now() - index`
+    // repeat, so later files overwrite earlier ones and fewer than expected are left.
+    const now = Date.now();
     const seed = (ageDays, count) => {
       for (let index = 0; index < count; index += 1) {
-        const takenAt = Date.now() - ageDays * day - index;
+        const takenAt = now - ageDays * day - index;
         fs.writeFileSync(
           path.join(backupDir(laptop), `remote-profile-${takenAt}.json`),
           JSON.stringify({ reason: 'push', discarded: ['visualPersonalization'], sections: {} })
@@ -175,7 +179,7 @@ describe('backups taken before settings are replaced', () => {
 
     // Routine backups have their own five.
     for (let round = 0; round < 7; round += 1) {
-      await wait(2);
+      await wait();
       await backup([]);
     }
     expect(backupFiles(laptop, 'remote-profile')).toHaveLength(25);
