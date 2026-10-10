@@ -286,6 +286,69 @@ describe('a sync file another program has open', () => {
   });
 });
 
+describe('writing the sync file', () => {
+  test('goes through a hidden temporary file that reaches the disk before it replaces the file', async () => {
+    const { desktop } = await createSyncedPair();
+    desktop.edit((config) => {
+      config.opacity = 0.5;
+    });
+    const steps = [];
+    desktop.context.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        open: async (target, ...rest) => {
+          const handle = await fs.promises.open(target, ...rest);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            steps.push(`sync ${path.basename(target)}`);
+            return sync();
+          };
+          return handle;
+        },
+        rename: async (from, to) => {
+          steps.push(`rename ${path.basename(from)}`);
+          return fs.promises.rename(from, to);
+        },
+      },
+    };
+
+    await desktop.sync();
+
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatch(/^sync \.ha-widget-profile-sync\.json\.tmp-\d+-[0-9a-f]+$/);
+    expect(steps[1]).toBe(steps[0].replace('sync', 'rename'));
+    expect(readSyncFile().payload.sections.visualPersonalization.data.opacity).toBe(0.5);
+    expect(fs.readdirSync(path.dirname(syncFilePath()))).toEqual(['ha-widget-profile-sync.json']);
+  });
+
+  test('clears temporary files a crashed write left behind once they are an hour old', async () => {
+    const { desktop } = await createSyncedPair();
+    const folder = path.dirname(syncFilePath());
+    const leave = (name, ageMs) => {
+      const target = path.join(folder, name);
+      fs.writeFileSync(target, '{');
+      const at = new Date(Date.now() - ageMs);
+      fs.utimesSync(target, at, at);
+    };
+    const twoHours = 2 * 60 * 60 * 1000;
+    leave('.ha-widget-profile-sync.json.tmp-1700000000000-0a1b2c3d', twoHours);
+    // The visible name earlier versions used.
+    leave('ha-widget-profile-sync.json.tmp-1700000000000', twoHours);
+    // Possibly another computer's write still under way.
+    leave('.ha-widget-profile-sync.json.tmp-1700000000001-0a1b2c3e', 60 * 1000);
+    leave('notes.json.tmp-1700000000000', twoHours);
+
+    await desktop.sync();
+
+    expect(fs.readdirSync(folder).sort()).toEqual([
+      '.ha-widget-profile-sync.json.tmp-1700000000001-0a1b2c3e',
+      'ha-widget-profile-sync.json',
+      'notes.json.tmp-1700000000000',
+    ]);
+  });
+});
+
 describe('internal recovery failures', () => {
   test('an invalid recovery record is reported as a sentence, not as developer text', async () => {
     const { desktop } = await createSyncedPair();

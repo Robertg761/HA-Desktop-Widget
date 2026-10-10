@@ -4666,13 +4666,53 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
   }
   await requireExistingSyncParentDirectory(filePath, fs);
-  const tempPath = `${filePath}.tmp-${Date.now()}`;
+  // Hidden, and unique to this write, so a crash leaves nothing a person sees in the folder
+  // and two writers never share one; removeStaleSyncTempFiles clears what a crash leaves.
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.tmp-${Date.now()}-${nodeCrypto.randomBytes(4).toString('hex')}`
+  );
+  let handle = null;
   try {
-    await fs.promises.writeFile(tempPath, serialized, 'utf8');
+    await fs.promises.writeFile(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
+    // On disk before the rename, so a crash or power cut cannot leave the sync file pointing
+    // at contents that were never written. fsync covers the file whichever handle asks.
+    handle = await fs.promises.open(tempPath, 'r+');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    // Replaces the file in one step, on Windows too.
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
+    await handle?.close().catch(() => {});
     await fs.promises.unlink(tempPath).catch(() => {});
     throwSyncFileSystemError(error);
+  }
+}
+
+const PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Deletes temporary files a crashed write left beside the sync file, once they are an hour
+ * old: they would otherwise replicate to every computer. Includes the visible ones earlier
+ * versions wrote. Best effort; a folder that cannot be read is left alone.
+ */
+async function removeStaleSyncTempFiles(filePath) {
+  if (!filePath) return;
+  const folder = path.dirname(filePath);
+  const name = path.basename(filePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^(\\.${name}\\.tmp-\\d+-[0-9a-f]+|${name}\\.tmp-\\d+)$`);
+  try {
+    for (const entry of await fs.promises.readdir(folder)) {
+      if (!pattern.test(entry)) continue;
+      const target = path.join(folder, entry);
+      const stats = await fs.promises.stat(target).catch(() => null);
+      if (stats?.isFile() && Date.now() - stats.mtimeMs > PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS) {
+        await fs.promises.unlink(target).catch(() => {});
+      }
+    }
+  } catch {
+    // nothing to clean up in a folder that cannot be read
   }
 }
 
@@ -7083,6 +7123,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       throw error;
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
+    if (!isHostedProfileSyncProvider(profileSync.provider)) {
+      await removeStaleSyncTempFiles(profileSync.cloudFilePath);
+    }
 
     if (remoteResult.damaged) {
       // A file that cannot be read is only replaced by an explicit Sync up (or Keep
