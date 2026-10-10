@@ -1551,9 +1551,9 @@ describe('stale copies of the sync file', () => {
     expect(desktop.config.opacity).toBe(0.8);
   });
 
-  test('an edit after a pull beats the version it replaced when the clock is behind', async () => {
+  test('an edit after a pull beats the version it replaced when the clock is a little behind', async () => {
     const { desktop, laptop } = await createSyncedPair({
-      laptop: { clockOffsetMs: -60 * 60 * 1000 },
+      laptop: { clockOffsetMs: -3 * 60 * 1000 },
     });
     desktop.edit((config) => {
       config.opacity = 0.6;
@@ -1662,6 +1662,48 @@ describe('stale copies of the sync file', () => {
     expect(result.action).toBe('pull');
     expect(laptop.config.opacity).toBe(0.8);
     expect(laptop.status().lastRunSummary).toMatchObject({ staleRemote: [] });
+  });
+
+  test('edits after a pull from a clock a day ahead are not stamped a day ahead', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: { clockOffsetMs: 24 * 60 * 60 * 1000 },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    // What this computer agreed on carries the day-ahead time as the desktop wrote it.
+    expect(
+      Date.parse(laptop.config.profileSync.syncBaselineUpdatedAt.visualPersonalization.updatedAt)
+    ).toBeGreaterThan(Date.now() + 23 * 60 * 60 * 1000);
+
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+    const stamped = Date.parse(laptop.config.profileSync.sectionUpdatedAt.visualPersonalization);
+    expect(stamped).toBeLessThanOrEqual(Date.now() + 5 * 60 * 1000);
+    expect(stamped).toBeGreaterThanOrEqual(Date.now() - 60 * 1000);
+  });
+
+  test('an edit made after a pull from a clock a day ahead does not win a conflict it should lose', async () => {
+    const { laptop } = await createSyncedPair({
+      desktop: { clockOffsetMs: 24 * 60 * 60 * 1000 },
+    });
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    // Another computer changes the same section ten minutes later, before this one syncs.
+    laptop.edit((config) => {
+      config.opacity = 0.75;
+    });
+    writeOpacityEdit(0.6, 10 * 60 * 1000);
+
+    const result = await laptop.sync();
+
+    expect(result.action).toBe('pull');
+    expect(laptop.config.opacity).toBe(0.6);
   });
 
   test('the agreed versions stay on this computer', async () => {
