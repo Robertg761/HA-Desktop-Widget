@@ -5245,7 +5245,8 @@ async function applySyncedProfileToConfig(pulledSections) {
   // An edit time from a clock ahead of this one is recorded as now. File times count as at
   // most five minutes ahead in a conflict, so a future one kept here would make a pulled
   // section look like a newer edit of this device's. The agreed version keeps the time as
-  // written, so an edit made after this pull still beats it (see stampLocalSectionEdit).
+  // written, but an edit made after this pull is stamped at most five minutes ahead of now
+  // (see stampLocalSectionEdit).
   const nowIso = new Date().toISOString();
   const notAfterNow = (value) =>
     profileSyncCore.compareIsoTimestamps(value, nowIso) > 0 ? nowIso : value;
@@ -5689,13 +5690,18 @@ function getKnownSectionUpdatedAt(profileSync, key) {
 
 /**
  * The edit time of a section changed on this device: now, or just after the version it
- * replaced when this clock is behind the one that wrote that version. An edit made after a
- * pull then always beats what it replaced, and no device takes it for a stale copy of the
- * file. It can only carry another clock's lead as far as a version that clock really wrote.
+ * replaced when this clock is slightly behind the one that wrote that version. An edit made
+ * after a pull then beats what it replaced, and no device takes it for a stale copy of the
+ * file. It never carries more of another clock's lead than the sync clock tolerance, or one
+ * pull from a clock a day ahead would stamp every later edit here a day ahead as well, and
+ * those would win conflicts they should lose.
  */
 function stampLocalSectionEdit(profileSync, key, nowMs = Date.now()) {
   const knownMs = Date.parse(getKnownSectionUpdatedAt(profileSync, key) || '');
-  return new Date(Number.isNaN(knownMs) ? nowMs : Math.max(nowMs, knownMs + 1)).toISOString();
+  const latestMs = nowMs + profileSyncCore.SYNC_FUTURE_TOLERANCE_MS;
+  return new Date(
+    Number.isNaN(knownMs) ? nowMs : Math.min(Math.max(nowMs, knownMs + 1), latestMs)
+  ).toISOString();
 }
 
 /**
@@ -7310,9 +7316,19 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     const nextBaseline = {};
     // The edit time of each agreed version, which tells a stale copy of the file from an edit.
     const nextBaselineUpdatedAt = {};
+    const previousAgreed = profileSync.syncBaselineUpdatedAt || {};
     const agreeOnRemote = (key, hash) => {
       nextBaseline[key] = hash;
-      nextBaselineUpdatedAt[key] = remoteSections[key].updatedAt;
+      // The same content in an older copy of the file (a restored version holding it, or
+      // another computer that wrote it earlier) must not move the agreed time back: a later
+      // stale copy would then no longer read as older than it.
+      const remoteAt = remoteSections[key].updatedAt;
+      const before = previousAgreed[key];
+      nextBaselineUpdatedAt[key] =
+        before?.hash === hash &&
+        profileSyncCore.compareIsoTimestamps(before.updatedAt, remoteAt) > 0
+          ? before.updatedAt
+          : remoteAt;
     };
     plan.unchanged.forEach((key) => {
       if (plan.localHashes[key] === plan.remoteHashes[key]) {
