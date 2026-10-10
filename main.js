@@ -909,6 +909,9 @@ const serializeConfigMutationHandler =
     return runSerializedConfigMutation(() => handler(...args));
   };
 const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
+// After Cloud Sync refuses a save for want of a subscription, automatic runs only download
+// for this long; Sync now, signing in and a renewed subscription try saving straight away.
+const CLOUD_SYNC_WRITE_RETRY_MS = 6 * 60 * 60 * 1000;
 const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
 const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
 const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
@@ -973,6 +976,8 @@ const profileSyncRuntime = {
   pendingPulls: [],
   // Cloud Sync revision of the last read; the next write expects it unchanged.
   hostedRevision: null,
+  // When Cloud Sync last refused a save because the account has no subscription (0: never).
+  cloudSyncWriteRefusedAt: 0,
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -4779,7 +4784,28 @@ const CLOUD_SYNC_ERROR_MESSAGES = {
   CLOUD_SYNC_STATE: 'Sign-in did not complete. Try again.',
   CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
   CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
+  CLOUD_SYNC_BILLING_BUSY: 'A billing change is in progress. Try again shortly.',
+  CLOUD_SYNC_BILLING_PENDING: 'Your payment is being processed. Try again shortly.',
+  CLOUD_SYNC_SUBSCRIPTION_EXISTS: 'You already have a subscription. Reopen Settings to manage it.',
+  CLOUD_SYNC_NOT_LAUNCHED: 'Cloud Sync is not available yet.',
 };
+
+/**
+ * Whether an automatic run should only download because Cloud Sync recently refused a save
+ * for want of a subscription. Sync now always tries again.
+ */
+function shouldHoldCloudSyncWrites(profileSync, source) {
+  if (!isHostedProfileSyncProvider(profileSync.provider) || source === 'manual') return false;
+  const refusedAt = profileSyncRuntime.cloudSyncWriteRefusedAt;
+  return !!refusedAt && Date.now() - refusedAt < CLOUD_SYNC_WRITE_RETRY_MS;
+}
+
+/** Lets the next run save again, and queues one when edits may be waiting. */
+function resumeCloudSyncWrites() {
+  if (!profileSyncRuntime.cloudSyncWriteRefusedAt) return;
+  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
+  scheduleDebouncedProfileSyncPush('subscription_restored');
+}
 
 /** Gives a Cloud Sync failure a translated message, keeping its code. */
 function toCloudSyncError(error) {
@@ -7065,6 +7091,50 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       !remoteEnvelope || remoteEncrypted === !!profileSync.encryptionEnabled;
     const rewriteRequired =
       !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
+    // Without a subscription Cloud Sync still serves the profile but refuses saves. The
+    // pulls above are kept and recorded; this device's own edits wait, unsaved, until a
+    // save is accepted. A pending encryption rewrite cannot wait like that, so it fails.
+    const mayHoldPushes = !rewriteRequired && !profileSync.remoteRewritePending;
+    const finishWithoutSaving = async () => {
+      await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+      profileSyncRuntime.lastRemote = remoteEnvelope
+        ? {
+            updatedAt: remoteEnvelope.updatedAt,
+            updatedByDeviceId: remoteEnvelope.updatedByDeviceId,
+          }
+        : null;
+      profileSyncRuntime.lastRunSummary = {
+        at: new Date().toISOString(),
+        pushed: [],
+        pulled: plan.pull,
+        replacedLocal: plan.discardsLocal,
+        replacedRemote: [],
+      };
+      updateProfileSyncStatus(
+        'error',
+        mainT(
+          'Cloud Sync needs a subscription to save changes. Changes from your other computers still download.'
+        )
+      );
+      setupProfileSyncInterval();
+      profileSyncRuntime.inFlight = false;
+      const status = buildProfileSyncStatus();
+      emitProfileSyncStatus();
+      const pulled = plan.pull.length > 0;
+      return {
+        ok: true,
+        action: pulled ? 'pull' : 'none',
+        reason: 'subscription_required',
+        pushed: [],
+        pulled: plan.pull,
+        status,
+        ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
+      };
+    };
+    if (pushKeys.length > 0 && mayHoldPushes && shouldHoldCloudSyncWrites(profileSync, source)) {
+      return await finishWithoutSaving();
+    }
+
     let wroteEnvelope = null;
     if (pushKeys.length > 0 || rewriteRequired) {
       // A merge only replaces remote edits it reports as discarded. Sync up replaces
@@ -7121,7 +7191,14 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
       }
 
-      await writeConfiguredSyncEnvelope(envelopeToWrite);
+      try {
+        await writeConfiguredSyncEnvelope(envelopeToWrite);
+      } catch (error) {
+        if (error?.code !== 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED' || !mayHoldPushes) throw error;
+        profileSyncRuntime.cloudSyncWriteRefusedAt = Date.now();
+        return await finishWithoutSaving();
+      }
+      profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
       wroteEnvelope = envelopeToWrite;
       pushKeys.forEach((key) => {
         nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
@@ -10580,6 +10657,8 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
  * account is compared with this device the way enabling sync does.
  */
 async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
+  // A refusal belonged to the account signed in before; this one may be subscribed.
+  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
   const sameAccount = !!previousAccount && previousAccount.email === account.email;
@@ -10656,6 +10735,7 @@ ipcMain.handle('get-cloud-sync-account', async (event) => {
   if (result.signedIn) {
     try {
       result.account = await client.getAccount();
+      if (result.account?.entitled) resumeCloudSyncWrites();
     } catch (error) {
       result.error = toCloudSyncError(error).message;
       Object.assign(result, getCloudSyncStatus());
@@ -10725,6 +10805,17 @@ ipcMain.handle('cloud-sync-delete-account', async (event) => {
     stopHostedProfileSyncAfterSignOut();
     return { success: true, status: buildProfileSyncStatus() };
   } catch (error) {
+    // The service keeps the account when it cannot cancel the subscription first.
+    if (error?.code === 'CLOUD_SYNC_BILLING_UNAVAILABLE') {
+      return {
+        success: false,
+        code: error.code,
+        error: mainT(
+          'Your subscription could not be canceled, so the account was kept. Try again later.'
+        ),
+        status: buildProfileSyncStatus(),
+      };
+    }
     return cloudSyncFailure(error);
   } finally {
     emitProfileSyncStatus();

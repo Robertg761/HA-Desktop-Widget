@@ -1719,5 +1719,11 @@
   "With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service.": "With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service.",
   "Privacy policy": "Privacy policy",
   "Subscription terms": "Subscription terms",
-  "Cloud Sync policies": "Cloud Sync policies"
+  "Cloud Sync policies": "Cloud Sync policies",
+  "Cloud Sync needs a subscription to save changes. Changes from your other computers still download.": "Cloud Sync needs a subscription to save changes. Changes from your other computers still download.",
+  "A billing change is in progress. Try again shortly.": "A billing change is in progress. Try again shortly.",
+  "Your payment is being processed. Try again shortly.": "Your payment is being processed. Try again shortly.",
+  "You already have a subscription. Reopen Settings to manage it.": "You already have a subscription. Reopen Settings to manage it.",
+  "Cloud Sync is not available yet.": "Cloud Sync is not available yet.",
+  "Your subscription could not be canceled, so the account was kept. Try again later.": "Your subscription could not be canceled, so the account was kept. Try again later."
 }

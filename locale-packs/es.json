@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.75",
+  "version": "1.2.76",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2215,6 +2215,12 @@
     "With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service.": "Con Cloud Sync, el cifrado significa que el servicio solo guarda datos que no puede leer, y nadie puede recuperarlos si se pierde la frase de contraseña. Sin cifrado, tus ajustes se guardan legibles en el servicio.",
     "Privacy policy": "Política de privacidad",
     "Subscription terms": "Condiciones de la suscripción",
-    "Cloud Sync policies": "Políticas de Cloud Sync"
+    "Cloud Sync policies": "Políticas de Cloud Sync",
+    "Cloud Sync needs a subscription to save changes. Changes from your other computers still download.": "Cloud Sync necesita una suscripción para guardar cambios. Los cambios de tus otros equipos se siguen descargando.",
+    "A billing change is in progress. Try again shortly.": "Hay un cambio de facturación en curso. Vuelve a intentarlo en breve.",
+    "Your payment is being processed. Try again shortly.": "Tu pago se está procesando. Vuelve a intentarlo en breve.",
+    "You already have a subscription. Reopen Settings to manage it.": "Ya tienes una suscripción. Vuelve a abrir la configuración para gestionarla.",
+    "Cloud Sync is not available yet.": "Cloud Sync aún no está disponible.",
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "No se pudo cancelar tu suscripción, así que se conservó la cuenta. Vuelve a intentarlo más tarde."
   }
 }

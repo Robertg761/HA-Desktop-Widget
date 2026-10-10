@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.76",
+  "version": "1.2.77",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2215,6 +2215,12 @@
     "With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service.": "مع Cloud Sync، يعني التشفير أن الخدمة لا تخزّن إلا بيانات لا يمكنها قراءتها، ولا يستطيع أحد استعادتها إذا فُقدت عبارة المرور. ومن دون التشفير، تُخزَّن إعداداتك على الخدمة بصيغة قابلة للقراءة.",
     "Privacy policy": "سياسة الخصوصية",
     "Subscription terms": "شروط الاشتراك",
-    "Cloud Sync policies": "سياسات Cloud Sync"
+    "Cloud Sync policies": "سياسات Cloud Sync",
+    "Cloud Sync needs a subscription to save changes. Changes from your other computers still download.": "يحتاج Cloud Sync إلى اشتراك لحفظ التغييرات. لا يزال يتم تنزيل التغييرات من أجهزة الكمبيوتر الأخرى.",
+    "A billing change is in progress. Try again shortly.": "يوجد تغيير في الفوترة قيد التنفيذ. حاول مرة أخرى بعد قليل.",
+    "Your payment is being processed. Try again shortly.": "تتم معالجة دفعتك. حاول مرة أخرى بعد قليل.",
+    "You already have a subscription. Reopen Settings to manage it.": "لديك اشتراك بالفعل. أعد فتح الإعدادات لإدارته.",
+    "Cloud Sync is not available yet.": "Cloud Sync غير متاح بعد.",
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "تعذّر إلغاء اشتراكك، لذلك تم الإبقاء على الحساب. حاول مرة أخرى لاحقًا."
   }
 }

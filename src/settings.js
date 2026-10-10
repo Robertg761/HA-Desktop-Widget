@@ -4888,7 +4888,12 @@ function renderCloudSyncAccount() {
       'hidden',
       !account || !info.billingAvailable || account.entitlementReason === 'open'
     );
-    billing.textContent = account?.hasBillingAccount ? t('Manage subscription') : t('Subscribe');
+    // Matches where the button goes: an ended subscription subscribes again through checkout.
+    const manages =
+      account?.hasBillingAccount &&
+      account.subscriptionStatus !== 'canceled' &&
+      account.subscriptionStatus !== 'incomplete_expired';
+    billing.textContent = manages ? t('Manage subscription') : t('Subscribe');
   }
 }
 

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.76",
+  "version": "1.2.77",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2215,6 +2215,12 @@
     "With Cloud Sync, encryption means the service stores only data it cannot read, and nobody can recover it if the passphrase is lost. Without it, your settings are stored readable on the service.": "Cloud Sync के साथ एन्क्रिप्शन का मतलब है कि सेवा केवल ऐसा डेटा रखती है जिसे वह पढ़ नहीं सकती, और पासफ़्रेज़ खो जाने पर कोई भी उसे वापस नहीं ला सकता। एन्क्रिप्शन के बिना, आपकी सेटिंग्स सेवा पर पढ़ने योग्य रूप में रखी जाती हैं।",
     "Privacy policy": "गोपनीयता नीति",
     "Subscription terms": "सदस्यता की शर्तें",
-    "Cloud Sync policies": "Cloud Sync की नीतियां"
+    "Cloud Sync policies": "Cloud Sync की नीतियां",
+    "Cloud Sync needs a subscription to save changes. Changes from your other computers still download.": "बदलाव सहेजने के लिए Cloud Sync को सदस्यता चाहिए। आपके दूसरे कंप्यूटरों के बदलाव अब भी डाउनलोड होते हैं।",
+    "A billing change is in progress. Try again shortly.": "बिलिंग में बदलाव चल रहा है। थोड़ी देर बाद फिर कोशिश करें।",
+    "Your payment is being processed. Try again shortly.": "आपका भुगतान प्रोसेस हो रहा है। थोड़ी देर बाद फिर कोशिश करें।",
+    "You already have a subscription. Reopen Settings to manage it.": "आपके पास पहले से सदस्यता है। उसे प्रबंधित करने के लिए सेटिंग्स फिर से खोलें।",
+    "Cloud Sync is not available yet.": "Cloud Sync अभी उपलब्ध नहीं है।",
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "आपकी सदस्यता रद्द नहीं हो सकी, इसलिए खाता रखा गया है। बाद में फिर कोशिश करें।"
   }
 }

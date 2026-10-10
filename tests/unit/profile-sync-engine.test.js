@@ -1211,12 +1211,63 @@ describe('profile sync through Cloud Sync', () => {
     expect(desktop.status().cloudSync).toMatchObject({ signedIn: false });
   });
 
-  test('after the trial, saving says a subscription is needed', async () => {
-    const { world, desktop } = await createCloudPair();
+  test('after the trial, edits wait while changes from other computers still download', async () => {
+    const { world, desktop, laptop, desktopClient, stored } = await createCloudPair();
+    let saves = 0;
+    const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    desktopClient.writeProfile = (...args) => {
+      saves += 1;
+      return realWrite(...args);
+    };
+    // The laptop saves while the account is still in its trial.
+    laptop.edit((config) => {
+      config.favoriteEntities = ['light.kitchen', 'light.porch'];
+    });
+    await laptop.sync();
     world.advance(15 * DAY);
     desktop.edit((config) => {
       config.opacity = 0.5;
     });
-    await expect(desktop.sync()).rejects.toThrow('Cloud Sync needs a subscription to save changes');
+
+    const refused = await desktop.sync();
+    expect(refused).toMatchObject({ ok: true, reason: 'subscription_required', pushed: [] });
+    expect(refused.pulled).toEqual(['quickAccessLayout']);
+    expect(desktop.config.favoriteEntities).toEqual(['light.kitchen', 'light.porch']);
+    expect(desktop.config.opacity).toBe(0.5);
+    expect(desktop.status()).toMatchObject({
+      lastSyncStatus: 'error',
+      lastSyncError:
+        'Cloud Sync needs a subscription to save changes. Changes from your other computers still download.',
+    });
+    expect(saves).toBe(1);
+
+    // Automatic runs stop asking to save; they only download.
+    await desktop.sync('auto', 'interval');
+    await desktop.sync('auto', 'config_change');
+    expect(saves).toBe(1);
+
+    // Once subscribed, Sync now saves the edit that waited.
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    world.env.DB.raw
+      .prepare('INSERT INTO subscriptions (user_id, status, updated_at) VALUES (?, ?, ?)')
+      .run(userId, 'active', world.now());
+    const saved = await desktop.sync('auto', 'manual');
+    expect(saved.pushed).toEqual(['visualPersonalization']);
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.5);
+    expect(desktop.status().lastSyncStatus).toBe('success');
+  });
+
+  test('a lapsed subscription does not leave first sync stuck after signing in', async () => {
+    const { world, desktop } = await createCloudPair();
+    world.advance(15 * DAY);
+    desktop.edit((config) => {
+      config.opacity = 0.45;
+    });
+    // As signing in again does: compare with the account, then finish first sync.
+    const resolution = await desktop.firstEnable();
+    expect(resolution.needsResolution).toBe(false);
+    const result = await desktop.context.completeProfileSyncFirstEnablePreparation('cloud_sign_in');
+    expect(result.reason).toBe('subscription_required');
+    expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
   });
 });
