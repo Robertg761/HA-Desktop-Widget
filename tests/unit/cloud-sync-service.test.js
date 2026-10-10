@@ -343,6 +343,35 @@ describe('cloud sync service', () => {
       expect(other.body.user.email).toBe('taken@x.io');
     });
 
+    test("an account that missed its identity's new email catches up on a later sign-in", async () => {
+      const world = createWorld();
+      world.googleUsers.set('g1', { sub: 'google-1', email: 'old@x.io', email_verified: true });
+      world.googleUsers.set('g2', { sub: 'google-1', email: 'new@x.io', email_verified: true });
+      world.googleUsers.set('o1', { sub: 'google-2', email: 'new@x.io', email_verified: true });
+      const raw = world.env.DB.raw;
+      const first = await world.signIn('google', 'g1');
+      // The identity took the new address, but the account's own email did not follow.
+      raw
+        .prepare("UPDATE identities SET email = 'new@x.io' WHERE provider_user_id = 'google-1'")
+        .run();
+      const caughtUp = await world.signIn('google', 'g2');
+      expect(caughtUp.body.user).toEqual({ id: first.body.user.id, email: 'new@x.io' });
+
+      // The same when the address was held by another account at the time.
+      const rename = (from, to) =>
+        raw.prepare('UPDATE users SET email = ? WHERE email = ?').run(to, from);
+      rename('new@x.io', 'old@x.io');
+      const other = await world.signIn('google', 'o1');
+      expect(other.body.user.email).toBe('new@x.io');
+      expect(
+        raw.prepare('SELECT email FROM users WHERE id = ?').get(first.body.user.id).email
+      ).toBe('old@x.io');
+      expect((await world.signIn('google', 'g2')).body.user.email).toBe('old@x.io');
+      rename('new@x.io', 'freed@x.io');
+      const retried = await world.signIn('google', 'g2');
+      expect(retried.body.user).toEqual({ id: first.body.user.id, email: 'new@x.io' });
+    });
+
     test('sessions end on sign-out and after long disuse', async () => {
       const world = createWorld();
       world.googleUsers.set('g1', { sub: 'google-1', email: 'a@b.c', email_verified: true });

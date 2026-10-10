@@ -158,22 +158,32 @@ async function createIdentity(env, deps, { provider, providerUserId, email }) {
  * Keeps an identity's email current. The account's own email follows when this
  * identity supplied it (or it had none), unless another account already uses the
  * new address; that account keeps it, since email decides which account a new
- * sign-in joins.
+ * sign-in joins. Both are written in one batch, and the account's email is checked
+ * as well as the identity's, so an account that missed the change (the address was
+ * taken then, or an earlier write was cut short) catches up on a later sign-in.
  */
 async function refreshIdentityEmail(env, identity, { provider, providerUserId, email }) {
-  if (!email || email === identity.email) return;
-  await env.DB.prepare(
-    'UPDATE identities SET email = ? WHERE provider = ? AND provider_user_id = ?'
-  )
-    .bind(email, provider, providerUserId)
-    .run();
-  await env.DB.prepare(
-    `UPDATE users SET email = ?
-     WHERE id = ? AND (email IS NULL OR email = ?)
-       AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = ? AND other.id != ?)`
-  )
-    .bind(email, identity.user_id, identity.email, email, identity.user_id)
-    .run();
+  if (!email) return;
+  const user = await env.DB.prepare('SELECT email FROM users WHERE id = ?')
+    .bind(identity.user_id)
+    .first();
+  if (email === identity.email && email === user?.email) return;
+  // The account's email is this identity's to change when it is the identity's old one,
+  // missing, or no longer backed by any identity (one the change already moved past).
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET email = ?
+       WHERE id = ?
+         AND (email IS NULL OR email = ?
+           OR NOT EXISTS (
+             SELECT 1 FROM identities i WHERE i.user_id = users.id AND i.email = users.email
+           ))
+         AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = ? AND other.id != ?)`
+    ).bind(email, identity.user_id, identity.email, email, identity.user_id),
+    env.DB.prepare(
+      'UPDATE identities SET email = ? WHERE provider = ? AND provider_user_id = ?'
+    ).bind(email, provider, providerUserId),
+  ]);
 }
 
 export async function handleGetAccount(request, env, deps, { reconcileCheckout } = {}) {
