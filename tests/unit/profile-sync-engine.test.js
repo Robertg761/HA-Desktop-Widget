@@ -1173,7 +1173,7 @@ describe('profile sync through Cloud Sync', () => {
     expect(laptop.config.opacity).toBe(0.55);
   });
 
-  test('a write that loses a race is reported, not forced over the other device', async () => {
+  test('a write that loses a race is merged again, not forced over the other device', async () => {
     const { desktop, laptop, desktopClient, stored } = await createCloudPair();
     laptop.edit((config) => {
       config.opacity = 0.6;
@@ -1188,13 +1188,15 @@ describe('profile sync through Cloud Sync', () => {
       await laptop.sync();
       return realWrite(...args);
     };
-    await expect(desktop.sync()).rejects.toThrow(
-      'Sync file kept changing on the other device; try again'
-    );
+    const queued = [];
+    desktop.context.runProfileSync = async (...args) => queued.push(args);
+    await expect(desktop.sync()).resolves.toMatchObject({ ok: true, reason: 'remote_changed' });
     expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+    expect(desktop.status().lastSyncStatus).not.toBe('error');
 
-    // The next run merges both edits.
-    await desktop.sync();
+    // The re-check it queued merges both edits.
+    expect(queued).toEqual([['auto', 'conflict_recheck']]);
+    await desktop.sync(...queued[0]);
     const { sections } = stored().envelope.payload;
     expect(sections.visualPersonalization.data.opacity).toBe(0.6);
     expect(sections.quickAccessLayout.data.favoriteEntities).toEqual([
@@ -1204,11 +1206,156 @@ describe('profile sync through Cloud Sync', () => {
     expect(desktop.config.opacity).toBe(0.6);
   });
 
+  test('the synced profile is bound to the account id, not its email', async () => {
+    const { world, desktop, desktopClient } = await createCloudPair();
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    const endpoint = `cloud-sync:https://sync.test:${userId}`;
+    expect(desktop.context.getProfileSyncEndpoint()).toBe(endpoint);
+
+    // Two accounts without an email (GitHub with none verified) are not one account.
+    const signIn = desktop.context.startHostedProfileSyncAfterSignIn;
+    await expect(
+      signIn({ id: 'user-a', email: '', provider: 'github' }, { id: 'user-b', email: '' })
+    ).resolves.toBe('prepared');
+    expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
+    await expect(
+      signIn({ id: userId, email: 'me@x.io', provider: 'google' }, { id: userId, email: '' })
+    ).resolves.toBe('resume');
+
+    // A key rewrite staged before ids were kept names the account by email. It still
+    // recovers once signing in again has saved the id, and only for that account.
+    const transactionFor = (cloudFilePath) =>
+      desktop.context.createProfileSyncRewriteTransaction({
+        provider: 'hostedAccount',
+        cloudFilePath,
+        expectedRemoteIdentity: 'a',
+        targetRemoteIdentity: 'b',
+        targetEnvelopeSerialized: '{}',
+        oldPassphraseEncrypted: 'x',
+        newPassphraseEncrypted: 'y',
+      });
+    const matches = (transaction) => desktop.context.profileSyncRewriteTargetMatches(transaction);
+    expect(matches(transactionFor(endpoint))).toBe(true);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:other@x.io'))).toBe(false);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:another-user'))).toBe(false);
+
+    // Sign-ins saved before ids were kept are still named by email.
+    const file = path.join(desktopClient.userDataPath, 'cloud-sync-account.json');
+    const { userId: omitted, ...older } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(omitted).toBe(userId);
+    fs.writeFileSync(file, JSON.stringify(older));
+    expect(desktop.context.getProfileSyncEndpoint()).toBe('cloud-sync:https://sync.test:me@x.io');
+    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
+  });
+
+  test('signing back in to the same account carries on from its sync history', async () => {
+    const { desktop } = await createCloudPair();
+    const baseline = { ...desktop.config.profileSync.syncBaseline };
+    expect(Object.keys(baseline).length).toBeGreaterThan(0);
+    await desktop.invoke('cloud-sync-sign-out');
+    expect(desktop.status().cloudSync.signedIn).toBe(false);
+
+    let comparisons = 0;
+    const prepare = desktop.context.prepareProfileSyncFirstEnableResolution;
+    desktop.context.prepareProfileSyncFirstEnableResolution = (...args) => {
+      comparisons += 1;
+      return prepare(...args);
+    };
+    const runs = [];
+    desktop.context.runProfileSync = async (...args) => runs.push(args);
+    await expect(desktop.invoke('cloud-sync-sign-in', 'google')).resolves.toMatchObject({
+      success: true,
+    });
+    expect(comparisons).toBe(0);
+    expect(runs).toEqual([['auto', 'cloud_sign_in']]);
+    expect(desktop.config.profileSync).toMatchObject({
+      syncBaseline: baseline,
+      firstEnableResolutionPending: false,
+    });
+
+    // A deleted account is forgotten: the next sign-in compares again.
+    await desktop.invoke('cloud-sync-delete-account');
+    await desktop.invoke('cloud-sync-sign-in', 'google');
+    expect(comparisons).toBe(1);
+  });
+
+  test('signing in again leaves a pending sync-key change to its recovery', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    const baseline = { ...desktop.config.profileSync.syncBaseline };
+    const account = desktopClient.getStoredAccount();
+    for (const pending of [{ encryptionChangePending: true }, { remoteRewritePending: true }]) {
+      Object.assign(desktop.config.profileSync, pending);
+      await expect(desktop.context.startHostedProfileSyncAfterSignIn(null, account)).resolves.toBe(
+        'recovery_pending'
+      );
+      expect(desktop.config.profileSync).toMatchObject({
+        syncBaseline: baseline,
+        firstEnableResolutionPending: false,
+      });
+      desktop.config.profileSync.encryptionChangePending = null;
+      desktop.config.profileSync.remoteRewritePending = false;
+    }
+  });
+
+  test('a first sync held back by a pending change says so in words', async () => {
+    const { desktop } = await createCloudPair();
+    const complete = () => desktop.context.completeProfileSyncFirstEnablePreparation('test');
+    desktop.config.profileSync.encryptionChangePending = true;
+    await expect(complete()).rejects.toThrow(
+      'Finish or cancel the pending encryption change first.'
+    );
+    desktop.config.profileSync.encryptionChangePending = null;
+    desktop.config.profileSync.remoteRewritePending = true;
+    await expect(complete()).rejects.toThrow(
+      'The remote profile still needs its encryption update. Use Sync up to retry.'
+    );
+  });
+
+  test('a Sync up that loses a race is reported, not merged in its place', async () => {
+    const { desktop, laptop, desktopClient, stored } = await createCloudPair();
+    laptop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.3;
+    });
+    const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    desktopClient.writeProfile = async (...args) => {
+      desktopClient.writeProfile = realWrite;
+      await laptop.sync();
+      return realWrite(...args);
+    };
+    const queued = [];
+    desktop.context.runProfileSync = async (...args) => queued.push(args);
+    await expect(desktop.sync('push', 'manual')).rejects.toThrow(
+      'Sync file kept changing on the other device; try again'
+    );
+    expect(queued).toEqual([]);
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+  });
+
   test('a signed-out computer stops syncing and says why', async () => {
     const { desktop, desktopClient } = await createCloudPair();
     await desktopClient.signOut();
     await expect(desktop.sync()).rejects.toThrow('Sign in to Cloud Sync to keep syncing');
     expect(desktop.status().cloudSync).toMatchObject({ signedIn: false });
+  });
+
+  test('signing out from Settings cancels a sign-in still waiting for the browser', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    desktopClient.openExternal = async () => {};
+    desktopClient.signInTimeoutMs = 2000;
+    const signingIn = desktop.invoke('cloud-sync-sign-in', 'google');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(desktop.status().cloudSync.signInPending).toBe(true);
+
+    await desktop.invoke('cloud-sync-sign-out');
+    await expect(signingIn).resolves.toMatchObject({
+      success: false,
+      code: 'CLOUD_SYNC_SIGN_IN_CANCELED',
+    });
+    expect(desktop.status().cloudSync).toMatchObject({ signedIn: false, signInPending: false });
   });
 
   test('after the trial, edits wait while changes from other computers still download', async () => {

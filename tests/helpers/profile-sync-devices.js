@@ -249,6 +249,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      }
      function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
      function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
+     function runSerializedConfigMutation(task) { return Promise.resolve().then(task); }
      function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
      function setupProfileSyncInterval() {}
      async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }

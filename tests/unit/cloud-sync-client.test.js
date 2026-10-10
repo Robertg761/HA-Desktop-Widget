@@ -11,7 +11,9 @@ const os = require('os');
 const path = require('path');
 const {
   CLOUD_SYNC_CREDENTIALS_FILE,
+  CLOUD_SYNC_LAST_ACCOUNT_FILE,
   CloudSyncClient,
+  isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,
   parseEtagRevision,
   resolveCloudSyncServiceUrl,
@@ -60,17 +62,16 @@ describe('cloud sync client', () => {
     const { world, client, userDataPath, opened } = setup();
     expect(client.getStoredAccount()).toBeNull();
 
-    await expect(client.signIn('google')).resolves.toEqual({
-      email: 'me@x.io',
-      provider: 'google',
-    });
+    const signedIn = await client.signIn('google');
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    expect(signedIn).toEqual({ id: userId, email: 'me@x.io', provider: 'google' });
 
     const startUrl = new URL(opened[0]);
     expect(startUrl.searchParams.get('code_challenge_method')).toBe('S256');
     expect(startUrl.searchParams.get('redirect_uri')).toMatch(
       /^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/
     );
-    expect(client.getStoredAccount()).toEqual({ email: 'me@x.io', provider: 'google' });
+    expect(client.getStoredAccount()).toEqual({ id: userId, email: 'me@x.io', provider: 'google' });
     const stored = JSON.parse(
       fs.readFileSync(path.join(userDataPath, CLOUD_SYNC_CREDENTIALS_FILE), 'utf8')
     );
@@ -79,12 +80,47 @@ describe('cloud sync client', () => {
     expect(session.device_name).toBe('Office PC');
 
     await expect(client.getAccount()).resolves.toMatchObject({
+      id: userId,
       email: 'me@x.io',
       providers: ['google'],
       entitled: true,
       entitlementReason: 'trial',
       billingAvailable: true,
     });
+  });
+
+  test('keeps the account id, and reads a sign-in saved before ids were kept', async () => {
+    const browserFor = (code) => async (url, world) => {
+      const start = await world.request(url.replace(BASE, ''));
+      const state = new URL(start.headers.get('Location')).searchParams.get('state');
+      const callback = await world.request(`/v1/auth/callback/github?code=${code}&state=${state}`);
+      await fetch(callback.headers.get('Location'));
+    };
+    // Two GitHub accounts without a verified email.
+    const first = setup({ browser: browserFor('gh-1') });
+    first.world.githubUsers.set('gh-1', { profile: { id: 1, login: 'one' }, emails: [] });
+    first.world.githubUsers.set('gh-2', { profile: { id: 2, login: 'two' }, emails: [] });
+    const one = await first.client.signIn('github');
+    first.client.openExternal = (url) => browserFor('gh-2')(url, first.world);
+    const two = await first.client.signIn('github');
+    expect(one.email).toBe('');
+    expect(two.email).toBe('');
+    expect(one.id).toEqual(expect.any(String));
+    expect(two.id).not.toBe(one.id);
+    expect(first.client.getStoredAccount()).toEqual({ id: two.id, email: '', provider: 'github' });
+
+    const legacy = setup();
+    await legacy.client.signIn('google');
+    const file = path.join(legacy.userDataPath, CLOUD_SYNC_CREDENTIALS_FILE);
+    const { userId, ...older } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(userId).toEqual(expect.any(String));
+    fs.writeFileSync(file, JSON.stringify(older));
+    expect(legacy.client.getStoredAccount()).toEqual({
+      id: '',
+      email: 'me@x.io',
+      provider: 'google',
+    });
+    await expect(legacy.client.readProfile()).resolves.toMatchObject({ exists: false });
   });
 
   test('reads and writes the profile with compare-and-swap', async () => {
@@ -120,7 +156,26 @@ describe('cloud sync client', () => {
     ).rejects.toMatchObject({ code: 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED', status: 402 });
 
     await expect(client.openBilling()).resolves.toEqual({ opened: 'checkout' });
-    expect(opened.at(-1)).toBe('https://checkout.stripe.test/session');
+    expect(opened.at(-1)).toBe('https://checkout.stripe.com/c/pay/cs_test');
+  });
+
+  test('opens only Stripe pages for billing', async () => {
+    const { world, client, opened } = setup();
+    await client.signIn('google');
+    await client.openBilling();
+    opened.length = 0;
+    world.stripe.checkouts.get('cs_1').url = 'https://checkout.stripe.com.example.net/pay';
+    await expect(client.openBilling()).rejects.toMatchObject({ code: 'CLOUD_SYNC_ERROR' });
+    expect(opened).toEqual([]);
+
+    expect(isStripeBillingUrl('https://checkout.stripe.com/c/pay/cs_1')).toBe(true);
+    expect(isStripeBillingUrl('https://billing.stripe.com/p/session/1')).toBe(true);
+    expect(isStripeBillingUrl('https://pay.stripe.com/x')).toBe(true);
+    expect(isStripeBillingUrl('http://checkout.stripe.com/c/pay/cs_1')).toBe(false);
+    expect(isStripeBillingUrl('https://evilstripe.com/')).toBe(false);
+    expect(isStripeBillingUrl('https://stripe.com.example.net/')).toBe(false);
+    expect(isStripeBillingUrl('https://user@checkout.stripe.com/')).toBe(false);
+    expect(isStripeBillingUrl('not a url')).toBe(false);
   });
 
   test('a session the service no longer accepts signs the app out', async () => {
@@ -130,6 +185,26 @@ describe('cloud sync client', () => {
     await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
     expect(client.getStoredAccount()).toBeNull();
     await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
+  });
+
+  test('a refusal of a session already replaced by signing in again keeps the new one', async () => {
+    const { world, client } = setup();
+    await client.signIn('google');
+    const realFetch = client.fetchImpl;
+    client.fetchImpl = async (url, init) => {
+      if (!String(url).endsWith('/v1/profile')) return realFetch(url, init);
+      client.fetchImpl = realFetch;
+      // The request is on its way with the old token when the user signs in again
+      // and the old session ends, so the service refuses it.
+      await client.signIn('google');
+      await world.authed(init.headers.Authorization.replace('Bearer ', ''), '/v1/auth/signout', {
+        method: 'POST',
+      });
+      return realFetch(url, init);
+    };
+    await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
+    expect(client.getStoredAccount()).toMatchObject({ email: 'me@x.io' });
+    await expect(client.readProfile()).resolves.toMatchObject({ exists: false });
   });
 
   test('a canceled subscriber can start checkout again using the existing customer', async () => {
@@ -154,7 +229,7 @@ describe('cloud sync client', () => {
       },
     });
     await expect(client.openBilling()).resolves.toEqual({ opened: 'checkout' });
-    expect(opened.at(-1)).toBe('https://checkout.stripe.test/session');
+    expect(opened.at(-1)).toBe('https://checkout.stripe.com/c/pay/cs_test');
     const call = world.calls.filter((call) => call.url.endsWith('/checkout/sessions')).at(-1);
     expect(new URLSearchParams(call.body).get('customer')).toBe('cus_returning');
     expect(world.stripe.checkouts.size).toBe(2);
@@ -175,12 +250,80 @@ describe('cloud sync client', () => {
     expect(client.getStoredAccount()).toBeNull();
   });
 
+  test('signing out cancels a sign-in that has not finished', async () => {
+    const { world, client } = setup();
+    const realFetch = client.fetchImpl;
+    let signingOut;
+    client.fetchImpl = async (url, init) => {
+      // The browser is done and the code is being redeemed when the user signs out.
+      if (String(url).endsWith('/v1/auth/token')) signingOut = client.signOut();
+      return realFetch(url, init);
+    };
+    await expect(client.signIn('google')).rejects.toMatchObject({
+      code: 'CLOUD_SYNC_SIGN_IN_CANCELED',
+    });
+    await signingOut;
+    expect(client.getStoredAccount()).toBeNull();
+    expect(world.env.DB.raw.prepare('SELECT * FROM sessions').all()).toHaveLength(0);
+
+    // Still waiting for the browser.
+    client.fetchImpl = realFetch;
+    client.openExternal = async () => {};
+    const waiting = client.signIn('google');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await client.signOut();
+    await expect(waiting).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGN_IN_CANCELED' });
+    expect(client.getStoredAccount()).toBeNull();
+  });
+
+  test('remembers which account was signed in, but not its token, after signing out', async () => {
+    const { world, client, userDataPath } = setup();
+    expect(client.getLastAccount()).toBeNull();
+    const { id } = await client.signIn('google');
+    await client.signOut();
+    expect(client.getLastAccount()).toEqual({ id, email: '', provider: 'google' });
+    const remembered = fs.readFileSync(
+      path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE),
+      'utf8'
+    );
+    expect(remembered).not.toMatch(/token|sealed/i);
+
+    // And after the service refuses an expired session.
+    await client.signIn('google');
+    fs.rmSync(path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE));
+    world.advance(181 * DAY);
+    await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
+    expect(client.getLastAccount()).toEqual({ id, email: '', provider: 'google' });
+  });
+
   test('deleting the account removes it on the service and here', async () => {
     const { world, client } = setup();
     await client.signIn('google');
+    await client.signOut();
+    await client.signIn('google');
     await client.deleteAccount();
     expect(client.getStoredAccount()).toBeNull();
+    expect(client.getLastAccount()).toBeNull();
     expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(0);
+  });
+
+  test('a stray request to the loopback address does not end the sign-in', async () => {
+    const statuses = [];
+    const { client } = setup({
+      browser: async (url, world) => {
+        const redirect = new URL(new URL(url).searchParams.get('redirect_uri'));
+        // Another program on this machine guesses at the callback, then at another path.
+        statuses.push((await fetch(`${redirect}?code=stolen&state=not-the-app-state`)).status);
+        statuses.push((await fetch(`${redirect.origin}/favicon.ico`)).status);
+        const start = await world.request(url.replace(BASE, ''));
+        const state = new URL(start.headers.get('Location')).searchParams.get('state');
+        const callback = await world.request(`/v1/auth/callback/google?code=g-code&state=${state}`);
+        statuses.push((await fetch(callback.headers.get('Location'))).status);
+      },
+    });
+    await expect(client.signIn('google')).resolves.toMatchObject({ email: 'me@x.io' });
+    expect(statuses).toEqual([400, 404, 200]);
+    expect(client.getStoredAccount()).toMatchObject({ email: 'me@x.io' });
   });
 
   test('a declined, forged or cancelled sign-in stores nothing', async () => {
@@ -206,9 +349,11 @@ describe('cloud sync client', () => {
         expect(response.status).toBe(400);
       },
     });
+    forged.client.signInTimeoutMs = 200;
     await expect(forged.client.signIn('google')).rejects.toMatchObject({
-      code: 'CLOUD_SYNC_STATE',
+      code: 'CLOUD_SYNC_SIGN_IN_TIMEOUT',
     });
+    expect(forged.client.getStoredAccount()).toBeNull();
 
     const cancelled = setup({ browser: async () => {} });
     const pending = cancelled.client.signIn('google');

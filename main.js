@@ -4378,13 +4378,7 @@ async function executePendingProfileSyncRewrite() {
   if (!transaction) {
     throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
   }
-  if (
-    !profileSyncRewriteEndpointMatches(
-      transaction,
-      normalizeProfileSyncProvider(profileSync.provider),
-      getProfileSyncEndpoint(profileSync)
-    )
-  ) {
+  if (!profileSyncRewriteTargetMatches(transaction, profileSync)) {
     throw new Error(
       mainT(
         'The sync provider or file changed during key recovery. Restore the original target before retrying.'
@@ -4758,13 +4752,45 @@ function describeMissingProfileSyncTarget(profileSync = getProfileSyncConfig()) 
 
 /**
  * Names where the synced profile lives, for the key-rewrite transaction to bind
- * to: the file path, or for Cloud Sync the service and account.
+ * to: the file path, or for Cloud Sync the service and account. The account is
+ * named by its id, since an email can be empty (GitHub without a verified one);
+ * a sign-in saved before ids were kept still names it by email.
  */
 function getProfileSyncEndpoint(profileSync = getProfileSyncConfig()) {
   if (!isHostedProfileSyncProvider(profileSync.provider)) return profileSync.cloudFilePath;
   const client = getCloudSyncClient();
   const account = client.getStoredAccount();
-  return `cloud-sync:${client.serviceUrl}:${account?.email || 'account'}`;
+  return `cloud-sync:${client.serviceUrl}:${account?.id || account?.email || 'account'}`;
+}
+
+/**
+ * Whether a key-rewrite transaction was staged for where sync points now. One staged
+ * against Cloud Sync before account ids were kept names the account by email, and still
+ * matches once signing in again has saved the id.
+ */
+function profileSyncRewriteTargetMatches(transaction, profileSync = getProfileSyncConfig()) {
+  const provider = normalizeProfileSyncProvider(profileSync.provider);
+  const endpoint = getProfileSyncEndpoint(profileSync);
+  if (profileSyncRewriteEndpointMatches(transaction, provider, endpoint)) return true;
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return false;
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  if (!account?.id || !account.email) return false;
+  return profileSyncRewriteEndpointMatches(
+    transaction,
+    provider,
+    `cloud-sync:${client.serviceUrl}:${account.email}`
+  );
+}
+
+/**
+ * Whether two Cloud Sync sign-ins are the same account: by id, or by email for a
+ * sign-in saved before ids were kept. Two accounts without an email never match.
+ */
+function isSameCloudSyncAccount(previousAccount, account) {
+  if (!previousAccount || !account) return false;
+  if (previousAccount.id && account.id) return previousAccount.id === account.id;
+  return !!previousAccount.email && previousAccount.email === account.email;
 }
 
 const CLOUD_SYNC_ERROR_MESSAGES = {
@@ -4781,7 +4807,6 @@ const CLOUD_SYNC_ERROR_MESSAGES = {
   CLOUD_SYNC_SIGN_IN_DECLINED: 'Sign-in was declined in the browser',
   CLOUD_SYNC_SIGN_IN_FAILED: 'Sign-in did not complete. Try again.',
   CLOUD_SYNC_SIGN_IN_TIMEOUT: 'Sign-in timed out. Try again.',
-  CLOUD_SYNC_STATE: 'Sign-in did not complete. Try again.',
   CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
   CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
   CLOUD_SYNC_BILLING_BUSY: 'A billing change is in progress. Try again shortly.',
@@ -6815,6 +6840,26 @@ async function clearProfileSyncFirstEnableResolutionPending() {
   return persistence;
 }
 
+/** Words why a first sync stopped short, rather than handing its reason code to the status line. */
+function describeIncompleteFirstProfileSync(result) {
+  switch (result?.reason) {
+    case 'rewrite_pending':
+      return getProfileSyncConfig().passphraseTransition
+        ? mainT(
+            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
+          )
+        : mainT('The remote profile still needs its encryption update. Use Sync up to retry.');
+    case 'encryption_change_pending':
+      return mainT('Finish or cancel the pending encryption change first.');
+    case 'needs_resolution':
+      return mainT('The first-time conflict check did not complete. Retry it before syncing.');
+    case 'remote_changed':
+      return mainT('The remote profile changed before the initial sync could complete');
+    default:
+      return mainT('Initial profile sync did not complete');
+  }
+}
+
 async function completeProfileSyncFirstEnablePreparation(source) {
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
@@ -6830,7 +6875,7 @@ async function completeProfileSyncFirstEnablePreparation(source) {
   const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
   if (result?.ok !== true || result?.reason === 'remote_changed') {
     throw new Error(
-      result?.error || result?.reason || mainT('Initial profile sync did not complete')
+      result?.error ? mainTError(result.error) : describeIncompleteFirstProfileSync(result)
     );
   }
   await clearProfileSyncFirstEnableResolutionPending();
@@ -7171,11 +7216,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         extensions: remoteExtensions,
       });
 
-      // Best-effort compare-before-write: encryption and provider replication take time, so
-      // another device can land a write between the read above and this one.
-      // Overwriting blind would silently drop it, so re-check and re-resolve.
-      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
-        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+      // Another device wrote first: keep what this run agreed on and merge again from
+      // what is there now.
+      const recheckAfterRemoteChange = async () => {
         await persistProfileSyncBaseline(nextBaseline, scopeKeys);
         // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
@@ -7189,11 +7232,25 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
+      };
+
+      // Best-effort compare-before-write: encryption and provider replication take time, so
+      // another device can land a write between the read above and this one.
+      // Overwriting blind would silently drop it, so re-check and re-resolve.
+      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
+        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+        return await recheckAfterRemoteChange();
       }
 
       try {
         await writeConfiguredSyncEnvelope(envelopeToWrite);
       } catch (error) {
+        // Cloud Sync refuses a write that lost the race after the check above, the same
+        // situation that check catches earlier.
+        if (error?.code === 'CLOUD_SYNC_CONFLICT') {
+          log.info('Cloud Sync profile changed during the push; re-resolving direction');
+          return await recheckAfterRemoteChange();
+        }
         if (error?.code !== 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED' || !mayHoldPushes) throw error;
         profileSyncRuntime.cloudSyncWriteRefusedAt = Date.now();
         return await finishWithoutSaving();
@@ -10654,14 +10711,22 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
 /**
  * Picks sync up after signing in to Cloud Sync while it is the enabled target.
  * The same account carries on from its shared history; a different or first
- * account is compared with this device the way enabling sync does.
+ * account is compared with this device the way enabling sync does. A sync-key
+ * change waiting for recovery is left to finish first.
  */
 async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   // A refusal belonged to the account signed in before; this one may be subscribed.
   profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
-  const sameAccount = !!previousAccount && previousAccount.email === account.email;
+  // The recovery needs the history it was staged against, so it is kept rather than
+  // compared afresh; Settings shows what is pending, and Sync up resumes it.
+  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
+    setupProfileSyncInterval();
+    emitProfileSyncStatus();
+    return 'recovery_pending';
+  }
+  const sameAccount = isSameCloudSyncAccount(previousAccount, account);
   if (
     sameAccount &&
     !profileSync.firstEnableResolutionPending &&
@@ -10748,14 +10813,19 @@ ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
   const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
   if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
   const client = getCloudSyncClient();
-  const previousAccount = client.getStoredAccount();
+  // The account this device's sync history belongs to: the one signed in now, or the
+  // one signed in before a sign-out or expired session.
+  const previousAccount = client.getStoredAccount() || client.getLastAccount();
   try {
     const signingIn = client.signIn(typeof provider === 'string' ? provider : '');
     emitProfileSyncStatus();
     const account = await signingIn;
     try {
+      // Signing out while this waited its turn leaves nothing to start.
       const next = await runSerializedConfigMutation(() =>
-        startHostedProfileSyncAfterSignIn(previousAccount, account)
+        client.getStoredAccount()
+          ? startHostedProfileSyncAfterSignIn(previousAccount, account)
+          : null
       );
       if (next === 'resume') void runProfileSync('auto', 'cloud_sign_in').catch(() => {});
     } catch (error) {
@@ -10781,6 +10851,7 @@ ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
 ipcMain.handle('cloud-sync-sign-out', async (event) => {
   const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
   if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
+  // Also cancels a sign-in still waiting for the browser, which would sign back in.
   await getCloudSyncClient().signOut();
   stopHostedProfileSyncAfterSignOut();
   emitProfileSyncStatus();

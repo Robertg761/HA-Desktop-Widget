@@ -9,6 +9,9 @@ const { OAUTH_CALLBACK_PATH, sendCallbackPage, statesMatch } = require('./ha-oau
 const DEFAULT_CLOUD_SYNC_SERVICE_URL = '';
 const CLOUD_SYNC_CREDENTIALS_VERSION = 1;
 const CLOUD_SYNC_CREDENTIALS_FILE = 'cloud-sync-account.json';
+// Which account was signed in last, kept after signing out (never the token), so
+// signing back in to it can carry on from the sync history it left.
+const CLOUD_SYNC_LAST_ACCOUNT_FILE = 'cloud-sync-last-account.json';
 const CLOUD_SYNC_SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 const CLOUD_SYNC_REQUEST_TIMEOUT_MS = 20 * 1000;
 // A little over the service's 512 KB profile limit, for headers and errors.
@@ -44,6 +47,34 @@ function resolveCloudSyncServiceUrl(env = process.env) {
   return normalizeCloudSyncServiceUrl(
     env.HA_WIDGET_CLOUD_SYNC_URL || DEFAULT_CLOUD_SYNC_SERVICE_URL
   );
+}
+
+/**
+ * Whether a subscription page the service hands back is one of Stripe's own
+ * (Checkout or the billing portal), the only pages billing may open.
+ */
+function isStripeBillingUrl(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      (host === 'checkout.stripe.com' ||
+        host === 'billing.stripe.com' ||
+        host.endsWith('.stripe.com'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** The service's id for an account, which unlike the email is always present and unique. */
+function normalizeAccountId(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const id = String(value).trim();
+  return id.length <= 128 ? id : '';
 }
 
 function parseEtagRevision(value) {
@@ -90,6 +121,8 @@ function listenForLoopbackCallback({
       sendCallbackPage(response, 409, t('Sign-in already handled'), t('Return to the app.'));
       return;
     }
+    // Anything on this machine can call the loopback address, so a request without
+    // this sign-in's state is turned away without ending the sign-in it did not start.
     if (!statesMatch(expectedState, url.searchParams.get('state') || '')) {
       sendCallbackPage(
         response,
@@ -97,7 +130,6 @@ function listenForLoopbackCallback({
         t('Sign-in rejected'),
         t('The sign-in did not match this app. Return to the app and try again.')
       );
-      finish(fail, createCloudSyncError('Sign-in state did not match', 'CLOUD_SYNC_STATE'));
       return;
     }
     const error = url.searchParams.get('error');
@@ -187,6 +219,7 @@ class CloudSyncClient {
     this.signInTimeoutMs = signInTimeoutMs;
     this.requestTimeoutMs = requestTimeoutMs;
     this.credentialsPath = path.join(userDataPath, CLOUD_SYNC_CREDENTIALS_FILE);
+    this.lastAccountPath = path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE);
     this.signInController = null;
   }
 
@@ -230,14 +263,28 @@ class CloudSyncClient {
     return stored;
   }
 
-  /** The signed-in account as last seen, without a network request. */
+  /**
+   * The signed-in account as last seen, without a network request. A sign-in saved
+   * before account ids were kept has an empty `id`.
+   */
   getStoredAccount() {
     if (!this.isAvailable()) return null;
     const stored = this.readStoredCredentials();
-    return stored ? { email: stored.email || '', provider: stored.provider || '' } : null;
+    return stored
+      ? {
+          id: normalizeAccountId(stored.userId),
+          email: stored.email || '',
+          provider: stored.provider || '',
+        }
+      : null;
   }
 
   readToken() {
+    return this.readSession().token;
+  }
+
+  /** The session token, and the sealed form it is saved in, which names this sign-in. */
+  readSession() {
     this.assertAvailable();
     const stored = this.readStoredCredentials();
     if (!stored) {
@@ -247,7 +294,7 @@ class CloudSyncClient {
     try {
       const token = this.safeStorage.decryptString(Buffer.from(stored.tokenEncrypted, 'base64'));
       if (!token) throw new Error('empty token');
-      return token;
+      return { token, tokenEncrypted: stored.tokenEncrypted };
     } catch {
       throw createCloudSyncError(
         'The saved Cloud Sync sign-in could not be read. Sign in again.',
@@ -256,24 +303,25 @@ class CloudSyncClient {
     }
   }
 
-  writeCredentials({ token, email, provider }) {
+  writeCredentials({ token, id, email, provider }) {
     this.assertSecureStorage();
-    const payload = JSON.stringify(
-      {
-        version: CLOUD_SYNC_CREDENTIALS_VERSION,
-        serviceUrl: this.serviceUrl,
-        email: email || '',
-        provider,
-        tokenEncrypted: this.safeStorage.encryptString(token).toString('base64'),
-      },
-      null,
-      2
-    );
+    this.writeFileAtomically(this.credentialsPath, {
+      version: CLOUD_SYNC_CREDENTIALS_VERSION,
+      serviceUrl: this.serviceUrl,
+      userId: id || '',
+      email: email || '',
+      provider,
+      tokenEncrypted: this.safeStorage.encryptString(token).toString('base64'),
+    });
+  }
+
+  writeFileAtomically(filePath, value) {
+    const payload = JSON.stringify(value, null, 2);
     fs.mkdirSync(this.userDataPath, { recursive: true });
-    const temporaryPath = `${this.credentialsPath}.${this.randomBytes(8).toString('hex')}.tmp`;
+    const temporaryPath = `${filePath}.${this.randomBytes(8).toString('hex')}.tmp`;
     try {
       fs.writeFileSync(temporaryPath, payload, { encoding: 'utf8', mode: 0o600 });
-      fs.renameSync(temporaryPath, this.credentialsPath);
+      fs.renameSync(temporaryPath, filePath);
     } catch (error) {
       try {
         fs.unlinkSync(temporaryPath);
@@ -284,12 +332,58 @@ class CloudSyncClient {
     }
   }
 
-  clearCredentials() {
-    try {
-      fs.unlinkSync(this.credentialsPath);
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+  /**
+   * Forgets the saved sign-in. The account it belonged to is remembered (by id, or
+   * by email for a sign-in saved before ids were kept) unless `forgetAccount`, as
+   * deleting the account does.
+   */
+  clearCredentials({ forgetAccount = false } = {}) {
+    const account = forgetAccount ? null : this.getStoredAccount();
+    if (account && (account.id || account.email)) {
+      try {
+        this.writeFileAtomically(this.lastAccountPath, {
+          version: CLOUD_SYNC_CREDENTIALS_VERSION,
+          serviceUrl: this.serviceUrl,
+          userId: account.id,
+          email: account.id ? '' : account.email,
+          provider: account.provider,
+        });
+      } catch {
+        // Only costs a fresh comparison on the next sign-in.
+      }
     }
+    for (const filePath of forgetAccount
+      ? [this.credentialsPath, this.lastAccountPath]
+      : [this.credentialsPath]) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+    }
+  }
+
+  /** The account signed in before the last sign-out or expired session, if any. */
+  getLastAccount() {
+    if (!this.isAvailable()) return null;
+    let stored;
+    try {
+      stored = JSON.parse(fs.readFileSync(this.lastAccountPath, 'utf8'));
+    } catch {
+      return null;
+    }
+    if (
+      stored?.version !== CLOUD_SYNC_CREDENTIALS_VERSION ||
+      stored.serviceUrl !== this.serviceUrl
+    ) {
+      return null;
+    }
+    const account = {
+      id: normalizeAccountId(stored.userId),
+      email: typeof stored.email === 'string' ? stored.email : '',
+      provider: typeof stored.provider === 'string' ? stored.provider : '',
+    };
+    return account.id || account.email ? account : null;
   }
 
   async request(pathname, { method = 'GET', token = null, body, headers = {} } = {}) {
@@ -327,11 +421,16 @@ class CloudSyncClient {
   /**
    * An authenticated request. An expired or revoked session clears the saved
    * sign-in, so the app shows the signed-out state instead of retrying forever.
+   * A sign-in made while the request was under way is kept: only the session
+   * the service refused is forgotten.
    */
   async authedRequest(pathname, options = {}) {
-    const response = await this.request(pathname, { ...options, token: this.readToken() });
+    const session = this.readSession();
+    const response = await this.request(pathname, { ...options, token: session.token });
     if (response.status === 401) {
-      this.clearCredentials();
+      if (this.readStoredCredentials()?.tokenEncrypted === session.tokenEncrypted) {
+        this.clearCredentials();
+      }
       throw createCloudSyncError(
         'Sign in to Cloud Sync again to keep syncing',
         'CLOUD_SYNC_SIGNED_OUT',
@@ -420,12 +519,24 @@ class CloudSyncClient {
         },
       });
       const body = CloudSyncClient.parseJson(response);
-      if (response.status !== 200 || typeof body.token !== 'string' || !body.token) {
+      const issued = response.status === 200 && typeof body.token === 'string' && body.token;
+      // Signed out or canceled while the code was being redeemed: the session it
+      // opened is ended rather than saved, so it cannot sign this device back in.
+      if (controller.signal.aborted) {
+        if (issued) {
+          await this.request('/v1/auth/signout', { method: 'POST', token: body.token }).catch(
+            () => {}
+          );
+        }
+        throw createCloudSyncError('Sign-in was canceled', 'CLOUD_SYNC_SIGN_IN_CANCELED');
+      }
+      if (!issued) {
         throw CloudSyncClient.failure(response, 'Sign-in could not be completed');
       }
+      const id = normalizeAccountId(body.user?.id);
       const email = typeof body.user?.email === 'string' ? body.user.email : '';
-      this.writeCredentials({ token: body.token, email, provider });
-      return { email, provider };
+      this.writeCredentials({ token: body.token, id, email, provider });
+      return { id, email, provider };
     } finally {
       if (this.signInController === controller) this.signInController = null;
       await callback.close();
@@ -437,8 +548,13 @@ class CloudSyncClient {
     this.signInController = null;
   }
 
-  /** Ends the session on the service when it can, and always forgets it here. */
+  /**
+   * Ends the session on the service when it can, and always forgets it here. A
+   * sign-in still waiting for the browser is canceled first, so it cannot finish
+   * afterwards and sign this device back in.
+   */
   async signOut() {
+    this.cancelSignIn();
     try {
       const stored = this.readStoredCredentials();
       if (stored)
@@ -457,6 +573,7 @@ class CloudSyncClient {
     const body = CloudSyncClient.parseJson(response);
     const entitlement = body.entitlement || {};
     return {
+      id: normalizeAccountId(body.user?.id),
       email: typeof body.user?.email === 'string' ? body.user.email : '',
       providers: Array.isArray(body.providers) ? body.providers : [],
       billingAvailable: body.billingAvailable === true,
@@ -521,7 +638,7 @@ class CloudSyncClient {
     const pathname = manageExisting ? '/v1/billing/portal' : '/v1/billing/checkout';
     const response = await this.authedRequest(pathname, { method: 'POST' });
     const body = CloudSyncClient.parseJson(response);
-    if (response.status !== 200 || typeof body.url !== 'string' || !/^https:\/\//.test(body.url)) {
+    if (response.status !== 200 || typeof body.url !== 'string' || !isStripeBillingUrl(body.url)) {
       throw CloudSyncClient.failure(response, 'The subscription page could not be opened');
     }
     await this.openExternal(body.url);
@@ -532,13 +649,15 @@ class CloudSyncClient {
     const response = await this.authedRequest('/v1/account', { method: 'DELETE' });
     if (response.status !== 200)
       throw CloudSyncClient.failure(response, 'The account could not be deleted');
-    this.clearCredentials();
+    this.clearCredentials({ forgetAccount: true });
   }
 }
 
 module.exports = {
   CLOUD_SYNC_CREDENTIALS_FILE,
+  CLOUD_SYNC_LAST_ACCOUNT_FILE,
   CloudSyncClient,
+  isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,
   parseEtagRevision,
   resolveCloudSyncServiceUrl,
