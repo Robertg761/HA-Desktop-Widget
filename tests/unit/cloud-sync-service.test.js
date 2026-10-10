@@ -428,7 +428,7 @@ describe('cloud sync service', () => {
     test('checkout starts a yearly subscription for this user', async () => {
       const { world, token, userId } = await signedIn();
       const response = await world.authed(token, '/v1/billing/checkout', { method: 'POST' });
-      expect(await response.json()).toEqual({ url: 'https://checkout.stripe.test/session' });
+      expect(await response.json()).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test' });
       const call = world.calls.find((entry) => entry.url.endsWith('/checkout/sessions'));
       const params = new URLSearchParams(call.body);
       expect(params.get('mode')).toBe('subscription');
@@ -632,7 +632,7 @@ describe('cloud sync service', () => {
         hasBillingAccount: true,
       });
       const portal = await world.authed(token, '/v1/billing/portal', { method: 'POST' });
-      expect(await portal.json()).toEqual({ url: 'https://billing.stripe.test/portal' });
+      expect(await portal.json()).toEqual({ url: 'https://billing.stripe.com/p/session/test' });
 
       setLiveSubscription(world, userId, 'canceled');
       await world.sendWebhook(

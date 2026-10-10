@@ -12,6 +12,7 @@ const path = require('path');
 const {
   CLOUD_SYNC_CREDENTIALS_FILE,
   CloudSyncClient,
+  isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,
   parseEtagRevision,
   resolveCloudSyncServiceUrl,
@@ -120,7 +121,26 @@ describe('cloud sync client', () => {
     ).rejects.toMatchObject({ code: 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED', status: 402 });
 
     await expect(client.openBilling()).resolves.toEqual({ opened: 'checkout' });
-    expect(opened.at(-1)).toBe('https://checkout.stripe.test/session');
+    expect(opened.at(-1)).toBe('https://checkout.stripe.com/c/pay/cs_test');
+  });
+
+  test('opens only Stripe pages for billing', async () => {
+    const { world, client, opened } = setup();
+    await client.signIn('google');
+    await client.openBilling();
+    opened.length = 0;
+    world.stripe.checkouts.get('cs_1').url = 'https://checkout.stripe.com.example.net/pay';
+    await expect(client.openBilling()).rejects.toMatchObject({ code: 'CLOUD_SYNC_ERROR' });
+    expect(opened).toEqual([]);
+
+    expect(isStripeBillingUrl('https://checkout.stripe.com/c/pay/cs_1')).toBe(true);
+    expect(isStripeBillingUrl('https://billing.stripe.com/p/session/1')).toBe(true);
+    expect(isStripeBillingUrl('https://pay.stripe.com/x')).toBe(true);
+    expect(isStripeBillingUrl('http://checkout.stripe.com/c/pay/cs_1')).toBe(false);
+    expect(isStripeBillingUrl('https://evilstripe.com/')).toBe(false);
+    expect(isStripeBillingUrl('https://stripe.com.example.net/')).toBe(false);
+    expect(isStripeBillingUrl('https://user@checkout.stripe.com/')).toBe(false);
+    expect(isStripeBillingUrl('not a url')).toBe(false);
   });
 
   test('a session the service no longer accepts signs the app out', async () => {
@@ -174,7 +194,7 @@ describe('cloud sync client', () => {
       },
     });
     await expect(client.openBilling()).resolves.toEqual({ opened: 'checkout' });
-    expect(opened.at(-1)).toBe('https://checkout.stripe.test/session');
+    expect(opened.at(-1)).toBe('https://checkout.stripe.com/c/pay/cs_test');
     const call = world.calls.filter((call) => call.url.endsWith('/checkout/sessions')).at(-1);
     expect(new URLSearchParams(call.body).get('customer')).toBe('cus_returning');
     expect(world.stripe.checkouts.size).toBe(2);

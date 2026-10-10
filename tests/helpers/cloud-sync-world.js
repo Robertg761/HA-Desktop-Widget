@@ -102,7 +102,7 @@ function createWorld(envOverrides = {}) {
         stripe.keys.set(key, id);
         stripe.checkouts.set(id, {
           id,
-          url: 'https://checkout.stripe.test/session',
+          url: 'https://checkout.stripe.com/c/pay/cs_test',
           status: 'open',
           expires_at: Number(new URLSearchParams(body).get('expires_at')),
         });
@@ -121,7 +121,7 @@ function createWorld(envOverrides = {}) {
       return jsonResponse(checkout);
     }
     if (target === 'https://api.stripe.com/v1/billing_portal/sessions') {
-      return jsonResponse({ url: 'https://billing.stripe.test/portal' });
+      return jsonResponse({ url: 'https://billing.stripe.com/p/session/test' });
     }
     if (target.startsWith('https://api.stripe.com/v1/subscriptions/')) {
       const id = decodeURIComponent(target.split('/').pop());

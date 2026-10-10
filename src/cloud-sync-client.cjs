@@ -46,6 +46,27 @@ function resolveCloudSyncServiceUrl(env = process.env) {
   );
 }
 
+/**
+ * Whether a subscription page the service hands back is one of Stripe's own
+ * (Checkout or the billing portal), the only pages billing may open.
+ */
+function isStripeBillingUrl(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      (host === 'checkout.stripe.com' ||
+        host === 'billing.stripe.com' ||
+        host.endsWith('.stripe.com'))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseEtagRevision(value) {
   const match = /^(?:W\/)?"(\d{1,15})"$/.exec(String(value || '').trim());
   return match ? Number(match[1]) : null;
@@ -548,7 +569,7 @@ class CloudSyncClient {
     const pathname = manageExisting ? '/v1/billing/portal' : '/v1/billing/checkout';
     const response = await this.authedRequest(pathname, { method: 'POST' });
     const body = CloudSyncClient.parseJson(response);
-    if (response.status !== 200 || typeof body.url !== 'string' || !/^https:\/\//.test(body.url)) {
+    if (response.status !== 200 || typeof body.url !== 'string' || !isStripeBillingUrl(body.url)) {
       throw CloudSyncClient.failure(response, 'The subscription page could not be opened');
     }
     await this.openExternal(body.url);
@@ -566,6 +587,7 @@ class CloudSyncClient {
 module.exports = {
   CLOUD_SYNC_CREDENTIALS_FILE,
   CloudSyncClient,
+  isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,
   parseEtagRevision,
   resolveCloudSyncServiceUrl,
