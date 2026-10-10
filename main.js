@@ -4378,13 +4378,7 @@ async function executePendingProfileSyncRewrite() {
   if (!transaction) {
     throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
   }
-  if (
-    !profileSyncRewriteEndpointMatches(
-      transaction,
-      normalizeProfileSyncProvider(profileSync.provider),
-      getProfileSyncEndpoint(profileSync)
-    )
-  ) {
+  if (!profileSyncRewriteTargetMatches(transaction, profileSync)) {
     throw new Error(
       mainT(
         'The sync provider or file changed during key recovery. Restore the original target before retrying.'
@@ -4758,13 +4752,45 @@ function describeMissingProfileSyncTarget(profileSync = getProfileSyncConfig()) 
 
 /**
  * Names where the synced profile lives, for the key-rewrite transaction to bind
- * to: the file path, or for Cloud Sync the service and account.
+ * to: the file path, or for Cloud Sync the service and account. The account is
+ * named by its id, since an email can be empty (GitHub without a verified one);
+ * a sign-in saved before ids were kept still names it by email.
  */
 function getProfileSyncEndpoint(profileSync = getProfileSyncConfig()) {
   if (!isHostedProfileSyncProvider(profileSync.provider)) return profileSync.cloudFilePath;
   const client = getCloudSyncClient();
   const account = client.getStoredAccount();
-  return `cloud-sync:${client.serviceUrl}:${account?.email || 'account'}`;
+  return `cloud-sync:${client.serviceUrl}:${account?.id || account?.email || 'account'}`;
+}
+
+/**
+ * Whether a key-rewrite transaction was staged for where sync points now. One staged
+ * against Cloud Sync before account ids were kept names the account by email, and still
+ * matches once signing in again has saved the id.
+ */
+function profileSyncRewriteTargetMatches(transaction, profileSync = getProfileSyncConfig()) {
+  const provider = normalizeProfileSyncProvider(profileSync.provider);
+  const endpoint = getProfileSyncEndpoint(profileSync);
+  if (profileSyncRewriteEndpointMatches(transaction, provider, endpoint)) return true;
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return false;
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  if (!account?.id || !account.email) return false;
+  return profileSyncRewriteEndpointMatches(
+    transaction,
+    provider,
+    `cloud-sync:${client.serviceUrl}:${account.email}`
+  );
+}
+
+/**
+ * Whether two Cloud Sync sign-ins are the same account: by id, or by email for a
+ * sign-in saved before ids were kept. Two accounts without an email never match.
+ */
+function isSameCloudSyncAccount(previousAccount, account) {
+  if (!previousAccount || !account) return false;
+  if (previousAccount.id && account.id) return previousAccount.id === account.id;
+  return !!previousAccount.email && previousAccount.email === account.email;
 }
 
 const CLOUD_SYNC_ERROR_MESSAGES = {
@@ -10660,7 +10686,7 @@ async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
   profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
   const profileSync = getProfileSyncConfig();
   if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
-  const sameAccount = !!previousAccount && previousAccount.email === account.email;
+  const sameAccount = isSameCloudSyncAccount(previousAccount, account);
   if (
     sameAccount &&
     !profileSync.firstEnableResolutionPending &&

@@ -67,6 +67,13 @@ function isStripeBillingUrl(value) {
   }
 }
 
+/** The service's id for an account, which unlike the email is always present and unique. */
+function normalizeAccountId(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const id = String(value).trim();
+  return id.length <= 128 ? id : '';
+}
+
 function parseEtagRevision(value) {
   const match = /^(?:W\/)?"(\d{1,15})"$/.exec(String(value || '').trim());
   return match ? Number(match[1]) : null;
@@ -252,11 +259,20 @@ class CloudSyncClient {
     return stored;
   }
 
-  /** The signed-in account as last seen, without a network request. */
+  /**
+   * The signed-in account as last seen, without a network request. A sign-in saved
+   * before account ids were kept has an empty `id`.
+   */
   getStoredAccount() {
     if (!this.isAvailable()) return null;
     const stored = this.readStoredCredentials();
-    return stored ? { email: stored.email || '', provider: stored.provider || '' } : null;
+    return stored
+      ? {
+          id: normalizeAccountId(stored.userId),
+          email: stored.email || '',
+          provider: stored.provider || '',
+        }
+      : null;
   }
 
   readToken() {
@@ -283,12 +299,13 @@ class CloudSyncClient {
     }
   }
 
-  writeCredentials({ token, email, provider }) {
+  writeCredentials({ token, id, email, provider }) {
     this.assertSecureStorage();
     const payload = JSON.stringify(
       {
         version: CLOUD_SYNC_CREDENTIALS_VERSION,
         serviceUrl: this.serviceUrl,
+        userId: id || '',
         email: email || '',
         provider,
         tokenEncrypted: this.safeStorage.encryptString(token).toString('base64'),
@@ -466,9 +483,10 @@ class CloudSyncClient {
       if (!issued) {
         throw CloudSyncClient.failure(response, 'Sign-in could not be completed');
       }
+      const id = normalizeAccountId(body.user?.id);
       const email = typeof body.user?.email === 'string' ? body.user.email : '';
-      this.writeCredentials({ token: body.token, email, provider });
-      return { email, provider };
+      this.writeCredentials({ token: body.token, id, email, provider });
+      return { id, email, provider };
     } finally {
       if (this.signInController === controller) this.signInController = null;
       await callback.close();
@@ -505,6 +523,7 @@ class CloudSyncClient {
     const body = CloudSyncClient.parseJson(response);
     const entitlement = body.entitlement || {};
     return {
+      id: normalizeAccountId(body.user?.id),
       email: typeof body.user?.email === 'string' ? body.user.email : '',
       providers: Array.isArray(body.providers) ? body.providers : [],
       billingAvailable: body.billingAvailable === true,

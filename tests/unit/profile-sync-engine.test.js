@@ -1204,6 +1204,49 @@ describe('profile sync through Cloud Sync', () => {
     expect(desktop.config.opacity).toBe(0.6);
   });
 
+  test('the synced profile is bound to the account id, not its email', async () => {
+    const { world, desktop, desktopClient } = await createCloudPair();
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    const endpoint = `cloud-sync:https://sync.test:${userId}`;
+    expect(desktop.context.getProfileSyncEndpoint()).toBe(endpoint);
+
+    // Two accounts without an email (GitHub with none verified) are not one account.
+    const signIn = desktop.context.startHostedProfileSyncAfterSignIn;
+    await expect(
+      signIn({ id: 'user-a', email: '', provider: 'github' }, { id: 'user-b', email: '' })
+    ).resolves.toBe('prepared');
+    expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
+    await expect(
+      signIn({ id: userId, email: 'me@x.io', provider: 'google' }, { id: userId, email: '' })
+    ).resolves.toBe('resume');
+
+    // A key rewrite staged before ids were kept names the account by email. It still
+    // recovers once signing in again has saved the id, and only for that account.
+    const transactionFor = (cloudFilePath) =>
+      desktop.context.createProfileSyncRewriteTransaction({
+        provider: 'hostedAccount',
+        cloudFilePath,
+        expectedRemoteIdentity: 'a',
+        targetRemoteIdentity: 'b',
+        targetEnvelopeSerialized: '{}',
+        oldPassphraseEncrypted: 'x',
+        newPassphraseEncrypted: 'y',
+      });
+    const matches = (transaction) => desktop.context.profileSyncRewriteTargetMatches(transaction);
+    expect(matches(transactionFor(endpoint))).toBe(true);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:other@x.io'))).toBe(false);
+    expect(matches(transactionFor('cloud-sync:https://sync.test:another-user'))).toBe(false);
+
+    // Sign-ins saved before ids were kept are still named by email.
+    const file = path.join(desktopClient.userDataPath, 'cloud-sync-account.json');
+    const { userId: omitted, ...older } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(omitted).toBe(userId);
+    fs.writeFileSync(file, JSON.stringify(older));
+    expect(desktop.context.getProfileSyncEndpoint()).toBe('cloud-sync:https://sync.test:me@x.io');
+    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
+  });
+
   test('a signed-out computer stops syncing and says why', async () => {
     const { desktop, desktopClient } = await createCloudPair();
     await desktopClient.signOut();

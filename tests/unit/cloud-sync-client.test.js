@@ -61,17 +61,16 @@ describe('cloud sync client', () => {
     const { world, client, userDataPath, opened } = setup();
     expect(client.getStoredAccount()).toBeNull();
 
-    await expect(client.signIn('google')).resolves.toEqual({
-      email: 'me@x.io',
-      provider: 'google',
-    });
+    const signedIn = await client.signIn('google');
+    const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
+    expect(signedIn).toEqual({ id: userId, email: 'me@x.io', provider: 'google' });
 
     const startUrl = new URL(opened[0]);
     expect(startUrl.searchParams.get('code_challenge_method')).toBe('S256');
     expect(startUrl.searchParams.get('redirect_uri')).toMatch(
       /^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/
     );
-    expect(client.getStoredAccount()).toEqual({ email: 'me@x.io', provider: 'google' });
+    expect(client.getStoredAccount()).toEqual({ id: userId, email: 'me@x.io', provider: 'google' });
     const stored = JSON.parse(
       fs.readFileSync(path.join(userDataPath, CLOUD_SYNC_CREDENTIALS_FILE), 'utf8')
     );
@@ -80,12 +79,47 @@ describe('cloud sync client', () => {
     expect(session.device_name).toBe('Office PC');
 
     await expect(client.getAccount()).resolves.toMatchObject({
+      id: userId,
       email: 'me@x.io',
       providers: ['google'],
       entitled: true,
       entitlementReason: 'trial',
       billingAvailable: true,
     });
+  });
+
+  test('keeps the account id, and reads a sign-in saved before ids were kept', async () => {
+    const browserFor = (code) => async (url, world) => {
+      const start = await world.request(url.replace(BASE, ''));
+      const state = new URL(start.headers.get('Location')).searchParams.get('state');
+      const callback = await world.request(`/v1/auth/callback/github?code=${code}&state=${state}`);
+      await fetch(callback.headers.get('Location'));
+    };
+    // Two GitHub accounts without a verified email.
+    const first = setup({ browser: browserFor('gh-1') });
+    first.world.githubUsers.set('gh-1', { profile: { id: 1, login: 'one' }, emails: [] });
+    first.world.githubUsers.set('gh-2', { profile: { id: 2, login: 'two' }, emails: [] });
+    const one = await first.client.signIn('github');
+    first.client.openExternal = (url) => browserFor('gh-2')(url, first.world);
+    const two = await first.client.signIn('github');
+    expect(one.email).toBe('');
+    expect(two.email).toBe('');
+    expect(one.id).toEqual(expect.any(String));
+    expect(two.id).not.toBe(one.id);
+    expect(first.client.getStoredAccount()).toEqual({ id: two.id, email: '', provider: 'github' });
+
+    const legacy = setup();
+    await legacy.client.signIn('google');
+    const file = path.join(legacy.userDataPath, CLOUD_SYNC_CREDENTIALS_FILE);
+    const { userId, ...older } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(userId).toEqual(expect.any(String));
+    fs.writeFileSync(file, JSON.stringify(older));
+    expect(legacy.client.getStoredAccount()).toEqual({
+      id: '',
+      email: 'me@x.io',
+      provider: 'google',
+    });
+    await expect(legacy.client.readProfile()).resolves.toMatchObject({ exists: false });
   });
 
   test('reads and writes the profile with compare-and-swap', async () => {
