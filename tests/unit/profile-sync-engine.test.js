@@ -1417,4 +1417,207 @@ describe('profile sync through Cloud Sync', () => {
     expect(result.reason).toBe('subscription_required');
     expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
   });
+
+  test('settings missing from the account after syncing are only saved again by Sync up', async () => {
+    const { world, desktop, stored } = await createCloudPair();
+    world.env.DB.raw.prepare('DELETE FROM profiles').run();
+
+    await expect(desktop.sync()).rejects.toThrow(
+      'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
+    );
+    expect(stored()).toBeNull();
+
+    await desktop.sync('push', 'manual');
+    expect(Object.keys(stored().envelope.payload.sections)).toHaveLength(4);
+  });
+});
+
+describe('a sync file that is missing', () => {
+  test('is not recreated by an automatic run once this computer has synced with it', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    fs.unlinkSync(syncFilePath());
+
+    await expect(desktop.sync()).rejects.toThrow(
+      'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
+    );
+    expect(fs.existsSync(syncFilePath())).toBe(false);
+    expect(desktop.status().lastSyncStatus).toBe('error');
+
+    // Sync up creates it again, and the other computer carries on with it.
+    await desktop.sync('push', 'manual');
+    expect(fs.existsSync(syncFilePath())).toBe(true);
+    desktop.edit((config) => {
+      config.opacity = 0.65;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.65);
+  });
+
+  test('is created by a computer that has never synced with one', async () => {
+    const desktop = createDevice('desktop');
+    const result = await desktop.sync();
+    expect(result.ok).toBe(true);
+    expect(fs.existsSync(syncFilePath())).toBe(true);
+  });
+});
+
+describe('stale copies of the sync file', () => {
+  const readRaw = () => fs.readFileSync(syncFilePath(), 'utf8');
+  const writeRaw = (raw) => fs.writeFileSync(syncFilePath(), raw);
+
+  test('an older copy of the file put back does not undo this computer’s pushed edit', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const olderCopy = readRaw();
+    laptop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await laptop.sync();
+
+    // The provider restores an earlier version of the file.
+    writeRaw(olderCopy);
+    const result = await laptop.sync();
+
+    expect(laptop.config.opacity).toBe(0.6);
+    expect(result.pushed).toEqual(['visualPersonalization']);
+    expect(readSyncFile().payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+    expect(laptop.status().lastRunSummary).toMatchObject({
+      staleRemote: ['visualPersonalization'],
+      replacedRemote: [],
+    });
+    // What the stale copy held is kept, like any replaced section.
+    const [backup] = laptop.backups('remote-profile');
+    expect(backup.sections.visualPersonalization.data.opacity).toBe(0.9);
+
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.6);
+  });
+
+  test('the computer that lost a provider race keeps its edit and takes the winner’s', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    const before = readRaw();
+    desktop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    laptop.edit((config) => {
+      config.favoriteEntities = ['light.kitchen', 'light.porch'];
+    });
+    // Both write at once. The provider keeps the laptop's file and sets the desktop's aside as
+    // a conflicted copy, so the desktop's edit is no longer in the file.
+    await desktop.sync();
+    const desktopWrite = readRaw();
+    writeRaw(before);
+    await laptop.sync();
+    fs.writeFileSync(
+      path.join(
+        path.dirname(syncFilePath()),
+        'ha-widget-profile-sync (desktop’s conflicted copy).json'
+      ),
+      desktopWrite
+    );
+
+    const result = await desktop.sync();
+
+    expect(result.action).toBe('merge');
+    expect(desktop.config.opacity).toBe(0.7);
+    expect(desktop.config.favoriteEntities).toEqual(['light.kitchen', 'light.porch']);
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.7);
+    expect(laptop.config.favoriteEntities).toEqual(['light.kitchen', 'light.porch']);
+  });
+
+  test('an edit on a computer whose clock is behind still reaches the others', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      laptop: { clockOffsetMs: -60 * 60 * 1000 },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.6);
+
+    // An hour behind, the laptop's clock reads earlier than the version it just pulled.
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+    await laptop.sync();
+    const result = await desktop.sync();
+
+    expect(result.action).toBe('pull');
+    expect(desktop.config.opacity).toBe(0.8);
+  });
+
+  test('an edit after a pull beats the version it replaced when the clock is behind', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      laptop: { clockOffsetMs: -60 * 60 * 1000 },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    // With no agreed version to merge from (a stale renderer echo drops it), edit times decide.
+    delete laptop.config.profileSync.syncBaseline.visualPersonalization;
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+
+    const result = await laptop.sync();
+
+    expect(result.action).toBe('push');
+    expect(laptop.config.opacity).toBe(0.8);
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.8);
+  });
+
+  test('Sync up of a section changed before the file’s version is not taken for a stale copy', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+
+    // The laptop replaces the file with its own, older, settings.
+    await laptop.sync('push', 'manual');
+    const result = await desktop.sync();
+
+    expect(result.action).toBe('pull');
+    expect(desktop.config.opacity).toBe(0.9);
+  });
+
+  test('a pull from a clock hours ahead records no future time, and the next edit still syncs', async () => {
+    const { desktop, laptop } = await createSyncedPair({
+      desktop: { clockOffsetMs: 6 * 60 * 60 * 1000 },
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await desktop.sync();
+    await laptop.sync();
+
+    const pulledAt = Date.parse(laptop.config.profileSync.sectionUpdatedAt.visualPersonalization);
+    expect(pulledAt).toBeLessThanOrEqual(Date.now());
+    laptop.edit((config) => {
+      config.opacity = 0.8;
+    });
+    await laptop.sync();
+    // The desktop takes the laptop's newer edit rather than taking it for a stale copy.
+    await desktop.sync();
+    expect(desktop.config.opacity).toBe(0.8);
+  });
+
+  test('the agreed versions stay on this computer', async () => {
+    const { laptop } = await createSyncedPair();
+    expect(Object.keys(laptop.config.profileSync.syncBaselineUpdatedAt)).toEqual(
+      Object.keys(laptop.config.profileSync.syncBaseline)
+    );
+    expect(laptop.rendererConfig().profileSync.syncBaselineUpdatedAt).toBeUndefined();
+    expect(readRaw()).not.toContain('syncBaselineUpdatedAt');
+
+    // A Settings save carries no merge state; main keeps its own.
+    const before = laptop.config.profileSync.syncBaselineUpdatedAt;
+    await laptop.saveSettings({ edit: (next) => (next.opacity = 0.5) });
+    expect(laptop.config.profileSync.syncBaselineUpdatedAt).toEqual(before);
+  });
 });

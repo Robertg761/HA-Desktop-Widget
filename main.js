@@ -920,6 +920,12 @@ const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
 const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
 const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
 const PROFILE_SYNC_BACKUP_KEEP = 5;
+// Backups holding edits a run threw away (the losing side of a conflict, a stale copy of the
+// file) are kept longer: the newest 20, and any younger than 30 days up to 100 in all. A lost
+// edit may only be noticed weeks later, long after routine pulls would have pruned it.
+const PROFILE_SYNC_DISCARD_BACKUP_KEEP = 20;
+const PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const PROFILE_SYNC_DISCARD_BACKUP_LIMIT = 100;
 // Pulls remembered for recognising config updates built before them.
 const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
@@ -2000,6 +2006,23 @@ function normalizeProfileSyncStringMap(value) {
   );
 }
 
+/** Keeps the agreed-version entries ({hash, updatedAt}) of known sections. */
+function normalizeProfileSyncAgreedMap(value) {
+  if (!isPlainObject(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(
+        ([key, entry]) =>
+          profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) &&
+          isPlainObject(entry) &&
+          typeof entry.hash === 'string' &&
+          typeof entry.updatedAt === 'string' &&
+          !Number.isNaN(Date.parse(entry.updatedAt))
+      )
+      .map(([key, entry]) => [key, { hash: entry.hash, updatedAt: entry.updatedAt }])
+  );
+}
+
 function getDefaultProfileSyncConfig() {
   return {
     enabled: false,
@@ -2018,8 +2041,11 @@ function getDefaultProfileSyncConfig() {
     lastSyncError: '',
     profileUpdatedAt: null,
     // Main-process-owned merge state: each section's hash after the last
-    // successful sync, and when each section last changed on this device.
+    // successful sync, the edit time of that agreed version ({hash, updatedAt},
+    // ignored once the hash no longer matches the baseline), and when each
+    // section last changed on this device.
     syncBaseline: {},
+    syncBaselineUpdatedAt: {},
     sectionUpdatedAt: {},
     firstEnableResolutionPending: false,
     remoteRewritePending: false,
@@ -2080,6 +2106,9 @@ function ensureProfileSyncConfigDefaults(target) {
     target.profileSync.lastSuccessfulSyncAt = null;
   }
   target.profileSync.syncBaseline = normalizeProfileSyncStringMap(target.profileSync.syncBaseline);
+  target.profileSync.syncBaselineUpdatedAt = normalizeProfileSyncAgreedMap(
+    target.profileSync.syncBaselineUpdatedAt
+  );
   target.profileSync.sectionUpdatedAt = normalizeProfileSyncStringMap(
     target.profileSync.sectionUpdatedAt
   );
@@ -2215,6 +2244,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     delete cloned.profileSync.storedPassphrase;
     delete cloned.profileSync.passphraseTransition;
     delete cloned.profileSync.syncBaseline;
+    delete cloned.profileSync.syncBaselineUpdatedAt;
     delete cloned.profileSync.sectionUpdatedAt;
     cloned.profileSync.cloudFilePath = getRendererSyncFilePath(cloned.profileSync.cloudFilePath);
   }
@@ -4425,12 +4455,17 @@ async function executePendingProfileSyncRewrite() {
           await profileSyncCore.decodeEnvelopeSections(targetEnvelope, newPassphrase)
         ).sections;
         const writtenBaseline = {};
+        const writtenBaselineUpdatedAt = {};
         profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope()).forEach((key) => {
           if (writtenSections[key]) {
             writtenBaseline[key] = profileSyncCore.computeSectionHash(
               key,
               writtenSections[key].data
             );
+            writtenBaselineUpdatedAt[key] = {
+              hash: writtenBaseline[key],
+              updatedAt: writtenSections[key].updatedAt,
+            };
           }
         });
         const previous = {
@@ -4449,6 +4484,7 @@ async function executePendingProfileSyncRewrite() {
           profileUpdatedAt: profileSync.profileUpdatedAt,
           localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
           syncBaseline: profileSync.syncBaseline,
+          syncBaselineUpdatedAt: profileSync.syncBaselineUpdatedAt,
           lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt,
         };
 
@@ -4477,6 +4513,7 @@ async function executePendingProfileSyncRewrite() {
         profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
         profileSync.syncBaseline = writtenBaseline;
+        profileSync.syncBaselineUpdatedAt = writtenBaselineUpdatedAt;
         profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
 
         const persistence = await saveConfigDurably({ allowDebouncedPush: false });
@@ -4496,6 +4533,7 @@ async function executePendingProfileSyncRewrite() {
           profileSync.profileUpdatedAt = previous.profileUpdatedAt;
           profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
           profileSync.syncBaseline = previous.syncBaseline;
+          profileSync.syncBaselineUpdatedAt = previous.syncBaselineUpdatedAt;
           profileSync.lastSuccessfulSyncAt = previous.lastSuccessfulSyncAt;
           const error = new Error(
             mainT(
@@ -4622,13 +4660,53 @@ async function writeCloudFileEnvelope(filePath, envelope) {
     throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
   }
   await requireExistingSyncParentDirectory(filePath, fs);
-  const tempPath = `${filePath}.tmp-${Date.now()}`;
+  // Hidden, and unique to this write, so a crash leaves nothing a person sees in the folder
+  // and two writers never share one; removeStaleSyncTempFiles clears what a crash leaves.
+  const tempPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.tmp-${Date.now()}-${nodeCrypto.randomBytes(4).toString('hex')}`
+  );
+  let handle = null;
   try {
-    await fs.promises.writeFile(tempPath, serialized, 'utf8');
+    await fs.promises.writeFile(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
+    // On disk before the rename, so a crash or power cut cannot leave the sync file pointing
+    // at contents that were never written. fsync covers the file whichever handle asks.
+    handle = await fs.promises.open(tempPath, 'r+');
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    // Replaces the file in one step, on Windows too.
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
+    await handle?.close().catch(() => {});
     await fs.promises.unlink(tempPath).catch(() => {});
     throwSyncFileSystemError(error);
+  }
+}
+
+const PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Deletes temporary files a crashed write left beside the sync file, once they are an hour
+ * old: they would otherwise replicate to every computer. Includes the visible ones earlier
+ * versions wrote. Best effort; a folder that cannot be read is left alone.
+ */
+async function removeStaleSyncTempFiles(filePath) {
+  if (!filePath) return;
+  const folder = path.dirname(filePath);
+  const name = path.basename(filePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^(\\.${name}\\.tmp-\\d+-[0-9a-f]+|${name}\\.tmp-\\d+)$`);
+  try {
+    for (const entry of await fs.promises.readdir(folder)) {
+      if (!pattern.test(entry)) continue;
+      const target = path.join(folder, entry);
+      const stats = await fs.promises.stat(target).catch(() => null);
+      if (stats?.isFile() && Date.now() - stats.mtimeMs > PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS) {
+        await fs.promises.unlink(target).catch(() => {});
+      }
+    }
+  } catch {
+    // nothing to clean up in a folder that cannot be read
   }
 }
 
@@ -4988,26 +5066,50 @@ function pickSections(sections, keys) {
 // Why a backup was taken. Syncing replaces settings routinely, many times a day with
 // several computers; an import or a restore is the person's own undo. The two are kept
 // in separate groups, so a busy stretch of syncing cannot push out the one backup
-// someone is counting on.
+// someone is counting on. A sync backup that holds edits the run discarded (`discarded`
+// names their sections) goes in a third group, kept longer still.
 const PROFILE_SYNC_MANUAL_BACKUP_REASONS = new Set(['import', 'restore']);
 
-async function writeProfileSyncBackup(prefix, contents, reason = 'pull') {
+async function writeProfileSyncBackup(prefix, contents, reason = 'pull', { discarded = [] } = {}) {
   const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
   await fs.promises.mkdir(backupDir, { recursive: true });
   await fs.promises.writeFile(
     path.join(backupDir, `${prefix}-${Date.now()}.json`),
-    JSON.stringify({ backedUpAt: new Date().toISOString(), reason, ...contents }, null, 2),
+    JSON.stringify(
+      {
+        backedUpAt: new Date().toISOString(),
+        reason,
+        ...(discarded.length > 0 ? { discarded } : {}),
+        ...contents,
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`), async (name) => {
     try {
       const saved = JSON.parse(await fs.promises.readFile(path.join(backupDir, name), 'utf8'));
-      return PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason) ? 'manual' : 'routine';
+      if (PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason)) return 'manual';
+      return Array.isArray(saved?.discarded) && saved.discarded.length > 0
+        ? 'discarded'
+        : 'routine';
     } catch {
       return 'routine';
     }
   });
+}
+
+/** Whether pruning should delete the oldest of a group's backups (oldest first in `names`). */
+function shouldPruneOldestProfileSyncBackup(group, names) {
+  if (group !== 'discarded') return names.length > PROFILE_SYNC_BACKUP_KEEP;
+  if (names.length > PROFILE_SYNC_DISCARD_BACKUP_LIMIT) return true;
+  const takenAt = Number(names[0].match(/-(\d+)\.[a-z]+$/)?.[1]);
+  return (
+    names.length > PROFILE_SYNC_DISCARD_BACKUP_KEEP &&
+    Date.now() - takenAt > PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS
+  );
 }
 
 /**
@@ -5026,8 +5128,8 @@ async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () =>
       const group = await groupOf(name);
       groups.set(group, [...(groups.get(group) || []), name]);
     }
-    for (const names of groups.values()) {
-      while (names.length > PROFILE_SYNC_BACKUP_KEEP) {
+    for (const [group, names] of groups) {
+      while (shouldPruneOldestProfileSyncBackup(group, names)) {
         await fs.promises.unlink(path.join(backupDir, names.shift()));
       }
     }
@@ -5064,10 +5166,15 @@ function backupDamagedSyncFile(raw) {
   );
 }
 
+/**
+ * Keeps this device's sections before something replaces them. `discarded` names the ones
+ * holding edits the replacement throws away, which keeps the backup longer.
+ */
 async function backupLocalProfileBeforePullApply(
   sectionKeys,
   incomingSections = null,
-  reason = 'pull'
+  reason = 'pull',
+  { discarded = [] } = {}
 ) {
   try {
     const sections = profileSyncCore.scopeBackupToIncoming(
@@ -5077,7 +5184,7 @@ async function backupLocalProfileBeforePullApply(
       }),
       incomingSections
     );
-    await writeProfileSyncBackup('local-profile', { sections }, reason);
+    await writeProfileSyncBackup('local-profile', { sections }, reason, { discarded });
   } catch (error) {
     log.warn('Failed to back up local profile before applying remote sync:', error.message);
     throw new Error(
@@ -5091,10 +5198,13 @@ async function backupLocalProfileBeforePullApply(
 /**
  * Keeps a copy of sections another device wrote before this device's newer
  * edits replace them in the file. Pushing without one would lose them for good.
+ * `discarded` is as for backupLocalProfileBeforePullApply.
  */
-async function backupRemoteSectionsBeforePush(remoteSections) {
+async function backupRemoteSectionsBeforePush(remoteSections, { discarded = [] } = {}) {
   try {
-    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push');
+    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push', {
+      discarded,
+    });
   } catch (error) {
     log.warn('Failed to back up remote profile sections before pushing:', error.message);
     throw new Error(
@@ -5132,8 +5242,15 @@ async function applySyncedProfileToConfig(pulledSections) {
     Object.entries(pulledSections).map(([key, entry]) => [key, entry.data])
   );
   const merged = profileSyncCore.mergeSectionsIntoConfig(config, sectionData);
+  // An edit time from a clock ahead of this one is recorded as now. File times count as at
+  // most five minutes ahead in a conflict, so a future one kept here would make a pulled
+  // section look like a newer edit of this device's. The agreed version keeps the time as
+  // written, so an edit made after this pull still beats it (see stampLocalSectionEdit).
+  const nowIso = new Date().toISOString();
+  const notAfterNow = (value) =>
+    profileSyncCore.compareIsoTimestamps(value, nowIso) > 0 ? nowIso : value;
   const latestPulledAt = Object.values(pulledSections)
-    .map((entry) => entry.updatedAt)
+    .map((entry) => notAfterNow(entry.updatedAt))
     .reduce(
       (latest, value) => (profileSyncCore.compareIsoTimestamps(value, latest) > 0 ? value : latest),
       null
@@ -5145,7 +5262,7 @@ async function applySyncedProfileToConfig(pulledSections) {
     sectionUpdatedAt: {
       ...(previous.profileSync?.sectionUpdatedAt || {}),
       ...Object.fromEntries(
-        Object.entries(pulledSections).map(([key, entry]) => [key, entry.updatedAt])
+        Object.entries(pulledSections).map(([key, entry]) => [key, notAfterNow(entry.updatedAt)])
       ),
     },
     profileUpdatedAt: latestPulledAt || new Date().toISOString(),
@@ -5539,10 +5656,11 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
   if (config?.profileSync) {
     config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
+    const nowMs = Date.parse(profileSyncRuntime.localProfileUpdatedAt);
     config.profileSync.sectionUpdatedAt = {
       ...(config.profileSync.sectionUpdatedAt || {}),
       ...Object.fromEntries(
-        changedSections.map((key) => [key, profileSyncRuntime.localProfileUpdatedAt])
+        changedSections.map((key) => [key, stampLocalSectionEdit(config.profileSync, key, nowMs)])
       ),
     };
   }
@@ -5550,6 +5668,47 @@ function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
   if (allowDebouncedPush) {
     scheduleDebouncedProfileSyncPush('config_change');
   }
+}
+
+/**
+ * The latest edit time this device knows for a section: its own last edit or pull, or the
+ * version it last agreed on with the file, as that version's writer recorded it.
+ */
+function getKnownSectionUpdatedAt(profileSync, key) {
+  return [
+    profileSync?.sectionUpdatedAt?.[key],
+    profileSync?.syncBaselineUpdatedAt?.[key]?.updatedAt,
+  ].reduce(
+    (latest, value) =>
+      typeof value === 'string' && profileSyncCore.compareIsoTimestamps(value, latest) > 0
+        ? value
+        : latest,
+    null
+  );
+}
+
+/**
+ * The edit time of a section changed on this device: now, or just after the version it
+ * replaced when this clock is behind the one that wrote that version. An edit made after a
+ * pull then always beats what it replaced, and no device takes it for a stale copy of the
+ * file. It can only carry another clock's lead as far as a version that clock really wrote.
+ */
+function stampLocalSectionEdit(profileSync, key, nowMs = Date.now()) {
+  const knownMs = Date.parse(getKnownSectionUpdatedAt(profileSync, key) || '');
+  return new Date(Number.isNaN(knownMs) ? nowMs : Math.max(nowMs, knownMs + 1)).toISOString();
+}
+
+/**
+ * The edit time written for a pushed section. It is always later than the file's version it
+ * replaces, so no other device takes it for a stale copy of the file: Sync up and Keep local
+ * can push a section this device last changed before the file's version was written.
+ */
+function stampPushedSection(profileSync, key, remoteEntry) {
+  const own = getKnownSectionUpdatedAt(profileSync, key) || new Date().toISOString();
+  const remoteMs = Date.parse(remoteEntry?.updatedAt || '');
+  return Number.isNaN(remoteMs) || Date.parse(own) > remoteMs
+    ? own
+    : new Date(remoteMs + 1).toISOString();
 }
 
 /**
@@ -6701,7 +6860,7 @@ async function findProfileSyncConflictSections(envelope) {
     // A file whose content cannot be read is damaged in every section.
     if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
     const everySection = Object.keys(localSections);
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   const { sections: remoteSections, malformed } = decoded;
   const baseline = getProfileSyncConfig().syncBaseline || {};
@@ -6739,14 +6898,25 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+  let readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   if (!readResult.exists) {
     return { needsResolution: false };
   }
 
-  const { sections: conflictSections, damaged } =
-    await findProfileSyncConflictSectionsInRead(readResult);
+  let conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  if (conflicts.unreadable) {
+    // A file the provider is still delivering reads as damaged for a moment, and the choice
+    // offered for a damaged file replaces it. It is read once more before that is offered.
+    await waitForSyncFileToSettle();
+    readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+    profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
+    if (!readResult.exists) {
+      return { needsResolution: false };
+    }
+    conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  }
+  const { sections: conflictSections, damaged } = conflicts;
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
@@ -6762,15 +6932,25 @@ async function prepareProfileSyncFirstEnableResolution() {
   return { needsResolution: true };
 }
 
-/** The conflict check for what a read returned, which may be a file that cannot be parsed. */
+/**
+ * The conflict check for what a read returned, which may be a file that cannot be parsed.
+ * `unreadable` says the whole file could not be read, rather than some of its sections.
+ */
 async function findProfileSyncConflictSectionsInRead(readResult) {
   if (readResult.damaged) {
     const everySection = Object.keys(
       profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope())
     );
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   return findProfileSyncConflictSections(readResult.envelope);
+}
+
+const PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS = 1500;
+
+/** The pause before reading again a sync file that read as damaged on first enable. */
+function waitForSyncFileToSettle() {
+  return new Promise((resolve) => setTimeout(resolve, PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS));
 }
 
 function getSyncEnvelopeIdentity(readResult) {
@@ -7009,12 +7189,33 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       throw error;
     }
     profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
+    if (!isHostedProfileSyncProvider(profileSync.provider)) {
+      await removeStaleSyncTempFiles(profileSync.cloudFilePath);
+    }
 
     if (remoteResult.damaged) {
       // A file that cannot be read is only replaced by an explicit Sync up (or Keep
       // Local on first enable), and only after a copy is kept.
       if (direction !== 'push') throw remoteResult.damaged.error;
       await backupDamagedSyncFile(remoteResult.damaged.raw);
+    }
+    // No file where this device has synced with one before is more likely an unmounted drive,
+    // a file the provider evicted or a stopped sync client than a fresh start. Recreating it
+    // would leave only this device's sections, so only an explicit Sync up may.
+    if (
+      !remoteResult.exists &&
+      direction !== 'push' &&
+      Object.keys(profileSync.syncBaseline || {}).length > 0
+    ) {
+      throw new Error(
+        isHostedProfileSyncProvider(profileSync.provider)
+          ? mainT(
+              'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
+            )
+          : mainT(
+              'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
+            )
+      );
     }
 
     // A routine run never changes the file's encryption. Only the rewrite and
@@ -7094,33 +7295,44 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         profileSync.sectionUpdatedAt?.[key] || profileSync.profileUpdatedAt || null,
       ])
     );
+    const runStartedMs = Date.now();
     const plan = profileSyncCore.planSectionSync({
       sectionKeys,
       localSections,
       remoteSections,
       baseline: profileSync.syncBaseline,
+      agreedUpdatedAt: profileSync.syncBaselineUpdatedAt,
       localUpdatedAt,
       direction,
       forceSections: options.forceSections || null,
+      now: runStartedMs,
     });
     const nextBaseline = {};
+    // The edit time of each agreed version, which tells a stale copy of the file from an edit.
+    const nextBaselineUpdatedAt = {};
+    const agreeOnRemote = (key, hash) => {
+      nextBaseline[key] = hash;
+      nextBaselineUpdatedAt[key] = remoteSections[key].updatedAt;
+    };
     plan.unchanged.forEach((key) => {
       if (plan.localHashes[key] === plan.remoteHashes[key]) {
-        nextBaseline[key] = plan.localHashes[key];
+        agreeOnRemote(key, plan.localHashes[key]);
       }
     });
 
     let currentLocalSections = localSections;
     const pushKeys = [...plan.push];
     if (plan.pull.length > 0) {
-      await backupLocalProfileBeforePullApply(plan.pull);
+      await backupLocalProfileBeforePullApply(plan.pull, null, 'pull', {
+        discarded: plan.discardsLocal,
+      });
       await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
       profileSync = getProfileSyncConfig();
       currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
       plan.pull.forEach((key) => {
         const appliedHash = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
         if (appliedHash === plan.remoteHashes[key]) {
-          nextBaseline[key] = appliedHash;
+          agreeOnRemote(key, appliedHash);
         } else {
           // The file lacked fields this version keeps (an older writer), so the
           // applied section still differs; write it back so both sides agree.
@@ -7141,7 +7353,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     // save is accepted. A pending encryption rewrite cannot wait like that, so it fails.
     const mayHoldPushes = !rewriteRequired && !profileSync.remoteRewritePending;
     const finishWithoutSaving = async () => {
-      await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+      await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
       profileSyncRuntime.lastRemote = remoteEnvelope
         ? {
             updatedAt: remoteEnvelope.updatedAt,
@@ -7154,6 +7366,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         pulled: plan.pull,
         replacedLocal: plan.discardsLocal,
         replacedRemote: [],
+        staleRemote: [],
       };
       updateProfileSyncStatus(
         'error',
@@ -7187,7 +7400,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
       const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
       if (Object.keys(replacedRemoteSections).length > 0) {
-        await backupRemoteSectionsBeforePush(replacedRemoteSections);
+        await backupRemoteSectionsBeforePush(replacedRemoteSections, {
+          discarded: plan.discardsRemote.filter((key) => replacedRemoteSections[key]),
+        });
       }
       const now = new Date().toISOString();
       const nextSections = { ...damagedOutOfScope, ...remoteSections };
@@ -7197,7 +7412,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
           currentLocalSections[key],
           remoteSections[key],
           {
-            updatedAt: profileSync.sectionUpdatedAt?.[key] || now,
+            updatedAt: stampPushedSection(profileSync, key, remoteSections[key]),
             deviceId: profileSync.deviceId,
           }
         );
@@ -7219,7 +7434,7 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       // Another device wrote first: keep what this run agreed on and merge again from
       // what is there now.
       const recheckAfterRemoteChange = async () => {
-        await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+        await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
         // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
         if (source === 'conflict_recheck' || direction !== 'auto') {
@@ -7259,13 +7474,14 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       wroteEnvelope = envelopeToWrite;
       pushKeys.forEach((key) => {
         nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
+        nextBaselineUpdatedAt[key] = nextSections[key].updatedAt;
       });
       if (profileSync.remoteRewritePending) await completeProfileSyncRemoteRewrite();
     } else if (profileSync.remoteRewritePending && mayChangeEncryption && remoteModeMatches) {
       await completeProfileSyncRemoteRewrite();
     }
 
-    await persistProfileSyncBaseline(nextBaseline, scopeKeys);
+    await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
     const finalEnvelope = wroteEnvelope || remoteEnvelope;
     profileSyncRuntime.lastRemote = finalEnvelope
       ? {
@@ -7278,7 +7494,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       pushed: pushKeys,
       pulled: plan.pull,
       replacedLocal: plan.discardsLocal,
-      replacedRemote: plan.discardsRemote,
+      // A stale copy was not an edit on another computer, so it is reported on its own.
+      replacedRemote: plan.discardsRemote.filter((key) => !plan.staleRemote.includes(key)),
+      staleRemote: plan.staleRemote,
     };
     updateProfileSyncStatus('success', '');
     setupProfileSyncInterval();
@@ -7344,20 +7562,32 @@ async function completeProfileSyncRemoteRewrite() {
 /**
  * Records which sections this device and the file now agree on. Sections that
  * are out of scope are forgotten, and ones whose outcome is still open (a
- * re-check is queued) keep their previous baseline.
+ * re-check is queued) keep their previous baseline. `agreedUpdatedAt` holds the
+ * edit time of each agreed version.
  */
-async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
+async function persistProfileSyncBaseline(agreedHashes, sectionKeys, agreedUpdatedAt = {}) {
   const profileSync = getProfileSyncConfig();
   const previous = profileSync.syncBaseline || {};
+  const previousUpdatedAt = profileSync.syncBaselineUpdatedAt || {};
   const next = {};
+  const nextUpdatedAt = {};
   sectionKeys.forEach((key) => {
-    if (agreedHashes[key]) next[key] = agreedHashes[key];
-    else if (previous[key]) next[key] = previous[key];
+    if (agreedHashes[key]) {
+      next[key] = agreedHashes[key];
+      if (typeof agreedUpdatedAt[key] === 'string') {
+        nextUpdatedAt[key] = { hash: agreedHashes[key], updatedAt: agreedUpdatedAt[key] };
+      }
+    } else if (previous[key]) {
+      next[key] = previous[key];
+      if (previousUpdatedAt[key]) nextUpdatedAt[key] = previousUpdatedAt[key];
+    }
   });
   profileSync.syncBaseline = next;
+  profileSync.syncBaselineUpdatedAt = nextUpdatedAt;
   const persistence = await saveConfigDurably({ allowDebouncedPush: false });
   if (!persistence.success) {
     profileSync.syncBaseline = previous;
+    profileSync.syncBaselineUpdatedAt = previousUpdatedAt;
     throw new Error(
       mainT('Failed to save profile sync state: {{error}}', { error: persistence.error })
     );
@@ -9318,6 +9548,13 @@ ipcMain.handle(
       ? {}
       : Object.fromEntries(
           Object.entries(config.profileSync?.syncBaseline || {}).filter(([key]) =>
+            nextScopeKeys.has(key)
+          )
+        );
+    profileSync.syncBaselineUpdatedAt = syncFileChanged
+      ? {}
+      : Object.fromEntries(
+          Object.entries(config.profileSync?.syncBaselineUpdatedAt || {}).filter(([key]) =>
             nextScopeKeys.has(key)
           )
         );

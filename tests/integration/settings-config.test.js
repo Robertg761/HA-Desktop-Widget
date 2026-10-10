@@ -5975,6 +5975,26 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('says when the sync file held an older copy rather than another computer’s edit', () => {
+      settings.handleProfileSyncStatusUpdate(
+        buildProfileSyncStatus({
+          enabled: true,
+          lastSyncStatus: 'success',
+          lastSuccessfulSyncAt: '2026-02-23T10:00:00.000Z',
+          lastRunSummary: {
+            pushed: ['visualPersonalization'],
+            pulled: [],
+            replacedLocal: [],
+            replacedRemote: [],
+            staleRemote: ['visualPersonalization'],
+          },
+        })
+      );
+      const statusText = document.getElementById('profile-sync-status').textContent;
+      expect(statusText).toContain('The sync file held an older copy of Appearance');
+      expect(statusText).not.toContain('Both computers changed');
+    });
+
     test('should hydrate profile sync controls and status', async () => {
       const config = state.CONFIG;
       config.profileSync = buildProfileSync({

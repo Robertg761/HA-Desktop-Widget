@@ -1139,7 +1139,7 @@ describe('profile sync runtime safeguards', () => {
     const pullApply = mainSource.indexOf(
       'await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));'
     );
-    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull);');
+    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull,');
     expect(backup).toBeGreaterThanOrEqual(0);
     expect(backup).toBeLessThan(pullApply);
     expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");

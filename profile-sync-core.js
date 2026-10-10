@@ -489,6 +489,21 @@ function compareIsoTimestamps(a, b) {
   return aMs > bMs ? 1 : -1;
 }
 
+// How far ahead of this device's clock another device's edit time may be and still count as
+// written. A clock running further ahead would otherwise win every conflict until real time
+// caught up with it.
+const SYNC_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+
+/**
+ * An edit time as this device compares it: one more than five minutes ahead of `nowMs` counts
+ * as five minutes ahead. Anything that is not a valid time comes back as it is.
+ */
+function clampFutureTimestamp(value, nowMs = Date.now()) {
+  const ms = typeof value === 'string' ? Date.parse(value) : NaN;
+  if (Number.isNaN(ms) || ms <= nowMs + SYNC_FUTURE_TOLERANCE_MS) return value;
+  return new Date(nowMs + SYNC_FUTURE_TOLERANCE_MS).toISOString();
+}
+
 /**
  * Decides, section by section, which side each in-scope section should come from.
  *
@@ -498,26 +513,41 @@ function compareIsoTimestamps(a, b) {
  * section (or no baseline exists yet) do timestamps decide, and the losing side
  * is reported so it can be backed up.
  *
+ * One exception: a file section that changed while this device's did not, but is older than
+ * the version both sides agreed on (`agreedUpdatedAt`), is a stale copy of the file, not an
+ * edit: a restored version, a device that was offline uploading its old copy, or the losing
+ * side of a provider race. Pulling it would quietly undo an edit that had already synced, so
+ * this device's section is written back instead, and the stale one is reported (`staleRemote`,
+ * and in `discardsRemote` so it is backed up). An edit always carries a later time than the
+ * version it replaced (see stampLocalSectionEdit in main.js), even from a device whose clock
+ * is behind.
+ *
  * @param {object} options
  * @param {string[]} options.sectionKeys in-scope sections on this device
  * @param {Object<string, object>} options.localSections section data from this device
  * @param {Object<string, {updatedAt: string, data: object}>} options.remoteSections decoded remote entries
  * @param {Object<string, string>} [options.baseline] section hashes at the last sync
+ * @param {Object<string, {hash: string, updatedAt: string}>} [options.agreedUpdatedAt] the edit
+ *   time of the version each baseline hash describes; ignored where the hash no longer matches
  * @param {Object<string, string>} [options.localUpdatedAt] when each local section last changed
  * @param {'auto'|'push'|'pull'} [options.direction] push and pull force every differing section
  * @param {string[]|null} [options.forceSections] limits a forced direction to these sections;
  *   the rest merge as in 'auto'
+ * @param {number} [options.now] this device's clock, for edit times that lie in its future
  * @returns {{push: string[], pull: string[], unchanged: string[], discardsRemote: string[],
- *   discardsLocal: string[], localHashes: Object<string, string>, remoteHashes: Object<string, string>}}
+ *   discardsLocal: string[], staleRemote: string[], localHashes: Object<string, string>,
+ *   remoteHashes: Object<string, string>}}
  */
 function planSectionSync({
   sectionKeys,
   localSections = {},
   remoteSections = {},
   baseline = {},
+  agreedUpdatedAt = {},
   localUpdatedAt = {},
   direction = 'auto',
   forceSections = null,
+  now = Date.now(),
 }) {
   const plan = {
     push: [],
@@ -525,10 +555,12 @@ function planSectionSync({
     unchanged: [],
     discardsRemote: [],
     discardsLocal: [],
+    staleRemote: [],
     localHashes: {},
     remoteHashes: {},
   };
   const safeBaseline = isObject(baseline) ? baseline : {};
+  const safeAgreed = isObject(agreedUpdatedAt) ? agreedUpdatedAt : {};
 
   sectionKeys.forEach((key) => {
     const localHash = computeSectionHash(key, localSections[key]);
@@ -560,12 +592,20 @@ function planSectionSync({
     } else if (base && localChanged && !remoteChanged) {
       winner = 'push';
     } else if (base && remoteChanged && !localChanged) {
-      winner = 'pull';
+      // Two times from the file are compared as written: this device's clock plays no part.
+      const agreed = safeAgreed[key];
+      const agreedAt = isObject(agreed) && agreed.hash === base ? agreed.updatedAt : null;
+      if (agreedAt && compareIsoTimestamps(remoteEntry.updatedAt, agreedAt) < 0) {
+        winner = 'push';
+        plan.staleRemote.push(key);
+      } else {
+        winner = 'pull';
+      }
     } else {
       // Both sides changed this section, or there is no record of agreeing on
       // it. The newer edit wins; ties go to the file so every device converges.
-      winner =
-        compareIsoTimestamps(localUpdatedAt?.[key], remoteEntry.updatedAt) > 0 ? 'push' : 'pull';
+      const remoteUpdatedAt = clampFutureTimestamp(remoteEntry.updatedAt, now);
+      winner = compareIsoTimestamps(localUpdatedAt?.[key], remoteUpdatedAt) > 0 ? 'push' : 'pull';
     }
 
     if (winner === 'push') {
@@ -620,6 +660,54 @@ function buildPushedSectionEntry(sectionKey, localData, remoteEntry, { updatedAt
   };
 }
 
+// The scrypt cost every version so far has encrypted with (Node's defaults), and the one a
+// file that names none was written with.
+const DEFAULT_KDF_PARAMS = { N: 16384, r: 8, p: 1 };
+// The most memory a file's own scrypt parameters may ask this device to spend (128 * N * r
+// bytes), so a file cannot make deriving its key take gigabytes.
+const MAX_KDF_MEMORY_BYTES = 256 * 1024 * 1024;
+// The shortest text an encrypted payload can hold: {"sections":{}}.
+const MIN_ENCRYPTED_PAYLOAD_BYTES = 15;
+
+/**
+ * The scrypt parameters to derive a file's key with: its own `kdfParams` when it names them,
+ * within bounds that keep the derivation affordable, or the defaults.
+ */
+function resolveKdfParams(kdfParams) {
+  if (kdfParams === undefined || kdfParams === null) return DEFAULT_KDF_PARAMS;
+  const { N, r, p } = isObject(kdfParams) ? kdfParams : {};
+  const valid =
+    Number.isInteger(N) &&
+    N >= 2 ** 14 &&
+    N <= 2 ** 20 &&
+    (N & (N - 1)) === 0 &&
+    Number.isInteger(r) &&
+    r >= 1 &&
+    r <= 16 &&
+    Number.isInteger(p) &&
+    p >= 1 &&
+    p <= 4 &&
+    128 * N * r <= MAX_KDF_MEMORY_BYTES;
+  if (!valid) throw new Error('Unsupported encrypted payload format');
+  return { N, r, p };
+}
+
+function deriveProfileKey(passphrase, salt, { N, r, p }) {
+  return scryptAsync(passphrase, salt, 32, { N, r, p, maxmem: 128 * N * r + 1024 * 1024 });
+}
+
+/**
+ * Whether decrypted bytes begin the way a payload's JSON does: an object whose first key is a
+ * plain name. With the wrong key they are random, and this matches about one time in tens of
+ * millions; with the right key it matches even when the end of the text or its tag is damaged.
+ */
+function looksLikePayloadStart(bytes) {
+  return /^\{"[A-Za-z0-9_]+("|$)/.test(bytes.subarray(0, 12).toString('latin1'));
+}
+
+// Files are still written with the default scrypt cost, no kdfParams and no associated data:
+// devices running an older version cannot read anything else, so raising the cost or binding
+// the envelope has to wait until every supported version reads kdfParams.
 async function encryptProfilePayload(profile, passphrase) {
   if (!passphrase || typeof passphrase !== 'string') {
     throw new Error('Passphrase is required for encryption');
@@ -664,17 +752,33 @@ async function decryptProfilePayload(payload, passphrase) {
   const authTag = Buffer.from(payload.authTag || '', 'base64');
   const ciphertext = Buffer.from(payload.ciphertext || '', 'base64');
   // Fields of the wrong size cannot come from a wrong passphrase: the file itself is damaged.
-  if (salt.length !== 16 || iv.length !== 12 || authTag.length !== 16) {
+  // So is ciphertext cut off mid-character (Node writes canonical base64) or too short to
+  // hold any payload.
+  if (
+    salt.length !== 16 ||
+    iv.length !== 12 ||
+    authTag.length !== 16 ||
+    typeof payload.ciphertext !== 'string' ||
+    ciphertext.toString('base64') !== payload.ciphertext ||
+    ciphertext.length < MIN_ENCRYPTED_PAYLOAD_BYTES
+  ) {
     throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
   }
-  const key = await scryptAsync(passphrase, salt, 32);
+  const key = await deriveProfileKey(passphrase, salt, resolveKdfParams(payload.kdfParams));
   const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
 
   let plaintext;
+  let decrypted = null;
   try {
-    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    decrypted = decipher.update(ciphertext);
+    plaintext = Buffer.concat([decrypted, decipher.final()]).toString('utf8');
   } catch {
+    // The tag does not check out. If the text still begins as a payload, the key was right
+    // and the ciphertext or its tag is what changed.
+    if (decrypted && looksLikePayloadStart(decrypted)) {
+      throw createSyncFileError('The encrypted payload is damaged', SYNC_FILE_DAMAGED);
+    }
     throw new Error('The sync passphrase does not match the one used to encrypt the sync file.');
   }
 
@@ -993,6 +1097,8 @@ module.exports = {
   computeProfileHash,
   computeSectionHash,
   compareIsoTimestamps,
+  SYNC_FUTURE_TOLERANCE_MS,
+  clampFutureTimestamp,
   planSectionSync,
   buildPushedSectionEntry,
   encryptProfilePayload,
