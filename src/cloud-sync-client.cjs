@@ -9,6 +9,9 @@ const { OAUTH_CALLBACK_PATH, sendCallbackPage, statesMatch } = require('./ha-oau
 const DEFAULT_CLOUD_SYNC_SERVICE_URL = '';
 const CLOUD_SYNC_CREDENTIALS_VERSION = 1;
 const CLOUD_SYNC_CREDENTIALS_FILE = 'cloud-sync-account.json';
+// Which account was signed in last, kept after signing out (never the token), so
+// signing back in to it can carry on from the sync history it left.
+const CLOUD_SYNC_LAST_ACCOUNT_FILE = 'cloud-sync-last-account.json';
 const CLOUD_SYNC_SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
 const CLOUD_SYNC_REQUEST_TIMEOUT_MS = 20 * 1000;
 // A little over the service's 512 KB profile limit, for headers and errors.
@@ -216,6 +219,7 @@ class CloudSyncClient {
     this.signInTimeoutMs = signInTimeoutMs;
     this.requestTimeoutMs = requestTimeoutMs;
     this.credentialsPath = path.join(userDataPath, CLOUD_SYNC_CREDENTIALS_FILE);
+    this.lastAccountPath = path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE);
     this.signInController = null;
   }
 
@@ -301,23 +305,23 @@ class CloudSyncClient {
 
   writeCredentials({ token, id, email, provider }) {
     this.assertSecureStorage();
-    const payload = JSON.stringify(
-      {
-        version: CLOUD_SYNC_CREDENTIALS_VERSION,
-        serviceUrl: this.serviceUrl,
-        userId: id || '',
-        email: email || '',
-        provider,
-        tokenEncrypted: this.safeStorage.encryptString(token).toString('base64'),
-      },
-      null,
-      2
-    );
+    this.writeFileAtomically(this.credentialsPath, {
+      version: CLOUD_SYNC_CREDENTIALS_VERSION,
+      serviceUrl: this.serviceUrl,
+      userId: id || '',
+      email: email || '',
+      provider,
+      tokenEncrypted: this.safeStorage.encryptString(token).toString('base64'),
+    });
+  }
+
+  writeFileAtomically(filePath, value) {
+    const payload = JSON.stringify(value, null, 2);
     fs.mkdirSync(this.userDataPath, { recursive: true });
-    const temporaryPath = `${this.credentialsPath}.${this.randomBytes(8).toString('hex')}.tmp`;
+    const temporaryPath = `${filePath}.${this.randomBytes(8).toString('hex')}.tmp`;
     try {
       fs.writeFileSync(temporaryPath, payload, { encoding: 'utf8', mode: 0o600 });
-      fs.renameSync(temporaryPath, this.credentialsPath);
+      fs.renameSync(temporaryPath, filePath);
     } catch (error) {
       try {
         fs.unlinkSync(temporaryPath);
@@ -328,12 +332,58 @@ class CloudSyncClient {
     }
   }
 
-  clearCredentials() {
-    try {
-      fs.unlinkSync(this.credentialsPath);
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+  /**
+   * Forgets the saved sign-in. The account it belonged to is remembered (by id, or
+   * by email for a sign-in saved before ids were kept) unless `forgetAccount`, as
+   * deleting the account does.
+   */
+  clearCredentials({ forgetAccount = false } = {}) {
+    const account = forgetAccount ? null : this.getStoredAccount();
+    if (account && (account.id || account.email)) {
+      try {
+        this.writeFileAtomically(this.lastAccountPath, {
+          version: CLOUD_SYNC_CREDENTIALS_VERSION,
+          serviceUrl: this.serviceUrl,
+          userId: account.id,
+          email: account.id ? '' : account.email,
+          provider: account.provider,
+        });
+      } catch {
+        // Only costs a fresh comparison on the next sign-in.
+      }
     }
+    for (const filePath of forgetAccount
+      ? [this.credentialsPath, this.lastAccountPath]
+      : [this.credentialsPath]) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+    }
+  }
+
+  /** The account signed in before the last sign-out or expired session, if any. */
+  getLastAccount() {
+    if (!this.isAvailable()) return null;
+    let stored;
+    try {
+      stored = JSON.parse(fs.readFileSync(this.lastAccountPath, 'utf8'));
+    } catch {
+      return null;
+    }
+    if (
+      stored?.version !== CLOUD_SYNC_CREDENTIALS_VERSION ||
+      stored.serviceUrl !== this.serviceUrl
+    ) {
+      return null;
+    }
+    const account = {
+      id: normalizeAccountId(stored.userId),
+      email: typeof stored.email === 'string' ? stored.email : '',
+      provider: typeof stored.provider === 'string' ? stored.provider : '',
+    };
+    return account.id || account.email ? account : null;
   }
 
   async request(pathname, { method = 'GET', token = null, body, headers = {} } = {}) {
@@ -599,12 +649,13 @@ class CloudSyncClient {
     const response = await this.authedRequest('/v1/account', { method: 'DELETE' });
     if (response.status !== 200)
       throw CloudSyncClient.failure(response, 'The account could not be deleted');
-    this.clearCredentials();
+    this.clearCredentials({ forgetAccount: true });
   }
 }
 
 module.exports = {
   CLOUD_SYNC_CREDENTIALS_FILE,
+  CLOUD_SYNC_LAST_ACCOUNT_FILE,
   CloudSyncClient,
   isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,

@@ -10773,7 +10773,9 @@ ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
   const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
   if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
   const client = getCloudSyncClient();
-  const previousAccount = client.getStoredAccount();
+  // The account this device's sync history belongs to: the one signed in now, or the
+  // one signed in before a sign-out or expired session.
+  const previousAccount = client.getStoredAccount() || client.getLastAccount();
   try {
     const signingIn = client.signIn(typeof provider === 'string' ? provider : '');
     emitProfileSyncStatus();

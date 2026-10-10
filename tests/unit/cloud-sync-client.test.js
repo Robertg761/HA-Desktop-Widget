@@ -11,6 +11,7 @@ const os = require('os');
 const path = require('path');
 const {
   CLOUD_SYNC_CREDENTIALS_FILE,
+  CLOUD_SYNC_LAST_ACCOUNT_FILE,
   CloudSyncClient,
   isStripeBillingUrl,
   normalizeCloudSyncServiceUrl,
@@ -275,11 +276,34 @@ describe('cloud sync client', () => {
     expect(client.getStoredAccount()).toBeNull();
   });
 
+  test('remembers which account was signed in, but not its token, after signing out', async () => {
+    const { world, client, userDataPath } = setup();
+    expect(client.getLastAccount()).toBeNull();
+    const { id } = await client.signIn('google');
+    await client.signOut();
+    expect(client.getLastAccount()).toEqual({ id, email: '', provider: 'google' });
+    const remembered = fs.readFileSync(
+      path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE),
+      'utf8'
+    );
+    expect(remembered).not.toMatch(/token|sealed/i);
+
+    // And after the service refuses an expired session.
+    await client.signIn('google');
+    fs.rmSync(path.join(userDataPath, CLOUD_SYNC_LAST_ACCOUNT_FILE));
+    world.advance(181 * DAY);
+    await expect(client.readProfile()).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGNED_OUT' });
+    expect(client.getLastAccount()).toEqual({ id, email: '', provider: 'google' });
+  });
+
   test('deleting the account removes it on the service and here', async () => {
     const { world, client } = setup();
     await client.signIn('google');
+    await client.signOut();
+    await client.signIn('google');
     await client.deleteAccount();
     expect(client.getStoredAccount()).toBeNull();
+    expect(client.getLastAccount()).toBeNull();
     expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(0);
   });
 

@@ -1247,6 +1247,37 @@ describe('profile sync through Cloud Sync', () => {
     expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
   });
 
+  test('signing back in to the same account carries on from its sync history', async () => {
+    const { desktop } = await createCloudPair();
+    const baseline = { ...desktop.config.profileSync.syncBaseline };
+    expect(Object.keys(baseline).length).toBeGreaterThan(0);
+    await desktop.invoke('cloud-sync-sign-out');
+    expect(desktop.status().cloudSync.signedIn).toBe(false);
+
+    let comparisons = 0;
+    const prepare = desktop.context.prepareProfileSyncFirstEnableResolution;
+    desktop.context.prepareProfileSyncFirstEnableResolution = (...args) => {
+      comparisons += 1;
+      return prepare(...args);
+    };
+    const runs = [];
+    desktop.context.runProfileSync = async (...args) => runs.push(args);
+    await expect(desktop.invoke('cloud-sync-sign-in', 'google')).resolves.toMatchObject({
+      success: true,
+    });
+    expect(comparisons).toBe(0);
+    expect(runs).toEqual([['auto', 'cloud_sign_in']]);
+    expect(desktop.config.profileSync).toMatchObject({
+      syncBaseline: baseline,
+      firstEnableResolutionPending: false,
+    });
+
+    // A deleted account is forgotten: the next sign-in compares again.
+    await desktop.invoke('cloud-sync-delete-account');
+    await desktop.invoke('cloud-sync-sign-in', 'google');
+    expect(comparisons).toBe(1);
+  });
+
   test('a signed-out computer stops syncing and says why', async () => {
     const { desktop, desktopClient } = await createCloudPair();
     await desktopClient.signOut();
