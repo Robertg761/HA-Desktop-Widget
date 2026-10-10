@@ -339,7 +339,10 @@ describe('cloud sync service', () => {
 
       const other = await world.signIn('google', 'o1');
       const clash = await world.signIn('google', 'g3');
-      expect(clash.body.user).toEqual({ id: first.body.user.id, email: 'new@x.io' });
+      // When the identity moves to an email owned by another account, the account's email
+      // is cleared if no other identity backs it, so the account does not keep claiming an
+      // address that could let an unrelated person join it later.
+      expect(clash.body.user).toEqual({ id: first.body.user.id, email: null });
       expect(other.body.user.email).toBe('taken@x.io');
     });
 

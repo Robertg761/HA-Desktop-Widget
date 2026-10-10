@@ -198,20 +198,46 @@ async function refreshIdentityEmail(env, identity, { provider, providerUserId, e
   if (email === identity.email && email === user?.email) return;
   // The account's email is this identity's to change when it is the identity's old one,
   // missing, or no longer backed by any identity (one the change already moved past).
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE users SET email = ?
-       WHERE id = ?
-         AND (email IS NULL OR email = ?
-           OR NOT EXISTS (
-             SELECT 1 FROM identities i WHERE i.user_id = users.id AND i.email = users.email
-           ))
-         AND NOT EXISTS (SELECT 1 FROM users other WHERE other.email = ? AND other.id != ?)`
-    ).bind(email, identity.user_id, identity.email, email, identity.user_id),
+  // When the new email is owned by another account and the account's current email matches
+  // this identity's old one (and no other identity of this account backs it), clear the
+  // account's email so it does not keep claiming an address none of its identities hold.
+  const newEmailBlocked = !!(await env.DB.prepare('SELECT 1 FROM users WHERE email = ? AND id != ?')
+    .bind(email, identity.user_id)
+    .first());
+  const statements = [
     env.DB.prepare(
       'UPDATE identities SET email = ? WHERE provider = ? AND provider_user_id = ?'
     ).bind(email, provider, providerUserId),
-  ]);
+  ];
+  if (newEmailBlocked && identity.email && user?.email === identity.email) {
+    const otherIdentityBacksEmail = !!(await env.DB.prepare(
+      `SELECT 1 FROM identities
+       WHERE user_id = ? AND email = ?
+         AND NOT (provider = ? AND provider_user_id = ?)`
+    )
+      .bind(identity.user_id, identity.email, provider, providerUserId)
+      .first());
+    if (!otherIdentityBacksEmail) {
+      statements.push(
+        env.DB.prepare('UPDATE users SET email = NULL WHERE id = ? AND email = ?').bind(
+          identity.user_id,
+          identity.email
+        )
+      );
+    }
+  } else if (!newEmailBlocked) {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE users SET email = ?
+         WHERE id = ?
+           AND (email IS NULL OR email = ?
+             OR NOT EXISTS (
+               SELECT 1 FROM identities i WHERE i.user_id = users.id AND i.email = users.email
+             ))`
+      ).bind(email, identity.user_id, identity.email)
+    );
+  }
+  await env.DB.batch(statements);
 }
 
 export async function handleGetAccount(request, env, deps, { reconcileCheckout } = {}) {
