@@ -195,6 +195,32 @@ describe('cloud sync client', () => {
     expect(client.getStoredAccount()).toBeNull();
   });
 
+  test('signing out cancels a sign-in that has not finished', async () => {
+    const { world, client } = setup();
+    const realFetch = client.fetchImpl;
+    let signingOut;
+    client.fetchImpl = async (url, init) => {
+      // The browser is done and the code is being redeemed when the user signs out.
+      if (String(url).endsWith('/v1/auth/token')) signingOut = client.signOut();
+      return realFetch(url, init);
+    };
+    await expect(client.signIn('google')).rejects.toMatchObject({
+      code: 'CLOUD_SYNC_SIGN_IN_CANCELED',
+    });
+    await signingOut;
+    expect(client.getStoredAccount()).toBeNull();
+    expect(world.env.DB.raw.prepare('SELECT * FROM sessions').all()).toHaveLength(0);
+
+    // Still waiting for the browser.
+    client.fetchImpl = realFetch;
+    client.openExternal = async () => {};
+    const waiting = client.signIn('google');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await client.signOut();
+    await expect(waiting).rejects.toMatchObject({ code: 'CLOUD_SYNC_SIGN_IN_CANCELED' });
+    expect(client.getStoredAccount()).toBeNull();
+  });
+
   test('deleting the account removes it on the service and here', async () => {
     const { world, client } = setup();
     await client.signIn('google');

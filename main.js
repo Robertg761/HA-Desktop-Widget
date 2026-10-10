@@ -10753,8 +10753,11 @@ ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
     emitProfileSyncStatus();
     const account = await signingIn;
     try {
+      // Signing out while this waited its turn leaves nothing to start.
       const next = await runSerializedConfigMutation(() =>
-        startHostedProfileSyncAfterSignIn(previousAccount, account)
+        client.getStoredAccount()
+          ? startHostedProfileSyncAfterSignIn(previousAccount, account)
+          : null
       );
       if (next === 'resume') void runProfileSync('auto', 'cloud_sign_in').catch(() => {});
     } catch (error) {
@@ -10780,6 +10783,7 @@ ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
 ipcMain.handle('cloud-sync-sign-out', async (event) => {
   const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
   if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
+  // Also cancels a sign-in still waiting for the browser, which would sign back in.
   await getCloudSyncClient().signOut();
   stopHostedProfileSyncAfterSignOut();
   emitProfileSyncStatus();

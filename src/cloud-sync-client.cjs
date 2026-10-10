@@ -431,7 +431,18 @@ class CloudSyncClient {
         },
       });
       const body = CloudSyncClient.parseJson(response);
-      if (response.status !== 200 || typeof body.token !== 'string' || !body.token) {
+      const issued = response.status === 200 && typeof body.token === 'string' && body.token;
+      // Signed out or canceled while the code was being redeemed: the session it
+      // opened is ended rather than saved, so it cannot sign this device back in.
+      if (controller.signal.aborted) {
+        if (issued) {
+          await this.request('/v1/auth/signout', { method: 'POST', token: body.token }).catch(
+            () => {}
+          );
+        }
+        throw createCloudSyncError('Sign-in was canceled', 'CLOUD_SYNC_SIGN_IN_CANCELED');
+      }
+      if (!issued) {
         throw CloudSyncClient.failure(response, 'Sign-in could not be completed');
       }
       const email = typeof body.user?.email === 'string' ? body.user.email : '';
@@ -448,8 +459,13 @@ class CloudSyncClient {
     this.signInController = null;
   }
 
-  /** Ends the session on the service when it can, and always forgets it here. */
+  /**
+   * Ends the session on the service when it can, and always forgets it here. A
+   * sign-in still waiting for the browser is canceled first, so it cannot finish
+   * afterwards and sign this device back in.
+   */
   async signOut() {
+    this.cancelSignIn();
     try {
       const stored = this.readStoredCredentials();
       if (stored)

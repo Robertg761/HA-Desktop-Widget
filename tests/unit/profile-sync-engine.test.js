@@ -1211,6 +1211,22 @@ describe('profile sync through Cloud Sync', () => {
     expect(desktop.status().cloudSync).toMatchObject({ signedIn: false });
   });
 
+  test('signing out from Settings cancels a sign-in still waiting for the browser', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
+    desktopClient.openExternal = async () => {};
+    desktopClient.signInTimeoutMs = 2000;
+    const signingIn = desktop.invoke('cloud-sync-sign-in', 'google');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(desktop.status().cloudSync.signInPending).toBe(true);
+
+    await desktop.invoke('cloud-sync-sign-out');
+    await expect(signingIn).resolves.toMatchObject({
+      success: false,
+      code: 'CLOUD_SYNC_SIGN_IN_CANCELED',
+    });
+    expect(desktop.status().cloudSync).toMatchObject({ signedIn: false, signInPending: false });
+  });
+
   test('after the trial, edits wait while changes from other computers still download', async () => {
     const { world, desktop, laptop, desktopClient, stored } = await createCloudPair();
     let saves = 0;
