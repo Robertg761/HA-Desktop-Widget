@@ -90,6 +90,8 @@ function listenForLoopbackCallback({
       sendCallbackPage(response, 409, t('Sign-in already handled'), t('Return to the app.'));
       return;
     }
+    // Anything on this machine can call the loopback address, so a request without
+    // this sign-in's state is turned away without ending the sign-in it did not start.
     if (!statesMatch(expectedState, url.searchParams.get('state') || '')) {
       sendCallbackPage(
         response,
@@ -97,7 +99,6 @@ function listenForLoopbackCallback({
         t('Sign-in rejected'),
         t('The sign-in did not match this app. Return to the app and try again.')
       );
-      finish(fail, createCloudSyncError('Sign-in state did not match', 'CLOUD_SYNC_STATE'));
       return;
     }
     const error = url.searchParams.get('error');

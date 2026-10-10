@@ -183,6 +183,25 @@ describe('cloud sync client', () => {
     expect(world.env.DB.raw.prepare('SELECT * FROM users').all()).toHaveLength(0);
   });
 
+  test('a stray request to the loopback address does not end the sign-in', async () => {
+    const statuses = [];
+    const { client } = setup({
+      browser: async (url, world) => {
+        const redirect = new URL(new URL(url).searchParams.get('redirect_uri'));
+        // Another program on this machine guesses at the callback, then at another path.
+        statuses.push((await fetch(`${redirect}?code=stolen&state=not-the-app-state`)).status);
+        statuses.push((await fetch(`${redirect.origin}/favicon.ico`)).status);
+        const start = await world.request(url.replace(BASE, ''));
+        const state = new URL(start.headers.get('Location')).searchParams.get('state');
+        const callback = await world.request(`/v1/auth/callback/google?code=g-code&state=${state}`);
+        statuses.push((await fetch(callback.headers.get('Location'))).status);
+      },
+    });
+    await expect(client.signIn('google')).resolves.toMatchObject({ email: 'me@x.io' });
+    expect(statuses).toEqual([400, 404, 200]);
+    expect(client.getStoredAccount()).toMatchObject({ email: 'me@x.io' });
+  });
+
   test('a declined, forged or cancelled sign-in stores nothing', async () => {
     const declined = setup({
       browser: async (url, world) => {
@@ -206,9 +225,11 @@ describe('cloud sync client', () => {
         expect(response.status).toBe(400);
       },
     });
+    forged.client.signInTimeoutMs = 200;
     await expect(forged.client.signIn('google')).rejects.toMatchObject({
-      code: 'CLOUD_SYNC_STATE',
+      code: 'CLOUD_SYNC_SIGN_IN_TIMEOUT',
     });
+    expect(forged.client.getStoredAccount()).toBeNull();
 
     const cancelled = setup({ browser: async () => {} });
     const pending = cancelled.client.signIn('google');

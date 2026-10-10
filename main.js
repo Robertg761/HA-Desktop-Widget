@@ -4781,7 +4781,6 @@ const CLOUD_SYNC_ERROR_MESSAGES = {
   CLOUD_SYNC_SIGN_IN_DECLINED: 'Sign-in was declined in the browser',
   CLOUD_SYNC_SIGN_IN_FAILED: 'Sign-in did not complete. Try again.',
   CLOUD_SYNC_SIGN_IN_TIMEOUT: 'Sign-in timed out. Try again.',
-  CLOUD_SYNC_STATE: 'Sign-in did not complete. Try again.',
   CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
   CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
   CLOUD_SYNC_BILLING_BUSY: 'A billing change is in progress. Try again shortly.',
