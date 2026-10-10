@@ -132,6 +132,27 @@ describe('a sync file that cannot be read', () => {
     await expect(desktop.sync()).resolves.toMatchObject({ ok: true });
   });
 
+  test('first enable reads a file that is still arriving once more before offering to replace it', async () => {
+    const desktop = createDevice('desktop');
+    await desktop.sync();
+    const complete = fs.readFileSync(syncFilePath(), 'utf8');
+    // The provider has delivered only part of the file when sync is turned on.
+    fs.writeFileSync(syncFilePath(), complete.slice(0, 40));
+    const laptop = createDevice('laptop', { syncing: false });
+    let waits = 0;
+    laptop.context.waitForSyncFileToSettle = async () => {
+      waits += 1;
+      fs.writeFileSync(syncFilePath(), complete);
+    };
+
+    await laptop.saveSettings({ profileSync: { enabled: true } });
+
+    expect(waits).toBe(1);
+    expect(laptop.status().needsResolution).toBe(false);
+    expect(laptop.status().lastSyncStatus).toBe('success');
+    expect(damagedBackups(laptop)).toEqual([]);
+  });
+
   test('a file that changes while the choice is pending asks again instead of overwriting', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();

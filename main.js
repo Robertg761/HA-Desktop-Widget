@@ -6835,7 +6835,7 @@ async function findProfileSyncConflictSections(envelope) {
     // A file whose content cannot be read is damaged in every section.
     if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
     const everySection = Object.keys(localSections);
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   const { sections: remoteSections, malformed } = decoded;
   const baseline = getProfileSyncConfig().syncBaseline || {};
@@ -6873,14 +6873,25 @@ async function prepareProfileSyncFirstEnableResolution() {
     return { needsResolution: false };
   }
 
-  const readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+  let readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
   profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
   if (!readResult.exists) {
     return { needsResolution: false };
   }
 
-  const { sections: conflictSections, damaged } =
-    await findProfileSyncConflictSectionsInRead(readResult);
+  let conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  if (conflicts.unreadable) {
+    // A file the provider is still delivering reads as damaged for a moment, and the choice
+    // offered for a damaged file replaces it. It is read once more before that is offered.
+    await waitForSyncFileToSettle();
+    readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
+    profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
+    if (!readResult.exists) {
+      return { needsResolution: false };
+    }
+    conflicts = await findProfileSyncConflictSectionsInRead(readResult);
+  }
+  const { sections: conflictSections, damaged } = conflicts;
   if (conflictSections.length === 0) {
     return { needsResolution: false };
   }
@@ -6896,15 +6907,25 @@ async function prepareProfileSyncFirstEnableResolution() {
   return { needsResolution: true };
 }
 
-/** The conflict check for what a read returned, which may be a file that cannot be parsed. */
+/**
+ * The conflict check for what a read returned, which may be a file that cannot be parsed.
+ * `unreadable` says the whole file could not be read, rather than some of its sections.
+ */
 async function findProfileSyncConflictSectionsInRead(readResult) {
   if (readResult.damaged) {
     const everySection = Object.keys(
       profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope())
     );
-    return { sections: everySection, damaged: everySection };
+    return { sections: everySection, damaged: everySection, unreadable: true };
   }
   return findProfileSyncConflictSections(readResult.envelope);
+}
+
+const PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS = 1500;
+
+/** The pause before reading again a sync file that read as damaged on first enable. */
+function waitForSyncFileToSettle() {
+  return new Promise((resolve) => setTimeout(resolve, PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS));
 }
 
 function getSyncEnvelopeIdentity(readResult) {

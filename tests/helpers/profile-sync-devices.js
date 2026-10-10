@@ -251,6 +251,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
      function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
      function setupProfileSyncInterval() {}
+     // No pause before reading a damaged file again; a test can replace it to change the file.
+     async function waitForSyncFileToSettle() {}
      async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }
      function applyMainWindowSettingSideEffects() {}
      function applyRuntimeConfigSideEffects() {}
