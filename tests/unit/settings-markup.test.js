@@ -41,7 +41,7 @@ describe('index.html', () => {
   describe('sentence case', () => {
     // Names that keep their capitals inside a sentence-case label.
     const PROPER_NAMES =
-      /Home Assistant|Quick Access|HA Desktop Widget|GitHub|Hyprland|Omarchy|Secret Service/g;
+      /Home Assistant|Quick Access|HA Desktop Widget Cloud|HA Desktop Widget|Cloud Sync|GitHub|Google|Hyprland|Omarchy|Secret Service/g;
     const titleCased = (text) =>
       text
         .replace(PROPER_NAMES, '')

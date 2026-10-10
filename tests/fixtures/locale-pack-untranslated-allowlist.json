@@ -14,7 +14,8 @@
     "Home Assistant",
     "Hyprlang (.conf)",
     "Lua (.lua)",
-    "http://homeassistant.local"
+    "http://homeassistant.local",
+    "HA Desktop Widget Cloud"
   ],
   "ar": [],
   "de": [

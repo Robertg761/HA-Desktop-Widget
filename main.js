@@ -561,6 +561,7 @@ const {
   probeHomeAssistantWithElectronNet,
   requestFormWithElectronNet,
 } = require('./src/ha-oauth.cjs');
+const { CloudSyncClient, resolveCloudSyncServiceUrl } = require('./src/cloud-sync-client.cjs');
 
 const {
   UpdateCheckScheduler,
@@ -920,7 +921,10 @@ const PROFILE_SYNC_BACKUP_KEEP = 5;
 const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
 const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
 const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
+// Sync through a hosted account (Cloud Sync) rather than a file in a folder.
+const PROFILE_SYNC_HOSTED_PROVIDER = 'hostedAccount';
 const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
+  PROFILE_SYNC_HOSTED_PROVIDER,
   'cloudFile',
   'googleDrive',
   'dropbox',
@@ -967,6 +971,8 @@ const profileSyncRuntime = {
   // first pull it missed. Kept after an update is answered, since another one
   // built earlier (a rollback snapshot) can still follow.
   pendingPulls: [],
+  // Cloud Sync revision of the last read; the next write expects it unchanged.
+  hostedRevision: null,
   // Conflict-copy filenames found beside the sync file on the last run. Refreshed
   // by sync runs because the check needs the filesystem.
   conflictCopies: [],
@@ -1370,6 +1376,7 @@ let deferredPlaintextTokenMigrationPending = false;
 let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
 let homeAssistantOAuthClient = null;
+let cloudSyncClient = null;
 let homeAssistantOAuthRefreshTimer = null;
 
 // The OS build cannot change while the app runs. Windows before 11 22H2 cannot blur behind the
@@ -3909,6 +3916,7 @@ function buildProfileSyncStatus(extra = {}) {
     enabled: !!profileSync.enabled,
     provider: normalizeProfileSyncProvider(profileSync.provider),
     cloudFilePath: getRendererSyncFilePath(profileSync.cloudFilePath),
+    cloudSync: getCloudSyncStatus(),
     syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
     intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
     encryptionEnabled: !!profileSync.encryptionEnabled,
@@ -3980,6 +3988,8 @@ function hasProfileSyncCredentialTransitionPending(profileSync = getProfileSyncC
 function collectProfileSyncFolderWarnings() {
   const profileSync = getProfileSyncConfig();
   const warnings = [];
+  // Folder warnings describe a sync folder; Cloud Sync has none.
+  if (isHostedProfileSyncProvider(profileSync.provider)) return warnings;
 
   if (profileSync.enabled && isProfileSyncFolderUnsynced(profileSync.cloudFilePath)) {
     warnings.push('unsynced_folder');
@@ -3997,6 +4007,19 @@ function collectProfileSyncFolderWarnings() {
   }
 
   return warnings;
+}
+
+/** Cloud Sync as the settings show it, from local state only (no network). */
+function getCloudSyncStatus() {
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  return {
+    available: client.isAvailable(),
+    signedIn: !!account,
+    email: account?.email || '',
+    provider: account?.provider || '',
+    signInPending: !!client.signInController,
+  };
 }
 
 // Written by main as syncs run and as settings change. A renderer snapshot taken
@@ -4290,7 +4313,7 @@ async function stageProfileSyncRewrite({
   if (profileSync.passphraseTransition) {
     throw new Error(mainT('A sync-key rewrite is already pending recovery'));
   }
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     throw new Error(
       mainT('Profile sync must have an active remote file before it can be rewritten')
     );
@@ -4316,7 +4339,7 @@ async function stageProfileSyncRewrite({
   const transaction = createProfileSyncRewriteTransaction({
     reason,
     provider: normalizeProfileSyncProvider(profileSync.provider),
-    cloudFilePath: profileSync.cloudFilePath,
+    cloudFilePath: getProfileSyncEndpoint(profileSync),
     expectedRemoteIdentity: getSyncEnvelopeIdentity(baselineRemote),
     targetRemoteIdentity: getSyncEnvelopeIdentity({ exists: true, envelope: targetEnvelope }),
     targetEnvelopeSerialized,
@@ -4354,7 +4377,7 @@ async function executePendingProfileSyncRewrite() {
     !profileSyncRewriteEndpointMatches(
       transaction,
       normalizeProfileSyncProvider(profileSync.provider),
-      profileSync.cloudFilePath
+      getProfileSyncEndpoint(profileSync)
     )
   ) {
     throw new Error(
@@ -4681,7 +4704,9 @@ async function readConfiguredSyncEnvelope({ allowDamaged = false } = {}) {
   // but the last answer stands while a read is under way so the form does not flicker.
   let result;
   try {
-    result = await readCloudFileEnvelope(profileSync.cloudFilePath);
+    result = isHostedProfileSyncProvider(profileSync.provider)
+      ? await readHostedSyncEnvelope()
+      : await readCloudFileEnvelope(profileSync.cloudFilePath);
   } catch (error) {
     profileSyncRuntime.remoteEncrypted = null;
     throw error;
@@ -4697,7 +4722,113 @@ async function writeConfiguredSyncEnvelope(envelope) {
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
+  if (isHostedProfileSyncProvider(profileSync.provider)) return writeHostedSyncEnvelope(envelope);
   return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
+}
+
+function isHostedProfileSyncProvider(provider) {
+  return provider === PROFILE_SYNC_HOSTED_PROVIDER;
+}
+
+/**
+ * Whether sync has somewhere to go: a file path, or for Cloud Sync, a build
+ * that knows the service and a signed-in account.
+ */
+function hasProfileSyncTarget(profileSync = getProfileSyncConfig()) {
+  if (isHostedProfileSyncProvider(profileSync.provider)) {
+    const client = getCloudSyncClient();
+    return client.isAvailable() && !!client.getStoredAccount();
+  }
+  return !!profileSync.cloudFilePath;
+}
+
+function describeMissingProfileSyncTarget(profileSync = getProfileSyncConfig()) {
+  if (!isHostedProfileSyncProvider(profileSync.provider)) {
+    return mainT('Profile sync file is not configured');
+  }
+  return getCloudSyncClient().isAvailable()
+    ? mainT('Sign in to Cloud Sync to keep syncing')
+    : mainT('Cloud Sync is not available in this version of the app');
+}
+
+/**
+ * Names where the synced profile lives, for the key-rewrite transaction to bind
+ * to: the file path, or for Cloud Sync the service and account.
+ */
+function getProfileSyncEndpoint(profileSync = getProfileSyncConfig()) {
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return profileSync.cloudFilePath;
+  const client = getCloudSyncClient();
+  const account = client.getStoredAccount();
+  return `cloud-sync:${client.serviceUrl}:${account?.email || 'account'}`;
+}
+
+const CLOUD_SYNC_ERROR_MESSAGES = {
+  CLOUD_SYNC_SIGNED_OUT: 'Sign in to Cloud Sync to keep syncing',
+  CLOUD_SYNC_SUBSCRIPTION_REQUIRED: 'Cloud Sync needs a subscription to save changes',
+  CLOUD_SYNC_CONFLICT: 'Sync file kept changing on the other device; try again',
+  CLOUD_SYNC_NETWORK: 'Cloud Sync could not be reached. Check your connection.',
+  CLOUD_SYNC_TIMEOUT: 'Cloud Sync could not be reached. Check your connection.',
+  CLOUD_SYNC_UNAVAILABLE: 'Cloud Sync is not available in this version of the app',
+  CLOUD_SYNC_SECURE_STORAGE_UNAVAILABLE:
+    'Cloud Sync needs secure credential storage, which is unavailable on this system',
+  CLOUD_SYNC_TOO_LARGE: 'Sync file exceeds size limit (512 KB)',
+  CLOUD_SYNC_SIGN_IN_CANCELED: 'Sign-in was canceled',
+  CLOUD_SYNC_SIGN_IN_DECLINED: 'Sign-in was declined in the browser',
+  CLOUD_SYNC_SIGN_IN_FAILED: 'Sign-in did not complete. Try again.',
+  CLOUD_SYNC_SIGN_IN_TIMEOUT: 'Sign-in timed out. Try again.',
+  CLOUD_SYNC_STATE: 'Sign-in did not complete. Try again.',
+  CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
+  CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
+};
+
+/** Gives a Cloud Sync failure a translated message, keeping its code. */
+function toCloudSyncError(error) {
+  const key = CLOUD_SYNC_ERROR_MESSAGES[error?.code];
+  const translated = new Error(
+    key
+      ? mainT(key)
+      : mainT('Cloud Sync failed: {{error}}', { error: error?.message || String(error) })
+  );
+  translated.code = error?.code;
+  return translated;
+}
+
+async function readHostedSyncEnvelope() {
+  let result;
+  try {
+    result = await getCloudSyncClient().readProfile();
+  } catch (error) {
+    throw toCloudSyncError(error);
+  }
+  // Writes are compare-and-swap against the revision last read.
+  profileSyncRuntime.hostedRevision = result.exists ? result.revision : null;
+  if (!result.exists) return { exists: false, envelope: null };
+  if (Buffer.byteLength(result.text, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
+  try {
+    return { exists: true, envelope: profileSyncCore.parseSyncEnvelope(result.text) };
+  } catch (error) {
+    // Handed back like a damaged sync file, so only the callers that may replace it see it.
+    return { exists: true, envelope: null, damaged: { raw: result.text, error } };
+  }
+}
+
+async function writeHostedSyncEnvelope(envelope) {
+  const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
+  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
+    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
+  }
+  try {
+    // A null revision means none existed at the last read, so this only creates.
+    const { revision } = await getCloudSyncClient().writeProfile(
+      serialized,
+      profileSyncRuntime.hostedRevision ?? null
+    );
+    profileSyncRuntime.hostedRevision = revision;
+  } catch (error) {
+    throw toCloudSyncError(error);
+  }
 }
 
 /**
@@ -4731,6 +4862,7 @@ async function hasRemoteSyncEnvelopeChanged(previousResult) {
  * @returns {Promise<string[]>} conflict-copy filenames, empty when none
  */
 async function findProfileSyncConflictCopies() {
+  if (isHostedProfileSyncProvider(getProfileSyncConfig().provider)) return [];
   const filePath = getProfileSyncConfig().cloudFilePath;
   if (!filePath) return [];
 
@@ -6486,7 +6618,7 @@ function setupProfileSyncInterval() {
     profileSyncRuntime.needsResolution ||
     profileSync.firstEnableResolutionPending ||
     hasProfileSyncCredentialTransitionPending(profileSync) ||
-    !profileSync.cloudFilePath
+    !hasProfileSyncTarget(profileSync)
   ) {
     return;
   }
@@ -6552,7 +6684,7 @@ async function prepareProfileSyncFirstEnableResolution() {
   profileSyncRuntime.conflictSections = [];
   profileSyncRuntime.damagedConflictSections = [];
 
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     return { needsResolution: false };
   }
 
@@ -6659,7 +6791,7 @@ async function clearProfileSyncFirstEnableResolutionPending() {
 
 async function completeProfileSyncFirstEnablePreparation(source) {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) {
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
     clearProfileSyncTimers();
     return { ok: false, reason: 'not_configured', status: buildProfileSyncStatus() };
   }
@@ -6692,7 +6824,9 @@ function scheduleDebouncedProfileSyncPush(source = 'config_change') {
     hasProfileSyncCredentialTransitionPending(profileSync)
   )
     return;
-  if (!profileSync.cloudFilePath || !isProfileSyncProviderSupported(profileSync.provider)) return;
+  if (!hasProfileSyncTarget(profileSync) || !isProfileSyncProviderSupported(profileSync.provider)) {
+    return;
+  }
 
   if (profileSyncRuntime.pushDebounceTimer) {
     clearTimeout(profileSyncRuntime.pushDebounceTimer);
@@ -6727,8 +6861,8 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
   if (!isProfileSyncProviderSupported(profileSync.provider)) {
     throw new Error(mainT('Unsupported profile sync provider'));
   }
-  if (!profileSync.cloudFilePath) {
-    throw new Error(mainT('Profile sync file is not configured'));
+  if (!hasProfileSyncTarget(profileSync)) {
+    throw new Error(describeMissingProfileSyncTarget(profileSync));
   }
   if (profileSync.passphraseTransition) {
     if (source === 'manual' || source === 'startup_rewrite_recovery') {
@@ -7105,7 +7239,7 @@ async function persistProfileSyncBaseline(agreedHashes, sectionKeys) {
  */
 function requestOpportunisticProfileSync(source) {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
   if (
     profileSyncRuntime.needsResolution ||
     profileSync.firstEnableResolutionPending ||
@@ -7185,7 +7319,7 @@ function isHomeAssistantOAuthSessionStale(now = Date.now()) {
 
 async function initializeProfileSyncOnStartupInternal() {
   const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !profileSync.cloudFilePath) return;
+  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
   if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
 
   try {
@@ -9012,11 +9146,15 @@ ipcMain.handle(
       (typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '') ||
       getDefaultProfileSyncFilePath();
     const normalizedNextScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
+    // Cloud Sync has no file, so a path left over from folder sync is not a target.
+    const pathChanged =
+      !isHostedProfileSyncProvider(normalizedNextProvider) &&
+      normalizedNextPath !== previousCloudFilePath;
     const remoteTargetChanged =
       prevSyncEnabled &&
       profileSync.enabled &&
       (normalizedNextProvider !== previousProvider ||
-        normalizedNextPath !== previousCloudFilePath ||
+        pathChanged ||
         JSON.stringify(normalizedNextScope) !== JSON.stringify(previousSyncScope));
     if (
       previousPassphraseMetadata.passphraseTransition &&
@@ -9038,9 +9176,7 @@ ipcMain.handle(
     // against: a new file or a fresh enable starts with no shared history, and a
     // narrower scope forgets sections this device no longer syncs.
     const syncFileChanged =
-      !prevSyncEnabled ||
-      normalizedNextProvider !== previousProvider ||
-      normalizedNextPath !== previousCloudFilePath;
+      !prevSyncEnabled || normalizedNextProvider !== previousProvider || pathChanged;
     const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
     // What was last read from the old file says nothing about the new one.
     if (syncFileChanged || !profileSync.enabled) profileSyncRuntime.remoteEncrypted = null;
@@ -9292,6 +9428,25 @@ function getHomeAssistantOAuthClient() {
     });
   }
   return homeAssistantOAuthClient;
+}
+
+function getCloudSyncClient() {
+  if (!cloudSyncClient) {
+    cloudSyncClient = new CloudSyncClient({
+      serviceUrl: resolveCloudSyncServiceUrl(),
+      safeStorage,
+      platform: process.platform,
+      userDataPath: app.getPath('userData'),
+      openExternal: (url) => shell.openExternal(url),
+      fetchImpl: (url, init) => net.fetch(url, init),
+      isSecureStorageAvailable: isSecureProfileSyncStorageAvailable,
+      // Names the session in the account without sending the computer's name.
+      deviceName: { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[process.platform] || '',
+      // The browser pages shown after signing in hand back to the app.
+      translate: (key) => mainT(key),
+    });
+  }
+  return cloudSyncClient;
 }
 
 function clearHomeAssistantOAuthRefreshTimer() {
@@ -10419,6 +10574,163 @@ ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
   }
 });
 
+/**
+ * Picks sync up after signing in to Cloud Sync while it is the enabled target.
+ * The same account carries on from its shared history; a different or first
+ * account is compared with this device the way enabling sync does.
+ */
+async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
+  const profileSync = getProfileSyncConfig();
+  if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
+  const sameAccount = !!previousAccount && previousAccount.email === account.email;
+  if (
+    sameAccount &&
+    !profileSync.firstEnableResolutionPending &&
+    Object.keys(profileSync.syncBaseline || {}).length > 0
+  ) {
+    setupProfileSyncInterval();
+    return 'resume';
+  }
+  profileSync.syncBaseline = {};
+  profileSync.firstEnableResolutionPending = true;
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
+  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  if (!persistence.success) {
+    throw new Error(mainT('Failed to save settings: {{error}}', { error: persistence.error }));
+  }
+  if (profileSync.encryptionEnabled && !getActiveProfileSyncPassphrase()) {
+    clearProfileSyncTimers();
+    emitProfileSyncStatus();
+    return 'needs_passphrase';
+  }
+  const resolution = await prepareProfileSyncFirstEnableResolution();
+  if (!resolution?.needsResolution) {
+    await completeProfileSyncFirstEnablePreparation('cloud_sign_in');
+  }
+  return 'prepared';
+}
+
+/** Stops syncing to an account this device is no longer signed in to, and says so. */
+function stopHostedProfileSyncAfterSignOut() {
+  const profileSync = getProfileSyncConfig();
+  if (!isHostedProfileSyncProvider(profileSync.provider)) return;
+  clearProfileSyncTimers();
+  profileSyncRuntime.needsResolution = false;
+  profileSyncRuntime.pendingRemoteEnvelope = null;
+  profileSyncRuntime.pendingRemoteIdentity = null;
+  profileSyncRuntime.hostedRevision = null;
+  if (profileSync.enabled) {
+    updateProfileSyncStatus('error', mainT('Sign in to Cloud Sync to keep syncing'));
+  }
+}
+
+function cloudSyncFailure(error) {
+  return {
+    success: false,
+    code: error?.code || '',
+    error: toCloudSyncError(error).message,
+    status: buildProfileSyncStatus(),
+  };
+}
+
+ipcMain.handle('get-cloud-sync-account', async (event) => {
+  const sender = authorizeIpcSender(event, 'get-cloud-sync-account');
+  if (!sender) return rejectUnauthorizedIpc('get-cloud-sync-account');
+  const client = getCloudSyncClient();
+  const result = {
+    success: true,
+    ...getCloudSyncStatus(),
+    providers: [],
+    billingAvailable: false,
+    account: null,
+    error: '',
+  };
+  if (!result.available) return result;
+  try {
+    Object.assign(result, await client.getServiceConfig());
+  } catch (error) {
+    result.error = toCloudSyncError(error).message;
+  }
+  if (result.signedIn) {
+    try {
+      result.account = await client.getAccount();
+    } catch (error) {
+      result.error = toCloudSyncError(error).message;
+      Object.assign(result, getCloudSyncStatus());
+    }
+  }
+  return result;
+});
+
+ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
+  const client = getCloudSyncClient();
+  const previousAccount = client.getStoredAccount();
+  try {
+    const signingIn = client.signIn(typeof provider === 'string' ? provider : '');
+    emitProfileSyncStatus();
+    const account = await signingIn;
+    try {
+      const next = await runSerializedConfigMutation(() =>
+        startHostedProfileSyncAfterSignIn(previousAccount, account)
+      );
+      if (next === 'resume') void runProfileSync('auto', 'cloud_sign_in').catch(() => {});
+    } catch (error) {
+      // Signed in either way; the status line explains why sync did not start.
+      clearProfileSyncTimers();
+      updateProfileSyncStatus('error', error.message);
+    }
+    return { success: true, account, status: buildProfileSyncStatus() };
+  } catch (error) {
+    return cloudSyncFailure(error);
+  } finally {
+    emitProfileSyncStatus();
+  }
+});
+
+ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-cancel-sign-in');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-cancel-sign-in');
+  getCloudSyncClient().cancelSignIn();
+  return { success: true };
+});
+
+ipcMain.handle('cloud-sync-sign-out', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
+  await getCloudSyncClient().signOut();
+  stopHostedProfileSyncAfterSignOut();
+  emitProfileSyncStatus();
+  return { success: true, status: buildProfileSyncStatus() };
+});
+
+ipcMain.handle('cloud-sync-open-billing', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-open-billing');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-open-billing');
+  try {
+    return { success: true, ...(await getCloudSyncClient().openBilling()) };
+  } catch (error) {
+    return cloudSyncFailure(error);
+  }
+});
+
+ipcMain.handle('cloud-sync-delete-account', async (event) => {
+  const sender = authorizeIpcSender(event, 'cloud-sync-delete-account');
+  if (!sender) return rejectUnauthorizedIpc('cloud-sync-delete-account');
+  try {
+    await getCloudSyncClient().deleteAccount();
+    stopHostedProfileSyncAfterSignOut();
+    return { success: true, status: buildProfileSyncStatus() };
+  } catch (error) {
+    return cloudSyncFailure(error);
+  } finally {
+    emitProfileSyncStatus();
+  }
+});
+
 ipcMain.handle('list-profile-sync-backups', async (event) => {
   const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
   if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
@@ -10590,7 +10902,7 @@ ipcMain.handle(
         }
 
         const remoteResult =
-          profileSync.enabled && profileSync.cloudFilePath
+          profileSync.enabled && hasProfileSyncTarget(profileSync)
             ? await readConfiguredSyncEnvelope()
             : { exists: false, envelope: null };
 

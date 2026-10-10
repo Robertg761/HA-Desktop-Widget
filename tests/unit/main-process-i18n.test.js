@@ -182,6 +182,7 @@ describe('main-process translations', () => {
       normalizeProfileSyncProvider: (provider) => provider || 'custom',
       getNormalizedProfileSyncScopeValue: () => 'all',
       collectProfileSyncFolderWarnings: () => [],
+      getCloudSyncStatus: () => ({ available: false, signedIn: false }),
     });
     vm.runInContext(
       sliceMain(

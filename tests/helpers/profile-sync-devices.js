@@ -146,6 +146,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
    * @param {number} [options.clockOffsetMs] how far this device's clock is ahead
    * @param {object} [options.safeStorage] OS credential store, see createSafeStorage
    * @param {boolean} [options.syncing] whether the device starts with sync on (default true)
+   * @param {object} [options.cloudClient] a Cloud Sync client signed in to a test service
    */
   function createDevice(
     name,
@@ -155,6 +156,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       clockOffsetMs = 0,
       safeStorage = createDefaultSafeStorage(),
       syncing = true,
+      cloudClient = null,
     } = {}
   ) {
     const userData = path.join(tempRoot, `${name}-userData`);
@@ -199,6 +201,14 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       // The real check: path.relative alone calls a path on another Windows drive inside.
       isPathInsideDirectory,
       preservedEncryptedTokenForRecovery: null,
+      // Cloud Sync: a real client against the test service, or a build without it.
+      getCloudSyncClient: () =>
+        cloudClient || {
+          isAvailable: () => false,
+          getStoredAccount: () => null,
+          serviceUrl: '',
+          signInController: null,
+        },
       mainWindow: null,
       tray: null,
       autoUpdaterInstance: null,
@@ -401,6 +411,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
   return {
     setup,
     teardown,
+    tempRoot: () => tempRoot,
     syncFilePath,
     readSyncFile,
     baseContent,

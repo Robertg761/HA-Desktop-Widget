@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show a Mute button, muted by default, for live camera streams.
 - Show alert notifications with the entity's icon, or the app icon when it cannot be drawn.
 - Find a custom icon by its emoji name in your language. The icon picker searches the names and keywords Unicode CLDR gives every emoji in English, German, Spanish, French, Arabic, Hindi, and Chinese, so "Glühbirne" finds the light bulb and "germany" the German flag, and it reads each icon's name to screen readers.
+- Add Cloud Sync, a paid alternative to folder sync: choose HA Desktop Widget Cloud as the sync app and sign in with Google or GitHub on each computer. It keeps the same merging, backups and optional encryption (with encryption on, the service holds only data it cannot read), and Settings shows the trial or subscription with Subscribe, Manage Subscription, Sign Out and Delete Account. It appears in builds configured with the service address; the service itself is in `cloud-sync-service/`.
 
 ### Changed
 

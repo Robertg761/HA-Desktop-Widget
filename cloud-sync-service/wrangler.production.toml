@@ -1,0 +1,27 @@
+# The live Worker is deployed without a public route until the 4.0 launch.
+# Do not reuse the sandbox database or Stripe credentials here.
+name = "ha-desktop-widget-cloud-sync-production"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+preview_urls = false
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ha-widget-cloud-sync-production"
+database_id = "b404e3ea-5af8-473f-a446-06114d289cb4"
+migrations_dir = "migrations"
+
+[vars]
+PUBLIC_URL = "https://sync.hadesktopwidget.com"
+LAUNCH_MODE = "prelaunch"
+PRIVATE_TEST_EMAILS = "robertgordon761@gmail.com"
+TRIAL_DAYS = "14"
+ENTITLEMENT_MODE = "subscription"
+STRIPE_AUTOMATIC_TAX = "false"
+STRIPE_PRICE_ID = "price_1UKKSFLbwkPdWwz9261ULL5y"
+
+# Add these as encrypted Worker secrets before cutover:
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+# STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
