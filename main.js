@@ -7216,11 +7216,9 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         extensions: remoteExtensions,
       });
 
-      // Best-effort compare-before-write: encryption and provider replication take time, so
-      // another device can land a write between the read above and this one.
-      // Overwriting blind would silently drop it, so re-check and re-resolve.
-      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
-        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+      // Another device wrote first: keep what this run agreed on and merge again from
+      // what is there now.
+      const recheckAfterRemoteChange = async () => {
         await persistProfileSyncBaseline(nextBaseline, scopeKeys);
         // Sync up and a conflict choice were decided against the file as it was;
         // an automatic merge must not stand in for them, so the user is asked again.
@@ -7234,11 +7232,25 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
         const status = buildProfileSyncStatus();
         emitProfileSyncStatus();
         return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
+      };
+
+      // Best-effort compare-before-write: encryption and provider replication take time, so
+      // another device can land a write between the read above and this one.
+      // Overwriting blind would silently drop it, so re-check and re-resolve.
+      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
+        log.info('Remote sync file changed while preparing a push; re-resolving direction');
+        return await recheckAfterRemoteChange();
       }
 
       try {
         await writeConfiguredSyncEnvelope(envelopeToWrite);
       } catch (error) {
+        // Cloud Sync refuses a write that lost the race after the check above, the same
+        // situation that check catches earlier.
+        if (error?.code === 'CLOUD_SYNC_CONFLICT') {
+          log.info('Cloud Sync profile changed during the push; re-resolving direction');
+          return await recheckAfterRemoteChange();
+        }
         if (error?.code !== 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED' || !mayHoldPushes) throw error;
         profileSyncRuntime.cloudSyncWriteRefusedAt = Date.now();
         return await finishWithoutSaving();

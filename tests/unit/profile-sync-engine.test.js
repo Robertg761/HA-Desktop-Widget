@@ -1173,7 +1173,7 @@ describe('profile sync through Cloud Sync', () => {
     expect(laptop.config.opacity).toBe(0.55);
   });
 
-  test('a write that loses a race is reported, not forced over the other device', async () => {
+  test('a write that loses a race is merged again, not forced over the other device', async () => {
     const { desktop, laptop, desktopClient, stored } = await createCloudPair();
     laptop.edit((config) => {
       config.opacity = 0.6;
@@ -1188,13 +1188,15 @@ describe('profile sync through Cloud Sync', () => {
       await laptop.sync();
       return realWrite(...args);
     };
-    await expect(desktop.sync()).rejects.toThrow(
-      'Sync file kept changing on the other device; try again'
-    );
+    const queued = [];
+    desktop.context.runProfileSync = async (...args) => queued.push(args);
+    await expect(desktop.sync()).resolves.toMatchObject({ ok: true, reason: 'remote_changed' });
     expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+    expect(desktop.status().lastSyncStatus).not.toBe('error');
 
-    // The next run merges both edits.
-    await desktop.sync();
+    // The re-check it queued merges both edits.
+    expect(queued).toEqual([['auto', 'conflict_recheck']]);
+    await desktop.sync(...queued[0]);
     const { sections } = stored().envelope.payload;
     expect(sections.visualPersonalization.data.opacity).toBe(0.6);
     expect(sections.quickAccessLayout.data.favoriteEntities).toEqual([
@@ -1308,6 +1310,29 @@ describe('profile sync through Cloud Sync', () => {
     await expect(complete()).rejects.toThrow(
       'The remote profile still needs its encryption update. Use Sync up to retry.'
     );
+  });
+
+  test('a Sync up that loses a race is reported, not merged in its place', async () => {
+    const { desktop, laptop, desktopClient, stored } = await createCloudPair();
+    laptop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    desktop.edit((config) => {
+      config.opacity = 0.3;
+    });
+    const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    desktopClient.writeProfile = async (...args) => {
+      desktopClient.writeProfile = realWrite;
+      await laptop.sync();
+      return realWrite(...args);
+    };
+    const queued = [];
+    desktop.context.runProfileSync = async (...args) => queued.push(args);
+    await expect(desktop.sync('push', 'manual')).rejects.toThrow(
+      'Sync file kept changing on the other device; try again'
+    );
+    expect(queued).toEqual([]);
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
   });
 
   test('a signed-out computer stops syncing and says why', async () => {
