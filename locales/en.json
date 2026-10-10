@@ -1726,5 +1726,7 @@
   "You already have a subscription. Reopen Settings to manage it.": "You already have a subscription. Reopen Settings to manage it.",
   "Cloud Sync is not available yet.": "Cloud Sync is not available yet.",
   "Your subscription could not be canceled, so the account was kept. Try again later.": "Your subscription could not be canceled, so the account was kept. Try again later.",
-  "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up."
+  "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.",
+  "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.": "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.",
+  "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.": "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again."
 }

@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.78",
+  "version": "1.2.79",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2222,6 +2222,8 @@
     "You already have a subscription. Reopen Settings to manage it.": "आपके पास पहले से सदस्यता है। उसे प्रबंधित करने के लिए सेटिंग्स फिर से खोलें।",
     "Cloud Sync is not available yet.": "Cloud Sync अभी उपलब्ध नहीं है।",
     "Your subscription could not be canceled, so the account was kept. Try again later.": "आपकी सदस्यता रद्द नहीं हो सकी, इसलिए खाता रखा गया है। बाद में फिर कोशिश करें।",
-    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "सिंक फ़ाइल में {{sections}} की पुरानी कॉपी थी, इसलिए इस कंप्यूटर की सेटिंग्स रखी गईं और पुरानी कॉपी का बैकअप लिया गया।"
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "सिंक फ़ाइल में {{sections}} की पुरानी कॉपी थी, इसलिए इस कंप्यूटर की सेटिंग्स रखी गईं और पुरानी कॉपी का बैकअप लिया गया।",
+    "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.": "सिंक फ़ोल्डर में सिंक फ़ाइल नहीं है। अगर आपने इसे जानबूझकर हटाया है, तो इसे फिर से बनाने के लिए “सिंक अपलोड करें” का उपयोग करें।",
+    "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.": "आपकी सिंक की गई सेटिंग्स Cloud Sync में नहीं हैं। अगर आपने इन्हें जानबूझकर हटाया है, तो इन्हें फिर से सहेजने के लिए “सिंक अपलोड करें” का उपयोग करें।"
   }
 }

@@ -1270,6 +1270,49 @@ describe('profile sync through Cloud Sync', () => {
     expect(result.reason).toBe('subscription_required');
     expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
   });
+
+  test('settings missing from the account after syncing are only saved again by Sync up', async () => {
+    const { world, desktop, stored } = await createCloudPair();
+    world.env.DB.raw.prepare('DELETE FROM profiles').run();
+
+    await expect(desktop.sync()).rejects.toThrow(
+      'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
+    );
+    expect(stored()).toBeNull();
+
+    await desktop.sync('push', 'manual');
+    expect(Object.keys(stored().envelope.payload.sections)).toHaveLength(4);
+  });
+});
+
+describe('a sync file that is missing', () => {
+  test('is not recreated by an automatic run once this computer has synced with it', async () => {
+    const { desktop, laptop } = await createSyncedPair();
+    fs.unlinkSync(syncFilePath());
+
+    await expect(desktop.sync()).rejects.toThrow(
+      'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
+    );
+    expect(fs.existsSync(syncFilePath())).toBe(false);
+    expect(desktop.status().lastSyncStatus).toBe('error');
+
+    // Sync up creates it again, and the other computer carries on with it.
+    await desktop.sync('push', 'manual');
+    expect(fs.existsSync(syncFilePath())).toBe(true);
+    desktop.edit((config) => {
+      config.opacity = 0.65;
+    });
+    await desktop.sync();
+    await laptop.sync();
+    expect(laptop.config.opacity).toBe(0.65);
+  });
+
+  test('is created by a computer that has never synced with one', async () => {
+    const desktop = createDevice('desktop');
+    const result = await desktop.sync();
+    expect(result.ok).toBe(true);
+    expect(fs.existsSync(syncFilePath())).toBe(true);
+  });
 });
 
 describe('stale copies of the sync file', () => {

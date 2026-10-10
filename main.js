@@ -7090,6 +7090,24 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
       if (direction !== 'push') throw remoteResult.damaged.error;
       await backupDamagedSyncFile(remoteResult.damaged.raw);
     }
+    // No file where this device has synced with one before is more likely an unmounted drive,
+    // a file the provider evicted or a stopped sync client than a fresh start. Recreating it
+    // would leave only this device's sections, so only an explicit Sync up may.
+    if (
+      !remoteResult.exists &&
+      direction !== 'push' &&
+      Object.keys(profileSync.syncBaseline || {}).length > 0
+    ) {
+      throw new Error(
+        isHostedProfileSyncProvider(profileSync.provider)
+          ? mainT(
+              'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
+            )
+          : mainT(
+              'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
+            )
+      );
+    }
 
     // A routine run never changes the file's encryption. Only the rewrite and
     // first-sync flows (which pin the exact remote they checked) may, so a

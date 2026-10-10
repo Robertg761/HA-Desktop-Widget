@@ -1726,5 +1726,7 @@
   "You already have a subscription. Reopen Settings to manage it.": "Du hast bereits ein Abo. Öffne die Einstellungen erneut, um es zu verwalten.",
   "Cloud Sync is not available yet.": "Cloud Sync ist noch nicht verfügbar.",
   "Your subscription could not be canceled, so the account was kept. Try again later.": "Dein Abo konnte nicht gekündigt werden, daher wurde das Konto behalten. Versuche es später erneut.",
-  "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "Die Sync-Datei enthielt eine ältere Fassung von {{sections}}. Die Einstellungen dieses Computers wurden behalten, die ältere Fassung gesichert."
+  "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "Die Sync-Datei enthielt eine ältere Fassung von {{sections}}. Die Einstellungen dieses Computers wurden behalten, die ältere Fassung gesichert.",
+  "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.": "Die Sync-Datei fehlt im Sync-Ordner. Wenn du sie absichtlich gelöscht hast, erstelle sie mit „Hochladen“ neu.",
+  "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.": "Deine synchronisierten Einstellungen fehlen in Cloud Sync. Wenn du sie absichtlich gelöscht hast, speichere sie mit „Hochladen“ neu."
 }

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.77",
+  "version": "1.2.78",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2222,6 +2222,8 @@
     "You already have a subscription. Reopen Settings to manage it.": "Ya tienes una suscripción. Vuelve a abrir la configuración para gestionarla.",
     "Cloud Sync is not available yet.": "Cloud Sync aún no está disponible.",
     "Your subscription could not be canceled, so the account was kept. Try again later.": "No se pudo cancelar tu suscripción, así que se conservó la cuenta. Vuelve a intentarlo más tarde.",
-    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "El archivo de sincronización tenía una copia anterior de {{sections}}, así que se conservaron los ajustes de este equipo y la copia anterior se guardó en una copia de seguridad."
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "El archivo de sincronización tenía una copia anterior de {{sections}}, así que se conservaron los ajustes de este equipo y la copia anterior se guardó en una copia de seguridad.",
+    "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.": "Falta el archivo de sincronización en la carpeta de sincronización. Si lo eliminaste a propósito, usa Subir sincronización para crearlo de nuevo.",
+    "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.": "Faltan tus ajustes sincronizados en Cloud Sync. Si los eliminaste a propósito, usa Subir sincronización para guardarlos de nuevo."
   }
 }

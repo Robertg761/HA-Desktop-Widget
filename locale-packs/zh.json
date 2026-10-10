@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.77",
+  "version": "1.2.78",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -2222,6 +2222,8 @@
     "You already have a subscription. Reopen Settings to manage it.": "你已经有订阅。重新打开设置即可管理。",
     "Cloud Sync is not available yet.": "Cloud Sync 尚不可用。",
     "Your subscription could not be canceled, so the account was kept. Try again later.": "无法取消你的订阅，因此账户已保留。请稍后再试。",
-    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "同步文件中保存的是{{sections}}的旧副本，因此保留了此电脑的设置，旧副本已备份。"
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "同步文件中保存的是{{sections}}的旧副本，因此保留了此电脑的设置，旧副本已备份。",
+    "The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.": "同步文件夹中缺少同步文件。如果你是有意删除的，请使用“向上同步”重新创建它。",
+    "Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.": "Cloud Sync 中缺少你已同步的设置。如果你是有意删除的，请使用“向上同步”重新保存它们。"
   }
 }
