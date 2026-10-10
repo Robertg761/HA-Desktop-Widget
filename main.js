@@ -7316,9 +7316,19 @@ async function runProfileSyncInternal(direction = 'auto', source = 'manual', opt
     const nextBaseline = {};
     // The edit time of each agreed version, which tells a stale copy of the file from an edit.
     const nextBaselineUpdatedAt = {};
+    const previousAgreed = profileSync.syncBaselineUpdatedAt || {};
     const agreeOnRemote = (key, hash) => {
       nextBaseline[key] = hash;
-      nextBaselineUpdatedAt[key] = remoteSections[key].updatedAt;
+      // The same content in an older copy of the file (a restored version holding it, or
+      // another computer that wrote it earlier) must not move the agreed time back: a later
+      // stale copy would then no longer read as older than it.
+      const remoteAt = remoteSections[key].updatedAt;
+      const before = previousAgreed[key];
+      nextBaselineUpdatedAt[key] =
+        before?.hash === hash &&
+        profileSyncCore.compareIsoTimestamps(before.updatedAt, remoteAt) > 0
+          ? before.updatedAt
+          : remoteAt;
     };
     plan.unchanged.forEach((key) => {
       if (plan.localHashes[key] === plan.remoteHashes[key]) {

@@ -1706,6 +1706,27 @@ describe('stale copies of the sync file', () => {
     expect(laptop.config.opacity).toBe(0.6);
   });
 
+  test('an older copy holding the same content does not move the agreed time back', async () => {
+    const { laptop } = await createSyncedPair();
+    laptop.advanceClock(30 * 60 * 1000);
+    laptop.edit((config) => {
+      config.opacity = 0.6;
+    });
+    await laptop.sync();
+    const agreed = laptop.config.profileSync.syncBaselineUpdatedAt.visualPersonalization;
+
+    // The file comes back with the same content stamped by an earlier writer.
+    writeOpacityEdit(0.6, -20 * 60 * 1000);
+    await laptop.sync();
+    expect(laptop.config.profileSync.syncBaselineUpdatedAt.visualPersonalization).toEqual(agreed);
+
+    // A later copy holding the version before it is still older than the agreed one.
+    writeOpacityEdit(0.9, -25 * 60 * 1000);
+    const result = await laptop.sync();
+    expect(result.pushed).toEqual(['visualPersonalization']);
+    expect(laptop.config.opacity).toBe(0.6);
+  });
+
   test('the agreed versions stay on this computer', async () => {
     const { laptop } = await createSyncedPair();
     expect(Object.keys(laptop.config.profileSync.syncBaselineUpdatedAt)).toEqual(
