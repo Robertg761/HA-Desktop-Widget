@@ -3865,6 +3865,15 @@ function describeProfileSyncStatus(status = {}) {
       )
     );
   }
+  const stale = summary?.staleRemote || [];
+  if (stale.length > 0 && status.lastSyncStatus !== 'error') {
+    parts.push(
+      t(
+        "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.",
+        { sections: formatProfileSyncSectionList(stale) }
+      )
+    );
+  }
   return parts.join(' ');
 }
 

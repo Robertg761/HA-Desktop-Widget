@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.77",
+  "version": "1.2.78",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2221,6 +2221,7 @@
     "Your payment is being processed. Try again shortly.": "تتم معالجة دفعتك. حاول مرة أخرى بعد قليل.",
     "You already have a subscription. Reopen Settings to manage it.": "لديك اشتراك بالفعل. أعد فتح الإعدادات لإدارته.",
     "Cloud Sync is not available yet.": "Cloud Sync غير متاح بعد.",
-    "Your subscription could not be canceled, so the account was kept. Try again later.": "تعذّر إلغاء اشتراكك، لذلك تم الإبقاء على الحساب. حاول مرة أخرى لاحقًا."
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "تعذّر إلغاء اشتراكك، لذلك تم الإبقاء على الحساب. حاول مرة أخرى لاحقًا.",
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "كان ملف المزامنة يحتوي على نسخة أقدم من {{sections}}، لذا احتُفظ بإعدادات هذا الكمبيوتر ونُسخت النسخة الأقدم احتياطيًا."
   }
 }

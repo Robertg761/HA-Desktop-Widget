@@ -297,6 +297,70 @@ describe('profile-sync-core', () => {
       expect(plan.push).toEqual([]);
     });
 
+    test('keeps this device’s section when the file holds a copy older than the agreed version', () => {
+      const agreed = {
+        visualPersonalization: {
+          hash: hashesFor(base).visualPersonalization,
+          updatedAt: '2026-03-01T00:00:00.000Z',
+        },
+      };
+      const stale = remoteOf(
+        { ...base, visualPersonalization: { opacity: 0.6 } },
+        '2026-02-01T00:00:00.000Z'
+      );
+      const plan = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: stale,
+        baseline: hashesFor(base),
+        agreedUpdatedAt: agreed,
+      });
+      expect(plan.push).toEqual(['visualPersonalization']);
+      expect(plan.staleRemote).toEqual(['visualPersonalization']);
+      expect(plan.discardsRemote).toEqual(['visualPersonalization']);
+      expect(plan.pull).toEqual([]);
+
+      // A newer file version is an edit, and an agreed time for another hash says nothing.
+      const newer = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: remoteOf(
+          { ...base, visualPersonalization: { opacity: 0.6 } },
+          '2026-04-01T00:00:00.000Z'
+        ),
+        baseline: hashesFor(base),
+        agreedUpdatedAt: agreed,
+      });
+      expect(newer.pull).toEqual(['visualPersonalization']);
+      expect(newer.staleRemote).toEqual([]);
+      const otherHash = planSectionSync({
+        sectionKeys: keys,
+        localSections: base,
+        remoteSections: stale,
+        baseline: hashesFor(base),
+        agreedUpdatedAt: {
+          visualPersonalization: { ...agreed.visualPersonalization, hash: 'other' },
+        },
+      });
+      expect(otherHash.pull).toEqual(['visualPersonalization']);
+    });
+
+    test('counts a file edit time far in this device’s future as five minutes ahead', () => {
+      const now = Date.parse('2026-01-01T12:00:00.000Z');
+      const plan = planSectionSync({
+        sectionKeys: ['visualPersonalization'],
+        localSections: { visualPersonalization: { opacity: 0.7 } },
+        remoteSections: remoteOf(
+          { visualPersonalization: { opacity: 0.6 } },
+          '2026-01-01T18:00:00.000Z'
+        ),
+        baseline: {},
+        localUpdatedAt: { visualPersonalization: '2026-01-01T12:06:00.000Z' },
+        now,
+      });
+      expect(plan.push).toEqual(['visualPersonalization']);
+    });
+
     test('lets the newer edit win when both sides changed the same section', () => {
       const localSections = { ...base, visualPersonalization: { opacity: 0.7 } };
       const remoteSections = remoteOf(

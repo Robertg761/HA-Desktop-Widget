@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.76",
+  "version": "1.2.77",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2221,6 +2221,7 @@
     "Your payment is being processed. Try again shortly.": "Votre paiement est en cours de traitement. Réessayez dans un instant.",
     "You already have a subscription. Reopen Settings to manage it.": "Vous avez déjà un abonnement. Rouvrez les Paramètres pour le gérer.",
     "Cloud Sync is not available yet.": "Cloud Sync n'est pas encore disponible.",
-    "Your subscription could not be canceled, so the account was kept. Try again later.": "Votre abonnement n'a pas pu être résilié, le compte a donc été conservé. Réessayez plus tard."
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "Votre abonnement n'a pas pu être résilié, le compte a donc été conservé. Réessayez plus tard.",
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "Le fichier de synchronisation contenait une version plus ancienne de {{sections}} : les paramètres de cet ordinateur ont été conservés et l'ancienne version sauvegardée."
   }
 }

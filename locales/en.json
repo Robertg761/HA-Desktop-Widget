@@ -1725,5 +1725,6 @@
   "Your payment is being processed. Try again shortly.": "Your payment is being processed. Try again shortly.",
   "You already have a subscription. Reopen Settings to manage it.": "You already have a subscription. Reopen Settings to manage it.",
   "Cloud Sync is not available yet.": "Cloud Sync is not available yet.",
-  "Your subscription could not be canceled, so the account was kept. Try again later.": "Your subscription could not be canceled, so the account was kept. Try again later."
+  "Your subscription could not be canceled, so the account was kept. Try again later.": "Your subscription could not be canceled, so the account was kept. Try again later.",
+  "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up."
 }

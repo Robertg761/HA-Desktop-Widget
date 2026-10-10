@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.76",
+  "version": "1.2.77",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2221,6 +2221,7 @@
     "Your payment is being processed. Try again shortly.": "Tu pago se está procesando. Vuelve a intentarlo en breve.",
     "You already have a subscription. Reopen Settings to manage it.": "Ya tienes una suscripción. Vuelve a abrir la configuración para gestionarla.",
     "Cloud Sync is not available yet.": "Cloud Sync aún no está disponible.",
-    "Your subscription could not be canceled, so the account was kept. Try again later.": "No se pudo cancelar tu suscripción, así que se conservó la cuenta. Vuelve a intentarlo más tarde."
+    "Your subscription could not be canceled, so the account was kept. Try again later.": "No se pudo cancelar tu suscripción, así que se conservó la cuenta. Vuelve a intentarlo más tarde.",
+    "The sync file held an older copy of {{sections}}, so this computer's settings were kept and the older copy was backed up.": "El archivo de sincronización tenía una copia anterior de {{sections}}, así que se conservaron los ajustes de este equipo y la copia anterior se guardó en una copia de seguridad."
   }
 }
