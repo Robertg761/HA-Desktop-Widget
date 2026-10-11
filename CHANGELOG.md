@@ -151,6 +151,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
   sleep, and renderer failures. Stable builds keep these preferences without showing the feature.
 
+## [4.0.0-beta.19] - 2026-10-11
+
+This beta adds Cloud Sync and makes folder Profile Sync more reliable. It is a testing release;
+4.0.0 stable has not been published.
+
+### Added
+
+- Cloud Sync keeps your settings in sync on every computer without a sync folder. In **Settings → Advanced → Profile Syncing**, choose **HA Desktop Widget Cloud** as the sync app and sign in with Google or GitHub on each computer.
+- It has a 14-day free trial, then costs USD 24 per year through Stripe. Subscribe and Manage subscription open Stripe's own pages.
+- It keeps the same merging, backups and optional encryption as folder sync. With encryption on, the service stores only data it cannot read.
+- If the trial or subscription ends, changes from your other computers still download; your own changes wait until saving is possible again.
+- Sign out, sign back in to carry on, or delete the account. Deleting cancels any subscription first and keeps the settings on your computer.
+- Folder sync stays free and needs no account. See the [terms](https://hadesktopwidget.com/terms) and [privacy policy](https://hadesktopwidget.com/privacy).
+
+### Fixed
+
+- An older copy of the sync file (a restored version, an offline computer uploading its old file, or the losing side of a Dropbox, OneDrive or Syncthing conflict) no longer undoes edits that had already synced. The older copy is backed up instead.
+- A computer whose clock is wrong no longer wins every conflict.
+- Backups of edits a sync replaced are kept for 30 days instead of being pushed out after five routine syncs.
+- A sync file that disappears (an unmounted drive, an evicted iCloud or OneDrive file) is no longer silently recreated with only one computer's settings. Sync up creates it again.
+- The sync file is written to disk safely before it replaces the old one, and leftover temporary files are cleaned up.
+- A damaged encrypted file is reported as damaged instead of "passphrase does not match".
+- A file that is still downloading when sync is turned on is read again before you are offered to replace it.
+
+### Testing focus
+
+- Cloud Sync on two computers: sign in, change a setting on each, and confirm both arrive. Try it with encryption on.
+- Subscribe from Settings, then return to the app and check it shows as subscribed. Open Manage subscription.
+- Sign out and back in on one computer, and check it carries on syncing.
+- Folder sync: two computers on Dropbox, OneDrive, iCloud or Syncthing, with edits on both while one is offline.
+
+Please report problems on [GitHub Issues](https://github.com/Robertg761/HA-Desktop-Widget/issues).
+
 ## [4.0.0-beta.17] - 2026-10-09
 
 This beta includes the five fixes merged after beta.16. It is a testing release;

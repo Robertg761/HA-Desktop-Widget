@@ -1,0 +1,58 @@
+name: Update Release Notes
+
+# The release workflow writes a release's notes once, when it creates the release: its
+# CHANGELOG.md section if one existed then, otherwise notes generated from merged pull requests.
+# Re-running it only re-uploads the files. Run this after adding or correcting a version's
+# section on main to put that section on the published release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, for example v4.0.0-beta.19'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-notes-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  update-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          # The section is usually written after the tag, so it is read from main.
+          ref: main
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Replace the release notes with the CHANGELOG.md section
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must look like vX.Y.Z or vX.Y.Z-suffix; received $RELEASE_TAG." >&2
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" --json tagName >/dev/null
+
+          release_notes_file="$RUNNER_TEMP/release-notes.md"
+          node scripts/extract-release-notes.cjs "${RELEASE_TAG#v}" > "$release_notes_file"
+          changelog_url="https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md"
+          printf '\n[Full changelog](%s)\n' "$changelog_url" >> "$release_notes_file"
+
+          gh release edit "$RELEASE_TAG" --notes-file "$release_notes_file"
+          echo "Updated the notes of $RELEASE_TAG from CHANGELOG.md on main."
