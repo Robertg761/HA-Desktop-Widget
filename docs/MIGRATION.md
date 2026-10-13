@@ -1,6 +1,6 @@
 # Upgrading to 4.0
 
-Version 4.0 retains the desktop app's local configuration and upgrades folder Profile Sync to file format version 3. Hosted Cloud Sync accounts and billing are planned separately and are not part of the 4.0 desktop app.
+Version 4.0 retains the desktop app's local configuration and upgrades folder Profile Sync to file format version 3. It also adds Cloud Sync, an optional paid alternative to a sync folder that you sign in to with Google or GitHub. Folder Profile Sync stays free and needs no account.
 
 ## Back up before upgrading
 
@@ -60,4 +60,4 @@ Saved Follow Omarchy theme choices are preserved when upgrading. New profiles fo
 
 ## What 4.0 does not include
 
-Stable 4.0 keeps the regular tray. Live tray values remain available only in numbered beta builds. Hosted Cloud Sync login, subscriptions, and account deletion are not desktop app features. Free folder Profile Sync remains available.
+Stable 4.0 keeps the regular tray. Live tray values remain available only in numbered beta builds.
