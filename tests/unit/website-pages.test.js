@@ -84,6 +84,12 @@ describe('the legal pages', () => {
     expect(html.privacy).not.toMatch(/<h2>Planned Cloud Sync service \(draft\)<\/h2>/);
   });
 
+  it('presents Cloud Sync on the home page as available, not planned', () => {
+    expect(html.index).toContain('Cloud Sync');
+    expect(html.index).not.toMatch(/planned separately|proposed (hosted )?service|not final/);
+    expect(html.index).not.toMatch(/the draft <a href="\/(privacy|terms)"/);
+  });
+
   it('keeps the subscription price and trial off the home page', () => {
     expect(html.index).not.toMatch(/USD|14 day|per year|\/year/);
   });
