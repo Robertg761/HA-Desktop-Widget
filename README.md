@@ -11,11 +11,11 @@ A frosted-glass desktop widget for Home Assistant that provides quick access to 
 
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
 
-<img src="images/Main_View.png?v=20261004" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261004" alt="Light adjust" width="280">
+<img src="images/Main_View.png?v=20261015" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261015" alt="Light adjust" width="280">
 
 ## Settings
 
-<img src="images/Settings_Appearance.png?v=20261004" alt="Appearance settings" width="320">
+<img src="images/Settings_Appearance.png?v=20261015" alt="Appearance settings" width="320">
 
 Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
 
@@ -404,7 +404,7 @@ your own checkout, so it only proves anything on a clean, up-to-date `main`.)
 ### Anonymous install count
 
 Release download numbers count every update, so they can't say how many people use the app.
-If you turn on **Settings → Updates → Count this install** (it is off by default), packaged
+If you turn on **Settings → Advanced → Count this install** (it is off by default), packaged
 builds send one request a day with a random install ID, the app version, and the OS family
 (Windows, macOS, or Linux). Nothing about you, your Home Assistant, or your settings is sent, and
 the counter does not store IP addresses. The ID lives in `usage-ping.json` next to `config.json`
