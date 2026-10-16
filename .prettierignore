@@ -2,3 +2,5 @@
 website/
 # Vendored Rust helper (upstream project with its own formatting; also excluded from ESLint).
 vendor/
+# Launch video production scripts with their own formatting (also excluded from ESLint).
+promo/
