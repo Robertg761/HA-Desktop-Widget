@@ -184,7 +184,7 @@ fxs.add(4.0, fade_tail(riser(3.7), 60), 0.55)
 fxs.add(8.0 - 1.0, reverse_crash(1.0), 0.5)
 fxs.add(bar_t(BUILD), riser(1.95, 400, 9000), 0.6)
 fxs.add(bar_t(RAPID[0]) - 1.2, reverse_crash(1.2), 0.5)
-fxs.add(T(50.0), fade_tail(riser(3.2, 500, 10000, pitch=False), 40), 0.45)
+fxs.add(HITS[1] - 4.0, fade_tail(riser(4.0, 500, 10000, pitch=False), 40), 0.45)  # peaks into the finale
 fxs.add(HITS[1] - 0.5, reverse_crash(0.5), 0.6)  # swells through the drums' breath before the finale
 fxs.add(bar_t(SEASON[0]) - 1.0, reverse_crash(1.0), 0.45)
 
@@ -230,7 +230,9 @@ for bar in (3, 4):
     ch = chord_of(bar)
     bass.add(bar_t(bar), bass_note(ROOT[ch] + 12, BAR * 0.98, cutoff=200, sub=1.0), 0.35)
 # End: long D
-bass.add(bar_t(END[0]), bass_note(38, 3.0, cutoff=260, sub=1.0), 0.8)
+end_d = bass_note(38, 5.5, cutoff=260, sub=1.0)
+end_d = end_d * np.exp(-np.arange(end_d.shape[-1]) / SR / 2.0)  # dies away with the pad
+bass.add(bar_t(END[0]), end_d, 0.8)
 
 # ------------------------------------------------------------------ arp
 for bar in range(2, END[0]):

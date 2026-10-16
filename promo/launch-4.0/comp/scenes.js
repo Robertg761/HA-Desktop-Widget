@@ -198,7 +198,9 @@ zscene('title', 8.0, 10.0, 30, (root) => {
   css(c.bigGlow, { opacity: String(0.6 * E.outCubic(prog(t, 8.1, 8.8)) * (0.85 + 0.15 * Math.sin(t * 5))) });
   const sh = prog(t, 8.55, 9.35);
   css(c.sheen, { transform: 'translate(-50%, 0)', backgroundPosition: `${lerp(100, -50, E.inOutQuad(sh))}% 0`, opacity: String(sh > 0 && sh < 1 ? 1 : 0) });
-  return { bg: { pal: PAL.aurora, inten: 0.85, bright: 0.55 + 0.4 * (1 - prog(t, 8, 9)), zoom: 1.4, off: [0.6, -0.2] } };
+  // Under the zoom-through, ease the background into the hero's, so it does not jump at 10.0.
+  const k = E.inOutQuad(prog(t, 9.62, 9.92));
+  return { bg: { pal: PAL.aurora, inten: lerp(0.85, 1, k), bright: lerp(0.55 + 0.4 * (1 - prog(t, 8, 9)), 1, k), zoom: lerp(1.4, 1.5, k), off: [0.6 + k * (t - 9.6) * 0.05, -0.2] } };
 });
 
 // =================================================================== S4: hero (9.6–12)
