@@ -1,4 +1,7 @@
-"""Sound design for the 4.0 spot, placed on the picture's event times. Writes out/sfx.wav."""
+"""Sound design for the 4.0 spot, placed on the picture's event times. Writes out/sfx.wav.
+
+Times below are the original edit's; T() moves each one to the retimed spot (comp/warp.json),
+while each sound keeps its own length and inner timing."""
 import os
 import sys
 import numpy as np
@@ -7,30 +10,35 @@ import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(__file__))
 from engine import *  # noqa
+from warp import T, DURATION
 
 OUT = os.path.join(os.path.dirname(__file__), 'out')
-DUR = 63.0
+DUR = DURATION + 1
 tr = Track(DUR)
 dry = Track(DUR)  # clicks and keys stay close and dry
 
 
 def switch(t, vel=0.55):
     """A light switch: a small press and release."""
-    dry.add(t, keyclack(vel * 0.7), 1.0)
-    dry.add(t + 0.035, click(1800, vel * 0.5), 1.0)
+    dry.add(T(t), keyclack(vel * 0.7), 1.0)
+    dry.add(T(t) + 0.035, click(1800, vel * 0.5), 1.0)
 
 
 def mouse(t, vel=0.6):
-    dry.add(t, click(2600, vel), 1.0)
-    dry.add(t + 0.06, click(2200, vel * 0.45), 1.0)
+    dry.add(T(t), click(2600, vel), 1.0)
+    dry.add(T(t) + 0.06, click(2200, vel * 0.45), 1.0)
 
 
 def key(t, vel=0.6, big=False):
-    dry.add(t, keyclack(vel, big=big), 1.0)
+    dry.add(T(t), keyclack(vel, big=big), 1.0)
 
 
 def swish(t, dur=0.5, f0=500, f1=6000, gain=0.35, direction=1):
-    tr.add(t, whoosh(dur, f0, f1, direction), gain)
+    tr.add(T(t), whoosh(dur, f0, f1, direction), gain)
+
+
+def at(track, t, x, gain):
+    track.add(T(t), x, gain)
 
 
 # Opening: a switch for every tile that lights.
@@ -46,8 +54,8 @@ swish(12.82, 0.5, 900, 8000, 0.3, -1)
 # Live status: a tick as each tile changes
 swish(14.0, 0.4, 500, 4000, 0.18, 1)
 for t, f in ((14.52, 2400), (15.02, 2700), (15.52, 2100)):
-    dry.add(t, click(f, 0.5), 1.0)
-    tr.add(t, bell(88, 0.5, index=0.6, vel=0.25), 0.25)
+    at(dry, t, click(f, 0.5), 1.0)
+    at(tr, t, bell(88, 0.5, index=0.6, vel=0.25), 0.25)
 # Pages: two clicks and the tiles sliding in
 swish(16.0, 0.4, 500, 4000, 0.18, -1)
 for t in (16.5, 17.3):
@@ -57,7 +65,7 @@ for t in (16.5, 17.3):
 swish(18.0, 0.35, 400, 3000, 0.15, 1)
 for t in (18.5, 19.5):
     switch(t - 0.02, 0.6)
-    tr.add(t, sparkle(91, 4, 0.15), 0.25)
+    at(tr, t, sparkle(91, 4, 0.15), 0.25)
 swish(18.98, 0.3, 800, 6000, 0.2, -1)
 # Theme wipes
 swish(19.98, 0.4, 400, 3000, 0.18, 1)
@@ -65,15 +73,15 @@ for t in (20.42, 20.92, 21.42):
     swish(t - 0.05, 0.42, 900, 9000, 0.3, 1 if t != 20.92 else -1)
 # Accent cuts
 for t in (22.0, 22.5, 23.0, 23.5):
-    dry.add(t, click(3000, 0.35), 1.0)
+    at(dry, t, click(3000, 0.35), 1.0)
 # Holiday cuts
 for t in (28.5, 29.0, 29.5, 30.0, 30.5, 31.0):
     swish(t - 0.08, 0.22, 1500, 9000, 0.16, 1 if int(t * 2) % 2 else -1)
 # Ctrl + K
 key(32.0, 1.0, big=True)
 key(32.5, 1.0, big=True)
-tr.add(32.0, impact(1.0) * 0.15, 1.0)
-tr.add(32.5, impact(1.0) * 0.15, 1.0)
+at(tr, 32.0, impact(1.0) * 0.15, 1.0)
+at(tr, 32.5, impact(1.0) * 0.15, 1.0)
 swish(32.82, 0.55, 300, 5000, 0.35, 1)
 # Typing "movie", ArrowDown, Enter, lights dim
 for k in range(5):
@@ -81,7 +89,7 @@ for k in range(5):
 key(34.15, 0.5)
 key(34.5, 0.85, big=True)
 dim = sine(np.linspace(220, 110, n(0.6)), 0.6) * np.exp(-tvec(0.6) / 0.25) * 0.25
-tr.add(34.55, dim, 1.0)
+at(tr, 34.55, dim, 1.0)
 swish(34.85, 0.5, 300, 2500, 0.18, -1)
 # Settings: gear, search field, typing "theme", the result
 swish(35.98, 0.4, 500, 4000, 0.18, 1)
@@ -93,16 +101,16 @@ mouse(38.67)
 swish(38.78, 0.4, 600, 5000, 0.16, -1)
 # Cloud Sync
 swish(39.98, 0.5, 300, 4000, 0.25, 1)
-tr.add(41.0, sparkle(86, 5, 0.25), 0.4)
-tr.add(41.3, bell(93, 1.2, index=1.0, vel=0.6), 0.35)
-tr.add(41.75, sparkle(88, 5, 0.25), 0.35)
-tr.add(42.5, sparkle(90, 5, 0.25), 0.35)
+at(tr, 41.0, sparkle(86, 5, 0.25), 0.4)
+at(tr, 41.3, bell(93, 1.2, index=1.0, vel=0.6), 0.35)
+at(tr, 41.75, sparkle(88, 5, 0.25), 0.35)
+at(tr, 42.5, sparkle(90, 5, 0.25), 0.35)
 swish(43.2, 0.8, 300, 3000, 0.2, 1)
 # Pins
 swish(43.98, 0.4, 500, 4000, 0.18, 1)
 for k, t in enumerate((44.0, 44.25, 44.5, 44.75)):
-    dry.add(t + 0.03, pop(0.7), 1.0)
-    tr.add(t + 0.03, bell(86 + 3 * k, 0.6, index=0.5, vel=0.3), 0.25)
+    at(dry, t + 0.03, pop(0.7), 1.0)
+    at(tr, t + 0.03, bell(86 + 3 * k, 0.6, index=0.5, vel=0.3), 0.25)
 # Omarchy
 swish(45.98, 0.4, 500, 4000, 0.2, -1)
 mouse(46.5)

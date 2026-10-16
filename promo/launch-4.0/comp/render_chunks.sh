@@ -8,10 +8,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SEG="$1"
 W="${2:-4}"
 MODE="${MODE:-mb}"
+# The spot's length, or the edit's with NOWARP=1.
+DUR=$(node -p "const w = JSON.parse(require('fs').readFileSync('$HERE/warp.json')); process.env.NOWARP === '1' ? w.points[w.points.length - 1][0] : w.duration")
 mkdir -p "$SEG"
 chunk() {
   local i=$1 a b
-  a=$((i * 4)); b=$(( a + 4 > 62 ? 62 : a + 4 ))
+  a=$((i * 4)); b=$(( a + 4 > DUR ? DUR : a + 4 ))
   local name; name=$(printf 'seg_%02d' "$i")
   [ -f "$SEG/$name.done" ] && return 0
   if node "$HERE/render.cjs" "$MODE" "$a" "$b" "$SEG/$name.mkv" > "$SEG/$name.log" 2>&1; then
@@ -21,6 +23,6 @@ chunk() {
   fi
 }
 export -f chunk
-export SEG HERE MODE
-seq 0 15 | xargs -P "$W" -I{} bash -c 'chunk {}'
+export SEG HERE MODE DUR
+seq 0 $(( (DUR + 3) / 4 - 1 )) | xargs -P "$W" -I{} bash -c 'chunk {}'
 ls "$SEG"/*.done | wc -l

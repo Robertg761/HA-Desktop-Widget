@@ -1,6 +1,6 @@
 # HA Desktop Widget 4.0 launch spot
 
-A 62-second launch video for 4.0, built entirely from the real app. Every UI shot is the actual
+An 86-second launch video for 4.0, built entirely from the real app. Every UI shot is the actual
 renderer running in Electron against a mock Home Assistant; nothing in the widget is redrawn or
 mocked up, except the Omarchy bar panel (a QML plugin that only runs inside the Omarchy shell),
 which is a stylized recreation of its layout. The score and sound design are synthesized from
@@ -23,14 +23,17 @@ Re-render it with the steps below.
 2. **Picture** (`comp/`). `comp/index.html` is a deterministic compositor: `render(t)` places the
    footage in a 3D camera over a generated mesh-gradient background, with a real blur behind the
    glass, kinetic type, cursor, keycaps, devices and the end card. `comp/render.cjs` drives
-   headless Chromium frame by frame. For motion blur, each 30 fps frame averages 2 to 12 renders
-   spread across a 180° shutter, as many as `comp/samples.json` asks for at that moment
-   (`comp/motion_schedule.py` measures the motion in a plain 60 fps pass). `comp/finish.sh`
-   converts to BT.709, grades with a contrast curve that keeps legal black and white, adds grain
-   and muxes the soundtrack.
+   headless Chromium frame by frame. `comp/scenes.js` is written in the times of a 62 s edit;
+   `comp/warp.json` retimes it to 86 s (each section a whole number of beats, most shots at 1.5x,
+   the montages at 2x), and the renderer draws each frame at its mapped time. For motion blur,
+   each 30 fps frame averages 2 to 48 renders spread across a 180° shutter, as many as the motion
+   at that moment needs (`comp/motion_schedule.py` measures it in a plain 60 fps pass of the edit
+   and writes `comp/samples.json`). `comp/finish.sh` converts to BT.709, grades with a contrast
+   curve that keeps legal black and white, adds grain and muxes the soundtrack.
 3. **Sound** (`audio/`). `audio/score.py` writes the score (120 BPM, Bm–G–D–A) with the synths
    in `audio/engine.py`; `audio/sfx.py` places switch clicks, keys, whooshes and pops on the
-   picture's events; `audio/mix.py` balances and masters to about −14 LUFS, with the impacts on a stem of their own.
+   picture's events through the same retime (`audio/warp.py`); `audio/mix.py` balances and
+   masters to about −14 LUFS, with the impacts on a stem of their own.
 
 ## Render
 
@@ -59,8 +62,8 @@ SEG_DIR=out/seg comp/finish.sh             # → out/HA-Desktop-Widget-4.0.mp4
 ```
 
 `comp/samples.json` is checked in. After changing camera moves, measure them again from a plain
-60 fps pass: `MODE=video comp/render_chunks.sh out/seg60 4`, join the chunks into one file and run
-`python3 comp/motion_schedule.py <that file>`.
+60 fps pass of the edit: `NOWARP=1 MODE=video comp/render_chunks.sh out/seg60 4`, join the chunks
+into one file and run `python3 comp/motion_schedule.py <that file>`.
 
 `shots/run.sh` runs each take under Xvfb in its own D-Bus session with an unlocked keyring. A few
 capture-only accommodations, none of which change what the app draws:

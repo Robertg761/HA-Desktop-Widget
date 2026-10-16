@@ -1,4 +1,5 @@
-// Render the spot. Usage:
+// Render the spot. Times are the spot's own (comp/warp.json maps each one to the edit time
+// that scenes.js is written in). Usage:
 //   node render.cjs stills <t1,t2,...> <outDir>
 //   node render.cjs video <fromSec> <toSec> <out.mkv>   (60 fps, lossless-ish intermediate)
 //   node render.cjs mb <fromSec> <toSec> <out.mkv>      (30 fps with motion blur: each frame averages
@@ -13,6 +14,20 @@ const ROOT = path.join(__dirname, '..');
 // Any recent Chromium headless shell; the default is the one Playwright installs.
 const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
 const FPS = 60;
+
+// The retime: the spot's time t shows the edit at warp(t), so a section stretched 1.5x plays its
+// footage, camera and type at two-thirds speed.
+// NOWARP=1 renders the edit's own timeline (for comp/motion_schedule.py).
+const WARP = JSON.parse(fs.readFileSync(path.join(__dirname, 'warp.json'), 'utf8'));
+function warp(t) {
+  if (process.env.NOWARP === '1') return t;
+  const p = WARP.points;
+  if (t <= p[0][1]) return p[0][0];
+  for (let i = 1; i < p.length; i++) {
+    if (t <= p[i][1]) return p[i - 1][0] + ((t - p[i - 1][1]) / (p[i][1] - p[i - 1][1])) * (p[i][0] - p[i - 1][0]);
+  }
+  return p[p.length - 1][0];
+}
 
 function serve() {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
@@ -84,7 +99,7 @@ async function open() {
 }
 
 async function shot(cdp, t, format = 'png') {
-  await cdp.evaluate(`window.render(${t})`);
+  await cdp.evaluate(`window.render(${warp(t)})`);
   const { data } = await cdp.send('Page.captureScreenshot', { format, quality: format === 'jpeg' ? 95 : undefined, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } });
   return Buffer.from(data, 'base64');
 }
@@ -120,16 +135,23 @@ async function shot(cdp, t, format = 'png') {
       await new Promise((r) => ff.on('close', r));
     } else if (mode === 'mb') {
       const OUT_FPS = 30;
-      const { samples } = JSON.parse(fs.readFileSync(path.join(__dirname, 'samples.json'), 'utf8'));
-      // Floors: the zoom through the '0' (edges move 100-230 px per 1/60 s at its peak) and the hero
-      // swoop out of it, which changed after the schedule was measured.
+      // Samples per frame: the edit's measured motion (comp/samples.json, px per 1/60 s of the edit)
+      // over this frame's shutter, slowed by the retime, at no more than ~3 px between samples.
+      const { motion60 } = JSON.parse(fs.readFileSync(path.join(__dirname, 'samples.json'), 'utf8'));
+      const CHOICES = [2, 3, 4, 6, 12];
+      // Floors in edit time: the zoom through the '0' (edges move 100-230 px per 1/60 s at its peak)
+      // and the hero swoop out of it, which changed after the motion was measured.
       const floors = [[9.55, 9.75, 12], [9.75, 9.92, 48], [10.0, 10.4, 6]];
       const k0 = Math.round(Number(a) * OUT_FPS);
       const k1 = Math.round(Number(b) * OUT_FPS);
       const count = (k) => {
-        const tk = k / OUT_FPS;
-        let n = samples[k] || 2;
-        for (const [f0, f1, m] of floors) if (tk >= f0 && tk < f1) n = Math.max(n, m);
+        const e0 = warp(k / OUT_FPS);
+        const e1 = warp(k / OUT_FPS + 0.5 / OUT_FPS);
+        let px = 0;
+        for (let i = Math.floor(e0 * 60); i <= Math.ceil(e1 * 60); i++) px = Math.max(px, motion60[i] || 0);
+        px *= (e1 - e0) * 60; // the edit's motion per 1/60 s, over this shutter's span of edit time
+        let n = CHOICES.find((c) => c >= px / 3) || CHOICES[CHOICES.length - 1];
+        for (const [f0, f1, m] of floors) if (e0 >= f0 && e0 < f1) n = Math.max(n, m);
         return n;
       };
       // Every output frame is SLOTS equal-weight inputs; its N renders fill them SLOTS/N times each.

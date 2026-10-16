@@ -13,12 +13,12 @@ SH = os.path.join(REV, 'sheets')
 os.makedirs(FR, exist_ok=True)
 os.makedirs(SH, exist_ok=True)
 
-SHOTS = [
-    ('01-open', 0, 4), ('02-reveal', 4, 8), ('03-title', 8, 10), ('04-hero', 10, 12),
-    ('05-cards', 12, 14), ('06-status', 14, 16), ('07-pages', 16, 18), ('08-icons', 18, 20),
-    ('09-themes', 20, 24), ('10-halloween', 24, 28), ('11-holidays', 28, 32),
-    ('12-palette', 32, 36), ('13-settings', 36, 40), ('14-sync', 40, 44), ('15-pins', 44, 46),
-    ('16-omarchy', 46, 48), ('17-rapid', 48, 52), ('18-finale', 52, 56), ('19-end', 56, 62),
+SHOTS = [  # spot time (after the comp/warp.json retime)
+    ('01-open', 0, 4), ('02-reveal', 4, 8), ('03-title', 8, 10), ('04-hero', 10, 14),
+    ('05-cards', 14, 17), ('06-status', 17, 20), ('07-pages', 20, 23), ('08-icons', 23, 26),
+    ('09-themes', 26, 32), ('10-halloween', 32, 36), ('11-holidays', 36, 44),
+    ('12-palette', 44, 50), ('13-settings', 50, 56), ('14-sync', 56, 62), ('15-pins', 62, 65),
+    ('16-omarchy', 65, 68), ('17-rapid', 68, 76), ('18-finale', 76, 80), ('19-end', 80, 86),
 ]
 
 src = os.path.join(OUT, sys.argv[1] if len(sys.argv) > 1 else 'master.mkv')
