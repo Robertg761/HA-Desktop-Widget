@@ -122,8 +122,9 @@ async function shot(cdp, t, format = 'png') {
       const OUT_FPS = 30;
       const SLOTS = 12; // every output frame is SLOTS equal-weight inputs; N renders fill them 12/N times each
       const { samples } = JSON.parse(fs.readFileSync(path.join(__dirname, 'samples.json'), 'utf8'));
-      // Floors where the cut changed after the schedule was measured (the hero swoop out of the '0').
-      const floors = [[9.6, 10.3, 6]];
+      // Floors: the zoom through the '0' (edges move 100-150 px per 1/60 s) and the hero swoop out of
+      // it, which changed after the schedule was measured.
+      const floors = [[9.55, 10.0, 12], [10.0, 10.4, 6]];
       const out = c;
       const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(OUT_FPS * SLOTS), '-c:v', 'mjpeg', '-i', '-',
         '-vf', `tmix=frames=${SLOTS},select='eq(mod(n\\,${SLOTS})\\,${SLOTS - 1})',setpts=N/${OUT_FPS}/TB`,
