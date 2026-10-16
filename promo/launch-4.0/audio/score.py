@@ -178,7 +178,7 @@ fxs.add(8.0 - 1.0, reverse_crash(1.0), 0.5)
 fxs.add(46.0, riser(1.95, 400, 9000), 0.6)
 fxs.add(48.0 - 1.2, reverse_crash(1.2), 0.5)
 fxs.add(50.0, fade_tail(riser(1.6, 500, 10000, pitch=False), 40), 0.45)
-fxs.add(52.0 - 0.3, reverse_crash(0.3), 0.6)
+fxs.add(52.0 - 0.5, reverse_crash(0.5), 0.6)  # swells through the drums' breath on 51.5
 fxs.add(24.0 - 1.0, reverse_crash(1.0), 0.45)
 
 # ------------------------------------------------------------------ pad
@@ -304,17 +304,8 @@ sc = sidechain_curve(kick_times)
 for tr, d in ((pad, 1.0), (bass, 0.85), (arp, 0.6), (lead, 0.35)):
     tr.buf *= (1 - d * (1 - sc))[None]
 
-# Silence gap before the drop (7.75-8.0) and before the finale (51.6-52.0), except fx
-def gap(t0, t1, tracks, fade=0.02):
-    i, j = n(t0), n(t1)
-    for tr in tracks:
-        ramp = np.linspace(1, 0, n(fade))
-        tr.buf[:, i : i + len(ramp)] *= ramp
-        tr.buf[:, i + len(ramp) : j] = 0
-
-
-gap(7.78, 8.0, [pad, arp, drums, bells, bass])
-gap(51.62, 52.0, [pad, arp, drums, bass, lead])
+# No silence gaps: the music runs into the 8.0 and 52.0 hits, carried by the risers and reverse
+# crashes (muting every stem a fraction of a beat early read as a glitch, not a break).
 
 # ------------------------------------------------------------------ buses
 f32 = lambda x: x.astype(np.float32)
@@ -333,21 +324,6 @@ lead_m = bus(lead.buf, pb.HighpassFilter(200), pb.Delay(delay_seconds=0.375, fee
 bells_m = bus(bells.buf, pb.HighpassFilter(300), pb.Delay(delay_seconds=0.25, feedback=0.3, mix=0.2), pb.Reverb(room_size=0.9, damping=0.3, wet_level=0.45, dry_level=0.75, width=1.0))
 fx_m = bus(fxs.buf, pb.HighpassFilter(25), pb.Reverb(room_size=0.9, wet_level=0.3, dry_level=0.85, width=1.0))
 
-def gate(x, t0, t1, fade=0.015):
-    i, j, k = n(t0), n(t1), n(fade)
-    x = x.copy()
-    x[:, i : i + k] *= np.linspace(1, 0, k)[None]
-    x[:, i + k : j - k] = 0
-    x[:, j - k : j] *= np.linspace(0, 1, k)[None]
-    return x
-
-
-for name in ('drums_m', 'bass_m', 'pad_m', 'arp_m', 'lead_m', 'bells_m'):
-    v = globals()[name]
-    v = gate(v, 7.78, 7.99)
-    v = gate(v, 51.62, 51.99)
-    globals()[name] = v
-fx_m = gate(fx_m, 7.72, 7.8)  # the riser stops a beat early; the reverse crash then carries the gap
 imp_m = bus(imp.buf, pb.HighpassFilter(22), pb.Reverb(room_size=0.9, wet_level=0.28, dry_level=0.9, width=1.0))
 
 stems = {

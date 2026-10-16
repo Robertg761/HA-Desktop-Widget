@@ -91,7 +91,7 @@ for it in range(6):
     pre_db += np.clip(-14.0 - L, -4, 4) * 0.9
 print(f'final LUFS {meter.integrated_loudness(y.T):.1f}  peak {20*np.log10(np.abs(y).max()):.2f} dBFS')
 gaps = {g: rms_db(y, g, 0.18) for g in (7.80, 51.66)}
-print('gap rms', {k: round(v, 1) for k, v in gaps.items()}, 'vs groove', round(np.mean([rms_db(y, b - 0.4, 0.18) for b in BEATS]), 1))
+print('rms just before the hits', {k: round(v, 1) for k, v in gaps.items()}, 'vs groove', round(np.mean([rms_db(y, b - 0.4, 0.18) for b in BEATS]), 1))
 print('drop step: 7.0-7.7', round(meter.integrated_loudness(y[:, int(7.0*SR):int(7.7*SR)].T) if False else rms_db(y, 7.0, 0.7), 1), ' 8.0-9.0', round(rms_db(y, 8.0, 1.0), 1))
 name = 'soundtrack.wav' if '--no-sfx' not in sys.argv else 'music_master.wav'
 sf.write(os.path.join(OUT, name), y.T, SR, subtype='PCM_24')
