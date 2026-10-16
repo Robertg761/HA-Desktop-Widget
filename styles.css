@@ -15912,24 +15912,12 @@ body.density-compact #quick-controls {
   padding-bottom: 8px;
 }
 
-/* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
-   own names run to 40-90 characters, and three or four wrapped lines pushed both out of the
-   fixed-height tile. The tooltip carries the whole name. Compact tiles have room for one line. */
+/* A tile always shows its whole name: names that share a beginning ("Robert's Room Lamp",
+   "Robert's Room Fan") cannot be told apart once they are cut, so a long name wraps and the tile
+   grows to fit it (tiles only have a minimum height). A long word without spaces, such as an
+   entity id, wraps anywhere instead of running out of the tile. */
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
   overflow-wrap: anywhere;
-}
-
-body.density-compact
-  #quick-controls
-  .control-item:not(.comparison-graph-tile):not(.media-player-entity)
-  .control-name {
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
 }
 
 /* One line for the state or value as well. */
