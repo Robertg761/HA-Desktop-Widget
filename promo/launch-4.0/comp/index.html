@@ -45,9 +45,10 @@
     font: 600 26px/1 'Jakarta'; letter-spacing: -0.01em; color: #fff; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
   .pill b { width: 10px; height: 10px; border-radius: 50%; background: #64b5f6; box-shadow: 0 0 12px #64b5f6; }
 
-  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; mix-blend-mode: screen; }
+  /* Black and flash sit above the scenes (each scene has its own z-index); the vignette stays on the background. */
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; mix-blend-mode: screen; z-index: 101; }
   .vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
-  .black { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+  .black { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 100; }
   .glow { position: absolute; border-radius: 50%; pointer-events: none; mix-blend-mode: screen; }
 
   /* Keycaps */

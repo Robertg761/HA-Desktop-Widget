@@ -1,4 +1,4 @@
-"""Frames every 0.25 s from out/master60.mkv and labelled contact sheets per shot, for review."""
+"""Frames every 0.25 s from the master (out/master.mkv) and labelled contact sheets per shot, for review."""
 import os
 import subprocess
 import sys
@@ -21,10 +21,14 @@ SHOTS = [
     ('16-omarchy', 46, 48), ('17-rapid', 48, 52), ('18-finale', 52, 56), ('19-end', 56, 62),
 ]
 
-src = os.path.join(OUT, sys.argv[1] if len(sys.argv) > 1 else 'master60.mkv')
+src = os.path.join(OUT, sys.argv[1] if len(sys.argv) > 1 else 'master.mkv')
 tmp = os.path.join(REV, 'raw')
 os.makedirs(tmp, exist_ok=True)
-subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', src, '-vf', 'fps=4', os.path.join(tmp, '%04d.png')], check=True)
+fps = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', src], capture_output=True, text=True, check=True).stdout.strip()
+rate = round(eval(fps))
+# Pick frames by index (the first frame at or after each quarter second), so labels match the master.
+sel = f"select='lt(mod(n*4\\,{rate})\\,4)'"
+subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', src, '-vf', sel, '-fps_mode', 'passthrough', os.path.join(tmp, '%04d.png')], check=True)
 names = sorted(f for f in os.listdir(tmp) if f.endswith('.png'))
 for i, f in enumerate(names):
     t = i * 0.25

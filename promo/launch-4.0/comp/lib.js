@@ -163,7 +163,9 @@ class AppWin {
     else css(this.glare, { display: 'block', left: `${lerp(-60, 130, u)}%` });
   }
   /** Draw the recorded cursor (footage `dir` at `ft`), with a press ripple after clicks. */
-  showCursor(dir, ft, visible = 1) {
+  /** `lead` (s) starts the press and ring that much before the recorded click, for footage where
+   *  the app has already changed by the frame that carries the click mark. */
+  showCursor(dir, ft, visible = 1, lead = 0) {
     const fr = trackAt(dir, ft);
     if (!fr || visible <= 0) {
       css(this.cursor, { display: 'none' });
@@ -172,7 +174,8 @@ class AppWin {
     }
     const { x, y } = fr.mouse;
     // press: scale down briefly around click marks
-    const ct = lastMarkBefore(dir, 'click', ft);
+    const ct0 = lastMarkBefore(dir, 'click', ft + lead);
+    const ct = ct0 == null ? null : ct0 - lead;
     const since = ct == null ? 99 : ft - ct;
     const press = since >= 0 && since < 0.18 ? 1 - 0.12 * Math.sin((since / 0.18) * Math.PI) : 1;
     css(this.cursor, {

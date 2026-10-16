@@ -85,11 +85,11 @@ tr.add(34.55, dim, 1.0)
 swish(34.85, 0.5, 300, 2500, 0.18, -1)
 # Settings: gear, search field, typing "theme", the result
 swish(35.98, 0.4, 500, 4000, 0.18, 1)
-mouse(36.45)
-mouse(37.25)
+mouse(36.37)
+mouse(37.17)
 for k in range(5):
     key(37.45 + k * 0.12, 0.45 + 0.1 * (k % 2))
-mouse(38.75)
+mouse(38.67)
 swish(38.78, 0.4, 600, 5000, 0.16, -1)
 # Cloud Sync
 swish(39.98, 0.5, 300, 4000, 0.25, 1)

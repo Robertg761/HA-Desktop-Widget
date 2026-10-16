@@ -23,18 +23,20 @@ Re-render it with the steps below.
 2. **Picture** (`comp/`). `comp/index.html` is a deterministic compositor: `render(t)` places the
    footage in a 3D camera over a generated mesh-gradient background, with a real blur behind the
    glass, kinetic type, cursor, keycaps, devices and the end card. `comp/render.cjs` drives
-   headless Chromium frame by frame. `comp/final.sh` renders in parallel, blends 60 fps to
-   30 fps (two-frame motion blur), grades, adds grain and muxes the soundtrack.
+   headless Chromium frame by frame. For motion blur, each 30 fps frame averages 2 to 12 renders
+   spread across a 180° shutter, as many as `comp/samples.json` asks for at that moment
+   (`comp/motion_schedule.py` measures the motion in a plain 60 fps pass). `comp/finish.sh`
+   converts to BT.709, grades with a contrast curve that keeps legal black and white, adds grain
+   and muxes the soundtrack.
 3. **Sound** (`audio/`). `audio/score.py` writes the score (120 BPM, Bm–G–D–A) with the synths
    in `audio/engine.py`; `audio/sfx.py` places switch clicks, keys, whooshes and pops on the
-   picture's events; `audio/mix.py` balances and masters to −13.5 LUFS.
+   picture's events; `audio/mix.py` balances and masters to about −14 LUFS, with the impacts on a stem of their own.
 
 ## Render
 
 Linux, Node 22, Python 3 with `numpy scipy pedalboard soundfile pyloudnorm`, `ffmpeg`, `xvfb`,
-`libfaketime`, `gnome-keyring` and `dbus-x11` (so the app finds a Secret Service and shows no
-keyring warning), and a Chromium headless shell for the compositor (`CHROME=…`, Playwright's by
-default).
+`gnome-keyring` and `dbus-x11` (so the app finds a Secret Service and shows no keyring warning),
+and a Chromium headless shell for the compositor (`CHROME=…`, Playwright's by default).
 
 ```sh
 npm ci && npm run build:renderer           # from the repository root
@@ -43,26 +45,32 @@ python3 assets/make-assets.py              # album art, porch camera frames, fon
 
 # Footage. Later takes replace earlier ones of the same name, so keep this order.
 shots/run.sh open hero status pages themes holidays palette settings rapid pins icons
-shots/run.sh camlive hotkeys graph
-XVFB_SCREEN=3200x4800 shots/run.sh halloweentall   # a 500x1500 window at 3x needs a tall screen
+shots/run.sh camlive hotkeys exportfiles
+# Halloween and Christmas use a 500x2200 window, so the moon and the sleigh's lane sit below the
+# tiles; at 3x that needs a tall screen. Only the top 800 px, all the camera sees, is captured.
+XVFB_SCREEN=3200x7000 shots/run.sh halloweentall christmastall
 
 # Sound
 python3 audio/score.py && python3 audio/sfx.py && python3 audio/mix.py
 
-# Picture: resumable 4 s chunks, then blend, grade, grain and mux
+# Picture: resumable 4 s chunks with motion blur, then grade, grain and mux
 comp/render_chunks.sh out/seg 4
 SEG_DIR=out/seg comp/finish.sh             # → out/HA-Desktop-Widget-4.0.mp4
 ```
+
+`comp/samples.json` is checked in. After changing camera moves, measure them again from a plain
+60 fps pass: `MODE=video comp/render_chunks.sh out/seg60 4`, join the chunks into one file and run
+`python3 comp/motion_schedule.py <that file>`.
 
 `shots/run.sh` runs each take under Xvfb in its own D-Bus session with an unlocked keyring. A few
 capture-only accommodations, none of which change what the app draws:
 
 - Seasonal takes keep the app's `software-rendering` class off. On a CPU-only capture machine the
   app holds holiday art still to save power; the spot shows it as it runs on a GPU.
-- The graph take runs the app under `libfaketime` at the spot's date, so the history it fetches
-  before virtual time takes over belongs to the same day.
 - The Settings take shows `http://homeassistant.local:8123` in the address field; the mock itself
   listens on a loopback port.
+- The live camera take reports the camera as `streaming` and clears keyboard focus after
+  pressing Live, so no focus ring is left on a toolbar button.
 - `comp/review_prep.py` writes a frame every 0.25 s and per-shot contact sheets for review.
 
 The porch camera image is derived from a CC0 photo on Wikimedia Commons

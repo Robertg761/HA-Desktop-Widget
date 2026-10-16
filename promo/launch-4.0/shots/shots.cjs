@@ -247,11 +247,12 @@ const MORE = {
   async holidays() {
     const list = [
       ['christmas', 'dark', 13, 5],
-      ['new-year', 'dark', 4.5, 3],
+      ['new-year', 'dark', 9, 3],
       ['lunar-new-year', 'dark', 4.5, 9],
       ['valentines', 'light', 3, 4],
       ['st-patricks', 'light', 3, 4],
-      ['easter', 'light', 11, 6],
+      // Dark, so the white bunny and pastel petals read (on the light theme they vanish).
+      ['easter', 'dark', 11, 6],
       ['thanksgiving', 'dark', 11, 8],
     ];
     const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
@@ -425,7 +426,13 @@ const MORE = {
 
   async camlive() {
     // A camera without a tile preview opens the viewer with Snapshot and Live.
-    const s = await begin({ config: { activeTabId: 'security', quickAccessTileOptions: {} } });
+    // The camera reports 'streaming', so the viewer's status line reads Streaming rather than Idle.
+    const s = await begin({
+      config: { activeTabId: 'security', quickAccessTileOptions: {} },
+      statesPatch: (states) => {
+        states.find((x) => x.entity_id === 'camera.porch').state = 'streaming';
+      },
+    });
     const liveShown = `(() => { const m = document.querySelector('.camera-modal'); const img = m && [...m.querySelectorAll('img')].find((i) => i.naturalWidth > 0 && /stream/.test(i.src)); return !!img; })()`;
     const waitLive = async () => {
       for (let k = 0; k < 60 && !(await s.ev(liveShown)); k++) await s.sleep(150);
@@ -434,6 +441,8 @@ const MORE = {
       .at(0.05, () => s.click(tileSel('camera.porch')))
       .at(0.55, () => s.click('.camera-modal #live-btn'))
       .at(0.6, waitLive)
+      // No keyboard focus ring left on a toolbar button.
+      .at(0.65, () => s.ev('document.activeElement?.blur?.()'))
       .at(0.7, waitLive);
     await rec(s, 'camera', 2.2, tl);
     console.log('live badge', await s.ev(`document.querySelector('.camera-modal')?.innerText.slice(0, 120)`));
@@ -459,13 +468,45 @@ const MORE = {
     await s.close();
   },
 
+  // 4.0's settings files (export, import, backups) for the rapid cuts; no focus ring left on the rail.
+  async exportfiles() {
+    const s = await begin({});
+    await s.click('#settings-btn');
+    await s.advance(300);
+    await s.click('#settings-modal .tab-link[data-tab="advanced"]');
+    await s.advance(900);
+    await s.sleep(300);
+    await s.ev(`document.getElementById('export-settings-file')?.scrollIntoView({ block: 'center' })`);
+    await s.ev('document.activeElement?.blur?.()');
+    await s.advance(600);
+    await s.sleep(200);
+    await rec(s, 'export', 0.8);
+    await s.close();
+  },
+
   async halloweentall() {
-    // A tall window puts the moon (12% down) clear of the tile row, so the witch crosses it.
-    const s = await begin({ seed: Number(process.env.SEED || 11), config: { ...SKY, windowSize: { width: 500, height: 1500 }, windowPosition: { x: 20, y: 20 } } });
+    // The moon sits 12% down the window. At 2200 tall that is below the tile row (which ends near
+    // y=188), so the whole moon shows and the witch, who flies the moon's lane, crosses it in the open.
+    const height = Number(process.env.HW_H || 2200);
+    const s = await begin({ seed: Number(process.env.SEED || 11), config: { ...SKY, windowSize: { width: 500, height }, windowPosition: { x: 20, y: 20 } } });
     await s.updateConfig(holidayCfg('halloween'));
     await s.sleep(1000);
     await s.advance(400);
+    s.clip = { x: 0, y: 0, width: 500, height: 800 }; // the camera never sees below this
     await rec(s, 'halloween', 12);
+    await s.close();
+  },
+
+  async christmastall() {
+    // The sleigh flies 10–25% down the window. At 2200 tall every such lane (220–550) is open sky
+    // below the tiles, where its arc no longer dips behind them.
+    const height = Number(process.env.XM_H || 2200);
+    const s = await begin({ seed: Number(process.env.SEED || 5), config: { ...SKY, windowSize: { width: 500, height }, windowPosition: { x: 20, y: 20 } } });
+    await s.updateConfig(holidayCfg('christmas'));
+    await s.sleep(1000);
+    await s.advance(400);
+    s.clip = { x: 0, y: 0, width: 500, height: 800 };
+    await rec(s, process.env.XM_NAME || 'holiday_christmas_tall', Number(process.env.XM_SECS || 13));
     await s.close();
   },
 

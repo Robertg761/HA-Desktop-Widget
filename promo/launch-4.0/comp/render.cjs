@@ -1,6 +1,8 @@
 // Render the spot. Usage:
 //   node render.cjs stills <t1,t2,...> <outDir>
 //   node render.cjs video <fromSec> <toSec> <out.mkv>   (60 fps, lossless-ish intermediate)
+//   node render.cjs mb <fromSec> <toSec> <out.mkv>      (30 fps with motion blur: each frame averages
+//     2–12 renders across a 180-degree shutter, as many as comp/samples.json asks for that frame)
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -112,6 +114,38 @@ async function shot(cdp, t, format = 'png') {
         if ((f - f0) % 60 === 0) {
           const el = (Date.now() - tStart) / 1000;
           console.log(`${out}: frame ${f - f0}/${f1 - f0} (${(el / Math.max(1, f - f0) * 1000).toFixed(0)} ms/frame)`);
+        }
+      }
+      ff.stdin.end();
+      await new Promise((r) => ff.on('close', r));
+    } else if (mode === 'mb') {
+      const OUT_FPS = 30;
+      const SLOTS = 12; // every output frame is SLOTS equal-weight inputs; N renders fill them 12/N times each
+      const { samples } = JSON.parse(fs.readFileSync(path.join(__dirname, 'samples.json'), 'utf8'));
+      // Floors where the cut changed after the schedule was measured (the hero swoop out of the '0').
+      const floors = [[9.6, 10.3, 6]];
+      const out = c;
+      const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(OUT_FPS * SLOTS), '-c:v', 'mjpeg', '-i', '-',
+        '-vf', `tmix=frames=${SLOTS},select='eq(mod(n\\,${SLOTS})\\,${SLOTS - 1})',setpts=N/${OUT_FPS}/TB`,
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '10', '-pix_fmt', 'yuv444p', '-r', String(OUT_FPS), out], { stdio: ['pipe', 'inherit', 'inherit'] });
+      const k0 = Math.round(Number(a) * OUT_FPS);
+      const k1 = Math.round(Number(b) * OUT_FPS);
+      const tStart = Date.now();
+      let renders = 0;
+      for (let k = k0; k < k1; k++) {
+        const tk = k / OUT_FPS;
+        let n = samples[k] || 2;
+        for (const [f0, f1, m] of floors) if (tk >= f0 && tk < f1) n = Math.max(n, m);
+        for (let j = 0; j < n; j++) {
+          const buf = await shot(cdp, tk + ((j + 0.5) / n) * (0.5 / OUT_FPS), 'jpeg');
+          renders += 1;
+          for (let r = 0; r < SLOTS / n; r++) {
+            if (!ff.stdin.write(buf)) await new Promise((res) => ff.stdin.once('drain', res));
+          }
+        }
+        if ((k - k0) % 30 === 0) {
+          const el = (Date.now() - tStart) / 1000;
+          console.log(`${out}: frame ${k - k0}/${k1 - k0}, ${renders} renders (${(el / Math.max(1, renders) * 1000).toFixed(0)} ms/render)`);
         }
       }
       ff.stdin.end();

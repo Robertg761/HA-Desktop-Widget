@@ -73,22 +73,26 @@ function syncLayers(win, { bloom = 0, bloomBlur = 10, bloomBright = 1.4, grade =
 function bokeh(root, discs) {
   const layer = el('div', '', root);
   css(layer, { position: 'absolute', inset: '0', pointerEvents: 'none' });
-  const els = discs.map(([x, y, r, color]) => {
+  // A 'hard' disc has a crisp lens-bokeh edge, so the frosted glass visibly diffuses it.
+  const els = discs.map(([x, y, r, color, hard]) => {
     const d = el('div', '', layer);
-    css(d, { position: 'absolute', left: px(x - r), top: px(y - r), width: px(2 * r), height: px(2 * r), borderRadius: '50%', background: `radial-gradient(circle, ${color} 0%, ${color} 38%, transparent 70%)`, opacity: '0.8' });
+    const fill = hard ? `radial-gradient(circle, ${color} 0%, ${color} 66%, transparent 69%)` : `radial-gradient(circle, ${color} 0%, ${color} 38%, transparent 70%)`;
+    css(d, { position: 'absolute', left: px(x - r), top: px(y - r), width: px(2 * r), height: px(2 * r), borderRadius: '50%', background: fill, opacity: hard ? '0.55' : '0.8' });
     return d;
   });
-  return (t) =>
+  const update = (t) =>
     els.forEach((d, i) => {
       const dx = Math.sin(t * 0.5 + i * 1.7) * 60;
       const dy = Math.cos(t * 0.43 + i * 2.3) * 40;
       css(d, { transform: `translate(${dx}px, ${dy}px)` });
     });
+  update.layer = layer;
+  return update;
 }
 
 function topbar(root, light = false) {
   const bar = el('div', 'topbar', root);
-  bar.innerHTML = `<span style="display:flex;gap:18px;align-items:center"><img src="assets/icon.png" width="18" height="18" style="border-radius:4px"> <span>Desktop</span></span><span>Fri Oct 30&nbsp;&nbsp;7:42 PM</span>`;
+  bar.innerHTML = `<span style="display:flex;gap:18px;align-items:center"><img src="assets/icon.png" width="18" height="18" style="border-radius:4px"> <span>HA Desktop Widget</span></span><span>Fri Oct 30&nbsp;&nbsp;7:42 PM</span>`;
   if (light) css(bar, { color: 'rgba(20,24,32,.85)', background: 'rgba(255,255,255,.35)' });
   return bar;
 }
@@ -107,8 +111,9 @@ zscene('open', 0, 8.0, 10, (root) => {
   const w = worldWin(root, { bloom: true, dof: true });
   const bar = topbar(root);
   const t1 = new Words(root, 'Your home.', 'h1', 132).at(1120, 455);
-  const t2a = new Words(root, 'Right on', 'h1', 112).at(150, 380);
-  const t2b = new Words(root, 'your desktop.', 'h1', 112).at(150, 500);
+  // 100px: 'your desktop.' ends near x=750, clear of the window as it slides in.
+  const t2a = new Words(root, 'Right on', 'h1', 100).at(110, 390);
+  const t2b = new Words(root, 'your desktop.', 'h1', 100).at(110, 500);
   return { ...w, bar, t1, t2a, t2b };
 }, (t, l, c) => {
   const { world, win } = c;
@@ -177,7 +182,7 @@ zscene('title', 8.0, 10.0, 30, (root) => {
   // Through the counter of the "0".
   css(c.box, { transform: `translate(${sx}px, ${sy}px) scale(${s})`, transformOrigin: '1150px 633px', opacity: String(1 - prog(t, 9.8, 9.95)) });
   const clear = 1 - prog(t, 9.45, 9.65);
-  FX.flash = Math.max(0, 1 - prog(t, 8.0, 8.32)) * 0.95;
+  FX.flash = 0.85 * (1 - prog(t, 8.0, 8.3)) ** 2.2;
   const su = prog(t, 8.0, 8.7);
   css(c.streak, { opacity: String((1 - su) * 1.0), transform: `scaleX(${0.4 + 1.2 * E.outExpo(su)}) scaleY(${1 - 0.6 * su})` });
   css(c.halo, { opacity: String(0.5 + 0.5 * (1 - prog(t, 8, 9))) });
@@ -198,17 +203,20 @@ zscene('title', 8.0, 10.0, 30, (root) => {
 
 // =================================================================== S4: hero (9.6–12)
 zscene('hero', 9.6, 12.0, 20, (root) => {
-  const glow = bokeh(root, [[990, 320, 230, 'rgba(77,208,225,.85)'], [1580, 760, 270, 'rgba(139,92,246,.85)'], [1260, 1010, 210, 'rgba(240,98,146,.8)'], [1600, 190, 170, 'rgba(100,181,246,.9)'], [900, 860, 150, 'rgba(255,183,77,.75)']]);
+  const glow = bokeh(root, [[990, 320, 150, 'rgba(77,208,225,.85)', true], [1580, 760, 270, 'rgba(139,92,246,.85)'], [1260, 1010, 210, 'rgba(240,98,146,.8)'], [1600, 190, 170, 'rgba(100,181,246,.9)'], [900, 860, 110, 'rgba(255,183,77,.75)', true]]);
   const w = worldWin(root, {});
   const a = new Words(root, 'Redesigned.', 'h1', 128).at(140, 360);
   const b = new Words(root, 'From the glass up.', 'h2', 62).at(146, 512);
   return { ...w, a, b, glow };
 }, (t, l, c) => {
   c.glow(t);
+  // The discs bloom in as the title zooms past, not in one frame behind the still title.
+  css(c.glow.layer, { opacity: String(E.inOutQuad(prog(t, 9.62, 9.92))) });
   c.win.frame('hero', 0.4 + (t - 9.6));
   css(c.win.root, { opacity: String(E.outCubic(prog(t, 9.78, 9.92))) });
+  // Starts inside the counter of the '0' (1150, 633), so the zoom-through lands in the window.
   const cm = camKF(t, [
-    [9.6, { fx: 250, fy: 330, zoom: 0.55, rx: 26, ry: -58, rz: 6, ax: 1500, ay: 760, z: -400 }, E.outExpo],
+    [9.6, { fx: 250, fy: 330, zoom: 0.35, rx: 26, ry: -58, rz: 6, ax: 1150, ay: 633, z: -400 }, E.outExpo],
     [10.95, { fx: 250, fy: 330, zoom: 1.26, rx: 5, ry: -15, rz: 0, ax: 1270, ay: 545, z: 0 }, E.lin],
     [12.0, { fx: 250, fy: 330, zoom: 1.33, rx: 4, ry: -11, rz: 0, ax: 1262, ay: 545, z: 0 }],
   ]);
@@ -288,7 +296,8 @@ zscene('icons', 18.0, 20.0, 20, (root) => {
   return { ...w, a };
 }, (t, l, c) => {
   const first = t < 19.0;
-  const ft = first ? t - 14.0 : t - 14.5;
+  // Footage 'open': Living room lights at 6.0, Ceiling fan at 6.5; both land on the beat (18.5, 19.5).
+  const ft = first ? t - 12.5 : t - 13.0;
   c.win.frame('open', ft);
   const ic = first ? G.icon(0, 0) : G.icon(2, 0);
   const u = first ? prog(t, 18, 19) : prog(t, 19, 20);
@@ -309,9 +318,11 @@ zscene('icons', 18.0, 20.0, 20, (root) => {
 // =================================================================== S9: themes + accents (20–24)
 zscene('themes', 20.0, 24.0, 20, (root) => {
   const w = worldWin(root, {});
-  const L = new Words(root, 'Light.', 'h1', 120).at(150, 300);
-  const D = new Words(root, 'Dark.', 'h1', 120).at(150, 430);
-  const A = new Words(root, 'Auto.', 'h1', 120).at(150, 560);
+  // A soft shadow keeps white type readable over the light-theme wipe.
+  const sh = { textShadow: '0 6px 36px rgba(0,0,0,.45)' };
+  const L = new Words(root, 'Light.', 'h1', 120, sh).at(150, 300);
+  const D = new Words(root, 'Dark.', 'h1', 120, sh).at(150, 430);
+  const A = new Words(root, 'Auto.', 'h1', 120, sh).at(150, 560);
   const col = new Words(root, 'Your *colors.*', 'h1', 120).at(150, 420);
   const dots = el('div', '', root);
   css(dots, { position: 'absolute', left: '156px', top: '590px', display: 'flex', gap: '22px' });
@@ -386,9 +397,11 @@ zscene('themes', 20.0, 24.0, 20, (root) => {
 });
 
 // =================================================================== S10: Halloween (24–28)
-const HALLOWEEN_FROM = 7.0; // footage seconds where the shot starts (witch crossing)
+// Footage: a 500x2200 window (the moon sits 12% down, clear of the tiles), captured down to y=800.
+// The witch crosses the moon at footage 9.8–10.1 s, so 26.5–26.8 s in the spot.
+const HALLOWEEN_FROM = 7.3;
 zscene('halloween', 24.0, 28.0, 20, (root) => {
-  const w = worldWin(root, { h: 1500 });
+  const w = worldWin(root, { h: 800 });
   const a = new Words(root, 'Seasonal', 'h1', 128).at(1800, 380, 'right');
   const b = new Words(root, 'themes.', 'h1', 128).at(1800, 520, 'right');
   const cap = new Words(root, 'Halloween', 'cap', 34).at(1800, 680, 'right');
@@ -396,8 +409,8 @@ zscene('halloween', 24.0, 28.0, 20, (root) => {
 }, (t, l, c) => {
   c.win.frame('halloween', HALLOWEEN_FROM + l);
   const cm = camKF(t, [
-    [24.0, { fx: 250, fy: 220, zoom: 1.9, rx: 3, ry: 12, ax: 640, ay: 520 }, E.lin],
-    [28.0, { fx: 262, fy: 208, zoom: 2.12, rx: 2, ry: 7, ax: 650, ay: 520 }],
+    [24.0, { fx: 250, fy: 232, zoom: 1.95, rx: 3, ry: 12, ax: 640, ay: 520 }, E.lin],
+    [28.0, { fx: 275, fy: 225, zoom: 2.25, rx: 2, ry: 7, ax: 650, ay: 520 }],
   ]);
   css(c.world, { transform: cam(cm) });
   FX.black = kf(t, [[24.0, 0.7], [24.25, 0]]);
@@ -412,14 +425,15 @@ zscene('halloween', 24.0, 28.0, 20, (root) => {
 const HOLIDAYS = [
   [28.0, 'holiday_new-year', PAL.newyear, 'New Year', 1.75, { fx: 220, fy: 270, zoom: 1.45 }],
   [28.5, 'holiday_lunar-new-year', PAL.lunar, 'Lunar New Year', 2.9, { fx: 280, fy: 320, zoom: 1.38 }],
-  [29.0, 'holiday_valentines', PAL.valentines, "Valentine's Day", 1.5, { fx: 250, fy: 320, zoom: 1.34 }],
-  [29.5, 'holiday_st-patricks', PAL.patricks, "St. Patrick's Day", 1.5, { fx: 250, fy: 370, zoom: 1.34 }],
+  [29.0, 'holiday_valentines', PAL.valentines, 'Valentine’s Day', 1.5, { fx: 250, fy: 320, zoom: 1.34 }],
+  [29.5, 'holiday_st-patricks', PAL.patricks, 'St. Patrick’s Day', 1.5, { fx: 250, fy: 370, zoom: 1.34 }],
   [30.0, 'holiday_easter', PAL.easter, 'Easter', 7.3, { fx: 240, fy: 355, zoom: 1.42 }],
   [30.5, 'holiday_thanksgiving', PAL.thanks, 'Thanksgiving', 9.4, { fx: 240, fy: 355, zoom: 1.42 }],
-  [31.0, 'holiday_christmas', PAL.christmas, 'Christmas', 6.5, { fx: 250, fy: 220, zoom: 1.55 }],
+  // A 500x2200 window captured down to y=800, so Santa's sleigh crosses open sky below the tiles.
+  [31.0, 'holiday_christmas_tall', PAL.christmas, 'Christmas', 5.5, { fx: 188, fy: 255, zoom: 1.9, h: 800 }],
 ];
 zscene('holidays', 28.0, 32.0, 20, (root) => {
-  const w = worldWin(root, {});
+  const w = worldWin(root, { bloom: true });
   const a = new Words(root, 'Eight holidays.', 'h1', 104).at(130, 360);
   const b = new Words(root, 'Built right in.', 'h2', 64).at(136, 490);
   const pill = el('div', 'pill', root, '<b></b><span></span>');
@@ -431,7 +445,10 @@ zscene('holidays', 28.0, 32.0, 20, (root) => {
   const [t0, dir, pal, name, from, view] = HOLIDAYS[k];
   const lt = t - t0;
   c.win.frame(dir, from + lt);
-  const light = /valentines|patricks|easter/.test(dir);
+  css(c.win.root, { height: px(view.h || 660) });
+  // A little bloom so New Year's fireworks register in half a second.
+  syncLayers(c.win, { bloom: dir === 'holiday_new-year' ? 0.4 : 0, bloomBlur: 5, bloomBright: 1.9 });
+  const light = /valentines|patricks/.test(dir);
   c.win.root.classList.toggle('light', light);
   const dur = k === HOLIDAYS.length - 1 ? 1.0 : 0.5;
   const u = E.outCubic(prog(lt, 0, dur));
@@ -505,9 +522,11 @@ zscene('settings', 36.0, 40.0, 20, (root) => {
 }, (t, l, c) => {
   const ft = t - 36.0;
   c.win.frame('settings', ft);
-  c.win.showCursor('settings', ft);
+  // The app swaps to Settings on the click frame itself, so the press starts 0.08 s ahead of it.
+  c.win.showCursor('settings', ft, 1, 0.08);
+  // Opens tight on the title bar: the tiles (back at their pre-palette values) stay out of frame.
   const cm = camKF(t, [
-    [36.0, { fx: 250, fy: 330, zoom: 1.3, rx: 3, ry: -10, ax: 1340, ay: 540 }, E.inOutCubic],
+    [36.0, { fx: 250, fy: 60, zoom: 2.2, rx: 3, ry: -10, ax: 1340, ay: 540 }, E.inOutCubic],
     [36.9, { fx: 280, fy: 200, zoom: 1.9, rx: 4, ry: -12, ax: 1340, ay: 520 }, E.lin],
     [38.5, { fx: 285, fy: 230, zoom: 1.95, rx: 4, ry: -11, ax: 1340, ay: 520 }, E.inOutCubic],
     [39.2, { fx: 290, fy: 300, zoom: 1.75, rx: 3, ry: -9, ax: 1340, ay: 530 }, E.lin],
@@ -590,7 +609,9 @@ zscene('sync', 40.0, 44.0, 20, (root) => {
     css(d.ring, { opacity: String(pu > 0 && pu < 1 ? Math.sin(pu * Math.PI) : 0) });
   });
   const orbit = prog(t, 40, 44);
-  css(c.rig, { transform: `rotateY(${lerp(-6, 6, orbit)}deg) rotateX(${lerp(8, 3, orbit)}deg) scale(${lerp(0.94, 1.08, E.inQuad(orbit))})` });
+  // The push lifts as it grows, so the laptop base stays clear of the subhead.
+  const push = E.inQuad(orbit);
+  css(c.rig, { transform: `rotateY(${lerp(-6, 6, orbit)}deg) rotateX(${lerp(8, 3, orbit)}deg) scale(${lerp(0.94, 1.04, push)}) translateY(${-40 * push}px)` });
   const beam = (b, t0, t1) => {
     const u = prog(t, t0, t1);
     const e = E.inOutCubic(u);
@@ -636,7 +657,7 @@ zscene('pins', 44.0, 46.0, 20, (root) => {
     css(rim, { position: 'absolute', inset: '0', borderRadius: '24px', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.14)' });
     return box;
   });
-  const a = new Words(root, 'Pin anything to your desktop.', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.5)' }).at(1300, 940, 'center');
+  const a = new Words(root, 'Your favorites, *pinned.*', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.5)' }).at(1300, 940, 'center');
   return { ...w, bar, pins, a };
 }, (t, l, c) => {
   c.win.frame('hero', 4.0 + l);
@@ -706,8 +727,9 @@ zscene('omarchy', 46.0, 48.0, 20, (root) => {
   css(panel, { position: 'absolute', right: '24px', top: '50px', width: '720px', borderRadius: '10px', background: '#16181f', boxShadow: '0 30px 80px rgba(0,0,0,.6), inset 0 0 0 1px rgba(122,162,247,.35)', padding: '20px', boxSizing: 'border-box', transformOrigin: '90% 0' });
   panel.innerHTML = omarchyPanelHtml();
   const cursor = el('div', 'cursor', box, CURSOR_SVG);
-  const a = new Words(root, 'Right in your', 'h1', 96, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(120, 760);
-  const b = new Words(root, '*Omarchy* *4* bar.', 'h1', 96, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(120, 870);
+  // 76px keeps 'Omarchy 4 bar.' (ends near x=635) clear of the terminal pane's border (~674).
+  const a = new Words(root, 'Right in your', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(96, 790);
+  const b = new Words(root, '*Omarchy* *4* bar.', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(96, 878);
   const shade = el('div', '', root);
   css(shade, { position: 'absolute', left: '0', top: '600px', width: '780px', height: '480px', background: 'linear-gradient(0deg, rgba(10,11,16,.85), rgba(10,11,16,0))', webkitMaskImage: 'linear-gradient(90deg, #000 60%, transparent 100%)', maskImage: 'linear-gradient(90deg, #000 60%, transparent 100%)' });
   root.appendChild(a.root);
@@ -759,10 +781,10 @@ function omarchyPanelHtml() {
 
 // =================================================================== S17: rapid fire (48–52)
 const RAPID = [
-  [48.0, 'camera', 1.35, PAL.night, 'Live camera view', { fx: 250, fy: 330, zoom: 2.5 }],
+  [48.0, 'camera', 1.35, PAL.night, 'Live camera view', { fx: 234, fy: 330, zoom: 2.5 }],
   [48.5, 'alarm', 2.1, PAL.rose, 'Alarm control', { fx: 250, fy: 230, zoom: 1.8 }],
   [49.0, 'notifications', 0.75, PAL.aurora, 'Home Assistant notifications', { fx: 250, fy: 300, zoom: 1.55 }],
-  [49.5, 'graph', 0.9, PAL.aqua, 'Comparison graphs', { fx: 250, fy: 360, zoom: 1.7 }],
+  [49.5, 'export', 0.3, PAL.aqua, 'Export & import settings', { fx: 265, fy: 330, zoom: 2.2 }],
   [50.0, 'lang', 0, PAL.violet, 'Speaks 7 languages', null],
   [50.5, 'hotkeys', 0.2, PAL.amber, 'Global hotkeys', { fx: 270, fy: 482, zoom: 3.0 }],
 ];
@@ -844,7 +866,7 @@ zscene('finale', 52.0, 56.0, 20, (root) => {
     const dx = (1 - pu) * 260 * p.side + (s - 1) * 600 * p.side;
     css(p.box, { transform: `translate(${dx}px, ${drift(t, i + 7, 8)}px) scale(${0.9 * s})`, opacity: String(clamp(pu * 1.5)) });
   });
-  FX.flash = Math.max(0, 0.6 - prog(t, 52.0, 52.3) * 0.6);
+  FX.flash = 0.5 * (1 - prog(t, 52.0, 52.3)) ** 2.2;
   c.a.show(t, 52.25, 53.6);
   c.b.show(t, 54.05, 55.75);
   return { bg: { pal: PAL.aurora, inten: 1, bright: 1.05, zoom: 1.5, off: [0.4 + l * 0.04, -0.1] } };
@@ -881,7 +903,7 @@ zscene('end', 56.0, 62.01, 30, (root) => {
   fade(c.l3, 57.25);
   fade(c.url, 57.7);
   css(c.fine, { opacity: String(E.inOutQuad(prog(t, 57.3, 57.9))) });
-  FX.flash = Math.max(0, 0.5 - prog(t, 56.0, 56.35) * 0.5);
+  FX.flash = 0.75 * (1 - prog(t, 56.0, 56.25)) ** 2.2;
   FX.black = E.inOutQuad(prog(t, 61.5, 62.0));
   return { bg: { pal: PAL.end, inten: 0.9, bright: 0.8, zoom: 1.3, off: [l * 0.03, 0] } };
 });

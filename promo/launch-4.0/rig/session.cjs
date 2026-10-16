@@ -199,8 +199,11 @@ function createContext({ cdp, server, app, profileDir, listTargets, dsf, haUrl }
       await ctx.pressKey(ch, { code, keyCode, text: ch });
     },
     insertText: (text) => cdp.send('Input.insertText', { text }),
+    // Optional { x, y, width, height } in CSS px: capture only that part of the window.
+    clip: null,
     async screenshot() {
-      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true });
+      const clip = ctx.clip ? { ...ctx.clip, scale: 1 } : undefined;
+      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, ...(clip ? { clip } : {}) });
       return Buffer.from(data, 'base64');
     },
     /**
