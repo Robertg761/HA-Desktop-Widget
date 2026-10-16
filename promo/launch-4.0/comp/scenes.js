@@ -496,7 +496,7 @@ zscene('palette', 32.0, 36.0, 20, (root) => {
   css(c.k1, { transform: `translateZ(${-30 * press(32.0)}px) scale(1.2)` });
   css(c.k2, { transform: `translateZ(${-30 * press(32.5)}px) scale(1.2)` });
   css(c.k1.querySelector('.cap-top'), { boxShadow: press(32.0) > 0.1 || t > 32.1 ? 'inset 0 2px 0 rgba(255,255,255,.18), inset 0 -10px 18px rgba(0,0,0,.35), 0 0 40px rgba(100,181,246,.55), 0 0 0 2px rgba(100,181,246,.7)' : '' });
-  css(c.k2.querySelector('.cap-top'), { boxShadow: t > 32.55 ? 'inset 0 2px 0 rgba(255,255,255,.18), inset 0 -10px 18px rgba(0,0,0,.35), 0 0 40px rgba(100,181,246,.55), 0 0 0 2px rgba(100,181,246,.7)' : '' });
+  css(c.k2.querySelector('.cap-top'), { boxShadow: press(32.5) > 0.1 || t > 32.6 ? 'inset 0 2px 0 rgba(255,255,255,.18), inset 0 -10px 18px rgba(0,0,0,.35), 0 0 40px rgba(100,181,246,.55), 0 0 0 2px rgba(100,181,246,.7)' : '' });
   // Window: blurred behind the keys, then the hero of the shot.
   const winIn = E.outCubic(prog(t, 32.85, 33.4));
   const cm = camKF(t, [
@@ -740,7 +740,7 @@ zscene('omarchy', 46.0, 48.0, 20, (root) => {
   const s = 1 + 0.42 * z + 0.04 * prog(t, 46, 48);
   css(c.box, { transform: `scale(${s})`, transformOrigin: '1880px 40px' });
   const p0 = { x: 1300, y: 400 };
-  const p1 = { x: 1777, y: 28 };
+  const p1 = { x: 1846, y: 20 }; // the Home Assistant icon, not the speaker beside it
   const mu = E.inOutCubic(prog(t, 46.05, 46.42));
   const press = prog(t, 46.48, 46.62);
   css(c.cursor, { display: 'block', transform: `translate(${lerp(p0.x, p1.x, mu)}px, ${lerp(p0.y, p1.y, mu)}px) scale(${press > 0 && press < 1 ? 0.88 : 1})` });
@@ -866,7 +866,7 @@ zscene('finale', 52.0, 56.0, 20, (root) => {
     const dx = (1 - pu) * 260 * p.side + (s - 1) * 600 * p.side;
     css(p.box, { transform: `translate(${dx}px, ${drift(t, i + 7, 8)}px) scale(${0.9 * s})`, opacity: String(clamp(pu * 1.5)) });
   });
-  FX.flash = 0.5 * (1 - prog(t, 52.0, 52.3)) ** 2.2;
+  FX.flash = 0.8 * (1 - prog(t, 52.0, 52.25)) ** 2.2;
   c.a.show(t, 52.25, 53.6);
   c.b.show(t, 54.05, 55.75);
   return { bg: { pal: PAL.aurora, inten: 1, bright: 1.05, zoom: 1.5, off: [0.4 + l * 0.04, -0.1] } };

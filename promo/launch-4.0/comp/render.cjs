@@ -120,23 +120,31 @@ async function shot(cdp, t, format = 'png') {
       await new Promise((r) => ff.on('close', r));
     } else if (mode === 'mb') {
       const OUT_FPS = 30;
-      const SLOTS = 12; // every output frame is SLOTS equal-weight inputs; N renders fill them 12/N times each
       const { samples } = JSON.parse(fs.readFileSync(path.join(__dirname, 'samples.json'), 'utf8'));
-      // Floors: the zoom through the '0' (edges move 100-150 px per 1/60 s) and the hero swoop out of
-      // it, which changed after the schedule was measured.
-      const floors = [[9.55, 10.0, 12], [10.0, 10.4, 6]];
+      // Floors: the zoom through the '0' (edges move 100-230 px per 1/60 s at its peak) and the hero
+      // swoop out of it, which changed after the schedule was measured.
+      const floors = [[9.55, 9.75, 12], [9.75, 9.92, 48], [10.0, 10.4, 6]];
+      const k0 = Math.round(Number(a) * OUT_FPS);
+      const k1 = Math.round(Number(b) * OUT_FPS);
+      const count = (k) => {
+        const tk = k / OUT_FPS;
+        let n = samples[k] || 2;
+        for (const [f0, f1, m] of floors) if (tk >= f0 && tk < f1) n = Math.max(n, m);
+        return n;
+      };
+      // Every output frame is SLOTS equal-weight inputs; its N renders fill them SLOTS/N times each.
+      const gcd = (x, y) => (y ? gcd(y, x % y) : x);
+      let SLOTS = 1;
+      for (let k = k0; k < k1; k++) SLOTS = (SLOTS * count(k)) / gcd(SLOTS, count(k));
       const out = c;
       const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(OUT_FPS * SLOTS), '-c:v', 'mjpeg', '-i', '-',
         '-vf', `tmix=frames=${SLOTS},select='eq(mod(n\\,${SLOTS})\\,${SLOTS - 1})',setpts=N/${OUT_FPS}/TB`,
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '10', '-pix_fmt', 'yuv444p', '-r', String(OUT_FPS), out], { stdio: ['pipe', 'inherit', 'inherit'] });
-      const k0 = Math.round(Number(a) * OUT_FPS);
-      const k1 = Math.round(Number(b) * OUT_FPS);
       const tStart = Date.now();
       let renders = 0;
       for (let k = k0; k < k1; k++) {
         const tk = k / OUT_FPS;
-        let n = samples[k] || 2;
-        for (const [f0, f1, m] of floors) if (tk >= f0 && tk < f1) n = Math.max(n, m);
+        const n = count(k);
         for (let j = 0; j < n; j++) {
           const buf = await shot(cdp, tk + ((j + 0.5) / n) * (0.5 / OUT_FPS), 'jpeg');
           renders += 1;

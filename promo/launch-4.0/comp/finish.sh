@@ -18,7 +18,7 @@ X="(clip(val,16,235)-16)/219"
 GRADE="lutyuv=y='16+219*($X-0.035*sin(2*PI*$X)/(2*PI))',eq=saturation=1.06"
 ffmpeg -y -loglevel error -i "$OUT/master.mkv" -i "$HERE/../audio/out/soundtrack.wav" \
   -filter_complex "[0:v]${PRE}scale=in_color_matrix=bt601:out_color_matrix=bt709:in_range=tv:out_range=tv,format=yuv444p,${GRADE},noise=alls=3:allf=t,format=yuv420p[v]" \
-  -map "[v]" -map 1:a -r 30 -c:v libx264 -preset slow -crf 20 -tune grain -x264-params aq-mode=3 -profile:v high \
+  -map "[v]" -map 1:a -r 30 -c:v libx264 -preset slow -crf 20 -tune grain -x264-params aq-mode=3 -profile:v high -level:v 4.1 \
   -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart \
   -c:a aac -b:a 320k -ar 48000 -shortest "$OUT/HA-Desktop-Widget-4.0.mp4"
 ls -la "$OUT/HA-Desktop-Widget-4.0.mp4"
