@@ -30,9 +30,11 @@ Re-render it with the steps below.
    at that moment needs (`comp/motion_schedule.py` measures it in a plain 60 fps pass of the edit
    and writes `comp/samples.json`). `comp/finish.sh` converts to BT.709, grades with a contrast
    curve that keeps legal black and white, adds grain and muxes the soundtrack.
-3. **Sound** (`audio/`). `audio/score.py` writes the score (120 BPM, Bm–G–D–A) with the synths
-   in `audio/engine.py`; `audio/sfx.py` places switch clicks, keys, whooshes and pops on the
-   picture's events through the same retime (`audio/warp.py`); `audio/mix.py` balances and
+3. **Sound** (`audio/`). The spot uses the `minimal` cue (`audio/options/minimal.py`: piano motif,
+   pulse, marimba, strings in the lift; E major on the 120 BPM grid of `audio/cues.py`), built from
+   the synths in `audio/engine.py` and `audio/instruments.py`. `audio/sfx.py` places switch
+   clicks, keys, pops and sparkles on the picture's events through the same retime
+   (`audio/warp.py`), with no whooshes on camera moves. `audio/master.py` mixes the two and
    masters to about −14 LUFS, with the impacts on a stem of their own.
 
 ## Render
@@ -54,7 +56,7 @@ shots/run.sh camlive hotkeys exportfiles
 XVFB_SCREEN=3200x7000 shots/run.sh halloweentall christmastall
 
 # Sound
-python3 audio/score.py && python3 audio/sfx.py && python3 audio/mix.py
+python3 audio/sfx.py && python3 audio/options/minimal.py && python3 audio/master.py minimal
 
 # Picture: resumable 4 s chunks with motion blur, then grade, grain and mux
 comp/render_chunks.sh out/seg 4
@@ -67,8 +69,9 @@ into one file and run `python3 comp/motion_schedule.py <that file>`.
 
 ## Soundtrack options
 
-Besides the original score (`audio/score.py`), four alternative cues fit the same 86 s edit on its
-120 BPM grid, each written against the cue sheet in `audio/cues.py`:
+Four cues fit the 86 s edit on its 120 BPM grid, each written against the cue sheet in
+`audio/cues.py`; the spot uses `minimal`. (`audio/score.py` and `audio/mix.py` are the first,
+EDM-style score.)
 
 | Option | Style |
 |---|---|
@@ -83,8 +86,8 @@ python3 audio/options/lofi.py && python3 audio/master.py lofi && python3 audio/c
 comp/preview.sh lofi                       # → out/previews/HA-Desktop-Widget-4.0_lofi.mp4 (720p)
 ```
 
-To use an option in the final file, copy `audio/out/soundtrack_<option>.wav` over
-`audio/out/soundtrack.wav` and run `comp/finish.sh`.
+`comp/finish.sh` muxes `audio/out/soundtrack_minimal.wav`; to try another cue in the final file,
+run it with `SOUNDTRACK=audio/out/soundtrack_<option>.wav`.
 
 `shots/run.sh` runs each take under Xvfb in its own D-Bus session with an unlocked keyring. A few
 capture-only accommodations, none of which change what the app draws:

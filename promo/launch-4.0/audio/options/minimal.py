@@ -15,7 +15,7 @@ octaves, wider stereo).
   features pulled back to piano and pulse; the music dims with the lights at 47.75, then the
            strings creep in
   hook     the main melody (piano in octaves) over the figure an octave lower, strings, violin
-           counter-line; bar 34 dips then climbs (riser, snap crescendo) into the rapid cuts
+           counter-line; bar 34 dips then climbs (snap crescendo, reversed piano) into the rapid cuts
   rapid    melody again, string/piano stabs on every cut; the drums breathe 75.5-76
   finale   the widest moment: strings in octaves, melody up high, four-on-the-floor
   end      piano/sub hit and a sustained E major chord; strings, pad and sub fade under the piano
@@ -30,7 +30,7 @@ import pedalboard as pb
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from engine import SR, crash, glow, hat, n, pan, sosfilt, Track  # noqa
 from instruments import marimba, glock, rim, shaker, snap, spiccato, strings, taiko  # noqa
-from inst_minimal import (air_pad, air_riser, celesta, hall, hall_ir, min_hit, piano, piano_chord,  # noqa
+from inst_minimal import (air_pad, celesta, hall, hall_ir, min_hit, piano, piano_chord,  # noqa
                           pingpong, pulse, reverse_swell, section, sleigh, soft_kick, sub, tick)
 from opt_common import bus, sidechain, track, write  # noqa
 import cues  # noqa
@@ -467,7 +467,8 @@ for t in cues.DROP_CUTS:
     pno_lh.add(t, piano_chord([r + 12, r + 24], 0.9, 0.42), 0.8)
     cel.add(t, celesta(sorted(C[ch]['shi'])[-1] + 24, 0.42), 0.5)  # a glint on the cut, high above
 
-# ------------------------------------------------------------------ swells, risers
+# ------------------------------------------------------------------ swells
+# Reversed piano swells build into the hits. No noise risers: the spot has no whooshes.
 IR_HALL = hall_ir(2.6, 0.022, 8500, 170, seed=5)
 IR_BIG = hall_ir(3.4, 0.03, 7000, 160, seed=9, width=1.2)
 IR_ROOM = hall_ir(0.7, 0.008, 9000, 200, seed=2)
@@ -479,13 +480,9 @@ def swell_into(t, notes, dur, g):
 
 
 swell_into(cues.DROP, [64, 68, 71, 76], 1.6, 0.36)
-fxs.add(cues.DROP - 2.0, air_riser(2.0, 600, 8000), 0.12)
 swell_into(at(29, 0), [64, 68, 71, 76], 1.4, 0.28)
-fxs.add(at(28, 0), air_riser(2.0, 500, 7000), 0.08)
 swell_into(at(35, 0), [64, 68, 71, 76, 80], 1.6, 0.36)
-fxs.add(at(34, 0), air_riser(2.0, 500, 9000), 0.3)
 swell_into(cues.FINALE, [64, 68, 71, 76, 80], 1.8, 0.42)
-fxs.add(cues.FINALE - 2.0, air_riser(2.0, 500, 10000), 0.16)
 swell_into(cues.ENDCARD, [64, 68, 71, 76], 1.2, 0.32)
 
 # ------------------------------------------------------------------ hits (impact stem)
