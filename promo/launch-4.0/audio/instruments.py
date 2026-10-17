@@ -93,8 +93,9 @@ def _karplus(f, total, bright=0.7, decay=0.996, seed_noise=None):
         cur = decay * 0.5 * (prev + shifted)
         out[p * L:(p + 1) * L] = cur
         prev = cur
-    # exact pitch: the loop plays at SR/L Hz; stretch to f
-    ratio = (SR / L) / f
+    # exact pitch: the two-tap average delays half a sample, so the loop plays at SR/(L + 0.5) Hz;
+    # stretch that to f
+    ratio = (SR / (L + 0.5)) / f
     idx = np.arange(N) / ratio
     y = np.interp(idx, np.arange(len(out)), out)
     return y

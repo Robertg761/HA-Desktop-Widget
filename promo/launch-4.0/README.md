@@ -65,6 +65,27 @@ SEG_DIR=out/seg comp/finish.sh             # → out/HA-Desktop-Widget-4.0.mp4
 60 fps pass of the edit: `NOWARP=1 MODE=video comp/render_chunks.sh out/seg60 4`, join the chunks
 into one file and run `python3 comp/motion_schedule.py <that file>`.
 
+## Soundtrack options
+
+Besides the original score (`audio/score.py`), four alternative cues fit the same 86 s edit on its
+120 BPM grid, each written against the cue sheet in `audio/cues.py`:
+
+| Option | Style |
+|---|---|
+| `cinematic` | Hybrid orchestral: spiccato strings, horns, choir, taiko; D major |
+| `indie` | Feel-good indie pop: strummed acoustic guitars, stomp and claps, whistle hook; G major |
+| `lofi` | Lo-fi chillhop: Rhodes, half-time boom-bap, vibes, vinyl; F major |
+| `minimal` | Modern minimal: piano motif, pulse, marimba, strings in the lift; E major |
+
+```sh
+python3 audio/sfx.py                       # the shared UI sounds
+python3 audio/options/lofi.py && python3 audio/master.py lofi && python3 audio/check_option.py lofi
+comp/preview.sh lofi                       # → out/previews/HA-Desktop-Widget-4.0_lofi.mp4 (720p)
+```
+
+To use an option in the final file, copy `audio/out/soundtrack_<option>.wav` over
+`audio/out/soundtrack.wav` and run `comp/finish.sh`.
+
 `shots/run.sh` runs each take under Xvfb in its own D-Bus session with an unlocked keyring. A few
 capture-only accommodations, none of which change what the app draws:
 
