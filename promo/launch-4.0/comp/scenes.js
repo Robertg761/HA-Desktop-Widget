@@ -141,7 +141,7 @@ zscene('open', 0, 8.0, 10, (root) => {
   css(c.bar, { opacity: String(E.inOutQuad(prog(t, 6.4, 7.6))) });
   c.t1.show(t, 2.0, 3.55, { stagger: 0.12, dur: 0.9 });
   c.t2a.show(t, 6.15, 7.45, { stagger: 0.08 });
-  c.t2b.show(t, 6.35, 7.5, { stagger: 0.08 });
+  c.t2b.show(t, 6.2, 7.5, { stagger: 0.08 }); // with line 1, so 'Right on' never reads alone
   FX.vig = 1;
   // The gap before the drop: dip to black.
   FX.black = kf(t, [[7.7, 0], [7.95, 0.85]]);
@@ -236,7 +236,7 @@ zscene('cards', 12.0, 14.0, 20, (root) => {
   const scrim = el('div', '', root);
   css(scrim, { position: 'absolute', left: '0', top: '700px', width: '1920px', height: '380px', background: 'linear-gradient(90deg, rgba(4,6,12,.88) 0px, rgba(4,6,12,.85) 680px, rgba(4,6,12,0) 1060px)', webkitMaskImage: 'linear-gradient(180deg, transparent 0, #000 60px)', maskImage: 'linear-gradient(180deg, transparent 0, #000 60px)' });
   const a = new Words(root, 'Frosted glass.', 'h1', 84, { textShadow: '0 4px 30px rgba(0,0,0,.5)' }).at(120, 800);
-  const b = new Words(root, 'Crisp new type.', 'h1', 84, { textShadow: '0 4px 30px rgba(0,0,0,.5)' }).at(120, 900);
+  const b = new Words(root, 'Crisp new font.', 'h1', 84, { textShadow: '0 4px 30px rgba(0,0,0,.5)' }).at(120, 900);
   return { ...w, a, b, glow };
 }, (t, l, c) => {
   c.glow(t);
@@ -256,8 +256,8 @@ zscene('cards', 12.0, 14.0, 20, (root) => {
 // =================================================================== S6: live status (14–16)
 zscene('status', 14.0, 16.0, 20, (root) => {
   const w = worldWin(root, {});
-  const a = new Words(root, 'Live status,', 'h1', 104).at(120, 400);
-  const b = new Words(root, 'at a glance.', 'h1', 104).at(120, 520);
+  const a = new Words(root, 'Live status', 'h1', 104).at(120, 400);
+  const b = new Words(root, 'on every tile.', 'h1', 104).at(120, 520);
   return { ...w, a, b };
 }, (t, l, c) => {
   c.win.frame('status', l);
@@ -274,8 +274,8 @@ zscene('status', 14.0, 16.0, 20, (root) => {
 // =================================================================== S7: pages / motion (16–18)
 zscene('pages', 16.0, 18.0, 20, (root) => {
   const w = worldWin(root, {});
-  const a = new Words(root, 'Motion that', 'h1', 104).at(1810, 400, 'right');
-  const b = new Words(root, 'feels right.', 'h1', 104).at(1810, 520, 'right');
+  const a = new Words(root, 'Smooth from', 'h1', 104).at(1810, 400, 'right');
+  const b = new Words(root, 'page to page.', 'h1', 104).at(1810, 520, 'right');
   return { ...w, a, b };
 }, (t, l, c) => {
   const ft = t - 16.05;
@@ -294,7 +294,7 @@ zscene('pages', 16.0, 18.0, 20, (root) => {
 // =================================================================== S8: icons glow (18–20)
 zscene('icons', 18.0, 20.0, 20, (root) => {
   const w = worldWin(root, { bloom: true, dof: true, noGlass: true });
-  const a = new Words(root, 'Line icons that *glow.*', 'h1', 110, { textShadow: '0 6px 40px rgba(0,0,0,.6)' }).at(960, 830, 'center');
+  const a = new Words(root, 'Icons that *glow.*', 'h1', 110, { textShadow: '0 6px 40px rgba(0,0,0,.6)' }).at(960, 830, 'center');
   return { ...w, a };
 }, (t, l, c) => {
   const first = t < 19.0;
@@ -406,7 +406,10 @@ zscene('halloween', 24.0, 28.0, 20, (root) => {
   const w = worldWin(root, { h: 800 });
   const a = new Words(root, 'Seasonal', 'h1', 128).at(1800, 380, 'right');
   const b = new Words(root, 'themes.', 'h1', 128).at(1800, 520, 'right');
-  const cap = new Words(root, 'Halloween', 'cap', 34).at(1800, 680, 'right');
+  // The same chip as the other seven holidays, so 'Eight holidays' adds up.
+  const cap = el('div', 'pill', root, '<b></b><span>Halloween</span>');
+  css(cap, { right: '120px', top: '660px', fontSize: '34px', padding: '16px 28px 16px 22px' });
+  css(cap.querySelector('b'), { background: hexOf(PAL.halloween[3]), boxShadow: `0 0 14px ${hexOf(PAL.halloween[3])}` });
   return { ...w, a, b, cap };
 }, (t, l, c) => {
   c.win.frame('halloween', HALLOWEEN_FROM + l);
@@ -418,7 +421,8 @@ zscene('halloween', 24.0, 28.0, 20, (root) => {
   FX.black = kf(t, [[24.0, 0.7], [24.25, 0]]);
   c.a.show(t, 24.35, 27.75);
   c.b.show(t, 24.55, 27.8);
-  c.cap.show(t, 25.0, 27.7);
+  const cu = E.outExpo(prog(t, 25.0, 25.25));
+  css(c.cap, { opacity: String(cu * (1 - prog(t, 27.7, 27.9))), transform: `translateY(${(1 - cu) * 16}px)` });
   return { bg: { pal: PAL.halloween, inten: 1, bright: 0.85, zoom: 1.6, off: [0.2, -0.5] } };
 });
 
@@ -481,8 +485,8 @@ zscene('palette', 32.0, 36.0, 20, (root) => {
   css(k1, { left: '500px', top: '395px', transform: 'scale(1.2)' });
   css(plus, { left: '930px', top: '450px', fontSize: '120px', color: 'rgba(255,255,255,.6)' });
   css(k2, { left: '1090px', top: '395px' });
-  const a = new Words(root, 'Anything.', 'h1', 112).at(130, 380);
-  const b = new Words(root, 'One shortcut away.', 'h2', 64).at(136, 520);
+  const a = new Words(root, 'Type it.', 'h1', 112).at(130, 380);
+  const b = new Words(root, 'Done.', 'h2', 64).at(136, 520);
   return { ...w, kb, k1, k2, plus, a, b };
 }, (t, l, c) => {
   const ft = t - 32.2;
@@ -511,7 +515,7 @@ zscene('palette', 32.0, 36.0, 20, (root) => {
   css(c.world, { transform: cam(cm) });
   css(c.win.root, { filter: winIn < 1 ? `blur(${(1 - winIn) * 14}px) brightness(${0.5 + 0.5 * winIn})` : 'none' });
   c.a.show(t, 33.15, 35.75);
-  c.b.show(t, 33.45, 35.8, { stagger: 0.05 });
+  c.b.show(t, 34.5, 35.8); // 'Done.' as Enter runs the scene and the lights dim
   return { bg: { pal: PAL.aurora, inten: 1, bright: 0.85, zoom: 1.3, off: [-0.8, 0.4] } };
 });
 
@@ -593,8 +597,8 @@ zscene('sync', 40.0, 44.0, 20, (root) => {
     return { p, head, len };
   });
   const a = new Words(root, 'Cloud *Sync.*', 'h1', 100).at(960, 40, 'center');
-  const b = new Words(root, 'Every computer. In sync.', 'h2', 46).at(960, 948, 'center');
-  const note = el('div', 'pill', root, '<b></b><span>Optional subscription · Folder sync stays free</span>');
+  const b = new Words(root, 'Change one. The rest follow.', 'h2', 46).at(960, 948, 'center');
+  const note = el('div', 'pill', root, '<b></b><span>Optional subscription · Free sync with your own cloud drive</span>');
   css(note, { left: '960px', top: '1012px', fontSize: '24px', padding: '10px 22px 10px 18px' });
   return { rig, dev, cloud, beams, a, b, note };
 }, (t, l, c) => {
@@ -730,7 +734,7 @@ zscene('omarchy', 46.0, 48.0, 20, (root) => {
   panel.innerHTML = omarchyPanelHtml();
   const cursor = el('div', 'cursor', box, CURSOR_SVG);
   // 76px keeps 'Omarchy 4 bar.' (ends near x=635) clear of the terminal pane's border (~674).
-  const a = new Words(root, 'Right in your', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(96, 790);
+  const a = new Words(root, 'Now in the', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(96, 790);
   const b = new Words(root, '*Omarchy* *4* bar.', 'h1', 76, { textShadow: '0 6px 30px rgba(0,0,0,.6)' }).at(96, 878);
   const shade = el('div', '', root);
   css(shade, { position: 'absolute', left: '0', top: '600px', width: '780px', height: '480px', background: 'linear-gradient(0deg, rgba(10,11,16,.85), rgba(10,11,16,0))', webkitMaskImage: 'linear-gradient(90deg, #000 60%, transparent 100%)', maskImage: 'linear-gradient(90deg, #000 60%, transparent 100%)' });
@@ -889,7 +893,7 @@ zscene('end', 56.0, 62.01, 30, (root) => {
   css(l3, { left: '960px', top: '610px', fontSize: '32px', transform: 'translateX(-50%)', letterSpacing: '0.04em' });
   const url = el('div', 'pill', root, '<b></b><span>hadesktopwidget.com</span>');
   css(url, { left: '960px', top: '720px', fontSize: '36px', padding: '18px 34px 18px 26px' });
-  const fine = el('div', 'type cap', root, 'An independent project, not affiliated with or endorsed by Home Assistant or the Open Home Foundation.<br>Cloud Sync is an optional subscription. Folder sync is free.');
+  const fine = el('div', 'type cap', root, 'An independent project, not affiliated with or endorsed by Home Assistant or the Open Home Foundation.<br>Cloud Sync is an optional subscription. Syncing through your own cloud drive is free.');
   css(fine, { left: '960px', top: '948px', fontSize: '26px', lineHeight: '1.45', textAlign: 'center', transform: 'translateX(-50%)', color: 'rgba(215,225,240,.8)', letterSpacing: '0', fontWeight: '400' });
   return { halo, icon, word, l2, l3, url, fine };
 }, (t, l, c) => {
