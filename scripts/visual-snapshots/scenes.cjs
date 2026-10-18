@@ -3117,6 +3117,28 @@ const scenes = [
   },
   // The two number sensors with their value at the largest size, one of them under a name on two
   // lines: the tile grows, the line stays below the reading.
+  // The same long names while the tiles are edited: every tile shows its whole name and grows to fit
+  // it under the buttons, where a fixed edit-mode height used to clip the extra lines. Only the
+  // content is checked: while editing, a sensor's hidden icon lets its name sit higher by design.
+  {
+    name: 'layout-edge-edit',
+    size: DEFAULT_SIZE,
+    config: edgePage,
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its whole name and state');
+    },
+  },
+  {
+    name: 'layout-edge-compact-edit',
+    size: DEFAULT_SIZE,
+    ui: { density: 'compact' },
+    config: edgePage,
+    setup: async (ctx) => {
+      await toggleEditMode(ctx);
+      await ctx.expect(TILES_HOLD_THEIR_CONTENT, 'every tile holds its whole name and state');
+    },
+  },
   {
     name: 'layout-edge-sensor-sizes',
     size: DEFAULT_SIZE,
