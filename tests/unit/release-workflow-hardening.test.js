@@ -76,7 +76,7 @@ describe('release workflow hardening', () => {
     expect(notes).toContain('RELEASE_TAG: ${{ inputs.tag }}');
     expect(notes.split('run: |')[1]).not.toContain('${{');
     expect(notes).toContain(
-      'if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then'
+      'if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then'
     );
     expect(notes).toMatch(/ref: main/);
     expect(notes).toContain('node scripts/extract-release-notes.cjs "${RELEASE_TAG#v}"');
