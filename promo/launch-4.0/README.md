@@ -58,14 +58,18 @@ XVFB_SCREEN=3200x7000 shots/run.sh halloweentall christmastall
 # Sound
 python3 audio/sfx.py && python3 audio/options/minimal.py && python3 audio/master.py minimal
 
-# Picture: resumable 4 s chunks with motion blur, then grade, grain and mux
+# Picture: 4 s chunks with motion blur, then grade, grain and mux. Chunks already marked .done are
+# kept, so rerunning render_chunks.sh resumes an interrupted render; after changing anything the
+# picture uses, start again from an empty out/seg.
+rm -rf out/seg
 comp/render_chunks.sh out/seg 4
 SEG_DIR=out/seg comp/finish.sh             # → out/HA-Desktop-Widget-4.0.mp4
 ```
 
 `comp/samples.json` is checked in. After changing camera moves, measure them again from a plain
-60 fps pass of the edit: `NOWARP=1 MODE=video comp/render_chunks.sh out/seg60 4`, join the chunks
-into one file and run `python3 comp/motion_schedule.py <that file>`.
+60 fps pass of the edit: `rm -rf out/seg60 && NOWARP=1 MODE=video comp/render_chunks.sh out/seg60 4`,
+join the chunks into one file and run `python3 comp/motion_schedule.py <that file>`. Then render the
+picture again from an empty `out/seg`.
 
 ## Soundtrack options
 

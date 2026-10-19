@@ -1,6 +1,6 @@
 #!/bin/bash
-# Concatenate rendered segments (out/seg/seg_*.mkv, in name order), then grade, grain, convert to
-# BT.709 and mux.
+# Concatenate the rendered chunks (out/seg/seg_*.mkv from comp/render_chunks.sh), then grade,
+# grain, convert to BT.709 and mux.
 #   A 30 fps master (render.cjs mb) already carries its motion blur.
 #   A 60 fps master (render.cjs video) is blended two frames at a time, each pair inside one 1/30 s.
 set -euo pipefail
@@ -9,7 +9,15 @@ OUT="$HERE/../out"
 SEG="${SEG_DIR:-$OUT/seg}"
 # The soundtrack: audio/out/soundtrack_minimal.wav (audio/master.py minimal) unless SOUNDTRACK says otherwise.
 SOUNDTRACK="${SOUNDTRACK:-$HERE/../audio/out/soundtrack_minimal.wav}"
-ls "$SEG"/seg_*.mkv | sort | sed "s|^|file '|; s|$|'|" > "$SEG/list.txt"
+# Every chunk render_chunks.sh makes, in order, and only once it is done: a failed or interrupted
+# chunk can leave a short seg_*.mkv behind. Bare names, since ffmpeg reads them from list.txt's folder.
+DUR=$(node -p "const w = JSON.parse(require('fs').readFileSync('$HERE/warp.json')); process.env.NOWARP === '1' ? w.points[w.points.length - 1][0] : w.duration")
+: > "$SEG/list.txt"
+for i in $(seq 0 $(( (DUR + 3) / 4 - 1 ))); do
+  name=$(printf 'seg_%02d' "$i")
+  [ -f "$SEG/$name.done" ] || { echo "$SEG/$name is not done; run comp/render_chunks.sh $SEG again" >&2; exit 1; }
+  echo "file '$name.mkv'" >> "$SEG/list.txt"
+done
 ffmpeg -y -loglevel error -f concat -safe 0 -i "$SEG/list.txt" -c copy "$OUT/master.mkv"
 FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$OUT/master.mkv")
 PRE=""
