@@ -47,8 +47,11 @@ def camera():
     porch = os.path.join(HERE, 'porch.jpg')
     if not os.path.exists(porch):
         req = urllib.request.Request(PORCH_URL, headers={'User-Agent': 'HADW-promo/1.0'})
-        with urllib.request.urlopen(req) as r, open(porch, 'wb') as f:
-            f.write(r.read())
+        # Read it all before creating the file, so a cut-off download leaves nothing to reuse.
+        with urllib.request.urlopen(req) as r:
+            data = r.read()
+        with open(porch, 'wb') as f:
+            f.write(data)
     src = Image.open(porch).convert('RGB')
     crop = src.crop((0, 960, 1280, 1680)).resize((1280, 720), Image.LANCZOS)
     a = np.asarray(crop).astype(float) / 255

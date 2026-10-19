@@ -13,6 +13,7 @@ from engine import *  # noqa
 from warp import T, DURATION
 
 OUT = os.path.join(os.path.dirname(__file__), 'out')
+os.makedirs(OUT, exist_ok=True)
 DUR = DURATION + 1
 tr = Track(DUR)
 dry = Track(DUR)  # clicks and keys stay close and dry

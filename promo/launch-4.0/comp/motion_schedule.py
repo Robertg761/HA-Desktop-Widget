@@ -3,6 +3,7 @@
 Measures image motion between consecutive frames of a 60 fps master (per tile, by phase
 correlation, so zooms and partial moves count) and writes comp/samples.json: one sample count per
 output frame, chosen so neighbouring samples sit no more than ~3 px apart on the 1920 px frame.
+The master must cover the whole edit (comp/warp.json); otherwise samples.json is left as it is.
   python3 comp/motion_schedule.py out/master60.mkv
 """
 import json
@@ -27,6 +28,8 @@ def frames(src):
         if len(b) < n:
             break
         yield np.frombuffer(b, np.uint8).reshape(H, W).astype(np.float32)
+    if p.wait() != 0:
+        sys.exit(f'ffmpeg could not read {src}; samples.json is unchanged')
 
 
 def shift(a, b):
@@ -68,6 +71,11 @@ for f in frames(src):
         m60.append(motion(prev, f))
     prev = f
 m60.append(m60[-1] if m60 else 0.0)
+# One value per frame now. A short master (some chunks missing) would leave the rest of the spot at
+# minimum sampling.
+edit = json.load(open(os.path.join(HERE, 'warp.json')))['points'][-1][0]
+if prev is None or len(m60) != round(edit * 60):
+    sys.exit(f'{src} has {len(m60) if prev is not None else 0} frames; the {edit} s edit has {round(edit * 60)} at 60 fps. samples.json is unchanged')
 # Output frame k exposes 60 fps frames 2k..2k+1 (a 180-degree shutter at 30 fps).
 out = []
 for k in range(len(m60) // 2):

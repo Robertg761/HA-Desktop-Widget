@@ -516,14 +516,16 @@ const MORE = {
     const out = path.join(FOOTAGE, 'pins');
     fs.rmSync(out, { recursive: true, force: true });
     fs.mkdirSync(out, { recursive: true });
-    const { connectCdp } = require('../rig/session.cjs');
+    const { connectCdp, waitFor } = require('../rig/session.cjs');
+    // The spot shows all four pins, so a pin that fails or never opens fails the take.
     for (const id of list) {
       const r = await s.ev(`window.electronAPI.pinEntityToDesktop(${JSON.stringify(id)})`);
-      if (!r?.success) { console.warn('pin failed', id, r?.error); continue; }
+      if (!r?.success) throw new Error(`pin failed for ${id}: ${r?.error}`);
       await s.sleep(2500);
-      const targets = await s.listTargets();
-      const t = targets.find((e) => e.type === 'page' && e.url.includes('mode=desktop-pin') && decodeURIComponent(e.url).includes(`entityId=${id}`));
-      if (!t) { console.warn('no pin target', id); continue; }
+      const t = await waitFor(
+        async () => (await s.listTargets()).find((e) => e.type === 'page' && e.url.includes('mode=desktop-pin') && decodeURIComponent(e.url).includes(`entityId=${id}`)),
+        { label: `pin window for ${id}`, timeoutMs: 15000 },
+      );
       const pin = await connectCdp(t.webSocketDebuggerUrl);
       await s.sleep(800);
       const { data } = await pin.send('Page.captureScreenshot', { format: 'png' });
