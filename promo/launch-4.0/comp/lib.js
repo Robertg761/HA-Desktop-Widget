@@ -93,7 +93,12 @@ function setSrc(img, src) {
   if (img.__src === src) return;
   img.__src = src;
   img.src = src;
-  pendingDecodes.push(img.decode().catch(() => {}));
+  // A decode is also cancelled when src changes again before it ends; only the current src counts.
+  pendingDecodes.push(
+    img.decode().catch(() => {
+      if (img.__src === src) throw new Error(`Could not decode ${src}`);
+    }),
+  );
 }
 const TRACKS = {};
 async function loadTrack(dir) {

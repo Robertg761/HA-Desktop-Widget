@@ -44,13 +44,23 @@ function warp(t) {
   return p[p.length - 1][0];
 }
 
+// Files the page asked for that don't exist: a missing take, frame, pin, track or font. Any of them
+// fails the render, instead of a blank image in a chunk that then gets marked done.
+const missing = new Set();
+function checkMissing() {
+  if (missing.size) throw new Error(`Missing files: ${[...missing].slice(0, 5).join(', ')}${missing.size > 5 ? ', …' : ''}`);
+}
+
 function serve() {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
   const server = http.createServer((req, res) => {
     const p = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]));
     if (!p.startsWith(ROOT)) return res.writeHead(403).end();
     fs.readFile(p, (err, data) => {
-      if (err) return res.writeHead(404).end();
+      if (err) {
+        if (req.url !== '/favicon.ico') missing.add(req.url);
+        return res.writeHead(404).end();
+      }
       res.writeHead(200, { 'content-type': types[path.extname(p)] || 'application/octet-stream', 'cache-control': 'max-age=3600' });
       res.end(data);
     });
@@ -106,6 +116,9 @@ async function open() {
   await waitFor(() => cdp.evaluate(`document.readyState === 'complete' && !!window.compInit`), { label: 'comp page', timeoutMs: 20000 });
   await cdp.evaluate(`window.compInit(${JSON.stringify(manifest())})`);
   await cdp.evaluate(`document.fonts.ready.then(() => true)`);
+  // Images a scene sets up front (the pins) load with the page.
+  await cdp.evaluate(`Promise.all([...document.images].filter((i) => i.src).map((i) => i.decode().catch(() => null))).then(() => true)`);
+  checkMissing();
   const close = async () => {
     cdp.close();
     chrome.kill('SIGKILL');
@@ -124,6 +137,7 @@ function ffmpegDone(ff) {
 
 async function shot(cdp, t, format = 'png') {
   await cdp.evaluate(`window.render(${warp(t)})`);
+  checkMissing();
   const { data } = await cdp.send('Page.captureScreenshot', { format, quality: format === 'jpeg' ? 95 : undefined, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } });
   return Buffer.from(data, 'base64');
 }
