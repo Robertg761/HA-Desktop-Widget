@@ -19,10 +19,14 @@ chunk() {
   if node "$HERE/render.cjs" "$MODE" "$a" "$b" "$SEG/$name.mkv" > "$SEG/$name.log" 2>&1; then
     touch "$SEG/$name.done"
   else
-    echo "chunk $i failed" >&2
+    echo "chunk $i failed (see $SEG/$name.log)" >&2
+    return 1
   fi
 }
 export -f chunk
 export SEG HERE MODE DUR
+# xargs runs every chunk, then exits nonzero if any of them failed; so does this script.
 seq 0 $(( (DUR + 3) / 4 - 1 )) | xargs -P "$W" -I{} bash -c 'chunk {}'
-ls "$SEG"/*.done | wc -l
+status=$?
+ls "$SEG"/*.done 2>/dev/null | wc -l
+exit $status

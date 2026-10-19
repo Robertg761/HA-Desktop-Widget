@@ -56,9 +56,9 @@ function manifest() {
 
 async function open() {
   const server = await serve();
-  const port = 9600 + Math.floor(Math.random() * 300);
+  // Port 0: the OS picks a free port, so parallel workers never share one. Chromium prints it.
   const chrome = spawn(CHROME, [
-    `--remote-debugging-port=${port}`,
+    '--remote-debugging-port=0',
     '--no-sandbox',
     '--hide-scrollbars',
     '--force-device-scale-factor=1',
@@ -73,6 +73,7 @@ async function open() {
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   let errlog = '';
   chrome.stderr.on('data', (d) => (errlog += d));
+  const port = await waitFor(() => errlog.match(/DevTools listening on ws:\/\/[^/]+:(\d+)\//)?.[1], { label: 'chrome devtools port', timeoutMs: 20000 });
   const target = await waitFor(async () => {
     const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
     return list.find((e) => e.type === 'page');

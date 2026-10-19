@@ -551,6 +551,7 @@ Object.assign(SHOTS, MORE);
 
 (async () => {
   const names = process.argv.slice(2);
+  const failed = [];
   for (const name of names) {
     if (!SHOTS[name]) throw new Error(`No shot ${name}`);
     const t0 = Date.now();
@@ -559,6 +560,7 @@ Object.assign(SHOTS, MORE);
       await SHOTS[name]();
     } catch (error) {
       console.error(`!! ${name} failed:`, error);
+      failed.push(name);
       // Never leave this batch's app running: the next shot would attach to it.
       try {
         require('child_process').execSync(`pkill -9 -f "[r]emote-debugging-port=${process.env.CDP_PORT || 9444}"`);
@@ -567,5 +569,7 @@ Object.assign(SHOTS, MORE);
     }
     console.log(`== ${name} done in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
-  process.exit(0);
+  // Keep going past a failed shot, but report it and exit nonzero, so run.sh fails too.
+  if (failed.length) console.error(`!! failed: ${failed.join(' ')}`);
+  process.exit(failed.length ? 1 : 0);
 })();
