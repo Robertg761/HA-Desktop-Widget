@@ -21,7 +21,8 @@ done
 ffmpeg -y -loglevel error -f concat -safe 0 -i "$SEG/list.txt" -c copy "$OUT/master.mkv"
 FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$OUT/master.mkv")
 PRE=""
-[ "$FPS" = "60/1" ] && PRE="tmix=frames=2:weights='1 1',select='not(mod(n\,2))',setpts=N/(30*TB),"
+# tmix's first output is frame 0 alone, so its odd outputs are the pairs (0,1), (2,3), ...
+[ "$FPS" = "60/1" ] && PRE="tmix=frames=2:weights='1 1',select='mod(n\,2)',setpts=N/(30*TB),"
 # The renders are BT.601 (Chromium's JPEG); players assume BT.709 for HD, so convert and tag it.
 # Contrast is an S-curve on luma that keeps black at 16 and white at 235 (slope 1.035 at mid-grey).
 X="(clip(val,16,235)-16)/219"
