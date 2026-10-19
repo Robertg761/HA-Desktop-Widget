@@ -7,12 +7,27 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const { connectCdp, waitFor, sleep } = require('../rig/session.cjs');
 
 const ROOT = path.join(__dirname, '..');
-// Any recent Chromium headless shell; the default is the one Playwright installs.
-const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
+// Any recent Chromium headless shell: CHROME, or else the newest one Playwright has installed
+// (npx playwright install chromium-headless-shell).
+function findChrome() {
+  if (process.env.CHROME) return process.env.CHROME;
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, path.join(os.homedir(), '.cache', 'ms-playwright')].filter(Boolean);
+  for (const root of roots) {
+    const dirs = fs.existsSync(root) ? fs.readdirSync(root).filter((d) => /^chromium_headless_shell-\d+$/.test(d)) : [];
+    dirs.sort((x, y) => Number(y.split('-')[1]) - Number(x.split('-')[1]));
+    for (const d of dirs) {
+      for (const bin of ['chrome-linux/headless_shell', 'chrome-headless-shell-linux64/chrome-headless-shell']) {
+        if (fs.existsSync(path.join(root, d, bin))) return path.join(root, d, bin);
+      }
+    }
+  }
+  throw new Error('No Chromium headless shell found: set CHROME, or run npx playwright install chromium-headless-shell');
+}
 const FPS = 60;
 
 // The retime: the spot's time t shows the edit at warp(t), so a section stretched 1.5x plays its
@@ -57,7 +72,7 @@ function manifest() {
 async function open() {
   const server = await serve();
   // Port 0: the OS picks a free port, so parallel workers never share one. Chromium prints it.
-  const chrome = spawn(CHROME, [
+  const chrome = spawn(findChrome(), [
     '--remote-debugging-port=0',
     '--no-sandbox',
     '--hide-scrollbars',

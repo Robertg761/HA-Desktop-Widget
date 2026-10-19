@@ -41,7 +41,8 @@ Re-render it with the steps below.
 
 Linux, Node 22, Python 3 with `numpy scipy pillow pedalboard soundfile pyloudnorm`, `ffmpeg`, `xvfb`,
 `gnome-keyring` and `dbus-x11` (so the app finds a Secret Service and shows no keyring warning),
-and a Chromium headless shell for the compositor (`CHROME=…`, Playwright's by default).
+and a Chromium headless shell for the compositor: set `CHROME` to one, or install Playwright's with
+`npx playwright install chromium-headless-shell` and `comp/render.cjs` finds it.
 
 ```sh
 npm ci && npm run build:renderer           # from the repository root

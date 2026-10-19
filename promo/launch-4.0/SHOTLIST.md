@@ -1,7 +1,8 @@
 # HA Desktop Widget 4.0 — launch spot (86 s)
 
-Tempo 120 BPM, 4/4. 1 beat = 0.5 s, 1 bar = 2 s. Key D major / B minor, progression Bm–G–D–A
-(each section starts again on Bm), resolving to D on the end card. The edit was cut at 62 s and
+Tempo 120 BPM, 4/4. 1 beat = 0.5 s, 1 bar = 2 s. The spot uses the minimal cue
+(`audio/options/minimal.py`): E major, looping E–B/D#–C#m7–A, a minor turn (C#m9–Am6) for
+Halloween, and a sustained E major chord on the end card. The edit was cut at 62 s and
 retimed to 86 s (`comp/warp.json`): each section is a whole number of beats, most shots run 1.5x,
 the holiday and rapid montages 2x. Picture 1920x1080, 30 fps, with motion blur from 2 to 48 renders per frame
 across a 180° shutter.
