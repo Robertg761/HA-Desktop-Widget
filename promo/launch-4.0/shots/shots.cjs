@@ -435,7 +435,11 @@ const MORE = {
     });
     const liveShown = `(() => { const m = document.querySelector('.camera-modal'); const img = m && [...m.querySelectorAll('img')].find((i) => i.naturalWidth > 0 && /stream/.test(i.src)); return !!img; })()`;
     const waitLive = async () => {
-      for (let k = 0; k < 60 && !(await s.ev(liveShown)); k++) await s.sleep(150);
+      for (let k = 0; k < 60; k++) {
+        if (await s.ev(liveShown)) return;
+        await s.sleep(150);
+      }
+      throw new Error('the live camera image never loaded');
     };
     const tl = timeline(s)
       .at(0.05, () => s.click(tileSel('camera.porch')))

@@ -115,6 +115,8 @@ async function shot(cdp, t, format = 'png') {
 
 (async () => {
   const [mode, a, b, c] = process.argv.slice(2);
+  // An unknown mode would render nothing and still exit 0, and render_chunks.sh would mark it done.
+  if (!['stills', 'video', 'mb'].includes(mode)) throw new Error(`Unknown mode ${mode}: use stills, video or mb`);
   const { cdp, close } = await open();
   try {
     if (mode === 'stills') {
