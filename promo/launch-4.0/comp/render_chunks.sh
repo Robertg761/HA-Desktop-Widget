@@ -8,6 +8,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SEG="$1"
 W="${2:-4}"
 MODE="${MODE:-mb}"
+# Chunks are video; render.cjs's stills mode would read the chunk times as a list and a folder.
+case "$MODE" in mb | video) ;; *) echo "MODE must be mb or video, not $MODE" >&2; exit 2 ;; esac
 # The spot's length, or the edit's with NOWARP=1.
 DUR=$(node -p "const w = JSON.parse(require('fs').readFileSync('$HERE/warp.json')); process.env.NOWARP === '1' ? w.points[w.points.length - 1][0] : w.duration")
 mkdir -p "$SEG"
