@@ -98,6 +98,14 @@ async function open() {
   return { cdp, close };
 }
 
+// Fail when ffmpeg does (a full disk, a muxer that cannot write the trailer), so a broken chunk is
+// never marked done.
+function ffmpegDone(ff) {
+  return new Promise((resolve, reject) =>
+    ff.on('close', (code, signal) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited with ${signal || code}`)))),
+  );
+}
+
 async function shot(cdp, t, format = 'png') {
   await cdp.evaluate(`window.render(${warp(t)})`);
   const { data } = await cdp.send('Page.captureScreenshot', { format, quality: format === 'jpeg' ? 95 : undefined, clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } });
@@ -132,7 +140,7 @@ async function shot(cdp, t, format = 'png') {
         }
       }
       ff.stdin.end();
-      await new Promise((r) => ff.on('close', r));
+      await ffmpegDone(ff);
     } else if (mode === 'mb') {
       const OUT_FPS = 30;
       // Samples per frame: the edit's measured motion (comp/samples.json, px per 1/60 s of the edit)
@@ -180,7 +188,7 @@ async function shot(cdp, t, format = 'png') {
         }
       }
       ff.stdin.end();
-      await new Promise((r) => ff.on('close', r));
+      await ffmpegDone(ff);
     }
   } finally {
     await close();
