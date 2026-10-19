@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.0.0] - Unreleased
+## [4.0.0] - 2026-10-19
 
 ### Added
 
-- Add an opt-in anonymous install count so the project can see how many people use the app. It is off by default. Turn on Settings → Updates → Count this install and the app sends a random install ID, its version, and the OS family once a day, and nothing else. `DO_NOT_TRACK=1` stops it even when the setting is on.
+- Add an opt-in anonymous install count so the project can see how many people use the app. It is off by default. Turn on Settings → Advanced → Count this install and the app sends a random install ID, its version, and the OS family once a day, and nothing else. `DO_NOT_TRACK=1` stops it even when the setting is on.
 - Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
 - Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
 - Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.
@@ -147,7 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep sensor charts clear of the reading and draw them with a uniform line, and keep a sensor with a long history fast: tile charts draw at most 240 points and still show spikes.
 - Keep the climate, media, light, fan, and cover pop-ups open and in place when their entity changes, without replaying the opening animation or moving focus: they follow the entity through deletion, and a slider shows the value the device settled on after a drag.
 - Show the comparison graph's hover tooltip beside the pointer with the crosshair exactly under it, and show every graph's latest values when two report at once.
-- Keep tile names, states, and readings readable: names stop at two lines with the full name as a tooltip, a long reading shrinks before it is cut, and tiles in a row start at one height.
+- Keep tile names, states, and readings readable: a tile always shows its whole name, wrapping it and growing to fit in every layout, including compact, a long reading shrinks before it is cut, and tiles in a row start at one height.
 - Fix the Omarchy bar panel: a tile named like markup shows as typed, one changed reading updates one tile, a stopped widget shows as stopped within seconds instead of "Connected", and the panel scrolls to the highlighted tile and has keyboard controls. Its text is translated.
 - Close open device dialogs when the interface language changes, and show the update button and status in the new language.
 

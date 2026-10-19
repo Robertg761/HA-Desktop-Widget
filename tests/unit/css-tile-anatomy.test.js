@@ -93,15 +93,15 @@ describe('Quick Access tile anatomy', () => {
       expect(resolvedValue(document.querySelector('.control-item'), 'min-height')).toBe('78px');
     });
 
-    it('keeps the fixed row height while the tiles are being edited, with the buttons above the icon', () => {
+    it('keeps the row height as a floor while the tiles are being edited, with the buttons above the icon', () => {
+      // A floor, not a fixed height: a long name grows the tile instead of being clipped by it.
       render('', grid(tile(), 'reorganize-mode'));
       const item = document.querySelector('.control-item');
-      expect(resolvedValue(item, 'height')).toBe('104px');
-      // A row a taller media tile has made deeper still takes the tile to its foot.
-      expect(resolvedValue(item, 'min-height')).toBe('100%');
+      expect(resolvedValue(item, 'height')).toBe('auto');
+      expect(resolvedValue(item, 'min-height')).toBe('104px');
       expect(resolvedValue(item.querySelector('.control-info'), 'padding-top')).toBe('0px');
       render('density-compact', grid(tile(), 'reorganize-mode'));
-      expect(resolvedValue(document.querySelector('.control-item'), 'height')).toBe('96px');
+      expect(resolvedValue(document.querySelector('.control-item'), 'min-height')).toBe('96px');
     });
 
     it('does not let a name on two lines above a state line grow a tile past the floor', () => {
@@ -370,6 +370,14 @@ describe('Quick Access tile anatomy', () => {
         <div class="camera-tile-copy"><div class="control-name"></div>
           <div class="control-state camera-tile-preview-status"></div></div>
       </div>`;
+
+    it('shows the whole camera name in the caption of a tile showing a picture', () => {
+      render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
+      const name = document.querySelector('.camera-tile-copy .control-name');
+      expect(resolvedValue(name, 'white-space')).not.toBe('nowrap');
+      expect(resolvedValue(name, 'text-overflow')).not.toBe('ellipsis');
+      expect(resolvedValue(name, 'overflow-wrap')).toBe('anywhere');
+    });
 
     it('keeps the caption of a tile showing a picture at its foot, on the scrim', () => {
       render('', grid(cameraTile("data-camera-preview-has-frame='true'")));
