@@ -563,8 +563,6 @@ We welcome contributions! Here's how you can help:
 
 HA Desktop Widget is independently developed and will remain free and open source. Sponsorship helps support ongoing development, maintenance, cross-platform testing, and other project expenses.
 
-Thank you to [DegenApeDev](https://github.com/DegenApeDev) for supporting this work.
-
 [Become a sponsor](https://github.com/sponsors/Robertg761) or see the [full sponsor list and recognition details](SPONSORS.md).
 
 ## License
