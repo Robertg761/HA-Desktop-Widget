@@ -204,11 +204,11 @@ HA-Desktop-Widget/
 │   ├── settings.js      # Settings modal
 │   └── ...              # Other modules
 ├── tests/               # Test files
-├── website/             # hadesktopwidget.com (published by hand, see below)
+├── website/             # hadesktopwidget.com (published by the release, see below)
 └── dist/                # Build output (generated)
 ```
 
-The website in `website/` is not deployed by GitHub. A change merged to main goes live when someone publishes it with the Vercel CLI, from an export of main rather than a working folder (see "Release Channels" in the README for the commands; link `website/` once with `vercel link`). Afterwards the Website deploy check workflow, which always checks out main, confirms that the live pages, assets and headers match it.
+The website in `website/` goes live with each stable release: the release workflow runs the Website deploy workflow, which publishes `website/` from the release commit with the Vercel CLI and checks the live pages, assets and headers against it. A change merged to main between releases goes live when someone starts Website deploy from the Actions tab, which publishes main (see "Release Channels" in the README). The Website deploy check workflow compares the live site with main without publishing.
 
 ## 🎨 Design Guidelines
 

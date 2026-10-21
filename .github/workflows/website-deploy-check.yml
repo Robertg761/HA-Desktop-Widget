@@ -1,10 +1,9 @@
 name: Website deploy check
 
-# The website is not deployed by GitHub: it is published by hand with the Vercel CLI, from an export
-# of main's website/ (the commands are under "Release Channels" in the README). A change merged to
-# main is not live until someone does that. Run this after a deploy to compare every page, asset
-# and response header on the live site with the files on main. A failure means the deploy did not
-# happen, failed, or was made from something other than main's website/.
+# Compares every page, asset and response header on the live site with main's website/, without
+# publishing anything. The Website deploy workflow publishes the site (a stable release runs it from
+# the release commit) and makes the same comparison itself. A failure here means the live site is
+# not main's website/: main has website changes since the last deploy, or a deploy failed.
 
 on:
   workflow_dispatch:

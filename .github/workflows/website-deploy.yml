@@ -1,0 +1,62 @@
+name: Website deploy
+
+# Publishes website/ to hadesktopwidget.com with the Vercel CLI, then compares the live site with
+# the files it published. A stable release runs it once the GitHub release is out, from the release
+# commit, so the site goes live with the version it describes and its download links already find
+# that release. Start it from the Actions tab to publish main's website/ between releases.
+#
+# Needs the VERCEL_TOKEN repository secret: a Vercel access token with access to the
+# ha-desktop-widget project. The organization and project IDs below are not secret.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit whose website/ to publish
+        required: true
+        type: string
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: team_x1SyEPIryEghBSkkwoXSTIZ2
+      VERCEL_PROJECT_ID: prj_lror00xw7CGHtZbbfiEPmopsihF8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # A manual run publishes main, whichever branch it was started from.
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Publish website/ to production
+        working-directory: website
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "The VERCEL_TOKEN repository secret is not set." >&2
+            exit 1
+          fi
+          npx --yes vercel@62.0.0 deploy --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Compare the deployed site with website/
+        run: node scripts/check-website-deploy.cjs --wait 300

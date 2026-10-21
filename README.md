@@ -341,7 +341,7 @@ cannot start while a copy of the widget is already running — quit that one fir
 
 ### Release Channels
 
-- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
+- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release and then the website. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
 - **Tester prereleases**: Push a SemVer prerelease tag like `v4.1.0-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings → Advanced are offered these builds.
 - **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
 - **Manual-update builds**: Portable, macOS, and Linux deb users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
@@ -361,27 +361,14 @@ changelog has one; otherwise GitHub generates its notes from merged pull request
 the previous published prerelease in the same version series (or the latest stable release for the
 first beta).
 
-The website in `website/` is not deployed by GitHub: a change merged to `main` goes live only when
-someone publishes it with the Vercel CLI, usually before a release is tagged, so every line on it
-has to read correctly on both sides of the release. Publish exactly what `main` holds, not a local
-folder that may be stale or have uncommitted edits:
-
-```bash
-(
-  set -euo pipefail # any failed step, a fetch included, stops before the deploy
-  git fetch origin
-  rm -rf /tmp/ha-site # one command a line: set -e ignores a failure on the left of &&
-  mkdir -p /tmp/ha-site
-  git archive origin/main website | tar -x -C /tmp/ha-site # exactly what main holds
-  cp -r website/.vercel /tmp/ha-site/website/              # the link `vercel link` made
-  cd /tmp/ha-site/website
-  vercel deploy --prod
-)
-```
-
-Then run the Website deploy check workflow, which checks out `main` and compares every live page,
-asset and response header with it. (`node scripts/check-website-deploy.cjs` does the same against
-your own checkout, so it only proves anything on a clean, up-to-date `main`.)
+A stable release also publishes the website in `website/`: once the GitHub release is out, the
+release workflow runs the **Website deploy** workflow from the release commit, which publishes
+`website/` with the Vercel CLI and then checks that every live page, asset and response header
+matches it. It needs the `VERCEL_TOKEN` repository secret (a Vercel access token for the
+ha-desktop-widget project), and a stable release stops before building anything when the secret is
+missing. Prereleases leave the site alone. A website change merged to `main` between releases goes
+live when someone starts **Website deploy** from the Actions tab, which publishes `main`. The
+**Website deploy check** workflow compares the live site with `main` without publishing anything.
 
 ### Configuration
 

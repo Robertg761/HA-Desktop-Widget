@@ -74,6 +74,19 @@ jobs:
           Write-Host "Resolved release version $releaseVersion from tag $releaseTag"
           Write-Host "GitHub prerelease: $releasePrerelease"
 
+      - name: Verify the website can be published
+        # A stable release publishes the website after the GitHub release (deploy-website), so a
+        # missing token has to stop the release here, before anything is published without it.
+        if: steps.release_meta.outputs.release_prerelease != 'true'
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "Stable releases publish the website, and the VERCEL_TOKEN repository secret is not set." >&2
+            exit 1
+          fi
+
       - name: Verify tag commit is on main
         shell: bash
         env:
@@ -617,3 +630,14 @@ jobs:
           git add package.json package-lock.json
           git commit -m "chore: bump version to $RELEASE_VERSION"
           git push origin HEAD:main
+
+  deploy-website:
+    needs: [validate, publish-release]
+    if: needs.validate.outputs.release_prerelease != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/website-deploy.yml
+    with:
+      ref: ${{ needs.validate.outputs.release_sha }}
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

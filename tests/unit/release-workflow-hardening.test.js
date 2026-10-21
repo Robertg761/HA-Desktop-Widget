@@ -10,6 +10,7 @@ describe('release workflow hardening', () => {
   const release = readWorkflow('release.yml');
   const tagRelease = readWorkflow('tag-release.yml');
   const nightlyBeta = readWorkflow('nightly-beta.yml');
+  const websiteDeploy = readWorkflow('website-deploy.yml');
 
   test('keeps CI permissions minimal and packaged smoke launches bounded', () => {
     expect(ci).toMatch(/permissions:\s*\n\s+contents: read/);
@@ -36,7 +37,7 @@ describe('release workflow hardening', () => {
     expect(release).toContain('$expectedWorkflowRef = "refs/tags/$releaseTag"');
     expect(release).toContain('$env:WORKFLOW_REF -ne $expectedWorkflowRef');
     expect(release.match(/ref: \$\{\{ needs\.validate\.outputs\.release_sha \}\}/g)).toHaveLength(
-      5
+      6
     );
     expect(release).toContain('git merge-base --is-ancestor "$tag_sha" "$main_head"');
     expect(release).toContain('"refs/tags/$RELEASE_TAG^{commit}"');
@@ -68,5 +69,24 @@ describe('release workflow hardening', () => {
     );
     expect(release).toContain('notes_flags=(--generate-notes)');
     expect(release).toContain('Generating prerelease notes from $notes_start_tag to $RELEASE_TAG.');
+  });
+
+  test('publishes the website from the release commit after a stable release only', () => {
+    const job = release.slice(release.indexOf('  deploy-website:'));
+    expect(job).toContain('needs: [validate, publish-release]');
+    expect(job).toContain("if: needs.validate.outputs.release_prerelease != 'true'");
+    expect(job).toContain('uses: ./.github/workflows/website-deploy.yml');
+    expect(job).toContain('ref: ${{ needs.validate.outputs.release_sha }}');
+    expect(job).toContain('VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}');
+    // A missing token stops a stable release before anything is published.
+    expect(release.indexOf('Verify the website can be published')).toBeLessThan(
+      release.indexOf('  build:')
+    );
+
+    expect(websiteDeploy).toMatch(/permissions:\s*\n\s+contents: read/);
+    expect(websiteDeploy).toContain("ref: ${{ inputs.ref || 'main' }}");
+    expect(websiteDeploy).toContain('working-directory: website');
+    expect(websiteDeploy).toMatch(/npx --yes vercel@\d+\.\d+\.\d+ deploy --prod/);
+    expect(websiteDeploy).toContain('node scripts/check-website-deploy.cjs --wait 300');
   });
 });
