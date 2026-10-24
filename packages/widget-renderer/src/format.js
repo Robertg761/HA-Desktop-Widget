@@ -728,6 +728,42 @@ export function normalizeSearchText(value, { keepDots = false } = {}) {
     .trim();
 }
 
+// Fuzzy (in-order, gaps allowed) matching only helps with an abbreviation of a real word. With one
+// or two letters nearly every name has them somewhere, and over a long name any word does: "disarm"
+// scattered through "Upstairs hallway ceiling pendant light" is not a match. So it needs three letters
+// and a match that stays close together.
+const MIN_CLOSE_MATCH_QUERY_LENGTH = 3;
+
+/**
+ * How well a query's letters appear in order, close together, in a text: "ktn" in "kitchen", or
+ * "客厅灯" in "客厅吸顶灯", where a language without spaces leaves no word to match on its own.
+ * Both are already passed through normalizeSearchText. 0 when they do not match; otherwise
+ * higher the earlier and tighter the match.
+ * @param {string} text
+ * @param {string} query
+ * @returns {number}
+ */
+export function getCloseMatchScore(text, query) {
+  if (query.length < MIN_CLOSE_MATCH_QUERY_LENGTH) return 0;
+  let queryIndex = 0;
+  let firstMatch = -1;
+  let lastMatch = -1;
+
+  for (let textIndex = 0; textIndex < text.length && queryIndex < query.length; textIndex += 1) {
+    if (text[textIndex] !== query[queryIndex]) continue;
+    if (firstMatch === -1) firstMatch = textIndex;
+    lastMatch = textIndex;
+    queryIndex += 1;
+  }
+
+  if (queryIndex !== query.length) return 0;
+
+  const span = lastMatch - firstMatch + 1;
+  if (span > Math.max(query.length * 2, query.length + 4)) return 0;
+  const gaps = Math.max(0, span - query.length);
+  return Math.max(1, 400 - firstMatch - gaps);
+}
+
 const collatorCache = new Map();
 
 /**
