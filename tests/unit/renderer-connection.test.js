@@ -359,6 +359,35 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('does not log in with it when a retry after an outage comes due', async () => {
+      // Home Assistant was down longer than the token lives, so main's refresh could not run.
+      await loadRenderer({
+        config: oauthConfig({ oauthExpiresAt: Date.now() + 30 * 60 * 1000 }),
+        configureApi(api) {
+          api.refreshHomeAssistantOAuth.mockResolvedValue({
+            success: true,
+            oauthStatus: 'offline',
+          });
+        },
+      });
+      connectSuccessfully();
+      mockWebsocket.connect.mockClear();
+      triggerMockEvent('configUpdated', expiredConfig());
+      await flushAsync();
+
+      jest.useFakeTimers();
+      try {
+        mockWebsocket.emit('close', {});
+        jest.advanceTimersByTime(60 * 1000);
+      } finally {
+        jest.useRealTimers();
+      }
+      await flushAsync();
+
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+    });
+
     it('connects with a legacy token whatever its expiry says', async () => {
       await loadRenderer({ config: tokenConfig({ oauthExpiresAt: Date.now() - 1000 }) });
 
