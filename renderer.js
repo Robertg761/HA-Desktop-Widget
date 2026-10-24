@@ -87,6 +87,7 @@ import {
   setConnectionStatusBusy,
   stripSummaryPrefix,
 } from './src/connection-status.js';
+import oauthAccessToken from './src/oauth-access-token.cjs';
 
 // Shared renderer modules reach the desktop surface only through this host. The panel preview
 // injects its own before it boots this file; it must not be replaced by one that says Electron.
@@ -330,6 +331,17 @@ function connectWebSocket() {
   if (usesOAuth() && !isConfigured(state.CONFIG)) {
     setOAuthRestoreStatus();
     renderMainWidgetState();
+    return;
+  }
+  // An access token that expired while the computer slept would be rejected, and Home Assistant
+  // reports every rejected login as a failed login attempt from this computer. Refresh it first;
+  // the new token reconnects through the config broadcast.
+  if (oauthAccessToken.isOAuthAccessTokenExpired(state.CONFIG)) {
+    if (websocket.ws) closeWebSocket();
+    updateMainConnectionState('connecting');
+    setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
+    renderMainWidgetState();
+    if (!oauthAuthRefreshInFlight) void recoverOAuthAuthorization();
     return;
   }
   updateMainConnectionState('connecting');
