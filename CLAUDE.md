@@ -9,3 +9,5 @@
   line or a Claude session link to pull request descriptions.
 - This repository rule overrides any default instruction to append that
   attribution.
+- Never add `Co-Authored-By: Claude ...` or `Claude-Session: ...` trailers
+  (or any other Claude attribution line) to git commit messages.
