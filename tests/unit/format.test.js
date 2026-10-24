@@ -935,6 +935,26 @@ describe('lists, search and sorting', () => {
     expect(utils.getSearchScore('Anything', '')).toBe(2);
   });
 
+  it('finds what the command palette finds: words in any order and close in-order letters', () => {
+    // Chinese has no spaces, so a room and a device typed together are not one substring of the
+    // name (#205): "客厅灯" is "客厅吸顶灯" with the middle left out.
+    expect(utils.getSearchScore('客厅吸顶灯', '客厅灯')).toBe(0.1);
+    expect(utils.getSearchScore('客厅 主灯', '客厅灯')).toBe(0.1);
+    expect(utils.getSearchScore('卧室台灯', '客厅灯')).toBe(0);
+    // Every word of the query somewhere, in any order.
+    expect(utils.getSearchScore('Desk lamp', 'lamp desk')).toBe(0.2);
+    expect(utils.getSearchScore('灯 客厅', '客厅 灯')).toBe(0.2);
+    // An abbreviation of one word, but not letters scattered across a long name.
+    expect(utils.getSearchScore('Kitchen Light', 'ktn')).toBe(0.1);
+    expect(utils.getSearchScore('Upstairs hallway ceiling pendant light', 'disarm')).toBe(0);
+    expect(utils.getSearchScore('Kitchen Light', 'kl')).toBe(0);
+    // An exact substring still ranks above the looser matches.
+    expect(utils.getSearchScore('客厅灯', '客厅灯')).toBe(2);
+    // An entity id is not a word to abbreviate.
+    expect(utils.getSearchScore('light.living_room', 'lgt', { fuzzy: false })).toBe(0);
+    expect(utils.getSearchScore('light.living_room', 'living', { fuzzy: false })).toBe(1);
+  });
+
   it('sorts names in the language, with numbers in natural order', () => {
     const sort = (names) => [...names].sort(format.compareNames);
     useLocale('en');

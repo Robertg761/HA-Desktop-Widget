@@ -441,6 +441,33 @@ describe('device control and live data regressions', () => {
       'sensor.audit_4999'
     );
   });
+  test('entity picker finds a Chinese name from a room and device typed together, as Ctrl+K does', () => {
+    document.body.innerHTML +=
+      '<input id="quick-controls-search"><div id="quick-controls-list"></div>';
+    state.setStates({
+      'light.living_ceiling': entity('light.living_ceiling', 'on', { friendly_name: '客厅吸顶灯' }),
+      'light.bedroom_lamp': entity('light.bedroom_lamp', 'on', { friendly_name: '卧室台灯' }),
+      'switch.living_fan': entity('switch.living_fan', 'off', { friendly_name: '客厅风扇' }),
+    });
+    ui.populateQuickControlsList();
+    const search = document.getElementById('quick-controls-search');
+    const names = () =>
+      [...document.querySelectorAll('#quick-controls-list .entity-id')].map(
+        (row) => row.textContent
+      );
+
+    // No name holds "客厅灯" as typed (#205); the one with those characters in order still shows.
+    search.value = '客厅灯';
+    search.dispatchEvent(new Event('input'));
+    jest.advanceTimersByTime(150);
+    expect(names()).toEqual(['light.living_ceiling']);
+
+    // A plain match lists only the plain matches.
+    search.value = '客厅';
+    search.dispatchEvent(new Event('input'));
+    jest.advanceTimersByTime(150);
+    expect(names().sort()).toEqual(['light.living_ceiling', 'switch.living_fan']);
+  });
   test('alarm prompt starts keyboard focus in the code field', () => {
     void ui.requestAlarmCode(entity('alarm_control_panel.audit', 'armed_home', {}));
     const modal = document.querySelector('.alarm-code-modal');

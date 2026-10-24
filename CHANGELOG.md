@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Find entities in Manage Quick Access, the new-page room list, and the other entity pickers the way the command palette (Ctrl/Cmd+K) does. When no name contains the search as typed, they now list names with every word of it in any order, or with its letters in order and close together. A Chinese search like "客厅灯" now finds "客厅吸顶灯" instead of nothing (#205).
+
 ## [4.0.0] - 2026-10-19
 
 ### Added
