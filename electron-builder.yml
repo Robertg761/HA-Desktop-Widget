@@ -98,6 +98,24 @@ files:
   - '!node_modules/uiohook-napi/src/**/*'
 asar: true
 compression: normal
+# Electron's fuses, switched in the packaged binary. Left at Electron's defaults, anything on the
+# computer could start the app's own executable as a plain Node.js interpreter
+# (ELECTRON_RUN_AS_NODE), hand it code through NODE_OPTIONS or attach a debugger with --inspect, and
+# run with the app's identity. On macOS that identity unlocks the Keychain item safeStorage seals
+# the Home Assistant token, the OAuth refresh token and the Cloud Sync session with, without a
+# prompt. Nothing the app runs relies on those switches: the layer-shell helper and every spawned
+# tool start their own binaries, and scripts/start-electron.cjs runs the unpackaged Electron.
+# The asar is checked against the hash electron-builder embeds (Info.plist on macOS, a resource in
+# the .exe on Windows; Linux has no such check), and only app.asar is loaded, never a loose app/
+# folder placed beside it. Flipping a fuse edits the executable, which voids the ad-hoc signature
+# scripts/after-pack-mac-adhoc-sign.cjs applied in afterPack, so it is applied again afterwards.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
 # Chromium keeps the text of its own built-in interface in one locale .pak file per language: what
 # it draws for a page by itself, such as the bubble that says why a form field's value is not
 # allowed (the alarm code and helper value dialogs show it), the date picker and the media controls.
