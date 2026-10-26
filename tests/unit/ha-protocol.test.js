@@ -401,6 +401,26 @@ describe('Home Assistant protocol handler', () => {
     );
   });
 
+  it('does not send an OAuth access token that has expired', async () => {
+    const config = {
+      homeAssistant: {
+        url: 'https://ha.example.test/',
+        token: 'expired-token',
+        authMethod: 'oauth',
+        oauthExpiresAt: Date.now() - 1000,
+      },
+    };
+    const { handler, fetchStream } = createHandler({ getConfig: () => config });
+
+    const response = await handler(createRequest('ha://camera/camera.front_door'));
+
+    expect(response.status).toBe(503);
+    expect(fetchStream).not.toHaveBeenCalled();
+
+    config.homeAssistant.oauthExpiresAt = Date.now() + 30 * 60 * 1000;
+    expect((await handler(createRequest('ha://camera/camera.front_door'))).status).toBe(200);
+  });
+
   it('returns upstream camera failures without exposing their body', async () => {
     const fetchStream = jest.fn(async () => new Response('private details', { status: 401 }));
     const { handler } = createHandler({ fetchStream });
