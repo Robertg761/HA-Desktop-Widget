@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-10-26
+
+### Fixed
+
+- Center the knob of the on/off switches in Settings, the alert dialog and Tile Settings. It sat 1px low and, when on, pressed against the end of the track instead of keeping the same gap it has when off.
+
 ## [4.0.1] - 2026-10-24
 
 ### Fixed

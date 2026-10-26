@@ -14948,9 +14948,11 @@ body.theme-light
   margin-inline-end: 10px;
 }
 
+/* The knob is placed inside the track's 1px border, so 2px here is 3px from the outer edge: the
+   track's 22px height less the 16px knob, halved. */
 :is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
-  top: 3px;
-  inset-inline-start: 3px;
+  top: 2px;
+  inset-inline-start: 2px;
   width: 16px;
   height: 16px;
   background: #fff;

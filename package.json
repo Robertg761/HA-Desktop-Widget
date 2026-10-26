@@ -1,6 +1,6 @@
 {
   "name": "home-assistant-widget",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "appId": "com.github.robertg761.hadesktopwidget",
   "desktopName": "com.github.robertg761.hadesktopwidget.desktop",
   "workspaces": [
