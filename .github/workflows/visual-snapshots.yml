@@ -73,11 +73,11 @@ jobs:
       SNAPSHOT_SHARD: ${{ matrix.shard }}/2
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # The snapshot runner drives the app over CDP with Node's global WebSocket (Node 22+).
       - name: Use Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -192,7 +192,7 @@ jobs:
       # upload failed on the name it found.
       - name: Upload snapshots
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: visual-snapshots-${{ matrix.artifact }}-shard-${{ matrix.shard }}
           path: visual-snapshots/
@@ -219,7 +219,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download the halves
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: visual-snapshots-${{ matrix.artifact }}-shard-*
           path: visual-snapshots
@@ -228,7 +228,7 @@ jobs:
       # An OS whose halves both stopped before uploading anything has nothing to merge, and the
       # job says so, as upload-artifact/merge did.
       - name: Merge the halves
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: visual-snapshots-${{ matrix.artifact }}
           path: visual-snapshots/
