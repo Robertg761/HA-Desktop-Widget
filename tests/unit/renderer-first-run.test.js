@@ -742,9 +742,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
   it('offers the starter builder on a connected empty dashboard without onboarding existing users', async () => {
     await loadRenderer({ config: oauthConfig() });
     expect(document.getElementById('first-run-onboarding')).toBeNull();
-    let nextRequestId = 123;
+    let nextRequestId = 124;
     mockWebsocket.request.mockImplementation(({ type }) => {
-      const id = nextRequestId++;
+      // The snapshot is 123 whatever order the requests go out in.
+      const id = type === 'get_states' ? 123 : nextRequestId++;
       const result =
         type === 'get_states' || type === 'config/area_registry/list'
           ? []
@@ -763,9 +764,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
   describe('the empty page card', () => {
     const connectWithEmptyPage = async (customTabs, activeTabId) => {
       await loadRenderer({ config: { ...oauthConfig(), customTabs, activeTabId } });
-      let nextRequestId = 123;
+      let nextRequestId = 124;
       mockWebsocket.request.mockImplementation(({ type }) => {
-        const id = nextRequestId++;
+        // The snapshot is 123 whatever order the requests go out in.
+        const id = type === 'get_states' ? 123 : nextRequestId++;
         const result =
           type === 'get_states' || type === 'config/area_registry/list'
             ? []
@@ -1619,10 +1621,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
         api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
       },
     });
-    let requestId = 10;
-    mockWebsocket.request.mockImplementation(() => {
+    let requestId = 11;
+    mockWebsocket.request.mockImplementation((payload) => {
       const request = new Promise(() => {});
-      request.id = requestId++;
+      // The snapshot is 10 whatever order the requests go out in.
+      request.id = payload.type === 'get_states' ? 10 : requestId++;
       return request;
     });
     mockWebsocket.emit('message', { type: 'auth_ok' });
@@ -1835,10 +1838,11 @@ describe('Renderer first-run Home Assistant authorization', () => {
         api.publishHaConnectionState = jest.fn().mockResolvedValue({ success: true });
       },
     });
-    let requestId = 10;
-    mockWebsocket.request.mockImplementation(() => {
+    let requestId = 11;
+    mockWebsocket.request.mockImplementation((payload) => {
       const request = new Promise(() => {});
-      request.id = requestId++;
+      // The snapshot is 10 whatever order the requests go out in.
+      request.id = payload.type === 'get_states' ? 10 : requestId++;
       return request;
     });
     mockWebsocket.emit('message', { type: 'auth_ok' });
@@ -1878,7 +1882,10 @@ describe('Renderer first-run Home Assistant authorization', () => {
       };
     });
     snapshot.id = 10;
-    mockWebsocket.request.mockReturnValueOnce(snapshot);
+    const sendRequest = mockWebsocket.request.getMockImplementation();
+    mockWebsocket.request.mockImplementation((payload, ...rest) =>
+      payload.type === 'get_states' ? snapshot : sendRequest(payload, ...rest)
+    );
     mockWebsocket.emit('message', { type: 'auth_ok' });
     failSnapshot();
     await flushAsync();

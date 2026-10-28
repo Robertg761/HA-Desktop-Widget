@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep tiles current after a reconnect. The widget asked Home Assistant for every entity's state before it subscribed to changes, so a change made in between, often right after the computer woke from sleep, never reached it and the tile showed the old state until the next change.
+
+### Security
+
+- Lock down the packaged app with Electron's fuses: it can no longer be started as a plain Node.js interpreter or with a debugger attached, and on Windows and macOS it checks its own app archive before loading it. On macOS this stops another program from using the app to read the Home Assistant sign-in it keeps in the Keychain.
+
 ## [4.0.2] - 2026-10-26
 
 ### Fixed

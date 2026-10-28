@@ -1718,7 +1718,7 @@ describe('CI wiring', () => {
     expect(auditJob).toContain('run: node scripts/check-audit.cjs');
     expect(auditJob).not.toContain('npm ci');
     expect(auditJob).not.toContain('npm audit');
-    expect(auditJob).toContain("node-version: '20'");
+    expect(auditJob).toContain("node-version: '22'");
   });
 
   it('gates a release on the same checker, after dependencies are installed', () => {
