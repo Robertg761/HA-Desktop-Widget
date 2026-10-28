@@ -1,6 +1,6 @@
 # HA Desktop Widget
 
-A frosted-glass desktop widget for Home Assistant that provides quick access to your smart home devices from your desktop.
+A free, open-source Home Assistant desktop app and frosted-glass widget for Windows, macOS, and Linux. Control devices, view sensors, and pin entities to your desktop.
 
 [![CI](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml)
 [![Release](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
