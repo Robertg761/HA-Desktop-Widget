@@ -5545,10 +5545,28 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
     next.opaquePanels = preset.checked;
   }
   if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
+  const pinNameAlign = readPinNameAlignInput(ui);
+  if (pinNameAlign) next.desktopPinNameAlign = pinNameAlign;
   if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
   const seasonal = readSeasonalInputs(ui.seasonal);
   if (seasonal) next.seasonal = seasonal;
   return next;
+}
+
+// Where pin names sit when none is chosen: where the language's text starts.
+function getDefaultPinNameAlign() {
+  return document.documentElement.dir === 'rtl' ? 'right' : 'left';
+}
+
+/**
+ * The pin name side picked in Settings, or null to leave it unset. An untouched picker showing
+ * the language's own side stays unset, so the names keep following the language.
+ */
+function readPinNameAlignInput(ui) {
+  const select = document.getElementById('pin-name-align-select');
+  if (!select?.value) return null;
+  if (!ui.desktopPinNameAlign && select.value === getDefaultPinNameAlign()) return null;
+  return select.value;
 }
 
 // Set once the user flips the seasonal switch, so an untouched switch keeps following reduced
@@ -5752,7 +5770,15 @@ function bindAppearanceSettingsUi() {
   if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
   if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
   if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
-  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+  const pinNameAlign = document.getElementById('pin-name-align-select');
+  if (pinNameAlign) {
+    // A value the picker does not offer leaves it blank, which shows the language's side instead.
+    pinNameAlign.value = ui.desktopPinNameAlign || '';
+    if (!pinNameAlign.value) pinNameAlign.value = getDefaultPinNameAlign();
+  }
+  for (const control of [scale, preset, activeTileGlow, densitySelect, pinNameAlign].filter(
+    Boolean
+  )) {
     control.onchange = previewAppearance;
   }
   syncReadablePresetOverrides(ui);
@@ -6036,6 +6062,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#language-select', ['ui.language']],
   ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
   ['#density-select', ['ui.density']],
+  ['#pin-name-align-select', ['ui.desktopPinNameAlign']],
   ['#active-tile-glow', ['ui.activeTileGlow']],
   ['#seasonal-settings', ['ui.seasonal']],
   ['#ui-scale-select', ['ui.scale']],

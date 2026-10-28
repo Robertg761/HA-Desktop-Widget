@@ -1819,6 +1819,36 @@ body.desktop-pin-mode.desktop-pin-edit-mode.desktop-pin-compositor-placement
   gap: 5px;
 }
 
+/* Settings > Appearance can put pin names on the left, in the middle or on the right; unset, they
+   start where the language's text starts. The status line under a name goes with it. */
+body[data-pin-name-align='left'] :is(.desktop-pin-panel-meta, .desktop-pin-light-meta) {
+  text-align: left;
+}
+
+body[data-pin-name-align='right'] :is(.desktop-pin-panel-meta, .desktop-pin-light-meta) {
+  text-align: right;
+}
+
+body[data-pin-name-align='center'] :is(.desktop-pin-panel-meta, .desktop-pin-light-meta) {
+  text-align: center;
+}
+
+/* A centred name is centred on the whole pin, not on the room the button or reading beside it
+   leaves: equal columns either side, that one in the end column. A name too long for that gives
+   way towards the start instead of running under the button. */
+body[data-pin-name-align='center'] .desktop-pin-panel-topline {
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content) 1fr;
+}
+
+body[data-pin-name-align='center'] .desktop-pin-panel-topline > .desktop-pin-panel-meta {
+  grid-area: 1 / 2;
+}
+
+body[data-pin-name-align='center'] .desktop-pin-panel-topline > :not(.desktop-pin-panel-meta) {
+  grid-area: 1 / 3;
+  justify-self: end;
+}
+
 .desktop-pin-panel-name,
 .desktop-pin-media-title,
 .desktop-pin-media-artist {

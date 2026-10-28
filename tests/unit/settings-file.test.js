@@ -365,6 +365,7 @@ describe('portable settings files', () => {
       ['an opacity above the slider', { opacity: 5 }],
       ['an unknown theme', { ui: { theme: 'purple' } }],
       ['an unknown density', { ui: { density: 'huge' } }],
+      ['an unknown pin name alignment', { ui: { desktopPinNameAlign: 'justify' } }],
       ['an unknown time format', { ui: { timeFormat: 'sundial' } }],
       ['an unknown date format', { ui: { dateFormat: 'tomorrow' } }],
       ['more primary cards than slots', { primaryCards: ['weather', 'time', 'extra'] }],
@@ -516,7 +517,13 @@ describe('portable settings files', () => {
         importWith({
           opacity: 0.5,
           primaryCards: ['weather', 'time'],
-          ui: { theme: 'auto', density: 'compact', timeFormat: '24-hour', dateFormat: 'numeric' },
+          ui: {
+            theme: 'auto',
+            density: 'compact',
+            desktopPinNameAlign: 'center',
+            timeFormat: '24-hour',
+            dateFormat: 'numeric',
+          },
           customTabs: [{ id: 'a', name: 'x'.repeat(256), entityIds: ['light.desk'] }],
         })
       ).not.toThrow();

@@ -11,6 +11,7 @@ const {
   clampDesktopPinBounds,
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
+const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
 const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
 const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
@@ -55,6 +56,10 @@ class FakeWindow extends EventEmitter {
 
   isDestroyed() {
     return false;
+  }
+
+  isVisible() {
+    return true;
   }
 
   isMaximized() {
@@ -276,6 +281,7 @@ describe('desktop pin bounds on Linux', () => {
       clampDesktopPinBoundsWithWorkArea: clampDesktopPinBounds,
       getDesktopPinBaseBounds,
       getDesktopPinWindowBoundsInWorkArea: getDesktopPinWindowBounds,
+      snapDesktopPinPosition,
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
       normalizeEntityId: (id) => String(id || '').trim(),
       BrowserWindow: function (options) {
@@ -328,7 +334,7 @@ describe('desktop pin bounds on Linux', () => {
       context
     );
     context.createDesktopPinWindow('light.office');
-    return { context, pinWindow: windows[0] };
+    return { context, pinWindow: windows[0], windows };
   }
 
   it('saves a moved pin after the 180 ms debounce, keeping its 100% size at 150%', () => {
@@ -386,6 +392,26 @@ describe('desktop pin bounds on Linux', () => {
     // The saved bounds are held to the work area, and so is the window, at once.
     expect(context.config.desktopPins['light.office']).toMatchObject({ x: 1112, y: 300 });
     expect(pinWindow.getBounds()).toMatchObject({ x: 1112, y: 300 });
+  });
+
+  it('lines a dropped pin up with the pin beside it when the drop is close', () => {
+    const { context, pinWindow, windows } = loadPinRuntime();
+    context.config.desktopPins['sensor.solar'] = { x: 200, y: 300, width: 168, height: 148 };
+    context.createDesktopPinWindow('sensor.solar');
+    const solarWindow = windows[1];
+
+    // Dropped 7 px right of the pin above it and 5 px under the 16 px gap.
+    solarWindow.setPosition(207, 289);
+    jest.advanceTimersByTime(180);
+
+    expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 200, y: 284 });
+    expect(solarWindow.getBounds()).toMatchObject({ x: 200, y: 284 });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 200, y: 120 });
+
+    // Dropped well away from it, the pin stays where it was dropped.
+    solarWindow.setPosition(600, 400);
+    jest.advanceTimersByTime(180);
+    expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 600, y: 400 });
   });
 
   it('puts a pin back where it is saved after a window manager moved it outside Reorganize', () => {

@@ -1434,6 +1434,10 @@ function applyTheme(mode = 'auto') {
   }
 }
 
+// The sides a desktop pin's name can be put on. They are the screen's sides, not the text's, so
+// Right means the right in Arabic too.
+const DESKTOP_PIN_NAME_ALIGNMENTS = ['left', 'center', 'right'];
+
 /**
  * Apply user interface preference flags as CSS classes on the document body.
  *
@@ -1444,6 +1448,8 @@ function applyTheme(mode = 'auto') {
  * @param {boolean} [ui.highContrast] - Enable high-contrast styles when true.
  * @param {boolean} [ui.opaquePanels] - Render panels as opaque when true.
  * @param {string} [ui.density] - Layout density; use 'compact' to enable compact spacing.
+ * @param {string} [ui.desktopPinNameAlign] - Where desktop pin names sit: 'left', 'center' or
+ *   'right'. Unset, they start where the language's text starts.
  */
 function applyUiPreferences(ui = {}) {
   try {
@@ -1467,6 +1473,11 @@ function applyUiPreferences(ui = {}) {
     body.classList.toggle('density-compact', (ui.density || 'comfortable') === 'compact');
     // Opt-out rather than opt-in: the glow is how a tile shows it is on.
     body.classList.toggle('active-tile-glow', ui.activeTileGlow !== false);
+    if (DESKTOP_PIN_NAME_ALIGNMENTS.includes(ui.desktopPinNameAlign)) {
+      body.dataset.pinNameAlign = ui.desktopPinNameAlign;
+    } else {
+      delete body.dataset.pinNameAlign;
+    }
   } catch (error) {
     console.error('Error applying UI preferences:', error);
   }

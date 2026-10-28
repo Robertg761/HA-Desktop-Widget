@@ -378,6 +378,7 @@ const {
   resolveDesktopPinProfile,
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
+const { snapDesktopPinPosition } = require('./src/desktop-pin-snap.cjs');
 const {
   getTrayIconSizeForPlatform,
   normalizeEntityId: normalizeTrayEntityId,
@@ -3630,10 +3631,11 @@ function createDesktopPinWindow(entityId, options = {}) {
       pinWindow.__desktopPinSaveTimer = null;
       if (!pinWindow || pinWindow.isDestroyed()) return;
       if (!desktopPinEditMode) return;
-      const nextBounds =
+      const droppedBounds =
         pinWindow.__desktopPinPendingBounds ||
         getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow);
       pinWindow.__desktopPinPendingBounds = null;
+      const nextBounds = snapDesktopPinBounds(normalizedEntityId, pinWindow, droppedBounds);
       runBackgroundConfigMutation(() => {
         config.desktopPins = config.desktopPins || {};
         config.desktopPins[normalizedEntityId] = nextBounds;
@@ -3684,6 +3686,24 @@ function createDesktopPinWindow(entityId, options = {}) {
   });
 
   return pinWindow;
+}
+
+/**
+ * The saved bounds of a pin dropped in Reorganize mode, lined up with the other pins and the
+ * screen edges when the drop was close to one, so a column of pins forms a straight line.
+ */
+function snapDesktopPinBounds(entityId, pinWindow, droppedBounds) {
+  const { width, height } = pinWindow.getBounds();
+  const rect = { x: droppedBounds.x, y: droppedBounds.y, width, height };
+  const others = [...desktopPinWindows.entries()]
+    .filter(([otherId, other]) => otherId !== entityId && !other.isDestroyed() && other.isVisible())
+    .map(([, other]) => other.getBounds());
+  const { x, y } = snapDesktopPinPosition(rect, {
+    others,
+    workArea: getDesktopPinWorkArea(rect),
+  });
+  if (x === droppedBounds.x && y === droppedBounds.y) return droppedBounds;
+  return getDesktopPinBounds(entityId, { ...droppedBounds, x, y }, { clampPosition: true });
 }
 
 const DESKTOP_PIN_SNAP_BACK_DELAY_MS = 250;
@@ -10714,6 +10734,28 @@ async function updateLayerDrag(drag) {
   layerPositions.set(drag.id, position);
   layerShellRaiser.place(drag.window.getTitle(), position);
 }
+// A pin dropped on a layer surface lines up with the other pins the same way a pin window does,
+// in the monitor's coordinates that layer positions use.
+function snapLayerPinPosition(drag) {
+  const position = layerPositions.get(drag.id);
+  if (!position) return;
+  const { width, height } = drag.window.getBounds();
+  const others = [...desktopPinWindows.entries()]
+    .filter(([entityId, other]) => entityId !== drag.id && !other.isDestroyed())
+    .filter(([entityId]) => layerPositions.has(entityId))
+    .map(([entityId, other]) => ({ ...other.getBounds(), ...layerPositions.get(entityId) }));
+  const snapped = clampLayerPosition(
+    snapDesktopPinPosition(
+      { ...position, width, height },
+      { others, workArea: layerActualMonitor?.workArea }
+    ),
+    { width, height },
+    layerActualMonitor
+  );
+  if (snapped.x === position.x && snapped.y === position.y) return;
+  layerPositions.set(drag.id, snapped);
+  layerShellRaiser.place(drag.window.getTitle(), snapped);
+}
 ipcMain.handle('begin-layer-drag', async (event) => {
   const sender = authorizeIpcSender(event, 'begin-layer-drag', { allowDesktopPin: true });
   if (
@@ -10754,6 +10796,7 @@ ipcMain.handle(
     await drag.inFlight;
     await updateLayerDrag(drag);
     layerDrag = null;
+    if (drag.id !== 'main' && !drag.window.isDestroyed()) snapLayerPinPosition(drag);
     const output = layerActualMonitor?.name;
     if (output) {
       config.layerPositions ||= {};

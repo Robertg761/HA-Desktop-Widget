@@ -955,6 +955,8 @@ function buildConfig(haUrl) {
       opaquePanels: false,
       dateFormat: 'system',
       activeTileGlow: true,
+      // Unset, as on a new install: pin names start where the language's text starts.
+      desktopPinNameAlign: null,
       // Saved custom colours, which the scenes that show one bring and take away again.
       customColors: [],
       // On by default, taking the theme from an installed Omarchy (so a developer's machine
