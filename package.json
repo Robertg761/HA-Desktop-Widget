@@ -61,7 +61,7 @@
     "url": "https://github.com/Robertg761/HA-Desktop-Widget/issues"
   },
   "devDependencies": {
-    "@babel/core": "^7.28.6",
+    "@babel/core": "^8.0.9",
     "@babel/preset-env": "^7.28.6",
     "@eslint/js": "^9.39.5",
     "babel-jest": "^30.2.0",
