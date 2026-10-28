@@ -18,19 +18,17 @@ export default defineConfig({
     sourcemap: false,
     // A preload runs in Node, not the browser: don't inject browser polyfills or a module preload.
     ssr: true,
-    // Both preload.js and the API module are CommonJS, and Vite's CJS interop only covers
-    // node_modules by default — without this the `require('./src/preload-api.cjs')` survives into
-    // the bundle and we are back to the same runtime failure.
-    commonjsOptions: {
-      include: [/preload\.js$/, /preload-api\.cjs$/, /node_modules/],
-      transformMixedEsModules: true,
-    },
-    rollupOptions: {
+    // Both preload.js and the API module are CommonJS. Rolldown bundles CommonJS itself, so the
+    // `require('./src/preload-api.cjs')` is inlined and only `electron` is left to the sandbox.
+    rolldownOptions: {
       input: resolve(__dirname, 'preload.js'),
       external: ['electron'],
       output: {
         format: 'cjs',
         entryFileNames: 'preload.cjs',
+        // Neither source file says "use strict", and Rolldown only emits it when one does; keep the
+        // preload in strict mode as the Rollup build had it.
+        strict: true,
       },
     },
   },

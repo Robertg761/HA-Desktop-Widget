@@ -79,7 +79,7 @@
     "regenerate-unicode-properties": "10.3.0",
     "sortablejs": "^1.15.6",
     "stylelint": "^16.26.1",
-    "vite": "^7.3.1"
+    "vite": "^8.3.5"
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
