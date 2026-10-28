@@ -13,7 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep tiles current after a reconnect. The widget asked Home Assistant for every entity's state before it subscribed to changes, so a change made in between, often right after the computer woke from sleep, never reached it and the tile showed the old state until the next change.
 - Stop the connection status tooltip from covering the dashboard every time the widget opens. Clicking the status dot left it focused, and reopening the widget gave it focus again, which opened the tooltip. It now opens on hover, a click, or keyboard focus, and closes when the widget is hidden (#214).
+
+### Security
+
+- Lock down the packaged app with Electron's fuses: it can no longer be started as a plain Node.js interpreter or with a debugger attached, and on Windows and macOS it checks its own app archive before loading it. On macOS this stops another program from using the app to read the Home Assistant sign-in it keeps in the Keychain.
 
 ## [4.0.2] - 2026-10-26
 

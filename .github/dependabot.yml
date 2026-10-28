@@ -1,0 +1,24 @@
+# Opens update pull requests so security releases of Electron and the build tools, and new commits
+# of the actions the workflows pin by SHA, do not wait on someone remembering to look. Minor and
+# patch updates come grouped into one pull request per ecosystem; majors come one at a time.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
