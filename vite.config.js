@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-      target: 'chrome150', // Electron 43 Chromium version
+      target: 'chrome156', // Electron 45 Chromium version
       minify: isProduction,
       sourcemap: !isProduction,
     },

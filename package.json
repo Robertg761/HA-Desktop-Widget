@@ -66,7 +66,7 @@
     "@eslint/js": "^9.39.5",
     "babel-jest": "^30.5.2",
     "concurrently": "^10.0.6",
-    "electron": "^43.8.3",
+    "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",

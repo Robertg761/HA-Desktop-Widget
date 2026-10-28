@@ -22,34 +22,49 @@ function registerHandler({ authorized = true, writeText = jest.fn() } = {}) {
 }
 
 describe('write-clipboard-text IPC', () => {
-  test('writes text from the main window to the system clipboard', () => {
+  test('writes text from the main window to the system clipboard', async () => {
     const { handler, writeText, authorizeIpcSender } = registerHandler();
-    expect(handler({}, 'report')).toEqual({ success: true });
+    await expect(handler({}, 'report')).resolves.toEqual({ success: true });
     expect(writeText).toHaveBeenCalledWith('report');
     // Desktop pins are not allowed to write the clipboard.
     expect(authorizeIpcSender).toHaveBeenCalledWith({}, 'write-clipboard-text');
   });
 
-  test('rejects unauthorized senders without touching the clipboard', () => {
+  test('rejects unauthorized senders without touching the clipboard', async () => {
     const { handler, writeText } = registerHandler({ authorized: false });
-    expect(handler({}, 'report')).toEqual({ success: false, error: 'Unauthorized' });
+    await expect(handler({}, 'report')).resolves.toEqual({ success: false, error: 'Unauthorized' });
     expect(writeText).not.toHaveBeenCalled();
   });
 
   test.each([[null], [42], [{ toString: () => 'x' }], ['x'.repeat(256 * 1024 + 1)]])(
     'rejects non-string or oversized text',
-    (text) => {
+    async (text) => {
       const { handler, writeText } = registerHandler();
-      expect(handler({}, text)).toEqual({ success: false, error: 'Invalid clipboard text' });
+      await expect(handler({}, text)).resolves.toEqual({
+        success: false,
+        error: 'Invalid clipboard text',
+      });
       expect(writeText).not.toHaveBeenCalled();
     }
   );
 
-  test('reports a clipboard failure instead of throwing', () => {
+  test('reports a clipboard failure instead of throwing', async () => {
     const writeText = jest.fn(() => {
       throw new Error('no clipboard');
     });
     const { handler } = registerHandler({ writeText });
-    expect(handler({}, 'report')).toEqual({ success: false, error: 'no clipboard' });
+    await expect(handler({}, 'report')).resolves.toEqual({
+      success: false,
+      error: 'no clipboard',
+    });
+  });
+
+  test('reports a rejected clipboard write', async () => {
+    const writeText = jest.fn(() => Promise.reject(new Error('clipboard busy')));
+    const { handler } = registerHandler({ writeText });
+    await expect(handler({}, 'report')).resolves.toEqual({
+      success: false,
+      error: 'clipboard busy',
+    });
   });
 });
