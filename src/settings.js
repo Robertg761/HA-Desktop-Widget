@@ -5554,15 +5554,27 @@ function getDefaultPinNameAlign() {
   return document.documentElement.dir === 'rtl' ? 'right' : 'left';
 }
 
+// Set once the user picks a side for pin names. Until then an unset choice stays unset, even when
+// the language changes while Settings is open and the picker's side is no longer its default.
+let pinNameAlignTouched = false;
+
 /**
- * The pin name side picked in Settings, or null to leave it unset. An untouched picker showing
- * the language's own side stays unset, so the names keep following the language.
+ * The pin name side picked in Settings, or null to leave it unset. An untouched picker leaves an
+ * unset choice unset, so the names keep following the language.
  */
 function readPinNameAlignInput(ui) {
   const select = document.getElementById('pin-name-align-select');
   if (!select?.value) return null;
-  if (!ui.desktopPinNameAlign && select.value === getDefaultPinNameAlign()) return null;
+  if (!ui.desktopPinNameAlign && !pinNameAlignTouched) return null;
   return select.value;
+}
+
+// An untouched picker with no saved side shows the side of the language Settings is in now.
+function syncPinNameAlignDefault() {
+  const select = document.getElementById('pin-name-align-select');
+  if (select && !pinNameAlignTouched && !state.CONFIG?.ui?.desktopPinNameAlign) {
+    select.value = getDefaultPinNameAlign();
+  }
 }
 
 // Set once the user flips the seasonal switch, so an untouched switch keeps following reduced
@@ -5767,15 +5779,20 @@ function bindAppearanceSettingsUi() {
   if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
   if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
   const pinNameAlign = document.getElementById('pin-name-align-select');
+  pinNameAlignTouched = false;
   if (pinNameAlign) {
     // A value the picker does not offer leaves it blank, which shows the language's side instead.
     pinNameAlign.value = ui.desktopPinNameAlign || '';
     if (!pinNameAlign.value) pinNameAlign.value = getDefaultPinNameAlign();
   }
-  for (const control of [scale, preset, activeTileGlow, densitySelect, pinNameAlign].filter(
-    Boolean
-  )) {
+  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
     control.onchange = previewAppearance;
+  }
+  if (pinNameAlign) {
+    pinNameAlign.onchange = () => {
+      pinNameAlignTouched = true;
+      previewAppearance();
+    };
   }
   syncReadablePresetOverrides(ui);
   updateThemeModeControl(ui);
@@ -5949,6 +5966,7 @@ function relocalizeOpenSettings({ force = false } = {}) {
     renderLanguagePackList();
     updateLanguageSummaryText();
     labelUiScaleOptions();
+    syncPinNameAlignDefault();
     updateOpacityReadout();
     if (profileSyncStatusCache) updateProfileSyncStatusUi(profileSyncStatusCache);
     renderProfileSyncBackups();

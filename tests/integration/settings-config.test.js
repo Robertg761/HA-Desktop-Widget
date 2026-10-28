@@ -874,6 +874,24 @@ describe('Settings + Config Integration', () => {
       );
     });
 
+    test('keeps pin names unset when the language turns right-to-left while Settings is open', async () => {
+      await settings.openSettings();
+      expect(document.getElementById('pin-name-align-select').value).toBe('left');
+      // Choosing Arabic applies at once, so the untouched picker's Left is no longer the default.
+      document.documentElement.dir = 'rtl';
+      try {
+        const density = document.getElementById('density-select');
+        density.value = 'compact';
+        density.dispatchEvent(new Event('change', { bubbles: true }));
+        await settings.saveSettings();
+        expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui).not.toHaveProperty(
+          'desktopPinNameAlign'
+        );
+      } finally {
+        document.documentElement.dir = '';
+      }
+    });
+
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {
       state.CONFIG.homeAssistant = {
         url: 'https://ha.example.test',
