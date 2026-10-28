@@ -316,7 +316,7 @@ describe('right-to-left and script-aware typography', () => {
       for (const rule of [
         /\.form-group input\[type='checkbox'\]::after \{[^}]*inset-inline-start: 2px/,
         /\.form-group input\[type='checkbox'\]:checked::after \{[^}]*translateX\(calc\(18px \* var\(--inline-sign\)\)\)/,
-        /\.rename-modal\) \.form-group input\[type='checkbox'\]::after \{[^}]*inset-inline-start: 3px/,
+        /\.rename-modal\) \.form-group input\[type='checkbox'\]::after \{[^}]*inset-inline-start: 2px/,
         /input\[type='checkbox'\]:checked::after \{[^}]*translateX\(calc\(16px \* var\(--inline-sign\)\)\)/,
       ]) {
         expect(stylesheet).toMatch(rule);
@@ -325,6 +325,35 @@ describe('right-to-left and script-aware typography', () => {
       expect(resolvedValue(document.querySelector('input'), '--inline-sign')).toBe('1');
       render('<div class="form-group"><input type="checkbox"></div>', { dir: 'rtl', lang: 'ar' });
       expect(resolvedValue(document.querySelector('input'), '--inline-sign')).toBe('-1');
+    });
+
+    it('centres the Settings switch knob in its track, on and off', () => {
+      // The knob sits inside the track's 1px border, so the gap is measured from the padding box.
+      const block = (selector) => {
+        const start = stylesheet.indexOf(`${selector} {`);
+        return stylesheet.slice(start, stylesheet.indexOf('}', start));
+      };
+      const px = (css, prop) => Number(css.match(new RegExp(`(?:^|\\s)${prop}: (\\d+)px`))[1]);
+      const scope = ':is(#settings-modal, #alert-config-modal, .rename-modal) .form-group';
+      const track = block(`${scope} input[type='checkbox']`);
+      const knob = block(`${scope} input[type='checkbox']::after`);
+      const border = 1;
+      const innerWidth = px(track, 'width') - 2 * border;
+      const innerHeight = px(track, 'height') - 2 * border;
+      const size = px(knob, 'height');
+      const top = px(knob, 'top');
+      const start = px(knob, 'inset-inline-start');
+      const slide = Number(
+        stylesheet
+          .slice(
+            stylesheet.indexOf(`input[type='checkbox']:checked::after {`, stylesheet.indexOf(scope))
+          )
+          .match(/translateX\(calc\((\d+)px/)[1]
+      );
+      expect(px(knob, 'width')).toBe(size);
+      expect(innerHeight - top - size).toBe(top);
+      expect(start).toBe(top);
+      expect(innerWidth - (start + slide) - size).toBe(start);
     });
 
     it('does not flip a whole checkbox, so a native one in a pick list is not mirrored', () => {

@@ -16,6 +16,7 @@ jest.mock('../../src/utils.js', () => ({
   // The real helper hands the attribute back as it is.
   getEntityDisplayName: jest.fn((entity) => entity.attributes?.friendly_name || entity.entity_id),
   getSearchScore: jest.fn(() => 1),
+  filterSearchMatches: jest.requireActual('../../src/utils.js').filterSearchMatches,
 }));
 
 const state = require('../../src/state.js').default;

@@ -70,6 +70,26 @@ describe('release workflow hardening', () => {
     expect(release).toContain('Generating prerelease notes from $notes_start_tag to $RELEASE_TAG.');
   });
 
+  test('runs every action at a fixed commit, on a Node release that still gets fixes', () => {
+    // A tag or a branch can be moved to new code after review; a commit cannot. The release jobs
+    // build what is published, so whatever an action's maintainer pushes must not reach them.
+    const workflowDir = path.resolve(__dirname, '../../.github/workflows');
+    for (const name of fs.readdirSync(workflowDir).filter((file) => file.endsWith('.yml'))) {
+      const workflow = readWorkflow(name);
+      for (const [, action] of workflow.matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)/gm)) {
+        expect({ name, action }).toEqual({
+          name,
+          action: expect.stringMatching(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/),
+        });
+      }
+      // Node 20 reached end of life in April 2026.
+      expect({ name, node20: /node-version:\s*'?20/.test(workflow) }).toEqual({
+        name,
+        node20: false,
+      });
+    }
+  });
+
   test("replaces published release notes only from a validated tag and main's changelog", () => {
     const notes = readWorkflow('release-notes.yml');
     // The tag reaches the shell through the environment, never spliced into the script.

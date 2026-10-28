@@ -53,7 +53,6 @@ import {
   getSensorReading,
   HVAC_MODE_NAMES,
   joinUnit,
-  normalizeSearchText,
   parseNumericState,
   titleCase,
 } from './format.js';
@@ -1279,6 +1278,17 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
 const ROOM_LIST_MAX_ROWS = 100;
 const ROOM_SEARCH_DELAY_MS = 150;
 
+// The rows a search keeps, in their order, matched as every entity picker and the command
+// palette match: by name, loosely, and by id, which is not a word to abbreviate.
+function filterEntityRows(rows, query, getName, getEntityId) {
+  return utils.filterSearchMatches(
+    rows,
+    (row) =>
+      utils.getSearchScore(getName(row), query) +
+      utils.getSearchScore(getEntityId(row), query, { fuzzy: false })
+  );
+}
+
 // Teardown rather than a user-facing dismissal: this runs before re-opening the dialog and when
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
@@ -1370,8 +1380,15 @@ function showAddPageModal({ starter = false } = {}) {
   let ticked = new Set();
   let statusBeforeNoMatches = null;
   const renderRoomRows = () => {
-    const query = normalizeSearchText(deviceSearch.value);
-    const matches = query ? listRows.filter((row) => row.searchText.includes(query)) : listRows;
+    const query = deviceSearch.value.trim();
+    const matches = query
+      ? filterEntityRows(
+          listRows,
+          query,
+          (row) => row.name,
+          (row) => row.id
+        )
+      : listRows;
     roomEntities.replaceChildren(
       ...matches.slice(0, ROOM_LIST_MAX_ROWS).map(({ id, name }) => {
         const label = document.createElement('label');
@@ -1598,7 +1615,7 @@ function showAddPageModal({ starter = false } = {}) {
     listRows = ids
       .map((id) => {
         const name = utils.getEntityDisplayName(availableStates[id]);
-        return { id, name, searchText: normalizeSearchText(`${name} ${id}`) };
+        return { id, name };
       })
       .sort((a, b) => compareNames(a.name, b.name));
     // Suggest up to eight available devices you can control; sensors, buttons and a device's own
@@ -5489,36 +5506,35 @@ function showComparisonGraphModal(graphId) {
 
     // Numeric sensors plus attribute-backed entities (weather / climate), so the outside
     // temperature from a weather integration can be graphed alongside room sensors.
-    const candidates = Object.values(state.STATES || {})
+    const scored = Object.values(state.STATES || {})
       .filter(isGraphableEntity)
       .map((entity) => {
         if (!filter) return { entity, score: 1 };
         const score =
           utils.getSearchScore(utils.getEntityDisplayName(entity), filter) +
-          utils.getSearchScore(entity.entity_id, filter) +
+          utils.getSearchScore(entity.entity_id, filter, { fuzzy: false }) +
           utils.getSearchScore(getGraphSearchAlias(entity), filter);
         return { entity, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => {
-        const aSelected = openedWith.has(a.entity.entity_id);
-        const bSelected = openedWith.has(b.entity.entity_id);
-        if (aSelected !== bSelected) return aSelected ? -1 : 1;
-
-        // Surface the weather entity near the top: it is the outside temperature, which is the
-        // series a comparison graph most often wants, and its name ("Forecast Home") gives no clue.
-        if (!filter) {
-          const aWeather = a.entity.entity_id.startsWith('weather.');
-          const bWeather = b.entity.entity_id.startsWith('weather.');
-          if (aWeather !== bWeather) return aWeather ? -1 : 1;
-        }
-
-        if (b.score !== a.score) return b.score - a.score;
-        return compareNames(
-          utils.getEntityDisplayName(a.entity),
-          utils.getEntityDisplayName(b.entity)
-        );
       });
+    const candidates = utils.filterSearchMatches(scored).sort((a, b) => {
+      const aSelected = openedWith.has(a.entity.entity_id);
+      const bSelected = openedWith.has(b.entity.entity_id);
+      if (aSelected !== bSelected) return aSelected ? -1 : 1;
+
+      // Surface the weather entity near the top: it is the outside temperature, which is the
+      // series a comparison graph most often wants, and its name ("Forecast Home") gives no clue.
+      if (!filter) {
+        const aWeather = a.entity.entity_id.startsWith('weather.');
+        const bWeather = b.entity.entity_id.startsWith('weather.');
+        if (aWeather !== bWeather) return aWeather ? -1 : 1;
+      }
+
+      if (b.score !== a.score) return b.score - a.score;
+      return compareNames(
+        utils.getEntityDisplayName(a.entity),
+        utils.getEntityDisplayName(b.entity)
+      );
+    });
 
     // The list is rebuilt after every add and remove, and the sensor just toggled moves. The
     // keyboard follows it, or goes to the search field when that sensor is no longer listed, and
@@ -10954,9 +10970,6 @@ function openEntityRepairModal(staleEntityId) {
       return {
         entity,
         name,
-        // The id and the name stay apart by a line break, which a query never contains, so a
-        // query cannot match across the two.
-        searchText: `${normalizeSearchText(entity.entity_id)}\n${normalizeSearchText(name)}`,
         sameDomain: entity.entity_id.startsWith(`${staleDomain}.`),
       };
     })
@@ -10966,9 +10979,14 @@ function openEntityRepairModal(staleEntityId) {
     });
 
   const renderCandidates = () => {
-    const query = normalizeSearchText(search.value);
+    const query = search.value.trim();
     const matches = query
-      ? replacements.filter((candidate) => candidate.searchText.includes(query))
+      ? filterEntityRows(
+          replacements,
+          query,
+          (candidate) => candidate.name,
+          (candidate) => candidate.entity.entity_id
+        )
       : replacements;
 
     list.replaceChildren();
@@ -16449,7 +16467,7 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
       }
 
       // Score and filter entities
-      const scoredEntities = Object.values(state.STATES)
+      const scored = Object.values(state.STATES)
         .filter((e) => !e.entity_id.startsWith('sun.') && !e.entity_id.startsWith('zone.'))
         .map((entity) => {
           if (!filter) {
@@ -16457,20 +16475,19 @@ function populateQuickControlsList({ resetSearch = true } = {}) {
           }
           // Search both display name and entity ID
           const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), filter);
-          const idScore = utils.getSearchScore(entity.entity_id, filter);
+          const idScore = utils.getSearchScore(entity.entity_id, filter, { fuzzy: false });
           return { entity, score: nameScore + idScore };
-        })
-        .filter((item) => item.score > 0)
-        .sort((a, b) => {
-          // Sort by score first, then alphabetically
-          if (b.score !== a.score) {
-            return b.score - a.score;
-          }
-          return compareNames(
-            utils.getEntityDisplayName(a.entity),
-            utils.getEntityDisplayName(b.entity)
-          );
         });
+      const scoredEntities = utils.filterSearchMatches(scored).sort((a, b) => {
+        // Sort by score first, then alphabetically
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        return compareNames(
+          utils.getEntityDisplayName(a.entity),
+          utils.getEntityDisplayName(b.entity)
+        );
+      });
 
       const pages = Math.max(1, Math.ceil(scoredEntities.length / pageSize));
       page = Math.min(page, pages - 1);

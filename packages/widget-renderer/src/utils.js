@@ -11,6 +11,7 @@ import {
   formatTemperature,
   formatTimeOfDayState,
   getClimateTemperature,
+  getCloseMatchScore,
   getSensorReading,
   getTemperatureUnit,
   joinUnit,
@@ -367,7 +368,20 @@ function getTimerEnd(entity) {
   }
 }
 
-function getSearchScore(text, query) {
+/**
+ * How well a search matches a text, as every entity picker ranks it: 2 for a prefix, 1 anywhere
+ * inside, then the looser matches the command palette also finds, so a query reads the same in a
+ * dialog as on Ctrl+K: 0.2 for every word somewhere in any order ("lamp desk" finds "Desk lamp"),
+ * 0.1 for its letters in order close together ("客厅灯" finds "客厅吸顶灯", where Chinese has no
+ * spaces to split words on). 0 is no match. The loose scores stay below 1 however a picker adds
+ * them up (name, id and an alias), which filterSearchMatches relies on.
+ * @param {unknown} text
+ * @param {unknown} query
+ * @param {{fuzzy?: boolean}} [options] - Turn off the close match for an entity id, which is not a
+ *   word to abbreviate: "lgt" would find every light.*.
+ * @returns {number}
+ */
+function getSearchScore(text, query, { fuzzy = true } = {}) {
   try {
     const normalizedText = normalizeSearchText(text);
     const normalizedQuery = normalizeSearchText(query);
@@ -387,11 +401,29 @@ function getSearchScore(text, query) {
       }
       return 1;
     }
+    const words = normalizedQuery.split(' ');
+    if (words.length > 1 && words.every((word) => normalizedText.includes(word))) return 0.2;
+    if (fuzzy && getCloseMatchScore(normalizedText, normalizedQuery) > 0) return 0.1;
     return 0;
   } catch (error) {
     console.error('Error getting search score:', error);
     return 0;
   }
+}
+
+/**
+ * What a picker lists for a search, from each item's getSearchScore total, in the order given: the
+ * plain matches, or the loose ones when nothing matches plainly. "device_000" then lists the ids
+ * that hold it, not every name with "device" and "000" somewhere, and "客厅灯" still finds
+ * "客厅吸顶灯" when no name holds it as typed.
+ * @template T
+ * @param {T[]} items
+ * @param {(item: T) => number} [getScore]
+ * @returns {T[]}
+ */
+function filterSearchMatches(items, getScore = (item) => item.score) {
+  const plain = items.filter((item) => getScore(item) >= 1);
+  return plain.length ? plain : items.filter((item) => getScore(item) > 0);
 }
 
 // Entities that run once when pressed and have no lasting state: "Ready" until Home Assistant
@@ -1059,6 +1091,7 @@ export {
   brightnessToPercent,
   getTimerEnd,
   getSearchScore,
+  filterSearchMatches,
   getEntityDisplayState,
   getTimerDisplay,
   isTimerLikeSensor,

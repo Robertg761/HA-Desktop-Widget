@@ -1,6 +1,6 @@
 import state from './state.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
-import { getEntityDisplayName, getSearchScore } from './utils.js';
+import { filterSearchMatches, getEntityDisplayName, getSearchScore } from './utils.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { t } from './i18n.js';
 import { compareNames } from './format.js';
@@ -176,7 +176,7 @@ function renderHotkeysTab() {
     const scored = (item) => {
       const name = item.entity ? getEntityDisplayName(item.entity) : item.entityId;
       const score = filter
-        ? getSearchScore(name, filter) + getSearchScore(item.entityId, filter)
+        ? getSearchScore(name, filter) + getSearchScore(item.entityId, filter, { fuzzy: false })
         : 1;
       return { ...item, score, name };
     };
@@ -186,14 +186,10 @@ function renderHotkeysTab() {
     const hotkeyEntities = Object.values(state.STATES)
       .filter((e) => entityHotkeys.supportsEntityHotkey(e.entity_id))
       .map((entity) => scored({ entityId: entity.entity_id, entity }))
-      .filter((item) => item.score > 0)
       .sort(byMatchThenName);
     // The few hotkeys that cannot fire come first, where they are seen.
-    const unlisted = getUnlistedHotkeys()
-      .map(scored)
-      .filter((item) => item.score > 0)
-      .sort(byMatchThenName);
-    const rows = [...unlisted, ...hotkeyEntities];
+    const unlisted = getUnlistedHotkeys().map(scored).sort(byMatchThenName);
+    const rows = filterSearchMatches([...unlisted, ...hotkeyEntities]);
 
     // The list is rebuilt after a failed action change or a cleared hotkey; the keyboard stays on the
     // same row's control (the keys below say which), not on <body> with Tab starting over.

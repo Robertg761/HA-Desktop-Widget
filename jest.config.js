@@ -2,6 +2,7 @@
 module.exports = {
   testEnvironment: 'jsdom',
   testMatch: ['<rootDir>/tests/**/*.test.js'],
+  setupFiles: ['<rootDir>/tests/setup-env.js'],
   collectCoverageFrom: [
     // main.js is the Electron composition root. Its security-sensitive behavior
     // lives in covered src/* helpers, while process wiring is checked separately
