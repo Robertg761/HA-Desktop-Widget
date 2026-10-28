@@ -1,5 +1,5 @@
 {
-  "cldr": "48.2.0",
+  "cldr": "49.0.0",
   "toneName": "{name} : {tones}",
   "toneJoin": " et ",
   "emoji": {
@@ -831,7 +831,7 @@
     "👊": "poing de face|absolument|battre|boum|correct|coup de poing|d’accord|main|mon pote|serrer",
     "👋": "signe de la main|à bientôt|à plus tard|au revoir|bonjour|bye|coucou|hello|il y a quelqu’un ?|main qui salue|salut",
     "👌": "ok|compris|d’accord|geste|main|nickel|parfait|super|tout va bien",
-    "👍": "pouce vers le haut|bien|compris|d’accord|génial|main|moi aussi|OK|oui|pouce levé|super|top",
+    "👍": "pouce vers le haut|+1|bien|compris|d’accord|génial|OK|oui|super",
     "👎": "pouce vers le bas|main|mauvais|non|nul|pouce baissé",
     "👏": "applaudissements|bien joué|bon travail|bravo|félicitations|formidable|geste|mains|mains qui applaudissent|super",
     "👐": "mains ouvertes|main|mains écartées|ouvert",
@@ -1449,6 +1449,7 @@
     "🛖": "hutte|abri|case|maison|maisonnette|yourte",
     "🛗": "ascenseur|accessibilité|descente|monte-charge|monte-personnes|montée",
     "🛘": "éboulement|avalanche|catastrophe|coulée de boue|danger|glissement de terrain|montagne|rochers|tremblement de terre",
+    "🛙": "phare|lumière|mer|navigation|repère|signal|tour",
     "🛜": "sans fil|connexion|haut débit|hotspot|internet|ordinateur|réseau|routeur|smartphone|Wi-Fi|wifi|wlan",
     "🛝": "toboggan|aire de jeu|glissade|jouer",
     "🛞": "roue|cercle|pneu|tourner|véhicule|voiture",
@@ -1840,7 +1841,10 @@
     "🪇": "maracas|cha cha cha|danse|danser|fête|hochet|instrument|musique|percussion|secouer",
     "🪈": "flûte|bois|fanfare|fifre|flûte à bec|flûtiste|instrument|musique|orchestre|piccolo",
     "🪉": "harpe|amour|cupidon|instrument|musique|orchestre",
-    "🪊": "trombone à coulisse|instrument|musique",
+    "🪊": "trombone à coulisse|cuivre|instrument|jazz|musique",
+    "🪋": "météorite|apocalypse|boule de feu|chute|espace|étoile|gravité|roche",
+    "🪌": "gomme|annuler|dessin|effacer|erreur|oups|supprimer",
+    "🪍": "filet avec manche|attraper|capturer|épuisette|piège",
     "🪎": "coffre au trésor|argent|argenterie|bijoux|butin|objets de valeur|or|pierre précieuse|richesse",
     "🪏": "pelle|bêche|creuser|trou",
     "🪐": "planète à anneaux|saturne|saturnien|saturnienne",
@@ -1899,6 +1903,7 @@
     "🫅": "personne avec une couronne|monarque|noble|royal|royauté",
     "🫆": "empreinte digitale|dermatoglyphe|données biométriques|identité|sécurité",
     "🫈": "créature velue|bigfoot|cryptide|forêt|géant|homme sauvage|poilu|sasquatch|yéti",
+    "🫌": "monarque|chenille|fragile|insecte|métamorphose|papillon",
     "🫍": "orque|baleine|marin|océan",
     "🫎": "élan|animal|bois|cervidé|mammifère|orignal|ramure",
     "🫏": "âne|animal|bourricot|mammifère|mule|têtu",
@@ -1915,6 +1920,7 @@
     "🫚": "racine de gingembre|bière|épice|naturel|santé",
     "🫛": "cosse de petits pois|edamame|fève|haricot|légume|légumineuse|soja",
     "🫜": "légume-racine|betterave|jardin|légume|navet|racine",
+    "🫝": "cornichon|condiment|pickle|saumure|vinaigre",
     "🫟": "éclaboussure|holi|peinture|tache",
     "🫠": "visage qui fond|disparaître|fondre|gêne|liquéfié|liquide|sarcasme|se dissoudre",
     "🫡": "visage qui fait un salut militaire|armée|bonne chance|compris|OK|oui|respect",
@@ -1927,6 +1933,7 @@
     "🫨": "visage secoué|choc|étourdi|fou|omg|ouah|panique|surprenant|tremblement|tremblement de terre|vibration",
     "🫩": "visage avec des valises sous les yeux|ensommeilé|épuisé|fatigué|sommeil",
     "🫪": "visage déformé|anxiété|bouffi|choc|gonflé|panique|surprise|vulnérabilité",
+    "🫫": "visage craquelé|craquer|effondrement|masquer|résilience|révéler|tension|transformation",
     "🫯": "nuage de colère|bagarre|combat|désaccord|discussion|dispute|grabuge|lutte",
     "🫰": "main avec index et pouce croisés|amour|argent|cher|claquer des doigts|cœur",
     "🫱": "main vers la droite|serrer la main|tenir la main",
@@ -1937,6 +1944,8 @@
     "🫵": "index pointant vers l’utilisateur|pointer|toi",
     "🫶": "mains qui forment un cœur|amour",
     "🫷": "main qui pousse vers la gauche|arrêter|attendre|bloquer|halte|high five|pousser|refuser|stop|tape m’en cinq|top là",
-    "🫸": "main qui pousse vers la droite|arrêter|attendre|bloquer|halte|high five|pousser|refuser|stop|tape m’en cinq|top là"
+    "🫸": "main qui pousse vers la droite|arrêter|attendre|bloquer|halte|high five|pousser|refuser|stop|tape m’en cinq|top là",
+    "🫹": "pouce vers la gauche|ça|neutre|poing|stop",
+    "🫺": "pouce vers la droite|ça|neutre|poing|stop"
   }
 }

@@ -527,7 +527,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ==============================================================================
 
 The emoji names and keywords the icon picker searches (emoji-names/) are taken from the emoji
-annotations of the Unicode Common Locale Data Repository (CLDR), release 48.2.0,
+annotations of the Unicode Common Locale Data Repository (CLDR), release 49.0.0,
 https://cldr.unicode.org
 
 UNICODE LICENSE V3
