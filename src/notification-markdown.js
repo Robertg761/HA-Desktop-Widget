@@ -7,9 +7,11 @@
  *
  * The subset is what those messages use: paragraphs and line breaks, headings, bulleted and
  * numbered lists, quotes, fenced code, and inline bold, italic, strikethrough, code and links.
- * Anything else stays as the text it is. Output is built with createElement and textContent only,
- * never innerHTML, and only http and https links become links: a `javascript:` address, or any
- * other scheme, is shown as its text.
+ * Home Assistant's Markdown also takes HTML, and older automations write `<b>`, `<i>`, `<u>`, `<s>`,
+ * `<a href>` and `<br>` instead (issue #214), so those inline tags are read too, with the common
+ * character references (`&amp;`, `&nbsp;`, `&#39;`). Anything else stays as the text it is. Output
+ * is built with createElement and textContent only, never innerHTML, and only http and https
+ * links become links: a `javascript:` address, or any other scheme, is shown as its text.
  */
 
 const BLOCK_BULLET = /^\s{0,3}[-*+]\s+(.*)$/;
@@ -19,6 +21,66 @@ const BLOCK_QUOTE = /^\s{0,3}>\s?(.*)$/;
 const BLOCK_FENCE = /^\s{0,3}(```|~~~)/;
 
 const isWordCharacter = (character) => !!character && /[\p{L}\p{N}]/u.test(character);
+
+// The inline HTML elements a message may use, by the token each becomes. An attribute on one of
+// them is ignored, except a link's href.
+const HTML_INLINE_TAGS = {
+  b: 'bold',
+  strong: 'bold',
+  i: 'italic',
+  em: 'italic',
+  u: 'underline',
+  ins: 'underline',
+  s: 'strike',
+  strike: 'strike',
+  del: 'strike',
+  a: 'link',
+};
+const HTML_BREAK = /^<br\s*\/?>/i;
+const HTML_OPEN_TAG = /^<([a-z]+)(\s[^<>]*)?>/i;
+const HTML_HREF = /(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>]+))/i;
+
+const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+
+/** Text with its character references (`&amp;`, `&#39;`, `&#x2014;`) read as the characters. */
+function decodeEntities(text) {
+  return text.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]+));/gi, (match, dec, hex, name) => {
+    if (name) return NAMED_ENTITIES[name.toLowerCase()] ?? match;
+    const codePoint = dec ? Number(dec) : parseInt(hex, 16);
+    // NUL and what is past Unicode stay as they were written.
+    return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+  });
+}
+
+/**
+ * Reads one of the inline HTML elements, `<b>bold</b>` or `<a href="…">text</a>`, at the start of
+ * `rest`, up to its own closing tag: one of the same name nested inside it is passed over. A tag
+ * that is not closed on the line is not read, and stays as text.
+ * @param {string} rest
+ * @returns {{length: number, type: string, inner: string, href: string|null}|null}
+ */
+function readHtmlElement(rest) {
+  const open = HTML_OPEN_TAG.exec(rest);
+  const name = open?.[1].toLowerCase();
+  const type = open && HTML_INLINE_TAGS[name];
+  if (!type) return null;
+  const tags = new RegExp(`<(/?)${name}(?:\\s[^<>]*)?>`, 'gi');
+  tags.lastIndex = open[0].length;
+  let depth = 1;
+  let tag;
+  while ((tag = tags.exec(rest))) {
+    depth += tag[1] ? -1 : 1;
+    if (depth) continue;
+    const href = type === 'link' ? HTML_HREF.exec(open[2] || '') : null;
+    return {
+      length: tag.index + tag[0].length,
+      type,
+      inner: rest.slice(open[0].length, tag.index),
+      href: href ? decodeEntities(href[1] ?? href[2] ?? href[3]) : null,
+    };
+  }
+  return null;
+}
 
 /**
  * The address a link points at, or null when it is not one we open. A relative address (`/config`)
@@ -68,8 +130,8 @@ function readLink(rest) {
 }
 
 /**
- * Splits a line of text into inline tokens: text, code, bold, italic, strike and link, the last
- * four carrying their own tokens.
+ * Splits a line of text into inline tokens: text, code, break, bold, italic, underline, strike and
+ * link, the last five carrying their own tokens.
  * @param {string} text
  * @returns {Array<Object>}
  */
@@ -77,7 +139,7 @@ function tokenizeInline(text) {
   const tokens = [];
   let buffer = '';
   const flush = () => {
-    if (buffer) tokens.push({ type: 'text', text: buffer });
+    if (buffer) tokens.push({ type: 'text', text: decodeEntities(buffer) });
     buffer = '';
   };
   const push = (token) => {
@@ -113,7 +175,7 @@ function tokenizeInline(text) {
       } else {
         push({
           type: 'link',
-          url: link.destination,
+          url: decodeEntities(link.destination),
           children: tokenizeInline(link.label || link.destination),
         });
       }
@@ -121,11 +183,36 @@ function tokenizeInline(text) {
       continue;
     }
 
+    if (character === '<') {
+      const lineBreak = HTML_BREAK.exec(rest);
+      if (lineBreak) {
+        push({ type: 'break' });
+        index += lineBreak[0].length;
+        continue;
+      }
+      const element = readHtmlElement(rest);
+      if (element) {
+        const children = tokenizeInline(element.inner);
+        if (element.type !== 'link') {
+          push({ type: element.type, children });
+        } else if (element.href) {
+          push({ type: 'link', url: element.href, children });
+        } else {
+          // An anchor with nowhere to go is only its text.
+          flush();
+          tokens.push(...children);
+        }
+        index += element.length;
+        continue;
+      }
+    }
+
     const bare = /^https?:\/\/[^\s<>]+/i.exec(rest);
     if (bare && !isWordCharacter(text[index - 1])) {
       // Sentence punctuation after an address is not part of it.
       const address = bare[0].replace(/[.,;:!?'")\]]+$/, '');
-      push({ type: 'link', url: address, children: [{ type: 'text', text: address }] });
+      const url = decodeEntities(address);
+      push({ type: 'link', url, children: [{ type: 'text', text: url }] });
       index += address.length;
       continue;
     }
@@ -252,14 +339,18 @@ function appendInline(parent, tokens, options) {
   tokens.forEach((token) => {
     if (token.type === 'text') {
       parent.appendChild(document.createTextNode(token.text));
+    } else if (token.type === 'break') {
+      parent.appendChild(document.createElement('br'));
     } else if (token.type === 'code') {
       const code = document.createElement('code');
       code.textContent = token.text;
       parent.appendChild(code);
     } else if (token.type === 'link') {
-      const url = resolveNotificationLink(token.url, options.baseUrl);
+      const url = options.insideLink ? null : resolveNotificationLink(token.url, options.baseUrl);
       if (!url) {
-        // Not an address we open (a javascript: one, say): only the link's text is shown.
+        // Not an address we open (a javascript: one, say), or a link inside another one, as the
+        // address in `<a href="…">https://…</a>` is: only its text is shown. A link in a link
+        // would open its address once for each of them on a single click.
         appendInline(parent, token.children, options);
         return;
       }
@@ -267,7 +358,7 @@ function appendInline(parent, tokens, options) {
       anchor.href = url;
       anchor.rel = 'noopener noreferrer';
       anchor.title = url;
-      appendInline(anchor, token.children, options);
+      appendInline(anchor, token.children, { ...options, insideLink: true });
       anchor.addEventListener('click', (event) => {
         event.preventDefault();
         options.openLink?.(url);
@@ -275,7 +366,7 @@ function appendInline(parent, tokens, options) {
       parent.appendChild(anchor);
     } else {
       const element = document.createElement(
-        { bold: 'strong', italic: 'em', strike: 's' }[token.type]
+        { bold: 'strong', italic: 'em', underline: 'u', strike: 's' }[token.type]
       );
       appendInline(element, token.children, options);
       parent.appendChild(element);
@@ -330,17 +421,17 @@ function renderNotificationMarkdown(container, message, options = {}) {
 
 function inlineToPlainText(tokens) {
   return tokens
-    .map((token) =>
-      token.type === 'text' || token.type === 'code'
-        ? token.text
-        : inlineToPlainText(token.children)
-    )
+    .map((token) => {
+      if (token.type === 'text' || token.type === 'code') return token.text;
+      if (token.type === 'break') return '\n';
+      return inlineToPlainText(token.children);
+    })
     .join('');
 }
 
 /**
- * A notification's message without its Markdown syntax, for the operating system's own toast,
- * which draws plain text.
+ * A notification's message without its Markdown or HTML syntax, for the operating system's own
+ * toast, which draws plain text.
  * @param {string} message
  * @returns {string}
  */
