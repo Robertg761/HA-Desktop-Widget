@@ -1,5 +1,5 @@
 {
-  "cldr": "48.2.0",
+  "cldr": "49.0.0",
   "toneName": "{name}: {tones}",
   "toneJoin": ", ",
   "emoji": {
@@ -1449,6 +1449,7 @@
     "🛖": "Hütte|Behausung|Gebäude|Haus|Jurte|Objekt|Rundhaus|Schutz",
     "🛗": "Fahrstuhl|Aufzug|Haus|Lift|Symbol|Transport",
     "🛘": "Erdrutsch|Berg|Erdbeben|Felsen|Gefahr|Katastrophe|Lawine|Murenabgang|Murgang|Schlammlawine",
+    "🛙": "Leuchtturm|Hoffnung|Leuchtfeuer|Licht|Meer|Orientierung|Schiffe|Seefahrt|Wegweiser",
     "🛜": "WLAN|Computer|drahtlos|Hotspot|Internet|kabellos|Netzwerk|Router|Verbindung|Wi-Fi",
     "🛝": "Spielplatzrutsche|Rutschbahn|Rutsche|spielen|Spielplatz|Vergnügungspark",
     "🛞": "Autorad|Autoreifen|drehen|Rad|Reifen|Reifen mit Felgen|rotieren",
@@ -1841,6 +1842,9 @@
     "🪈": "Flöte|Band|Blaskapelle|Holzblasinstrument|Instrument|Musik|Musikinstrument|musizieren|Orchester|Spielmannszug",
     "🪉": "Harfe|Amor|Cupido|Instrument|Liebe|Musik|Orchester",
     "🪊": "Posaune|Blasinstrument|Blechbläser|Blechblasinstrument|Instrument|Jazz|Musik|schieben|traurig|ziehen",
+    "🪋": "Meteor|Atmosphäre|Feuerkugel|Gestein|Sternschnuppe|verglühen",
+    "🪌": "Radiergummi|ausradieren|Bleistift|Fehler|radieren|Radierer|Ratzefummel|wegradieren",
+    "🪍": "Kescher|einsammeln|fangen|herausholen|keschern",
     "🪎": "Schatztruhe|Beute|Edelstein|Geld|Gold|Juwelen|Preis|Reichtum|Silber|Wertgegenstände",
     "🪏": "Schaufel|graben|Loch|Schippe|Spaten",
     "🪐": "Ringplanet|Gasplanet|Himmelskörper|Planet|Saturn",
@@ -1899,6 +1903,7 @@
     "🫅": "Person mit Krone|adelig|König|Königin|königlich|königliche Hoheit|Krönung|Monarch|Monarchin|Prinz|Prinzessin",
     "🫆": "Fingerabdruck|Forensik|Identität|Sicherheit",
     "🫈": "haariges Wesen|Bigfoot|Fabelwesen|Gigant|haarig|Kryptid|Riese|Sasquatch|Wald|wilder Mann|Woodwose|Yeti",
+    "🫌": "Monarchfalter|Hoffnung|Insekt|Metamorphose|Raupe|Veränderung|Verwandlung|Wechsel|zart",
     "🫍": "Orca|Meer|Meeressäuger|Meerestier|Orka|Ozean|Wal",
     "🫎": "Elch|Geweih|Säugetier|Tier",
     "🫏": "Esel|austreten|Dickschädel|Dummkopf|Maultier|Säugetier|störrisch|stur|Tier",
@@ -1915,6 +1920,7 @@
     "🫚": "Ingwer|gesund|Gewürz|Ginger Ale|Ingwerbier|scharf|Wurzel|würzig",
     "🫛": "Erbsenschote|Bohne|Edamame|Erbse|Erbsen|Essen|Gemüse|Hülsenfrucht|Hülsenfrüchte|Schote",
     "🫜": "Wurzelgemüse|Bete|Garten|Gemüse|Rote Bete|Rübe|Wurzel",
+    "🫝": "Saure Gurke|eingelegt|Essig|Gewürzgurke",
     "🫟": "Spritzer|Farbe|Fleck|Holi|Klecks|Tinte",
     "🫠": "schmelzendes Gesicht|auflösen|beschämt|flüssig|Hitze|Sarkasmus|sarkastisch|schmelzen|schwitzen|Smiley|verschwinden",
     "🫡": "salutierendes Gesicht|Aye|jawohl|jawoll|Militär|ok|Respekt|salutieren|Smiley|zu Befehl",
@@ -1927,6 +1933,7 @@
     "🫨": "zitterndes Doppelgesicht|Erdbeben|Gesicht|OMG|Panik|Schock|Smiley|überrascht|verrückt|vibrieren|wow|zittern",
     "🫩": "Gesicht mit Augenringen|Augenringe|erschöpft|müde|schläfrig|Smiley|übermüdet",
     "🫪": "verzerrtes Gesicht|Angst|ängstlich|aufgedunsen|besorgt|Panik|panisch|schockiert|überrascht",
+    "🫫": "Zerbrechendes Gesicht|Spannung|Verwandlung|widerstandsfähig|zerbrechend|zerfallend",
     "🫯": "Kampfwolke|Handgemenge|Kampf|Krawall|Prügelei|Rauferei|Schlägerei|Streit|Wortgefecht",
     "🫰": "Hand mit gekreuztem Zeigefinger und Daumen|Finger|Fingerherz|gekreuzt|Geld|Handgeste|Kosten|teuer",
     "🫱": "nach rechts weisende Hand|ausgestreckt|ausstrecken|Hände|Händeschütteln|reichen|schütteln|weisen",
@@ -1937,6 +1944,8 @@
     "🫵": "auf Betrachter zeigender Zeigefinger|deuten|du|Finger|Fingerzeig|Hand|Handgeste|Sie|stupsen|zeigen",
     "🫶": "Hände, die Herz bilden|<3|Finger|Geste|Händeherz|Handgeste|Handherz|hdl|Liebe",
     "🫷": "nach links schiebende Hand|drücken|Halt|High 5|High five|Moment|nein|schieben|Schluss|Stopp|warte mal|warten",
-    "🫸": "nach rechts schiebende Hand|drücken|Halt|High 5|High five|Moment|nein|schieben|Schluss|Stopp|warte mal|warten"
+    "🫸": "nach rechts schiebende Hand|drücken|Halt|High 5|High five|Moment|nein|schieben|Schluss|Stopp|warte mal|warten",
+    "🫹": "Daumen nach links|geschlossene Finger|neutral|zeigen",
+    "🫺": "Daumen nach rechts|geschlossene Finger|neutral|zeigen"
   }
 }
