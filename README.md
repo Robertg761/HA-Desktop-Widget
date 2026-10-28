@@ -359,7 +359,9 @@ The notes of a stable release are its `CHANGELOG.md` section, followed by a link
 changelog, and the release fails without a non-empty section. A beta uses its own section when the
 changelog has one; otherwise GitHub generates its notes from merged pull requests, comparing against
 the previous published prerelease in the same version series (or the latest stable release for the
-first beta).
+first beta). Notes are written once, when the release is created; to replace a published release's
+notes, add or correct its `CHANGELOG.md` section on `main` and run the **Update Release Notes**
+workflow with the release's tag.
 
 The website in `website/` is not deployed by GitHub: a change merged to `main` goes live only when
 someone publishes it with the Vercel CLI, usually before a release is tagged, so every line on it
