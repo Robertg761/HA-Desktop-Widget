@@ -6,7 +6,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 
 ### Prerequisites
 
-- Node.js 22 (the Cloud Sync and usage counter tests use the built-in `node:sqlite`)
+- Node.js 22.18 or later (Babel 8 needs it, and the Cloud Sync and usage counter tests use the built-in `node:sqlite`)
 - npm
 - Git
 - Windows 10/11, macOS 13+, or a current Linux desktop

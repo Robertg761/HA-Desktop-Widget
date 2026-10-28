@@ -13,20 +13,32 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist-renderer',
       emptyOutDir: true,
-      rollupOptions: {
+      rolldownOptions: {
         input: resolve(__dirname, 'renderer.js'),
         output: {
           entryFileNames: 'renderer.bundle.js',
           chunkFileNames: 'chunks/[name]-[hash].js',
-          onlyExplicitManualChunks: true,
-          manualChunks: (id) => {
-            if (id.endsWith('/src/ui.js')) return 'device-ui';
-            if (id.endsWith('/src/settings.js')) return 'settings';
-            if (!id.includes('node_modules')) return null;
-            if (id.includes('hls.js')) return 'vendor-hls';
-            if (id.includes('sortablejs')) return 'vendor-sortable';
-            if (id.includes('regenerate-unicode-properties')) return 'vendor-emoji';
-            return 'vendor';
+          // The chunks below import each other both ways, so keep every module running in the
+          // order the source imports it rather than the order the chunks load.
+          strictExecutionOrder: true,
+          codeSplitting: {
+            // Only the modules named here go in each chunk, not everything they import
+            // (Rollup's onlyExplicitManualChunks), so device-ui and settings stay their own size.
+            includeDependenciesRecursively: false,
+            groups: [
+              {
+                debugName: 'renderer-chunks',
+                name: (id) => {
+                  if (id.endsWith('/src/ui.js')) return 'device-ui';
+                  if (id.endsWith('/src/settings.js')) return 'settings';
+                  if (!id.includes('node_modules')) return null;
+                  if (id.includes('hls.js')) return 'vendor-hls';
+                  if (id.includes('sortablejs')) return 'vendor-sortable';
+                  if (id.includes('regenerate-unicode-properties')) return 'vendor-emoji';
+                  return 'vendor';
+                },
+              },
+            ],
           },
         },
       },
