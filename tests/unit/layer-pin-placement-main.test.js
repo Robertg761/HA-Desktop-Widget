@@ -81,3 +81,69 @@ describe('placing layer surfaces without Hyprland', () => {
     expect(place).not.toHaveBeenCalled();
   });
 });
+
+describe('dropping a pin on a Hyprland layer surface', () => {
+  function loadSnapRuntime() {
+    const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
+    const place = jest.fn();
+    const makeWindow = (id) => ({
+      __desktopPinEntityId: id,
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 0, y: 0, width: 168, height: 148 }),
+      getTitle: () => `HA Pin: ${id}`,
+    });
+    const pins = { 'light.one': makeWindow('light.one'), 'light.two': makeWindow('light.two') };
+    const context = {
+      layerShellRaiser: { place },
+      // Layer positions are in the monitor's coordinates; its work area is below a 28px bar.
+      layerActualMonitor: {
+        name: 'DP-1',
+        x: 1920,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        workArea: { x: 0, y: 28, width: 1920, height: 1052 },
+      },
+      layerPositions: new Map([['light.one', { x: 400, y: 100 }]]),
+      desktopPinWindows: new Map(Object.entries(pins)),
+      clampLayerPosition,
+      snapDesktopPinPosition,
+    };
+    const start = mainSource.indexOf('function snapLayerPinPosition');
+    const end = mainSource.indexOf("ipcMain.handle('begin-layer-drag'");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    vm.runInNewContext(mainSource.slice(start, end), context);
+    return { context, pins, place };
+  }
+
+  it('lines the dropped pin up with the other pins', () => {
+    const { context, pins, place } = loadSnapRuntime();
+    context.layerPositions.set('light.two', { x: 405, y: 263 });
+
+    context.snapLayerPinPosition({ id: 'light.two', window: pins['light.two'] });
+
+    // Under light.one (bottom at 248), the app's 16px gap apart.
+    expect(context.layerPositions.get('light.two')).toEqual({ x: 400, y: 264 });
+    expect(place).toHaveBeenCalledWith('HA Pin: light.two', { x: 400, y: 264 });
+  });
+
+  it('leaves a pin dropped away from the others alone', () => {
+    const { context, pins, place } = loadSnapRuntime();
+    context.layerPositions.set('light.two', { x: 900, y: 600 });
+
+    context.snapLayerPinPosition({ id: 'light.two', window: pins['light.two'] });
+
+    expect(context.layerPositions.get('light.two')).toEqual({ x: 900, y: 600 });
+    expect(place).not.toHaveBeenCalled();
+  });
+
+  it('snaps to the bar edge of the work area', () => {
+    const { context, pins } = loadSnapRuntime();
+    context.layerPositions.set('light.two', { x: 1200, y: 33 });
+
+    context.snapLayerPinPosition({ id: 'light.two', window: pins['light.two'] });
+
+    expect(context.layerPositions.get('light.two')).toEqual({ x: 1200, y: 28 });
+  });
+});

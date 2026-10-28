@@ -421,6 +421,16 @@ describe('UI Utilities', () => {
       delete window.electronAPI.setUiScale;
     });
 
+    it('marks where desktop pin names sit and drops a side it does not know', () => {
+      uiUtils.applyUiPreferences({ desktopPinNameAlign: 'center' });
+      expect(document.body.dataset.pinNameAlign).toBe('center');
+      uiUtils.applyUiPreferences({ desktopPinNameAlign: 'justify' });
+      expect(document.body.dataset.pinNameAlign).toBeUndefined();
+      uiUtils.applyUiPreferences({ desktopPinNameAlign: 'right' });
+      uiUtils.applyUiPreferences({});
+      expect(document.body.dataset.pinNameAlign).toBeUndefined();
+    });
+
     it('should apply high contrast mode', () => {
       uiUtils.applyUiPreferences({ highContrast: true });
 

@@ -294,6 +294,12 @@ function createSettingsModalDOM() {
         <option value="comfortable">Comfortable</option>
         <option value="compact">Compact</option>
       </select>
+      <label for="pin-name-align-select">Desktop pin names</label>
+      <select id="pin-name-align-select">
+        <option value="left">Left</option>
+        <option value="center">Center</option>
+        <option value="right">Right</option>
+      </select>
 
       <label for="active-tile-glow">
         <input type="checkbox" id="active-tile-glow" />
@@ -839,6 +845,51 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
         expect.objectContaining({ ui: expect.objectContaining({ density: 'compact' }) })
       );
+    });
+
+    test('leaves pin names following the language until a side is picked', async () => {
+      await settings.openSettings();
+      const select = document.getElementById('pin-name-align-select');
+      expect(select.value).toBe('left');
+
+      // Saving another appearance change does not fix the names on the left.
+      const density = document.getElementById('density-select');
+      density.value = 'compact';
+      density.dispatchEvent(new Event('change', { bubbles: true }));
+      await settings.saveSettings();
+      const firstSave = window.electronAPI.updateConfig.mock.calls.at(-1)[0];
+      expect(firstSave.ui.density).toBe('compact');
+      expect(firstSave.ui).not.toHaveProperty('desktopPinNameAlign');
+
+      await settings.openSettings();
+      select.value = 'center';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      // Previewed at once in the open window; the pins get it with the saved config.
+      expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ desktopPinNameAlign: 'center' })
+      );
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui.desktopPinNameAlign).toBe(
+        'center'
+      );
+    });
+
+    test('keeps pin names unset when the language turns right-to-left while Settings is open', async () => {
+      await settings.openSettings();
+      expect(document.getElementById('pin-name-align-select').value).toBe('left');
+      // Choosing Arabic applies at once, so the untouched picker's Left is no longer the default.
+      document.documentElement.dir = 'rtl';
+      try {
+        const density = document.getElementById('density-select');
+        density.value = 'compact';
+        density.dispatchEvent(new Event('change', { bubbles: true }));
+        await settings.saveSettings();
+        expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui).not.toHaveProperty(
+          'desktopPinNameAlign'
+        );
+      } finally {
+        document.documentElement.dir = '';
+      }
     });
 
     test('OAuth settings hide the access token and preserve authorization on unrelated saves', async () => {

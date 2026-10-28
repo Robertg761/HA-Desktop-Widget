@@ -566,6 +566,125 @@ const PIN_STATUS_WHOLE = `(() => {
   return !!status && status.scrollWidth <= status.clientWidth;
 })()`;
 
+// A pin's name, with Settings putting it in the middle, is in the middle of the whole pin and
+// clear of the button or reading beside it.
+const PIN_NAME_CENTRED = `(() => {
+  const name = document.querySelector('.desktop-pin-panel-name, .desktop-pin-light-name');
+  if (!name) return false;
+  const range = document.createRange();
+  range.selectNodeContents(name);
+  const text = range.getBoundingClientRect();
+  const beside = document.querySelector(
+    '.desktop-pin-panel-topline > :not(.desktop-pin-panel-meta), .desktop-pin-light-power'
+  )?.getBoundingClientRect();
+  const clear = !beside || text.right <= beside.left || text.left >= beside.right;
+  return Math.abs((text.left + text.right) / 2 - innerWidth / 2) <= 1.5 && clear;
+})()`;
+
+// A pin whose name Settings puts on one side or in the middle. The scene's settings can still be
+// on their way to a pin that opens at once, so it waits for the pin to have them; a centred name
+// must then be in the middle of the pin.
+const alignedNamePinScene = (name, entityId, align, extra = {}) =>
+  pinScene(name, entityId, {
+    ...extra,
+    ui: { desktopPinNameAlign: align, ...extra.ui },
+    setup: async (ctx) => {
+      const pin = await ctx.openPin(entityId);
+      const applied = `document.body.dataset.pinNameAlign === ${JSON.stringify(align)}`;
+      for (let attempt = 0; attempt < 20 && !(await pin.evaluate(applied)); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      if (!(await pin.evaluate(applied))) {
+        throw new Error(`The pin did not get the "${align}" name setting`);
+      }
+      if (align === 'center' && !(await pin.evaluate(PIN_NAME_CENTRED))) {
+        throw new Error('Layout check failed: the pin name is not centred on the pin');
+      }
+      return { capture: pin };
+    },
+  });
+
+// Drags with the real mouse from one point on the screen to another, in DIPs, through Windows'
+// own input: a pin's position is only saved after a drag Windows reports as the user's ('moved').
+function dragWithMouseOnWindows(from, to, scale) {
+  const { execFileSync } = require('child_process');
+  const point = ({ x, y }) => `${Math.round(x * scale)}, ${Math.round(y * scale)}`;
+  const steps = 12;
+  const moves = Array.from({ length: steps }, (_, index) => {
+    const t = (index + 1) / steps;
+    const at = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+    return `[SnapshotMouse]::SetCursorPos(${point(at)}) | Out-Null; [SnapshotMouse]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 30`;
+  });
+  const script = [
+    `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class SnapshotMouse { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra); }'`,
+    '[SnapshotMouse]::SetProcessDPIAware() | Out-Null',
+    `[SnapshotMouse]::SetCursorPos(${point(from)}) | Out-Null`,
+    'Start-Sleep -Milliseconds 100',
+    '[SnapshotMouse]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)',
+    'Start-Sleep -Milliseconds 100',
+    // Windows starts moving the window at the first move after the press, and that move's own
+    // distance is lost: a nudge of 1 px starts it, so the path below is followed whole.
+    `[SnapshotMouse]::SetCursorPos(${point({ x: from.x + 1, y: from.y + 1 })}) | Out-Null`,
+    '[SnapshotMouse]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero)',
+    'Start-Sleep -Milliseconds 100',
+    ...moves,
+    'Start-Sleep -Milliseconds 150',
+    '[SnapshotMouse]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)',
+  ].join('; ');
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script]);
+}
+
+// Two pins, the second dragged in Reorganize mode with the mouse to a few pixels off a spot
+// beside or under the first; it must settle there (issue #215). The display is 1024x768.
+async function dragPinNextToAnother(ctx) {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await ctx.openPin('sensor.office_temp');
+  const pin = await ctx.openPin('fan.office');
+  await ctx.ev(`(async () => {
+    await window.electronAPI.setDesktopPinEditMode(true);
+    await window.electronAPI.updateDesktopPinBounds('sensor.office_temp', { x: 640, y: 40 });
+    await window.electronAPI.updateDesktopPinBounds('fan.office', { x: 820, y: 420 });
+  })()`);
+  await wait(800);
+  const scale = await pin.evaluate('devicePixelRatio');
+  const at = async () => pin.evaluate('[screenX, screenY]');
+  // Each drop is 7 or 4 px off its spot: under the sensor, 16 px apart, then beside it, touching.
+  // The last is far from everything and stays where it is dropped, give or take the mouse's pixel,
+  // which tells a drag that missed its point from a pin that did not snap.
+  const drops = [
+    { to: { x: 647, y: 40 + 148 + 21 }, settles: [640, 204] },
+    { to: { x: 640 + 168 + 4, y: 46 }, settles: [808, 40] },
+    { to: { x: 700, y: 450 }, settles: null },
+  ];
+  try {
+    for (const { to, settles } of drops) {
+      const [x, y] = await at();
+      // Grab the pin by its middle, away from the resize corners.
+      const grab = { x: x + 84, y: y + 74 };
+      dragWithMouseOnWindows(grab, { x: grab.x + to.x - x, y: grab.y + to.y - y }, scale);
+      await wait(1000);
+      const landed = await at();
+      if (landed[0] === x && landed[1] === y) {
+        throw new Error(`The mouse drag did not move the pin from ${x},${y}`);
+      }
+      if (!settles) {
+        if (Math.abs(landed[0] - to.x) > 2 || Math.abs(landed[1] - to.y) > 2) {
+          throw new Error(`The mouse drag to ${to.x},${to.y} dropped the pin at ${landed}`);
+        }
+        continue;
+      }
+      if (landed[0] !== settles[0] || landed[1] !== settles[1]) {
+        throw new Error(
+          `A pin dropped at ${to.x},${to.y} settled at ${landed}, not at ${settles} (scale ${scale})`
+        );
+      }
+    }
+  } finally {
+    await ctx.ev('window.electronAPI.setDesktopPinEditMode(false)');
+  }
+  return { capture: pin };
+}
+
 // A heat/cool range's two sliders are as far apart as the cooling one is from the modes under it:
 // the pin's spare height goes around each row alike.
 const RANGE_ROWS_SPREAD = `(() => {
@@ -2918,6 +3037,18 @@ const scenes = [
   pinScene('pin-presence', 'person.alex'),
   pinScene('pin-vacuum', 'vacuum.robot'),
   pinScene('pin-timer', 'timer.laundry'),
+  // Settings > Appearance > Desktop pin names (issue #215): in the middle of the whole pin, also
+  // where a power button or a reading sits beside the name, and on the right.
+  alignedNamePinScene('pin-name-centre-sensor', 'sensor.office_temp', 'center'),
+  alignedNamePinScene('pin-name-centre-fan', 'fan.office', 'center'),
+  alignedNamePinScene('pin-name-centre-climate', 'climate.bedroom', 'center'),
+  alignedNamePinScene('pin-name-centre-light', 'light.desk_lamp', 'center'),
+  alignedNamePinScene('ar-pin-name-centre-fan', 'fan.office', 'center', { ui: { language: 'ar' } }),
+  alignedNamePinScene('pin-name-right-fan', 'fan.office', 'right'),
+  alignedNamePinScene('pin-name-centre-light-long', 'light.upstairs_hallway_ceiling', 'center'),
+  // Snapping is checked with Windows' own mouse input, which the other systems' runners cannot
+  // send without accessibility permissions or a window manager.
+  { name: 'pin-snap-drag', platforms: ['win32'], config: pinsPage, setup: dragPinNextToAnother },
   // Pins dragged a little bigger, between the default and the roomy 260x190: the four modes or
   // speeds come back and must still fit their row, and the weather's units keep their case.
   resizedPinScene('climate', 'climate.bedroom', { width: 200, height: 170 }),
