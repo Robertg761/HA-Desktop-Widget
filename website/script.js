@@ -192,7 +192,6 @@ function syncBrightness() {
   const e = ENTITIES[popTarget];
   popValue.textContent = e.on ? `${e.bri}%` : 'Off';
   popSlider.value = e.bri;
-  popSlider.style.setProperty('--fill', `${e.bri}%`);
   popPower.textContent = e.on ? 'Turn off' : 'Turn on';
   pop.classList.toggle('is-off', !e.on);
 }

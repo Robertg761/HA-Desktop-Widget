@@ -87,6 +87,7 @@ import {
   setConnectionStatusBusy,
   stripSummaryPrefix,
 } from './src/connection-status.js';
+import oauthAccessToken from './src/oauth-access-token.cjs';
 
 // Shared renderer modules reach the desktop surface only through this host. The panel preview
 // injects its own before it boots this file; it must not be replaced by one that says Electron.
@@ -248,6 +249,9 @@ let reconnectAttempts = 0;
 // every entity would otherwise be asked again, from the start, forever.
 let snapshotTimeoutsInARow = 0;
 const MAX_SNAPSHOT_TIMEOUT_GROWTH = 4;
+// True from a login until that connection's get_states result arrives. State changes received in
+// between happened before Home Assistant took the snapshot, which already includes them.
+let awaitingStatesSnapshot = false;
 let reconnectTimerId = null;
 let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
@@ -330,6 +334,17 @@ function connectWebSocket() {
   if (usesOAuth() && !isConfigured(state.CONFIG)) {
     setOAuthRestoreStatus();
     renderMainWidgetState();
+    return;
+  }
+  // An access token that expired while the computer slept would be rejected, and Home Assistant
+  // reports every rejected login as a failed login attempt from this computer. Refresh it first;
+  // the new token reconnects through the config broadcast.
+  if (oauthAccessToken.isOAuthAccessTokenExpired(state.CONFIG)) {
+    if (websocket.ws) closeWebSocket();
+    updateMainConnectionState('connecting');
+    setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
+    renderMainWidgetState();
+    if (!oauthAuthRefreshInFlight) void recoverOAuthAuthorization();
     return;
   }
   updateMainConnectionState('connecting');
@@ -2771,6 +2786,16 @@ websocket.on('message', (msg) => {
       resetConnectionToastTracking();
       clearReconnectTimer();
       setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+      // Subscribe before asking for the snapshot. Home Assistant answers each message in turn, so
+      // asking for the states first left a gap between the two in which a change was neither in
+      // the snapshot nor sent as an event, and its tile kept the old state until the next change.
+      // Every reconnect (each wake from sleep) opened that gap.
+      awaitingStatesSnapshot = true;
+      websocket
+        .request({ type: 'subscribe_events', event_type: 'state_changed' })
+        .catch((error) => {
+          log.warn('State change subscription request failed:', error);
+        });
       // The first snapshot is the one request that can legitimately take a long time. Giving up
       // at the usual 15 s tore the socket down and asked Home Assistant to serialise every entity
       // again, so a large instance never finished loading.
@@ -2823,11 +2848,6 @@ websocket.on('message', (msg) => {
       configReq.catch((err) => {
         log.error('get_config request failed:', err);
       });
-      websocket
-        .request({ type: 'subscribe_events', event_type: 'state_changed' })
-        .catch((error) => {
-          log.warn('State change subscription request failed:', error);
-        });
       if (!IS_SPECIAL_PIN_MODE) {
         websocket
           .request({ type: 'subscribe_events', event_type: 'entity_registry_updated' })
@@ -2884,6 +2904,8 @@ websocket.on('message', (msg) => {
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
       queueEntityRegistryRename(msg.event.data);
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
+      // Older than the snapshot on its way: queued, it would be drawn over the newer state.
+      if (awaitingStatesSnapshot) return;
       const entity = msg.event.data?.new_state;
       if (entity) {
         queueStateChangedEntity(entity);
@@ -2895,6 +2917,7 @@ websocket.on('message', (msg) => {
       if (msg.result) {
         if (msg.id === getStatesId) {
           // get_states response
+          awaitingStatesSnapshot = false;
           const newStates = {};
           if (Array.isArray(msg.result)) {
             log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);

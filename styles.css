@@ -6861,15 +6861,15 @@ body.density-compact #quick-controls .control-item.sensor-numeric-entity[data-ch
   pointer-events: none;
 }
 
+/* The caption shows the camera's whole name, like every other tile: it wraps, and the tile grows
+   to fit it with the picture behind. */
 .camera-preview-tile .camera-tile-copy .control-name {
   margin: 0 0 2px;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: rgba(255, 255, 255, 0.96);
   font-size: var(--font-size-sm);
   line-height: 1.2;
-  text-overflow: ellipsis;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
-  white-space: nowrap;
 }
 
 .camera-preview-tile .camera-tile-preview-status {
@@ -14978,9 +14978,11 @@ body.theme-light
   margin-inline-end: 10px;
 }
 
+/* The knob is placed inside the track's 1px border, so 2px here is 3px from the outer edge: the
+   track's 22px height less the 16px knob, halved. */
 :is(#settings-modal, #alert-config-modal, .rename-modal) .form-group input[type='checkbox']::after {
-  top: 3px;
-  inset-inline-start: 3px;
+  top: 2px;
+  inset-inline-start: 2px;
   width: 16px;
   height: 16px;
   background: #fff;
@@ -15885,8 +15887,8 @@ body.density-compact #quick-controls {
   --qa-tile-height: 78px;
 }
 
-/* The height is a floor, not a fixed size: the name and state lines are clamped, so a tile only
-   grows to match a taller media tile in its row, which the grid stretches it to. */
+/* The height is a floor, not a fixed size: a tile grows to show the whole of a long name, and to
+   match a taller tile in its row, which the grid stretches it to. */
 #quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
   height: auto;
   min-height: var(--qa-tile-height);
@@ -15903,19 +15905,18 @@ body.density-compact #quick-controls {
   justify-content: safe center;
 }
 
-/* While editing, the buttons take the top of every tile and the content sits below them, which
-   leaves no slack for a floor: the tiles keep the fixed row height they always had, so their content
-   never makes a row taller, and the name sits where it did, a few pixels closer to the icon. A row
-   that a taller media tile has made deeper still takes them to its foot, as it does outside edit
-   mode: the extra height only adds room under the state line. */
+/* While editing, the buttons take the top of every tile and the content sits below them, and the
+   name sits where it did, a few pixels closer to the icon. The row height stays a floor, as outside
+   edit mode: a tile whose whole name needs more lines grows to show it instead of clipping it, and
+   a row that a taller media tile has made deeper still takes the tiles to its foot. */
 #quick-controls.reorganize-mode {
   --qa-tile-info-offset: 0px;
 }
 
 #quick-controls.reorganize-mode
   .control-item:not(.comparison-graph-tile):not(.media-player-entity) {
-  height: var(--qa-tile-height);
-  min-height: 100%;
+  height: auto;
+  min-height: var(--qa-tile-height);
 }
 
 /* Icon, name and state hang from the top. Centring the name block in what is left under the icon
@@ -15942,24 +15943,23 @@ body.density-compact #quick-controls {
   padding-bottom: 8px;
 }
 
-/* A long name gives up its tail, not the icon above it or the state below it: Home Assistant's
-   own names run to 40-90 characters, and three or four wrapped lines pushed both out of the
-   fixed-height tile. The tooltip carries the whole name. Compact tiles have room for one line. */
-#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
+/* While editing, the buttons' room at the top leaves the content 2 to 7px taller than that foot
+   allows, which used to disappear into the bottom padding of a fixed-height tile. Without the foot
+   an ordinary tile stays exactly the floor, so entering edit mode does not move the grid, and only
+   a long name makes its tile taller. */
+#quick-controls.reorganize-mode
+  .control-item:not(.comparison-graph-tile):not(.media-player-entity):not(
+    .camera-preview-tile:where([data-camera-preview-has-frame='true'])
+  ):not(.sensor-numeric-entity) {
+  padding-bottom: 0;
 }
 
-body.density-compact
-  #quick-controls
-  .control-item:not(.comparison-graph-tile):not(.media-player-entity)
-  .control-name {
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
+/* A tile always shows its whole name: names that share a beginning ("Robert's Room Lamp",
+   "Robert's Room Fan") cannot be told apart once they are cut, so a long name wraps and the tile
+   grows to fit it (tiles only have a minimum height). A long word without spaces, such as an
+   entity id, wraps anywhere instead of running out of the tile. */
+#quick-controls .control-item:not(.comparison-graph-tile):not(.media-player-entity) .control-name {
+  overflow-wrap: anywhere;
 }
 
 /* One line for the state or value as well. */

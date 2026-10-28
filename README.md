@@ -11,11 +11,11 @@ A frosted-glass desktop widget for Home Assistant that provides quick access to 
 
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
 
-<img src="images/Main_View.png?v=20261004" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261004" alt="Light adjust" width="280">
+<img src="images/Main_View.png?v=20261015" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261015" alt="Light adjust" width="280">
 
 ## Settings
 
-<img src="images/Settings_Appearance.png?v=20261004" alt="Appearance settings" width="320">
+<img src="images/Settings_Appearance.png?v=20261015" alt="Appearance settings" width="320">
 
 Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
 
@@ -359,7 +359,9 @@ The notes of a stable release are its `CHANGELOG.md` section, followed by a link
 changelog, and the release fails without a non-empty section. A beta uses its own section when the
 changelog has one; otherwise GitHub generates its notes from merged pull requests, comparing against
 the previous published prerelease in the same version series (or the latest stable release for the
-first beta).
+first beta). Notes are written once, when the release is created; to replace a published release's
+notes, add or correct its `CHANGELOG.md` section on `main` and run the **Update Release Notes**
+workflow with the release's tag.
 
 The website in `website/` is not deployed by GitHub: a change merged to `main` goes live only when
 someone publishes it with the Vercel CLI, usually before a release is tagged, so every line on it
@@ -404,7 +406,7 @@ your own checkout, so it only proves anything on a clean, up-to-date `main`.)
 ### Anonymous install count
 
 Release download numbers count every update, so they can't say how many people use the app.
-If you turn on **Settings → Updates → Count this install** (it is off by default), packaged
+If you turn on **Settings → Advanced → Count this install** (it is off by default), packaged
 builds send one request a day with a random install ID, the app version, and the OS family
 (Windows, macOS, or Linux). Nothing about you, your Home Assistant, or your settings is sent, and
 the counter does not store IP addresses. The ID lives in `usage-ping.json` next to `config.json`
@@ -416,13 +418,16 @@ The counter service is in
 
 Profile sync keeps your widget set up the same way on every computer. It writes one file,
 `ha-widget-profile-sync.json`, into a folder that Dropbox, OneDrive, iCloud Drive, Google Drive,
-Syncthing, or any similar app already keeps in sync. There is no server and no account.
+Syncthing, or any similar app already keeps in sync. Folder sync needs no server and no account.
 
-Builds that include **Cloud Sync** also offer **HA Desktop Widget Cloud** as the sync app: sign
-in with Google or GitHub on each computer instead of choosing a folder. It is a paid service
-with a free trial, and everything below about scope, merging, backups and encryption works the
-same way. With encryption on, the service only ever holds data it cannot read. Running the
-service yourself is covered in [docs/cloud-sync-setup.md](docs/cloud-sync-setup.md).
+You can also choose **HA Desktop Widget Cloud** as the sync app, which is **Cloud Sync**: sign
+in with Google or GitHub on each computer instead of choosing a folder. It is a paid service:
+new accounts can save settings free for 14 days, and the subscription is USD 24 a year, billed
+from the day you subscribe. Once the trial ends or a subscription lapses, changes from your
+other computers still download, and this computer's changes wait until you subscribe. Everything
+below about scope, merging, backups and encryption works the same way. With encryption on, the
+service cannot read your synced settings. Running the service yourself is covered in
+[docs/cloud-sync-setup.md](docs/cloud-sync-setup.md).
 
 **Set up the first computer**
 
@@ -559,8 +564,6 @@ We welcome contributions! Here's how you can help:
 ## Sponsors
 
 HA Desktop Widget is independently developed and will remain free and open source. Sponsorship helps support ongoing development, maintenance, cross-platform testing, and other project expenses.
-
-Thank you to [DegenApeDev](https://github.com/DegenApeDev) for supporting this work.
 
 [Become a sponsor](https://github.com/sponsors/Robertg761) or see the [full sponsor list and recognition details](SPONSORS.md).
 

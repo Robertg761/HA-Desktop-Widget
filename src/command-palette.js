@@ -12,7 +12,7 @@ import {
 import websocket from './websocket.js';
 import { closeDialog, openDialog, showToast } from './ui-utils.js';
 import { formatNumber, t } from './i18n.js';
-import { compareNames, normalizeSearchText } from './format.js';
+import { compareNames, getCloseMatchScore, normalizeSearchText } from './format.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
 import { applyCloseButtonIcons } from './icons.js';
 import { getActiveQuickAccessTab } from './quick-access-tabs.js';
@@ -55,33 +55,6 @@ function normalizeSearchValue(value) {
   return normalizeSearchText(value, { keepDots: true });
 }
 
-// Fuzzy (in-order, gaps allowed) matching only helps with an abbreviation of a real word. With one
-// or two letters nearly every name has them somewhere, and over a long name any word does: "disarm"
-// scattered through "Upstairs hallway ceiling pendant light" is not a match. So it needs three letters
-// and a match that stays close together.
-const MIN_FUZZY_QUERY_LENGTH = 3;
-
-function getSubsequenceScore(text, query) {
-  if (query.length < MIN_FUZZY_QUERY_LENGTH) return 0;
-  let queryIndex = 0;
-  let firstMatch = -1;
-  let lastMatch = -1;
-
-  for (let textIndex = 0; textIndex < text.length && queryIndex < query.length; textIndex += 1) {
-    if (text[textIndex] !== query[queryIndex]) continue;
-    if (firstMatch === -1) firstMatch = textIndex;
-    lastMatch = textIndex;
-    queryIndex += 1;
-  }
-
-  if (queryIndex !== query.length) return 0;
-
-  const span = lastMatch - firstMatch + 1;
-  if (span > Math.max(query.length * 2, query.length + 4)) return 0;
-  const gaps = Math.max(0, span - query.length);
-  return Math.max(1, 400 - firstMatch - gaps);
-}
-
 // With `fuzzy` off only an exact, prefix, substring or all-the-words match counts; entity ids are
 // matched that way, since an id is not a word to abbreviate.
 function scoreCommandPaletteMatch(text, query, { fuzzy = true } = {}) {
@@ -106,7 +79,7 @@ function scoreCommandPaletteMatch(text, query, { fuzzy = true } = {}) {
     return Math.max(300, 450 - normalizedText.indexOf(words[0]));
   }
 
-  return fuzzy ? getSubsequenceScore(normalizedText, normalizedQuery) : 0;
+  return fuzzy ? getCloseMatchScore(normalizedText, normalizedQuery) : 0;
 }
 
 // The object id on its own ("kitchen" of light.kitchen), unless the query carries a dot, which is

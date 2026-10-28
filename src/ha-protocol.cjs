@@ -1,6 +1,8 @@
 const dns = require('dns');
 const nodeNet = require('net');
 
+const { isOAuthAccessTokenExpired } = require('./oauth-access-token.cjs');
+
 const MEDIA_ARTWORK_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MEDIA_ARTWORK_GENERIC_CONTENT_TYPES = new Set([
   'application/octet-stream',
@@ -799,6 +801,9 @@ function createHaProtocolHandler({
       const token = String(currentConfig?.homeAssistant?.token || '');
 
       if (!haUrl || !token || !entityId) return errorResponse(403);
+      // Home Assistant would reject an expired token and report a failed login from this
+      // computer. Requests made after the refresh carry the new token.
+      if (isOAuthAccessTokenExpired(currentConfig)) return errorResponse(503);
 
       if (host === 'camera_stream') {
         if (!HA_ENTITY_ID_PATTERN.test(entityId)) return errorResponse(400);

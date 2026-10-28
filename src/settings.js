@@ -2653,24 +2653,20 @@ function getPendingPrimaryCards() {
 
 function getPrimaryCardEntityOptions(filter = '') {
   const normalizedFilter = filter.toLowerCase();
-  return Object.values(state.STATES || {})
+  const scored = Object.values(state.STATES || {})
     .filter(
       (entity) => !entity.entity_id.startsWith('sun.') && !entity.entity_id.startsWith('zone.')
     )
     .map((entity) => {
       if (!normalizedFilter) return { entity, score: 1 };
       const nameScore = utils.getSearchScore(utils.getEntityDisplayName(entity), normalizedFilter);
-      const idScore = utils.getSearchScore(entity.entity_id, normalizedFilter);
+      const idScore = utils.getSearchScore(entity.entity_id, normalizedFilter, { fuzzy: false });
       return { entity, score: nameScore + idScore };
-    })
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return compareNames(
-        utils.getEntityDisplayName(a.entity),
-        utils.getEntityDisplayName(b.entity)
-      );
     });
+  return utils.filterSearchMatches(scored).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return compareNames(utils.getEntityDisplayName(a.entity), utils.getEntityDisplayName(b.entity));
+  });
 }
 
 // "(default)" belongs to the slot, not the item: Weather is Card 1's default and Time is Card 2's,
@@ -7789,14 +7785,14 @@ function populateAlertEntityPicker() {
     // The best matches first: a name score and an id score added, as the picker always did.
     const matchesFor = (query) => {
       if (!query) return candidates;
-      return candidates
-        .map((candidate) => ({
-          candidate,
-          score:
-            utils.getSearchScore(candidate.name, query) +
-            utils.getSearchScore(candidate.entity.entity_id, query),
-        }))
-        .filter(({ score }) => score > 0)
+      const scored = candidates.map((candidate) => ({
+        candidate,
+        score:
+          utils.getSearchScore(candidate.name, query) +
+          utils.getSearchScore(candidate.entity.entity_id, query, { fuzzy: false }),
+      }));
+      return utils
+        .filterSearchMatches(scored)
         .sort((a, b) => b.score - a.score)
         .map(({ candidate }) => candidate);
     };

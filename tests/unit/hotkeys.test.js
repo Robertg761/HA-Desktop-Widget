@@ -27,6 +27,7 @@ jest.mock('../../src/utils.js', () => ({
     if (lowerText.includes(lowerFilter)) return 1;
     return 0;
   }),
+  filterSearchMatches: jest.requireActual('../../src/utils.js').filterSearchMatches,
 }));
 
 // Mock state module

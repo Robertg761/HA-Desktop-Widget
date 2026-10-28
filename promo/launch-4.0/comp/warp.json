@@ -1,0 +1,9 @@
+{
+  "about": "Retime of the 62 s edit to 86 s. Each pair is [original s, new s]; time is linear between pairs. Every section is a whole number of 120 BPM beats, so cuts stay on the beat: most shots run 1.5x, the holiday and rapid montages 2x (cuts every 1 s), the open, title, Halloween, finale and end card 1x.",
+  "duration": 86,
+  "points": [
+    [0, 0], [8, 8], [10, 10], [12, 14], [14, 17], [16, 20], [18, 23], [20, 26], [24, 32],
+    [28, 36], [32, 44], [36, 50], [40, 56], [44, 62], [46, 65], [48, 68], [51, 74], [52, 76],
+    [56, 80], [62, 86]
+  ]
+}

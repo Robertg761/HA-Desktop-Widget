@@ -206,10 +206,11 @@ describe('the connection panel on the dashboard', () => {
       endRetryMoment();
       expect(document.querySelector('.widget-state-note')).not.toBeNull();
 
-      let requestId = 10;
-      harness.websocket.request.mockImplementation(() => {
+      let requestId = 11;
+      harness.websocket.request.mockImplementation((payload) => {
         const request = new Promise(() => {});
-        request.id = requestId++;
+        // The snapshot is 10 whatever order the requests go out in.
+        request.id = payload.type === 'get_states' ? 10 : requestId++;
         return request;
       });
       harness.websocket.emit('message', { type: 'auth_ok' });

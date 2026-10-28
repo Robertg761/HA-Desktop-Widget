@@ -76,6 +76,9 @@ let connectionStatusTooltipPinned = false;
 let connectionStatusTooltipHandlers = null;
 let connectionStatusDocumentHandlersBound = false;
 let connectionStatusBoundElement = null;
+// Set when the window loses focus while the dot has it: Chromium focuses the dot again when the
+// window comes back, and that focus is the window reopening, not the user asking about the link.
+let connectionStatusFocusReturnsWithWindow = false;
 
 const BACKGROUND_BASES = {
   // A cool slate rather than neutral grey, so the window reads as tinted glass. Kept in step with
@@ -2381,7 +2384,16 @@ function bindConnectionStatusHandlers(status) {
 
   const onMouseEnter = () => showConnectionStatusTooltip(status);
   const onMouseLeave = () => hideConnectionStatusTooltip();
-  const onFocus = () => showConnectionStatusTooltip(status);
+  const onFocus = () => {
+    if (connectionStatusFocusReturnsWithWindow) {
+      connectionStatusFocusReturnsWithWindow = false;
+      return;
+    }
+    // A click focuses the dot as well, and the click handler decides what that does. Only focus
+    // from the keyboard opens the tooltip here.
+    if (!status.matches(':focus-visible')) return;
+    showConnectionStatusTooltip(status);
+  };
   const onBlur = () => hideConnectionStatusTooltip();
   const onClick = (event) => {
     event.preventDefault();
@@ -2436,6 +2448,22 @@ function bindConnectionStatusHandlers(status) {
       if (event.key === 'Escape') {
         hideConnectionStatusTooltip({ force: true });
       }
+    });
+    // Hiding the widget closes the tooltip, pinned or not, so it is not over the dashboard the
+    // next time the widget opens (issue #214).
+    window.addEventListener('blur', (event) => {
+      if (event.target !== window) return;
+      connectionStatusFocusReturnsWithWindow =
+        !!connectionStatusBoundElement && document.activeElement === connectionStatusBoundElement;
+      hideConnectionStatusTooltip({ force: true });
+    });
+    window.addEventListener('focus', (event) => {
+      if (event.target !== window) return;
+      // The dot's own focus event comes in the same task, before or after this one; past it, the
+      // flag would swallow the next time the user tabs to the dot.
+      setTimeout(() => {
+        connectionStatusFocusReturnsWithWindow = false;
+      }, 0);
     });
     window.addEventListener('resize', () => {
       if (!connectionStatusTooltipTarget) return;

@@ -489,16 +489,18 @@ h1 {
 .media-info { min-width: 0; }
 .media-title { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
 .media-artist { font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+/* The seek bar takes the room the row has between the title and the controls, as in the app. */
 .media-progress {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 7px;
-  margin-left: auto;
+  min-width: 0;
   font-size: 10.5px;
   color: rgba(255, 255, 255, 0.55);
   font-variant-numeric: tabular-nums;
 }
-.media-track { width: 48px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.media-track { flex: 1; min-width: 36px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 #media-bar { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 .media-ctrls { display: flex; align-items: center; gap: 2px; }
 .media-ctrls button {
@@ -684,11 +686,12 @@ button.qa:active { transform: scale(0.96); }
   height: 30px;
   padding: 0;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border: 0;
+  background: none;
   color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
 }
+.bright-x:hover { background: rgba(255, 255, 255, 0.08); }
 .bright-body { display: flex; flex-direction: column; align-items: center; padding: 18px 20px 20px; }
 .bright-bulb {
   display: grid;
@@ -703,15 +706,15 @@ button.qa:active { transform: scale(0.96); }
 .bright-pop.is-off .bright-bulb { color: rgba(255, 255, 255, 0.45); }
 .bright-value { margin-top: 10px; font: 600 32px/1.1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .bright-label { margin-top: 2px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); }
+/* The whole track is a warm ramp from dim to bright, as in the app, whatever the brightness. */
 #bright-slider {
-  --fill: 80%;
   width: 100%;
   height: 6px;
   margin: 18px 0 0;
   border-radius: 999px;
   -webkit-appearance: none;
   appearance: none;
-  background: linear-gradient(90deg, #6f5a3c, #f5c77e) 0 / var(--fill) 100% no-repeat, rgba(255, 255, 255, 0.12);
+  background: linear-gradient(90deg, #45413a, #ffd08a);
   cursor: pointer;
 }
 #bright-slider::-webkit-slider-thumb {
@@ -1373,7 +1376,7 @@ kbd {
   .tile.t-wide { grid-column: span 6; }
   .tile { grid-column: span 3; }
   .tile.t-half { grid-column: span 3; }
-  /* The homepage bento is a wide tile and six more: the second and the last take a whole row, so
+  /* The homepage bento is a wide tile and eight more: the second and the last take a whole row, so
      the pairs between them stay even. Other bentos (the companion page has four half-width tiles)
      pair up as they are, so this is not written for every .bento. */
   .bento-home > .tile:nth-child(2), .bento-home > .tile:last-child { grid-column: span 6; }

@@ -16,11 +16,18 @@ describe('Renderer Home Assistant connection lifecycle', () => {
   let mockLog;
   let mockUi;
 
+  // Fixed ids for the four startup requests, whatever order they go out in; others count from 20.
+  const STARTUP_REQUEST_IDS = {
+    get_states: 10,
+    get_services: 11,
+    'config/area_registry/list': 12,
+    get_config: 13,
+  };
   const connectSuccessfully = () => {
-    let requestId = 10;
-    mockWebsocket.request.mockImplementation(() => {
+    let requestId = 20;
+    mockWebsocket.request.mockImplementation((payload) => {
       const request = new Promise(() => {});
-      request.id = requestId++;
+      request.id = STARTUP_REQUEST_IDS[payload.type] ?? requestId++;
       return request;
     });
     mockWebsocket.emit('message', { type: 'auth_ok' });
@@ -295,6 +302,104 @@ describe('Renderer Home Assistant connection lifecycle', () => {
         'Home Assistant could not complete the authorization. Try again.'
       );
       expect(panelText()).not.toContain('Authorization will retry automatically');
+    });
+  });
+
+  describe('an access token that expired while the computer slept', () => {
+    // Home Assistant reports every login with an expired token as a failed login attempt (#211).
+    const expiredConfig = (overrides = {}) =>
+      oauthConfig({ oauthExpiresAt: Date.now() - 60 * 60 * 1000, ...overrides });
+    const freshConfig = () =>
+      oauthConfig({ token: 'access-token-2', oauthExpiresAt: Date.now() + 30 * 60 * 1000 });
+
+    it('refreshes the authorization before reconnecting after sleep', async () => {
+      await loadRenderer({
+        config: oauthConfig({ oauthExpiresAt: Date.now() + 30 * 60 * 1000 }),
+        configureApi(api) {
+          api.refreshHomeAssistantOAuth.mockImplementation(async () => {
+            await Promise.resolve();
+            triggerMockEvent('configUpdated', freshConfig());
+            return { success: true, oauthStatus: 'connected' };
+          });
+        },
+      });
+      connectSuccessfully();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+      mockWebsocket.connect.mockClear();
+
+      // The token expired during the sleep; main's refresh timer did not run.
+      triggerMockEvent('configUpdated', expiredConfig());
+      await flushAsync();
+      mockElectronAPI.refreshHomeAssistantOAuth.mockClear();
+      triggerMockEvent('trayEntitiesRefreshNeeded', { reconnect: true });
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(panelText()).toContain('Refreshing Home Assistant authorization...');
+      await flushAsync();
+
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockState.CONFIG.homeAssistant.token).toBe('access-token-2');
+    });
+
+    it('does not log in with it when the network comes back first', async () => {
+      await loadRenderer({
+        config: expiredConfig(),
+        configureApi(api) {
+          // Waking, the network is not up yet: main could not refresh and retries on its own.
+          api.refreshHomeAssistantOAuth.mockResolvedValue({
+            success: true,
+            oauthStatus: 'offline',
+          });
+        },
+      });
+      await flushAsync();
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+
+      window.dispatchEvent(new Event('online'));
+      await flushAsync();
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+
+      // Main's retry succeeded; its new token connects.
+      triggerMockEvent('configUpdated', freshConfig());
+      await flushAsync();
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log in with it when a retry after an outage comes due', async () => {
+      // Home Assistant was down longer than the token lives, so main's refresh could not run.
+      await loadRenderer({
+        config: oauthConfig({ oauthExpiresAt: Date.now() + 30 * 60 * 1000 }),
+        configureApi(api) {
+          api.refreshHomeAssistantOAuth.mockResolvedValue({
+            success: true,
+            oauthStatus: 'offline',
+          });
+        },
+      });
+      connectSuccessfully();
+      mockWebsocket.connect.mockClear();
+      triggerMockEvent('configUpdated', expiredConfig());
+      await flushAsync();
+
+      jest.useFakeTimers();
+      try {
+        mockWebsocket.emit('close', {});
+        jest.advanceTimersByTime(60 * 1000);
+      } finally {
+        jest.useRealTimers();
+      }
+      await flushAsync();
+
+      expect(mockWebsocket.connect).not.toHaveBeenCalled();
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
+    });
+
+    it('connects with a legacy token whatever its expiry says', async () => {
+      await loadRenderer({ config: tokenConfig({ oauthExpiresAt: Date.now() - 1000 }) });
+
+      expect(mockWebsocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.refreshHomeAssistantOAuth).not.toHaveBeenCalled();
     });
   });
 
@@ -709,7 +814,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
   });
 
   describe('the Home Assistant unit system', () => {
-    // connectSuccessfully() numbers the four requests it sends 10-13: states, services, areas, config.
+    // connectSuccessfully() numbers the startup requests 10-13: states, services, areas, config.
     const GET_CONFIG_ID = 13;
 
     it('is relayed to main for the desktop pin windows once the config arrives', async () => {
@@ -855,6 +960,56 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       );
       expect(others.length).toBeGreaterThan(0);
       others.forEach(([, options]) => expect(options).toBeUndefined());
+    });
+
+    it('is asked for after the state changes are subscribed, so none falls between the two', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      connectSuccessfully();
+
+      const types = mockWebsocket.request.mock.calls.map(([payload]) => payload);
+      const subscription = types.findIndex(
+        (payload) => payload.type === 'subscribe_events' && payload.event_type === 'state_changed'
+      );
+      const snapshot = types.findIndex((payload) => payload.type === 'get_states');
+      expect(subscription).toBeGreaterThanOrEqual(0);
+      expect(subscription).toBeLessThan(snapshot);
+    });
+
+    const stateChanged = (entity) =>
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: { entity_id: entity.entity_id, new_state: entity },
+        },
+      });
+
+    it('wins over a change that arrived before it, which it already includes', async () => {
+      await loadRenderer({ config: tokenConfig() });
+      mockWebsocket.request.mockImplementation((payload) => {
+        const request = new Promise(() => {});
+        request.id = payload.type === 'get_states' ? 10 : 20;
+        return request;
+      });
+      mockWebsocket.emit('message', { type: 'auth_ok' });
+
+      stateChanged({ entity_id: 'light.desk', state: 'off', attributes: {} });
+      mockWebsocket.emit('message', {
+        type: 'result',
+        id: 10,
+        success: true,
+        result: [{ entity_id: 'light.desk', state: 'on', attributes: {} }],
+      });
+      // Long enough for a queued change to be flushed (the frame, or its 250 ms fallback).
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(mockState.STATES['light.desk'].state).toBe('on');
+      // Nothing drew or announced the older state after the snapshot.
+      expect(mockAlerts.checkEntityAlerts).not.toHaveBeenCalledWith('light.desk', 'off');
+
+      // A change after the snapshot is newer than it.
+      stateChanged({ entity_id: 'light.desk', state: 'off', attributes: {} });
+      expect(mockState.STATES['light.desk'].state).toBe('off');
     });
   });
 

@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HA Desktop Widget | Home Assistant without the browser tab</title>
-  <meta name="description" content="A free, open-source desktop widget for Home Assistant. Lights, cameras, climate, media and sensor graphs on Windows, macOS and Linux. Free folder profile sync; hosted Cloud Sync is planned separately.">
+  <meta name="description" content="A free, open-source desktop widget for Home Assistant. Lights, cameras, climate, media and sensor graphs on Windows, macOS and Linux. Free folder profile sync, or optional paid Cloud Sync.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0c10">
   <link rel="canonical" href="https://hadesktopwidget.com/">
   <link rel="icon" type="image/png" href="/assets/icon.png">
   <link rel="apple-touch-icon" href="/assets/icon-180.png">
   <meta property="og:title" content="HA Desktop Widget">
-  <meta property="og:description" content="A free, open-source Home Assistant panel for your desktop. Windows, macOS and Linux. Free folder profile sync; hosted Cloud Sync is planned separately.">
+  <meta property="og:description" content="A free, open-source Home Assistant panel for your desktop. Windows, macOS and Linux. Free folder profile sync, or optional paid Cloud Sync.">
   <meta property="og:image" content="https://hadesktopwidget.com/assets/og.png?v=20261004">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -72,7 +72,7 @@
       </div>
       <ul class="facts" aria-label="At a glance">
         <li>No account for core features</li>
-        <li>No telemetry</li>
+        <li>No telemetry by default</li>
         <li>MIT licensed</li>
         <li>Automatic updates for Windows installer and Linux AppImage</li>
       </ul>
@@ -238,7 +238,7 @@
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-command"/></svg></span>
           <h3>Global hotkeys</h3>
-          <p>Control devices from any app, or press Ctrl+K to search everything.</p>
+          <p>Control devices from any app. In the widget, press Ctrl+K to search devices, pages and actions.</p>
           <div class="keys" aria-hidden="true"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd></div>
         </article>
 
@@ -251,7 +251,7 @@
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-pin"/></svg></span>
           <h3>Desktop pins</h3>
-          <p>Drop any tile onto your desktop as its own little window.</p>
+          <p>Drop any tile onto your desktop as its own little window. On Omarchy, add your tiles to the bar too.</p>
           <div class="presets" aria-hidden="true"><span>25%</span><span>50%</span><span class="on">75%</span><span>100%</span></div>
         </article>
 
@@ -259,6 +259,18 @@
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-video"/></svg></span>
           <h3>Live cameras</h3>
           <p>Watch live feeds or refreshing snapshots right in the widget.</p>
+        </article>
+
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-palette"/></svg></span>
+          <h3>Light, dark and seasonal</h3>
+          <p>Choose Auto, Dark or Light and an accent color. Seasonal themes bring cobwebs and jack-o'-lanterns in October, snow and Santa's sleigh in December, and art for other holidays. Turn any of them off in Settings.</p>
+        </article>
+
+        <article class="tile t-half reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-bell"/></svg></span>
+          <h3>Desktop alerts</h3>
+          <p>Get a notification when a door stays open, a reading crosses a threshold, or a device goes offline. Home Assistant's own notifications show up too, and wait in the bell until you dismiss them.</p>
         </article>
 
         <article class="tile t-half reveal">
@@ -270,7 +282,7 @@
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sync"/></svg></span>
           <h3>Profile sync, opt-in</h3>
-          <p>Keep your layout and theme in sync through a folder you already sync. Edits merge section by section, with a backup when both computers change the same setting. Optional passphrase encryption protects the file; tokens, desktop pins, window positions and hotkeys stay local.</p>
+          <p>Keep your layout and theme in sync through a folder you already sync. Edits merge section by section, with a backup when both computers change the same section. Optional passphrase encryption protects the file; tokens, desktop pins, window positions and hotkeys stay local.</p>
         </article>
       </div>
     </section>
@@ -321,11 +333,11 @@
 
     <section class="section cloud-sync-info" id="cloud-sync">
       <div class="section-head reveal">
-        <h2>Hosted Cloud Sync is planned separately</h2>
-        <p class="section-sub">Free folder Profile Sync is built into the desktop app. Hosted Cloud Sync accounts and billing are planned for a future service.</p>
+        <h2>Sync without a sync folder</h2>
+        <p class="section-sub">Free folder Profile Sync is built into the desktop app. Cloud Sync is an optional paid service that does the same job without Dropbox, OneDrive or another sync app.</p>
       </div>
-      <p class="reveal">The proposed hosted service would use Google or GitHub sign-in and store the settings you choose to sync. It would be a paid service; pricing and availability are not final. These account flows are not available in the desktop app.</p>
-      <p class="reveal">Read the draft <a href="/privacy">privacy policy</a> and <a href="/terms">subscription terms</a> for the proposed service. You can use folder Profile Sync now without a hosted account or subscription.</p>
+      <p class="reveal">Choose HA Desktop Widget Cloud as the sync app in Settings and sign in with Google or GitHub on each computer. It merges, backs up and encrypts your settings the same way folder sync does, and with encryption on the service cannot read your synced settings. New accounts start with a free trial.</p>
+      <p class="reveal">Read the <a href="/privacy">privacy policy</a> and the <a href="/terms">subscription terms</a>, which give the price. Folder Profile Sync stays free and needs no account.</p>
     </section>
 
     <section class="section closing reveal">

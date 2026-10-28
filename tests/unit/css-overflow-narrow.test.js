@@ -239,18 +239,19 @@ describe('shared layout rules for narrow windows and long labels', () => {
     const tile = (extra = '') => `<div id="quick-controls"><div class="control-item ${extra}">
       <div class="control-icon"></div><div class="control-info"><div class="control-name">n</div><div class="control-state">s</div></div></div></div>`;
 
-    it('clamps a long name to two lines, one in compact density, and the state to one', () => {
+    it('shows the whole name in every density, wrapping long words, and keeps the state to one line', () => {
       render('', tile());
       const name = document.querySelector('.control-name');
-      expect(resolvedValue(name, '-webkit-line-clamp')).toBe('2');
+      expect(resolvedValue(name, '-webkit-line-clamp')).toBeNull();
+      expect(resolvedValue(name, 'overflow-wrap')).toBe('anywhere');
       expect(resolvedValue(document.querySelector('.control-item'), 'justify-content')).toBe(
         'safe center'
       );
       expect(resolvedValue(document.querySelector('.control-state'), 'white-space')).toBe('nowrap');
       render('density-compact', tile());
-      expect(resolvedValue(document.querySelector('.control-name'), '-webkit-line-clamp')).toBe(
-        '1'
-      );
+      expect(
+        resolvedValue(document.querySelector('.control-name'), '-webkit-line-clamp')
+      ).toBeNull();
     });
 
     it('does not clamp a comparison graph or media tile name', () => {

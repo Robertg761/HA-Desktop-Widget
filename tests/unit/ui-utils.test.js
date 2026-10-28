@@ -1263,14 +1263,53 @@ describe('UI Utilities', () => {
       expect(tooltip.style.getPropertyValue('--arrow-x')).toBe('90px');
     });
 
-    it('should show tooltip on focus and hide on blur', () => {
+    it('should show tooltip on keyboard focus and hide on blur', () => {
       uiUtils.initializeConnectionStatusTooltip();
-      statusIndicator.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+      statusIndicator.focus();
 
       const tooltip = document.getElementById('connection-status-tooltip');
       expect(tooltip.classList.contains('visible')).toBe(true);
 
-      statusIndicator.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+      statusIndicator.blur();
+      expect(tooltip.classList.contains('visible')).toBe(false);
+    });
+
+    // Issue #214: the dot keeps focus while the widget is hidden, and Chromium focuses it again
+    // when the widget opens. That reopening is not a request for the tooltip, which then covered
+    // the weather on every open.
+    it('does not open the tooltip when the window gives the dot its focus back', () => {
+      jest.useFakeTimers();
+      try {
+        uiUtils.initializeConnectionStatusTooltip();
+        const tooltip = document.getElementById('connection-status-tooltip');
+        statusIndicator.focus();
+        expect(tooltip.classList.contains('visible')).toBe(true);
+
+        window.dispatchEvent(new FocusEvent('blur'));
+        statusIndicator.dispatchEvent(new FocusEvent('blur'));
+        expect(tooltip.classList.contains('visible')).toBe(false);
+
+        window.dispatchEvent(new FocusEvent('focus'));
+        statusIndicator.dispatchEvent(new FocusEvent('focus'));
+        expect(tooltip.classList.contains('visible')).toBe(false);
+
+        // Only that one focus is skipped: tabbing back to the dot later still opens it.
+        jest.runAllTimers();
+        statusIndicator.blur();
+        statusIndicator.focus();
+        expect(tooltip.classList.contains('visible')).toBe(true);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('closes a pinned tooltip when the window loses focus', () => {
+      uiUtils.initializeConnectionStatusTooltip();
+      statusIndicator.click();
+      const tooltip = document.getElementById('connection-status-tooltip');
+      expect(tooltip.classList.contains('visible')).toBe(true);
+
+      window.dispatchEvent(new FocusEvent('blur'));
       expect(tooltip.classList.contains('visible')).toBe(false);
     });
 

@@ -7,14 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.0.0] - Unreleased
-
 ### Added
 
 - Put desktop pin names on the left, in the middle or on the right with Settings → Appearance → Desktop pin names. A centred name is centred on the whole pin, also where a power button sits beside it ([#215](https://github.com/Robertg761/HA-Desktop-Widget/issues/215)).
 - Line desktop pins up by dragging: a pin dropped in Reorganize mode within 12 px of another pin's edge or middle, beside it (touching or 16 px apart), or the screen edge snaps there, so columns and rows form straight lines ([#215](https://github.com/Robertg761/HA-Desktop-Widget/issues/215)).
+- Show the HTML that older Home Assistant notifications use for formatting. `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<del>`, `<a href>` and `<br>` now draw as bold, italic, underlined, struck-through text, links and line breaks in the notifications panel instead of showing as raw tags, and character references like `&amp;` show as the character. Desktop notifications, which can only show plain text, leave the tags out (#214).
 
-- Add an opt-in anonymous install count so the project can see how many people use the app. It is off by default. Turn on Settings → Updates → Count this install and the app sends a random install ID, its version, and the OS family once a day, and nothing else. `DO_NOT_TRACK=1` stops it even when the setting is on.
+### Fixed
+
+- Keep tiles current after a reconnect. The widget asked Home Assistant for every entity's state before it subscribed to changes, so a change made in between, often right after the computer woke from sleep, never reached it and the tile showed the old state until the next change.
+- Stop the connection status tooltip from covering the dashboard every time the widget opens. Clicking the status dot left it focused, and reopening the widget gave it focus again, which opened the tooltip. It now opens on hover, a click, or keyboard focus, and closes when the widget is hidden (#214).
+
+### Security
+
+- Lock down the packaged app with Electron's fuses: it can no longer be started as a plain Node.js interpreter or with a debugger attached, and on Windows and macOS it checks its own app archive before loading it. On macOS this stops another program from using the app to read the Home Assistant sign-in it keeps in the Keychain.
+
+## [4.0.2] - 2026-10-26
+
+### Fixed
+
+- Center the knob of the on/off switches in Settings, the alert dialog and Tile Settings. It sat 1px low and, when on, pressed against the end of the track instead of keeping the same gap it has when off.
+
+## [4.0.1] - 2026-10-24
+
+### Fixed
+
+- Find entities in Manage Quick Access, the new-page room list, and the other entity pickers the way the command palette (Ctrl/Cmd+K) does. When no name contains the search as typed, they now list names with every word of it in any order, or with its letters in order and close together. A Chinese search like "客厅灯" now finds "客厅吸顶灯" instead of nothing (#205).
+- Stop Home Assistant from reporting a failed login from this computer when it wakes from sleep. A browser-authorized connection's access token lasts about half an hour and expires while the computer sleeps; on waking, the widget logged in with the expired token before refreshing it, and Home Assistant raised a "Login attempt failed" notification with the computer's address (which also counts towards an IP ban when `login_attempts_threshold` is set). The widget now refreshes the authorization before it reconnects, and camera and artwork requests wait for the new token too (#211).
+
+## [4.0.0] - 2026-10-19
+
+### Added
+
+- Add an opt-in anonymous install count so the project can see how many people use the app. It is off by default. Turn on Settings → Advanced → Count this install and the app sends a random install ID, its version, and the OS family once a day, and nothing else. `DO_NOT_TRACK=1` stops it even when the setting is on.
 - Add numeric and select helper dialogs with current bounds/options, and vacuum controls limited to each device's supported actions.
 - Complete supported alarm arming modes and disarm in the command palette, with a temporary code prompt when required. Disarm requires a typed query and codes are never saved with recents.
 - Export and import portable settings files from Advanced, with a preview of changed sections and referenced devices, a backup before applying, and restore controls available without profile sync. Credentials and computer-specific settings stay on each computer.
@@ -37,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show a Mute button, muted by default, for live camera streams.
 - Show alert notifications with the entity's icon, or the app icon when it cannot be drawn.
 - Find a custom icon by its emoji name in your language. The icon picker searches the names and keywords Unicode CLDR gives every emoji in English, German, Spanish, French, Arabic, Hindi, and Chinese, so "Glühbirne" finds the light bulb and "germany" the German flag, and it reads each icon's name to screen readers.
-- Add Cloud Sync, a paid alternative to folder sync: choose HA Desktop Widget Cloud as the sync app and sign in with Google or GitHub on each computer. It keeps the same merging, backups and optional encryption (with encryption on, the service holds only data it cannot read), and Settings shows the trial or subscription with Subscribe, Manage Subscription, Sign Out and Delete Account. It appears in builds configured with the service address; the service itself is in `cloud-sync-service/`.
+- Add Cloud Sync, a paid alternative to folder sync: choose HA Desktop Widget Cloud as the sync app and sign in with Google or GitHub on each computer. It keeps the same merging, backups and optional encryption (with encryption on, the service cannot read your synced settings), and Settings shows the trial or subscription with Subscribe, Manage Subscription, Sign Out and Delete Account. New accounts can save settings free for 14 days, and the subscription is USD 24 a year, billed from the day you subscribe. Once the trial ends or a subscription lapses, changes from your other computers still download, and this computer's changes wait until you subscribe. The service itself is in `cloud-sync-service/`.
 
 ### Changed
 
@@ -122,6 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refuse to write the sync file unencrypted, or with an old passphrase, from a computer whose encryption settings no longer match it; say what to change instead.
 - Fix turning on sync encryption for a profile that already syncs, which failed on Linux with a working keyring, and joining a file another computer encrypted. A damaged or wrong-sized sync file is reported and left alone, file-system errors get plain sentences, and a first sync no longer asks about a "changed folder".
 - Keep background sync running after a failed first sync at login, such as when the sync folder is not mounted yet.
+- Keep your synced edits when the sync folder hands back an older copy of the file, as after a restored version, a computer that was offline uploading its old file, or the losing side of a Dropbox, OneDrive, or Syncthing race. The older copy no longer replaces what you changed: this computer's version is written back, the old one is backed up, and Settings says the file held an older copy instead of reporting that both computers changed it.
+- Stop instead of starting over when a sync file this computer has synced with goes missing, as it does when a drive is not mounted, the provider removed the local copy, or its sync app is stopped. Sync used to write a new file holding only this computer's settings, which then replaced the real one on your other computers. Sync up creates the file again when you mean to.
+- Flush the sync file to disk before replacing it, so a crash or power cut cannot leave it empty or cut short, and give its temporary file a name that starts with a dot, which macOS and Linux file browsers hide. Temporary files an interrupted write left in the sync folder, including the visible ones earlier versions wrote, are deleted once they are an hour old.
+- Keep backups of edits a sync threw away longer: the newest 20 and anything from the last 30 days, up to 100. A backup like that is taken when a conflict, an older copy of the file, Sync up, or Sync down replaces your changes. Routine backups still keep the last five, which an edit lost to a conflict used to fall out of after five ordinary syncs.
+- Say an encrypted sync file is damaged, rather than that the passphrase is wrong, when the file was cut short.
+- Read a sync file that looks damaged once more before offering to replace it when sync is turned on, so a file the provider is still downloading is not taken for a broken one.
+- Stop a computer whose clock runs a few minutes behind from having its real edits pushed back as older copies, and stop one pull from a computer whose clock runs ahead from stamping every later edit here ahead too.
 - Keep changes another computer made while Settings was open when you save, and refuse to write a sync file larger than every computer will read.
 - Quit cleanly when Linux shuts down, restarts, or logs out, instead of holding up the session until the system kills the widget. The settings are saved first, and the widget never stops on a save-error dialog during shutdown.
 - Show which Quick Access tile has keyboard focus. The focus outline was clipped by the tile and never visible.
@@ -143,7 +175,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep sensor charts clear of the reading and draw them with a uniform line, and keep a sensor with a long history fast: tile charts draw at most 240 points and still show spikes.
 - Keep the climate, media, light, fan, and cover pop-ups open and in place when their entity changes, without replaying the opening animation or moving focus: they follow the entity through deletion, and a slider shows the value the device settled on after a drag.
 - Show the comparison graph's hover tooltip beside the pointer with the crosshair exactly under it, and show every graph's latest values when two report at once.
-- Keep tile names, states, and readings readable: names stop at two lines with the full name as a tooltip, a long reading shrinks before it is cut, and tiles in a row start at one height.
+- Keep tile names, states, and readings readable: a tile always shows its whole name, wrapping it and growing to fit in every layout, including compact, a long reading shrinks before it is cut, and tiles in a row start at one height.
 - Fix the Omarchy bar panel: a tile named like markup shows as typed, one changed reading updates one tile, a stopped widget shows as stopped within seconds instead of "Connected", and the panel scrolls to the highlighted tile and has keyboard controls. Its text is translated.
 - Close open device dialogs when the interface language changes, and show the update button and status in the new language.
 
@@ -153,6 +185,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names and Windows/Linux icon colors, full macOS menu-bar values, localized state labels,
   one-second timer countdowns while hidden, and stale-reading protection after disconnects,
   sleep, and renderer failures. Stable builds keep these preferences without showing the feature.
+
+## [4.0.0-beta.19] - 2026-10-11
+
+This beta adds Cloud Sync and makes folder Profile Sync more reliable. It is a testing release;
+4.0.0 stable has not been published.
+
+### Added
+
+- Cloud Sync keeps your settings in sync on every computer without a sync folder. In **Settings → Advanced → Profile Syncing**, choose **HA Desktop Widget Cloud** as the sync app and sign in with Google or GitHub on each computer.
+- It has a 14-day free trial, then costs USD 24 per year through Stripe. Subscribe and Manage subscription open Stripe's own pages.
+- It keeps the same merging, backups and optional encryption as folder sync. With encryption on, the service stores only data it cannot read.
+- If the trial or subscription ends, changes from your other computers still download; your own changes wait until saving is possible again.
+- Sign out, sign back in to carry on, or delete the account. Deleting cancels any subscription first and keeps the settings on your computer.
+- Folder sync stays free and needs no account. See the [terms](https://hadesktopwidget.com/terms) and [privacy policy](https://hadesktopwidget.com/privacy).
+
+### Fixed
+
+- An older copy of the sync file (a restored version, an offline computer uploading its old file, or the losing side of a Dropbox, OneDrive or Syncthing conflict) no longer undoes edits that had already synced. The older copy is backed up instead.
+- A computer whose clock is wrong no longer wins every conflict.
+- Backups of edits a sync replaced are kept for 30 days instead of being pushed out after five routine syncs.
+- A sync file that disappears (an unmounted drive, an evicted iCloud or OneDrive file) is no longer silently recreated with only one computer's settings. Sync up creates it again.
+- The sync file is written to disk safely before it replaces the old one, and leftover temporary files are cleaned up.
+- A damaged encrypted file is reported as damaged instead of "passphrase does not match".
+- A file that is still downloading when sync is turned on is read again before you are offered to replace it.
+
+### Testing focus
+
+- Cloud Sync on two computers: sign in, change a setting on each, and confirm both arrive. Try it with encryption on.
+- Subscribe from Settings, then return to the app and check it shows as subscribed. Open Manage subscription.
+- Sign out and back in on one computer, and check it carries on syncing.
+- Folder sync: two computers on Dropbox, OneDrive, iCloud or Syncthing, with edits on both while one is offline.
+
+Please report problems on [GitHub Issues](https://github.com/Robertg761/HA-Desktop-Widget/issues).
 
 ## [4.0.0-beta.17] - 2026-10-09
 

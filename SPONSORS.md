@@ -6,7 +6,7 @@ Thank you to everyone who supports this work, financially or otherwise.
 
 ## Current sponsors
 
-- [DegenApeDev](https://github.com/DegenApeDev)
+No current sponsors yet. [Become the first](https://github.com/sponsors/Robertg761).
 
 ## Recognition
 

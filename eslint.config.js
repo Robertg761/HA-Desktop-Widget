@@ -16,6 +16,7 @@ module.exports = [
       'dist-panel/**',
       'coverage/**',
       'website/**',
+      'promo/**',
       'vendor/**',
     ],
   },

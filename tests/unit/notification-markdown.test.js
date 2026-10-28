@@ -123,6 +123,88 @@ describe('notification Markdown', () => {
     });
   });
 
+  // Issue #214: Home Assistant's Markdown takes HTML too, and older automations bold with <b>.
+  describe('inline HTML', () => {
+    it('draws bold, italic, underline, strikethrough and line breaks', () => {
+      const html = render(
+        '<b>bold</b> <strong>strong</strong> <i>italic</i> <em>em</em> <u>under</u> <s>gone</s> <del>del</del><br>next<br/>last'
+      ).innerHTML;
+      expect(html).toBe(
+        '<p><strong>bold</strong> <strong>strong</strong> <em>italic</em> <em>em</em> <u>under</u> <s>gone</s> <s>del</s><br>next<br>last</p>'
+      );
+    });
+
+    it('reads tags in either case, nested in each other and in Markdown', () => {
+      expect(render('<B>Front door</B> is **<i>open</i>**').innerHTML).toBe(
+        '<p><strong>Front door</strong> is <strong><em>open</em></strong></p>'
+      );
+      // An element of the same name inside it is passed over to find its own closing tag.
+      expect(render('<b>a <b>b</b> c</b>').innerHTML).toBe(
+        '<p><strong>a <strong>b</strong> c</strong></p>'
+      );
+    });
+
+    it('keeps no attribute of a tag', () => {
+      expect(render('<b onmouseover="alert(1)" style="color:red">x</b>').innerHTML).toBe(
+        '<p><strong>x</strong></p>'
+      );
+    });
+
+    it('turns an anchor into a link, through the app, and an unsafe one into its text', () => {
+      const openLink = jest.fn();
+      const container = render(
+        `<a href="/config/repairs">Repairs</a>, <a href='https://a.test/?x=1&amp;y=2' target="_blank">site</a>, <a href=https://b.test>b</a>, <a href="javascript:alert(1)">bad</a>, <a name="x">plain</a>`,
+        { baseUrl: 'http://ha.local:8123', openLink }
+      );
+      const anchors = [...container.querySelectorAll('a')];
+      expect(anchors.map((anchor) => [anchor.textContent, anchor.getAttribute('href')])).toEqual([
+        ['Repairs', 'http://ha.local:8123/config/repairs'],
+        ['site', 'https://a.test/?x=1&y=2'],
+        ['b', 'https://b.test/'],
+      ]);
+      expect(anchors[1].hasAttribute('target')).toBe(false);
+      expect(container.textContent).toBe('Repairs, site, b, bad, plain');
+      anchors[0].click();
+      expect(openLink).toHaveBeenCalledWith('http://ha.local:8123/config/repairs');
+    });
+
+    it('does not put a link inside a link, so one click opens the address once', () => {
+      const openLink = jest.fn();
+      const container = render(
+        '<a href="https://a.test/">https://a.test/</a> [https://b.test/](https://b.test/)',
+        { openLink }
+      );
+      expect(container.querySelectorAll('a a')).toHaveLength(0);
+      const anchors = [...container.querySelectorAll('a')];
+      expect(anchors.map((anchor) => anchor.textContent)).toEqual([
+        'https://a.test/',
+        'https://b.test/',
+      ]);
+      anchors.forEach((anchor) => anchor.click());
+      expect(openLink.mock.calls).toEqual([['https://a.test/'], ['https://b.test/']]);
+    });
+
+    it('leaves other tags, tags left open and a lone < as the text they are', () => {
+      expect(render('<span>x</span> <b>never closed').textContent).toBe(
+        '<span>x</span> <b>never closed'
+      );
+      expect(render('2 < 3 and <b>4</b> > 1').innerHTML).toBe(
+        '<p>2 &lt; 3 and <strong>4</strong> &gt; 1</p>'
+      );
+      // A tag in code is the code.
+      expect(render('`<b>x</b>`').innerHTML).toBe('<p><code>&lt;b&gt;x&lt;/b&gt;</code></p>');
+    });
+
+    it('reads character references as the characters, without making markup of them', () => {
+      expect(
+        render('Tom &amp; Jerry&nbsp;&#39;s &#x2014; &lt;b&gt;x&lt;/b&gt; &bogus;').textContent
+      ).toBe("Tom & Jerry\u00a0's \u2014 <b>x</b> &bogus;");
+      expect(render('&lt;b&gt;x&lt;/b&gt;').querySelector('strong')).toBeNull();
+      // Code is shown as it was written.
+      expect(render('`&amp;`').textContent).toBe('&amp;');
+    });
+  });
+
   describe('markup in the text', () => {
     it.each([
       '<script>alert(1)</script>',
@@ -158,6 +240,14 @@ describe('notification Markdown', () => {
           '**2 issues.** Open [Repairs](/config/repairs):\n\n- `backup` is late\n- *Zigbee* update\n\nhttps://example.com'
         )
       ).toBe('2 issues. Open Repairs:\n\n• backup is late\n• Zigbee update\n\nhttps://example.com');
+    });
+
+    it('drops HTML tags and keeps the words, a <br> as a new line', () => {
+      expect(
+        notificationMarkdownToPlainText(
+          'Front door <b>open</b><br>Since <i>10:00</i>, <a href="https://a.test">details</a> &amp; <u>more</u>'
+        )
+      ).toBe('Front door open\nSince 10:00, details & more');
     });
 
     it('numbers an ordered list, and is empty for nothing', () => {
