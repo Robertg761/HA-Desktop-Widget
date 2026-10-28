@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Show the HTML that older Home Assistant notifications use for formatting. `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<del>`, `<a href>` and `<br>` now draw as bold, italic, underlined, struck-through text, links and line breaks in the notifications panel instead of showing as raw tags, and character references like `&amp;` show as the character. Desktop notifications, which can only show plain text, leave the tags out (#214).
+
+### Fixed
+
+- Stop the connection status tooltip from covering the dashboard every time the widget opens. Clicking the status dot left it focused, and reopening the widget gave it focus again, which opened the tooltip. It now opens on hover, a click, or keyboard focus, and closes when the widget is hidden (#214).
+
 ## [4.0.2] - 2026-10-26
 
 ### Fixed
