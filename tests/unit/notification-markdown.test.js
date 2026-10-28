@@ -168,6 +168,22 @@ describe('notification Markdown', () => {
       expect(openLink).toHaveBeenCalledWith('http://ha.local:8123/config/repairs');
     });
 
+    it('does not put a link inside a link, so one click opens the address once', () => {
+      const openLink = jest.fn();
+      const container = render(
+        '<a href="https://a.test/">https://a.test/</a> [https://b.test/](https://b.test/)',
+        { openLink }
+      );
+      expect(container.querySelectorAll('a a')).toHaveLength(0);
+      const anchors = [...container.querySelectorAll('a')];
+      expect(anchors.map((anchor) => anchor.textContent)).toEqual([
+        'https://a.test/',
+        'https://b.test/',
+      ]);
+      anchors.forEach((anchor) => anchor.click());
+      expect(openLink.mock.calls).toEqual([['https://a.test/'], ['https://b.test/']]);
+    });
+
     it('leaves other tags, tags left open and a lone < as the text they are', () => {
       expect(render('<span>x</span> <b>never closed').textContent).toBe(
         '<span>x</span> <b>never closed'

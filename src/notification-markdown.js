@@ -346,9 +346,11 @@ function appendInline(parent, tokens, options) {
       code.textContent = token.text;
       parent.appendChild(code);
     } else if (token.type === 'link') {
-      const url = resolveNotificationLink(token.url, options.baseUrl);
+      const url = options.insideLink ? null : resolveNotificationLink(token.url, options.baseUrl);
       if (!url) {
-        // Not an address we open (a javascript: one, say): only the link's text is shown.
+        // Not an address we open (a javascript: one, say), or a link inside another one, as the
+        // address in `<a href="…">https://…</a>` is: only its text is shown. A link in a link
+        // would open its address once for each of them on a single click.
         appendInline(parent, token.children, options);
         return;
       }
@@ -356,7 +358,7 @@ function appendInline(parent, tokens, options) {
       anchor.href = url;
       anchor.rel = 'noopener noreferrer';
       anchor.title = url;
-      appendInline(anchor, token.children, options);
+      appendInline(anchor, token.children, { ...options, insideLink: true });
       anchor.addEventListener('click', (event) => {
         event.preventDefault();
         options.openLink?.(url);
