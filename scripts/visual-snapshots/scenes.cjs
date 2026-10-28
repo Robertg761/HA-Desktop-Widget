@@ -622,6 +622,11 @@ function dragWithMouseOnWindows(from, to, scale) {
     'Start-Sleep -Milliseconds 100',
     '[SnapshotMouse]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)',
     'Start-Sleep -Milliseconds 100',
+    // Windows starts moving the window at the first move after the press, and that move's own
+    // distance is lost: a nudge of 1 px starts it, so the path below is followed whole.
+    `[SnapshotMouse]::SetCursorPos(${point({ x: from.x + 1, y: from.y + 1 })}) | Out-Null`,
+    '[SnapshotMouse]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero)',
+    'Start-Sleep -Milliseconds 100',
     ...moves,
     'Start-Sleep -Milliseconds 150',
     '[SnapshotMouse]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)',
@@ -644,9 +649,12 @@ async function dragPinNextToAnother(ctx) {
   const scale = await pin.evaluate('devicePixelRatio');
   const at = async () => pin.evaluate('[screenX, screenY]');
   // Each drop is 7 or 4 px off its spot: under the sensor, 16 px apart, then beside it, touching.
+  // The last is far from everything and stays where it is dropped, give or take the mouse's pixel,
+  // which tells a drag that missed its point from a pin that did not snap.
   const drops = [
     { to: { x: 647, y: 40 + 148 + 21 }, settles: [640, 204] },
     { to: { x: 640 + 168 + 4, y: 46 }, settles: [808, 40] },
+    { to: { x: 700, y: 450 }, settles: null },
   ];
   try {
     for (const { to, settles } of drops) {
@@ -658,6 +666,12 @@ async function dragPinNextToAnother(ctx) {
       const landed = await at();
       if (landed[0] === x && landed[1] === y) {
         throw new Error(`The mouse drag did not move the pin from ${x},${y}`);
+      }
+      if (!settles) {
+        if (Math.abs(landed[0] - to.x) > 2 || Math.abs(landed[1] - to.y) > 2) {
+          throw new Error(`The mouse drag to ${to.x},${to.y} dropped the pin at ${landed}`);
+        }
+        continue;
       }
       if (landed[0] !== settles[0] || landed[1] !== settles[1]) {
         throw new Error(
