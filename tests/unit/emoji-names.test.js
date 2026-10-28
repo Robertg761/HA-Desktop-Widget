@@ -8,7 +8,7 @@ const DIR = path.join(__dirname, '../../emoji-names');
 const SKIN_TONE = /[\u{1F3FB}-\u{1F3FF}]/u;
 // What CLDR has not named yet in a language. A new CLDR release that names one fails this list, and
 // the entry comes off it.
-const UNNAMED = { hi: ['\u{1FA8A}'] };
+const UNNAMED = {};
 
 const listedEmoji = [
   ...rgiEmoji.strings,

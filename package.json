@@ -64,19 +64,19 @@
     "@babel/core": "^8.0.9",
     "@babel/preset-env": "^8.0.7",
     "@eslint/js": "^9.39.5",
-    "babel-jest": "^30.2.0",
+    "babel-jest": "^30.5.2",
     "concurrently": "^10.0.6",
     "electron": "^43.8.3",
-    "electron-builder": "^26.15.6",
+    "electron-builder": "^26.18.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",
     "events": "^3.3.0",
     "globals": "^15.9.0",
-    "hls.js": "^1.4.12",
-    "jest": "^30.4.2",
-    "jest-environment-jsdom": "^30.4.1",
-    "prettier": "^3.9.5",
-    "regenerate-unicode-properties": "10.2.2",
+    "hls.js": "^1.7.3",
+    "jest": "^30.5.2",
+    "jest-environment-jsdom": "^30.5.2",
+    "prettier": "^3.9.10",
+    "regenerate-unicode-properties": "10.3.0",
     "sortablejs": "^1.15.6",
     "stylelint": "^16.26.1",
     "vite": "^7.3.1"
@@ -85,7 +85,7 @@
     "@mdi/font": "7.4.47",
     "dbus-next": "^0.10.2",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.8.11"
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
