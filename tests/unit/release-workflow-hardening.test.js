@@ -89,4 +89,18 @@ describe('release workflow hardening', () => {
       });
     }
   });
+
+  test("replaces published release notes only from a validated tag and main's changelog", () => {
+    const notes = readWorkflow('release-notes.yml');
+    // The tag reaches the shell through the environment, never spliced into the script.
+    expect(notes).toContain('RELEASE_TAG: ${{ inputs.tag }}');
+    expect(notes.split('run: |')[1]).not.toContain('${{');
+    expect(notes).toContain(
+      'if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then'
+    );
+    expect(notes).toMatch(/ref: main/);
+    expect(notes).toContain('node scripts/extract-release-notes.cjs "${RELEASE_TAG#v}"');
+    expect(notes).toContain('gh release edit "$RELEASE_TAG" --notes-file "$release_notes_file"');
+    expect(notes).toMatch(/permissions:\s*\n\s+contents: write/);
+  });
 });
