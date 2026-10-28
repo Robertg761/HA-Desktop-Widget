@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Line desktop pins up by dragging: a pin dropped in Reorganize mode within 12 px of another pin's edge or middle, beside it (touching or 16 px apart), or the screen edge snaps there, so columns and rows form straight lines ([#215](https://github.com/Robertg761/HA-Desktop-Widget/issues/215)).
 - Show the HTML that older Home Assistant notifications use for formatting. `<b>`, `<strong>`, `<i>`, `<em>`, `<u>`, `<s>`, `<del>`, `<a href>` and `<br>` now draw as bold, italic, underlined, struck-through text, links and line breaks in the notifications panel instead of showing as raw tags, and character references like `&amp;` show as the character. Desktop notifications, which can only show plain text, leave the tags out (#214).
 
+### Removed
+
+- Support for macOS 12 Monterey. The app now runs on Electron 45, which needs macOS 13 Ventura or later. A Mac still on macOS 12 can keep using the version it has.
+
 ### Fixed
 
 - Keep tiles current after a reconnect. The widget asked Home Assistant for every entity's state before it subscribed to changes, so a change made in between, often right after the computer woke from sleep, never reached it and the tile showed the old state until the next change.
