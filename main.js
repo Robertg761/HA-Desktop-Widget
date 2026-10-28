@@ -12507,14 +12507,15 @@ ipcMain.handle('open-external', async (event, url) => {
 // The renderer's own clipboard permission stays denied (see session-permissions.cjs); copy
 // buttons go through this narrow, main-window-only channel instead.
 const MAX_CLIPBOARD_TEXT_LENGTH = 256 * 1024;
-ipcMain.handle('write-clipboard-text', (event, text) => {
+ipcMain.handle('write-clipboard-text', async (event, text) => {
   const sender = authorizeIpcSender(event, 'write-clipboard-text');
   if (!sender) return rejectUnauthorizedIpc('write-clipboard-text');
   if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
     return { success: false, error: 'Invalid clipboard text' };
   }
   try {
-    clipboard.writeText(text);
+    // A promise since Electron 44, which rejects when the write fails.
+    await clipboard.writeText(text);
     return { success: true };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };

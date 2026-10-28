@@ -160,7 +160,7 @@ publish:
     releaseType: release
 
 mac:
-  minimumSystemVersion: '12.0'
+  minimumSystemVersion: '13.0'
   # The system no longer masks a third-party icon, so this is the artwork already in build/icon.png,
   # set on Apple's icon grid by scripts/derive-icons.py (which also writes the other sizes).
   icon: build/icon-mac.png
