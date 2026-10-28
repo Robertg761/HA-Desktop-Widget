@@ -16,7 +16,7 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, 'dist-panel'),
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: resolve(__dirname, 'preview', 'preview.html'),
     },
     target: 'es2022',

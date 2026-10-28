@@ -25,7 +25,7 @@ export default defineConfig({
       include: [/preload\.js$/, /preload-api\.cjs$/, /node_modules/],
       transformMixedEsModules: true,
     },
-    rollupOptions: {
+    rolldownOptions: {
       input: resolve(__dirname, 'preload.js'),
       external: ['electron'],
       output: {
