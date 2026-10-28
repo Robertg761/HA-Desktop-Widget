@@ -1,5 +1,5 @@
 {
-  "cldr": "48.2.0",
+  "cldr": "49.0.0",
   "toneName": "{name}: {tones}",
   "toneJoin": " y ",
   "emoji": {
@@ -60,7 +60,7 @@
     "☁": "nube|tiempo",
     "☂": "paraguas|lluvia|paraguas abierto",
     "☃": "muñeco de nieve con nieve",
-    "☄": "meteorito|cometa|espacio",
+    "☄": "cometa espacial|espacio|meteorito",
     "☎": "teléfono",
     "☑": "casilla con marca de verificación|✓|selección",
     "☔": "paraguas con gotas de lluvia",
@@ -1449,6 +1449,7 @@
     "🛖": "cabaña|casa|yurta",
     "🛗": "ascensor|accesibilidad|elevador|montacargas",
     "🛘": "desprendimiento|alud|avalancha|desastre|montaña|peligro|rocas|terremoto",
+    "🛙": "faro|baliza|esperanza|guía|iluminación|luz|mar|marítimo|navegación|señal",
     "🛜": "wifi|conexión|inalámbrica|internet|red|wi-fi",
     "🛝": "tobogán|jugar|parque|parque de atracciones",
     "🛞": "rueda|círculo|girar|neumático|rodar",
@@ -1841,6 +1842,9 @@
     "🪈": "flauta|flautín|instrumento|instrumento de viento madera|música",
     "🪉": "arpa|amor|cupido|harpa|instrumento|música|orquesta",
     "🪊": "trombón|instrumento|jazz|metal|música|triste|viento",
+    "🪋": "meteorito|apocalipsis|bola de fuego|caída|espacio|estrella|gravedad|roca",
+    "🪌": "goma de borrar|corrección|deshacer|dibujar|eliminar|equivocación|error|escribir|quitar",
+    "🪍": "red con mango|atrapar|capturar|cazamariposas|cazar|malla|pescar",
     "🪎": "cofre de tesoro|botín|dinero|joyas|objetos de valor|oro|piedras preciosas|plata|premio|riqueza",
     "🪏": "pala|agujero|cavar|enterrar|excavar|hoyo|huerto|nieve|planta",
     "🪐": "planeta con anillos|saturnino|saturno",
@@ -1899,6 +1903,7 @@
     "🫅": "persona con corona|majestad|monarca|monarquía|noble|real|realeza",
     "🫆": "huella dactilar|delito|detective|forense|huella digital|identidad|misterio|rastro|seguridad",
     "🫈": "criatura peluda|bigfoot|bosque|críptido|gigante|monstruo|peludo|sasquatch|yeti",
+    "🫌": "mariposa monarca|cambio|esperanza|frágil|insecto|metamorfosis|migración|oruga|transformación",
     "🫍": "orca|ballena|mar|marino|océano",
     "🫎": "alce|animal|asta|ciervo canadiense|cuernos|mamífero|uapití",
     "🫏": "burro|animal|asno|borrico|mamífero|mula|terco",
@@ -1915,6 +1920,7 @@
     "🫚": "raíz de jengibre|cerveza|especia|garganta",
     "🫛": "vaina|edamame|guisante|judías|legumbre|soja|verdura",
     "🫜": "túberculo comestible|chirivía|comida|ensalada|huerto|nabo|rábano|raíz|remolacha|vegetariano|verdura",
+    "🫝": "pepinillo|aperitivo|condimento|encurtido|fermentar|pepino|salmuera",
     "🫟": "salpicadura|gotear|líquido|mancha|manchar|pintura|salpicar|tinta",
     "🫠": "cara derritiéndose|calor|derretido|derretirse|desaparecer|fundirse|líquido",
     "🫡": "cara saludando|ejército|orden|saludo|sí|sol|vale",
@@ -1927,6 +1933,7 @@
     "🫨": "cara temblorosa|shock|temblar|terremoto|vibrar",
     "🫩": "cara con ojeras|agotado|agotamiento|cansado|cansancio|extenuación|extenuado|ojos|sueño",
     "🫪": "cara deformada|ansiedad|conmocionado|hinchado|pánico|sorprendido|vulnerable",
+    "🫫": "cara resquebrajándose|desmoronar|enmascarar|resiliencia|revelar|romper|tensión|transformación",
     "🫯": "nube de pelea|alboroto|altercado|bronca|desacuerdo|discusión|lucha",
     "🫰": "mano con dedo índice y pulgar cruzados|amor|caro|chasquido|corazón|dinero",
     "🫱": "mano hacia la derecha|a la derecha",
@@ -1937,6 +1944,8 @@
     "🫵": "dedo índice apuntándote a ti|apuntar|tú",
     "🫶": "manos formando un corazón|amor",
     "🫷": "mano empujando hacia la izquierda|a la izquierda|choca esos cinco|detener|empujar|rechazar|stop",
-    "🫸": "mano empujando hacia la derecha|a la derecha|choca esos cinco|detener|empujar|rechazar|stop"
+    "🫸": "mano empujando hacia la derecha|a la derecha|choca esos cinco|detener|empujar|rechazar|stop",
+    "🫹": "pulgar hacia la izquierda|agarrar|eso|esto|neutral|señalar",
+    "🫺": "pulgar hacia la derecha|agarrar|eso|esto|neutral|señalar"
   }
 }
