@@ -1958,5 +1958,17 @@
   "Could not save custom colors. Press Save in Settings to try again.": {
     "retiredIn": "4.0.0",
     "reason": "Settings Save button renamed to Save and close."
+  },
+  "Thank you for considering a donation! Pick an amount below and checkout opens on GitHub Sponsors with everything pre-filled.": {
+    "retiredIn": "4.1.0",
+    "reason": "Donate dialog now also offers card payments"
+  },
+  "Payment is completed securely on GitHub Sponsors in your browser. This app never sees your payment details.": {
+    "retiredIn": "4.1.0",
+    "reason": "Donate dialog now also offers card payments"
+  },
+  "Continue on GitHub Sponsors": {
+    "retiredIn": "4.1.0",
+    "reason": "Donate dialog now also offers card payments"
   }
 }

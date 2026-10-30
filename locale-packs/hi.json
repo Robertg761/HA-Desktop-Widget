@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2229,6 +2229,15 @@
     "Where the name sits at the top of each desktop pin.": "हर डेस्कटॉप पिन में ऊपर नाम कहाँ दिखे।",
     "Left": "बाएँ",
     "Center": "बीच में",
-    "Right": "दाएँ"
+    "Right": "दाएँ",
+    "Thank you for considering a donation! Pick an amount, then donate by card right here or continue on GitHub Sponsors.": "दान पर विचार करने के लिए धन्यवाद! राशि चुनें, फिर यहीं कार्ड से दान करें या GitHub Sponsors पर जारी रखें।",
+    "Monthly donations go through GitHub Sponsors.": "मासिक दान GitHub Sponsors के ज़रिए होते हैं।",
+    "Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors opens in your browser. This app never sees your payment details.": "कार्ड भुगतान Stripe एक सुरक्षित चेकआउट विंडो में संभालता है, और GitHub Sponsors आपके ब्राउज़र में खुलता है। यह ऐप आपके भुगतान विवरण कभी नहीं देखता।",
+    "Donate by card": "कार्ड से दान करें",
+    "Waiting for checkout...": "चेकआउट की प्रतीक्षा...",
+    "Thank you for your donation!": "आपके दान के लिए धन्यवाद!",
+    "Could not open card checkout. Please try again.": "कार्ड चेकआउट नहीं खुल सका। कृपया फिर से प्रयास करें।",
+    "Donate to HA Desktop Widget": "HA Desktop Widget को दान करें",
+    "Donate on GitHub": "GitHub पर दान करें"
   }
 }

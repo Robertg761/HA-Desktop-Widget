@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.79",
+  "version": "1.2.80",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -2229,6 +2229,15 @@
     "Where the name sits at the top of each desktop pin.": "名称在每个桌面固定项顶部的位置。",
     "Left": "左",
     "Center": "居中",
-    "Right": "右"
+    "Right": "右",
+    "Thank you for considering a donation! Pick an amount, then donate by card right here or continue on GitHub Sponsors.": "感谢你考虑捐赠！选择金额后，可以直接在这里用银行卡捐赠，或前往 GitHub Sponsors 继续。",
+    "Monthly donations go through GitHub Sponsors.": "每月捐赠通过 GitHub Sponsors 进行。",
+    "Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors opens in your browser. This app never sees your payment details.": "银行卡付款由 Stripe 在安全的结账窗口中处理，GitHub Sponsors 则在你的浏览器中打开。本应用绝不会接触你的付款信息。",
+    "Donate by card": "用银行卡捐赠",
+    "Waiting for checkout...": "等待结账...",
+    "Thank you for your donation!": "感谢你的捐赠！",
+    "Could not open card checkout. Please try again.": "无法打开银行卡结账，请重试。",
+    "Donate to HA Desktop Widget": "向 HA Desktop Widget 捐赠",
+    "Donate on GitHub": "在 GitHub 上捐赠"
   }
 }

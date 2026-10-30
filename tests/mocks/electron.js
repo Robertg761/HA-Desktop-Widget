@@ -347,6 +347,7 @@ function createMockElectronAPI() {
     getOsInfo: jest.fn(() => Promise.resolve({ platform: 'linux', release: '6.0.0-test' })),
     openLogs: jest.fn(() => Promise.resolve()),
     openExternal: jest.fn(() => Promise.resolve({ success: true })),
+    startCardDonation: jest.fn(() => Promise.resolve({ status: 'complete' })),
     writeClipboardText: jest.fn(() => Promise.resolve({ success: true })),
     testHaConnection: jest.fn(() => Promise.resolve({ success: true, code: 'ok' })),
     startHomeAssistantOAuth: jest.fn((url) => {

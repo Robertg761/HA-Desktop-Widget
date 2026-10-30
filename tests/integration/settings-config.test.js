@@ -9862,6 +9862,105 @@ describe('Settings + Config Integration', () => {
           expect.anything()
         );
       });
+
+      describe('by card', () => {
+        const cardMarkup = donateMarkup.replace(
+          '<button id="donate-continue-btn"',
+          `<p id="donate-monthly-note" hidden>Monthly</p>
+          <button id="donate-card-btn" type="button">Donate by card</button>
+          <button id="donate-continue-btn"`
+        );
+        const openDonate = async () => {
+          document.body.insertAdjacentHTML('beforeend', cardMarkup);
+          await settings.openSettings();
+          document.getElementById('open-donate-modal-btn').click();
+          mockUiUtils.showToast.mockClear();
+          return document.getElementById('donate-card-btn');
+        };
+
+        test('offers cards for one-time donations only', async () => {
+          const card = await openDonate();
+          const note = document.getElementById('donate-monthly-note');
+          const monthly = document.querySelector(
+            'input[name="donate-frequency"][value="recurring"]'
+          );
+          expect(card.hidden).toBe(false);
+          expect(note.hidden).toBe(true);
+
+          monthly.checked = true;
+          monthly.dispatchEvent(new Event('change'));
+          expect(card.hidden).toBe(true);
+          expect(note.hidden).toBe(false);
+
+          // The next visit starts at one-time again, card button and all.
+          document.getElementById('open-donate-modal-btn').click();
+          expect(card.hidden).toBe(false);
+          expect(note.hidden).toBe(true);
+        });
+
+        test('stays busy while checkout is open, then thanks the donor and closes', async () => {
+          let finish;
+          mockElectronAPI.startCardDonation = jest.fn(
+            () => new Promise((resolve) => (finish = resolve))
+          );
+          const card = await openDonate();
+          document.getElementById('donate-custom-amount').value = '15';
+
+          card.click();
+          card.click();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          expect(mockElectronAPI.startCardDonation).toHaveBeenCalledTimes(1);
+          expect(mockElectronAPI.startCardDonation).toHaveBeenCalledWith(15);
+          expect(card.getAttribute('aria-busy')).toBe('true');
+          expect(card.textContent).toBe('Waiting for checkout...');
+
+          finish({ status: 'complete' });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            'Thank you for your donation!',
+            'success',
+            expect.any(Number)
+          );
+          expect(card.hasAttribute('aria-busy')).toBe(false);
+          expect(card.textContent).toBe('Donate by card');
+          expect(mockElectronAPI.openExternal).not.toHaveBeenCalled();
+        });
+
+        test('says nothing after a cancel and leaves the dialog for another try', async () => {
+          mockElectronAPI.startCardDonation = jest.fn().mockResolvedValue({ status: 'cancelled' });
+          const card = await openDonate();
+          card.click();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+          expect(document.getElementById('donate-modal').classList.contains('hidden')).toBe(false);
+          expect(card.disabled).toBe(false);
+        });
+
+        test('says so when checkout could not open', async () => {
+          mockElectronAPI.startCardDonation = jest.fn().mockResolvedValue({ status: 'failed' });
+          const card = await openDonate();
+          card.click();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            'Could not open card checkout. Please try again.',
+            'error',
+            expect.any(Number)
+          );
+        });
+
+        test('checks the amount before opening checkout', async () => {
+          mockElectronAPI.startCardDonation = jest.fn();
+          const card = await openDonate();
+          document.getElementById('donate-custom-amount').value = '0';
+          card.click();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          expect(mockElectronAPI.startCardDonation).not.toHaveBeenCalled();
+          expect(document.getElementById('donate-amount-error').hidden).toBe(false);
+        });
+      });
     });
   });
 

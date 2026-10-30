@@ -363,6 +363,7 @@ const { revealFile } = require('./src/reveal-file.cjs');
 const { toStoredPages } = require('./src/page-names.cjs');
 const { fetchChecked } = require('./src/net-fetch.cjs');
 const { createUsagePinger, isUsagePingDisabledByEnv } = require('./src/usage-ping.cjs');
+const { createCardDonationFlow } = require('./src/card-donation.cjs');
 const {
   normalizeEntityId,
   getDesktopPinBaseBounds,
@@ -1389,6 +1390,7 @@ let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
 let homeAssistantOAuthClient = null;
 let cloudSyncClient = null;
+let cardDonationFlow = null;
 let homeAssistantOAuthRefreshTimer = null;
 
 // The OS build cannot change while the app runs. Windows before 11 22H2 cannot blur behind the
@@ -12501,6 +12503,54 @@ ipcMain.handle('open-external', async (event, url) => {
     return { success: true };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
+  }
+});
+
+function getCardDonationFlow() {
+  if (!cardDonationFlow) {
+    cardDonationFlow = createCardDonationFlow({
+      BrowserWindow,
+      fetchImpl: (url, init) => net.fetch(url, init),
+      openExternal: (url) => shell.openExternal(url),
+      log,
+    });
+  }
+  return cardDonationFlow;
+}
+
+// Card donations for people without a GitHub account: Stripe's checkout opens in a window of the
+// app's own (see src/card-donation.cjs) and this resolves once it is paid, cancelled or closed.
+ipcMain.handle('start-card-donation', async (event, request) => {
+  const sender = authorizeIpcSender(event, 'start-card-donation');
+  if (!sender) return rejectUnauthorizedIpc('start-card-donation', { status: 'failed' });
+  const flow = getCardDonationFlow();
+  if (flow.isBusy()) {
+    flow.focus();
+    return { status: 'already-open' };
+  }
+  // The checkout window takes focus from the widget, which would otherwise hide with "hide when
+  // focus is lost" on and take the dialog waiting for the result with it.
+  const resumeAutoHide = windowAutoHide.suspend();
+  try {
+    return await flow.start({
+      amount: request?.amount,
+      locale: mainLocale(),
+      windowOptions: {
+        title: mainT('Donate to HA Desktop Widget'),
+        icon: getAppIconPath(__dirname),
+        // Above the widget when the widget stays above everything else.
+        alwaysOnTop: !!mainWindow?.isAlwaysOnTop?.(),
+      },
+    });
+  } finally {
+    // As after Home Assistant sign-in: raise first, since resuming rechecks the blur.
+    try {
+      showMainWindowFromTray();
+    } catch (error) {
+      log.warn('Failed to raise the widget after card checkout:', error.message);
+    } finally {
+      resumeAutoHide();
+    }
   }
 });
 

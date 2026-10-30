@@ -3138,10 +3138,10 @@
           <p
             id="donate-intro"
             class="help-text"
-            data-i18n="Thank you for considering a donation! Pick an amount below and checkout opens on GitHub Sponsors with everything pre-filled."
+            data-i18n="Thank you for considering a donation! Pick an amount, then donate by card right here or continue on GitHub Sponsors."
           >
-            Thank you for considering a donation! Pick an amount below and checkout opens on GitHub
-            Sponsors with everything pre-filled.
+            Thank you for considering a donation! Pick an amount, then donate by card right here or
+            continue on GitHub Sponsors.
           </p>
           <div
             class="form-group donate-frequency"
@@ -3158,6 +3158,14 @@
               <span data-i18n="Monthly">Monthly</span>
             </label>
           </div>
+          <p
+            id="donate-monthly-note"
+            class="help-text donate-monthly-note"
+            data-i18n="Monthly donations go through GitHub Sponsors."
+            hidden
+          >
+            Monthly donations go through GitHub Sponsors.
+          </p>
           <div class="form-group">
             <label id="donate-amount-label" for="donate-custom-amount" data-i18n="Amount (USD)"
               >Amount (USD)</label
@@ -3209,10 +3217,10 @@
           </div>
           <p
             class="help-text donate-secure-note"
-            data-i18n="Payment is completed securely on GitHub Sponsors in your browser. This app never sees your payment details."
+            data-i18n="Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors opens in your browser. This app never sees your payment details."
           >
-            Payment is completed securely on GitHub Sponsors in your browser. This app never sees
-            your payment details.
+            Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors
+            opens in your browser. This app never sees your payment details.
           </p>
         </div>
         <div class="modal-footer">
@@ -3226,11 +3234,19 @@
           </button>
           <button
             type="button"
+            id="donate-card-btn"
+            class="btn btn-secondary"
+            data-i18n="Donate by card"
+          >
+            Donate by card
+          </button>
+          <button
+            type="button"
             id="donate-continue-btn"
             class="btn btn-primary"
-            data-i18n="Continue on GitHub Sponsors"
+            data-i18n="Donate on GitHub"
           >
-            Continue on GitHub Sponsors
+            Donate on GitHub
           </button>
         </div>
       </div>

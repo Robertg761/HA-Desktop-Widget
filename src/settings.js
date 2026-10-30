@@ -4607,7 +4607,20 @@ function bindSupportDevelopmentUi() {
     if (customInput) customInput.value = '';
     chips.forEach((chip) => setChipSelected(chip, chip.dataset.amount === '5'));
     setAmountError('');
+    syncFrequency();
   }
+  // Card donations are one-time only, so Monthly trades the card button for a line saying so.
+  const cardBtn = modal.querySelector('#donate-card-btn');
+  const monthlyNote = modal.querySelector('#donate-monthly-note');
+  function syncFrequency() {
+    const recurring =
+      modal.querySelector('input[name="donate-frequency"]:checked')?.value === 'recurring';
+    if (cardBtn) cardBtn.hidden = recurring;
+    if (monthlyNote) monthlyNote.hidden = !recurring;
+  }
+  modal.querySelectorAll('input[name="donate-frequency"]').forEach((radio) => {
+    radio.onchange = syncFrequency;
+  });
   chips.forEach((chip) => {
     chip.onclick = () => {
       chips.forEach((other) => setChipSelected(other, other === chip));
@@ -4629,14 +4642,47 @@ function bindSupportDevelopmentUi() {
   const cancelBtn = modal.querySelector('#donate-cancel-btn');
   if (cancelBtn) cancelBtn.onclick = () => closeDonateModal();
 
+  const rejectInvalidAmount = () => {
+    if (getSelectedDonationAmount(modal).valid) return false;
+    setAmountError(t('Please enter a whole dollar amount between $1 and $12,000.'));
+    customInput?.focus();
+    customInput?.select();
+    return true;
+  };
+
+  if (cardBtn) {
+    cardBtn.onclick = async () => {
+      if (cardBtn.getAttribute('aria-busy') === 'true' || rejectInvalidAmount()) return;
+      const { amount } = getSelectedDonationAmount(modal);
+      // The button stays busy while the checkout window is open, also if this dialog is closed
+      // and opened again meanwhile: a second checkout would only bring the first one forward.
+      const label = cardBtn.textContent;
+      cardBtn.textContent = t('Waiting for checkout...');
+      cardBtn.setAttribute('aria-busy', 'true');
+      const reenableCardBtn = disableControlsKeepingFocus([cardBtn]);
+      try {
+        const result = await window.electronAPI.startCardDonation(amount);
+        if (result?.status === 'complete') {
+          if (!modal.classList.contains('hidden')) await closeDonateModal();
+          showToast(t('Thank you for your donation!'), 'success', 4000);
+        } else if (result?.status === 'failed' || !result) {
+          showToast(t('Could not open card checkout. Please try again.'), 'error', 3500);
+        }
+        // Cancelled: nothing was charged, and the dialog is still here for another try.
+      } catch (error) {
+        log.error('Card donation failed:', error);
+        showToast(t('Could not open card checkout. Please try again.'), 'error', 3500);
+      } finally {
+        cardBtn.textContent = label;
+        cardBtn.removeAttribute('aria-busy');
+        reenableCardBtn();
+      }
+    };
+  }
+
   if (continueBtn) {
     continueBtn.onclick = async () => {
-      if (!getSelectedDonationAmount(modal).valid) {
-        setAmountError(t('Please enter a whole dollar amount between $1 and $12,000.'));
-        customInput?.focus();
-        customInput?.select();
-        return;
-      }
+      if (rejectInvalidAmount()) return;
       try {
         const result = await window.electronAPI.openExternal(buildDonationUrl(modal));
         if (result?.success === false) {
