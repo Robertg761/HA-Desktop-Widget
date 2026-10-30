@@ -164,6 +164,7 @@ describe('preload Electron API', () => {
       ['getOsInfo', [], 'get-os-info', []],
       ['openLogs', [], 'open-logs', []],
       ['openExternal', ['https://example.test'], 'open-external', ['https://example.test']],
+      ['startCardDonation', [5], 'start-card-donation', [{ amount: 5 }]],
       ['writeClipboardText', ['report'], 'write-clipboard-text', ['report']],
       [
         'testHaConnection',

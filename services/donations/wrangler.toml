@@ -1,0 +1,19 @@
+name = "ha-desktop-widget-donations"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Like the usage counter, keep Workers Logs off: they would record each request's
+# headers. `npx wrangler tail` still shows Stripe errors while you watch.
+[observability]
+enabled = false
+
+# At most 10 checkout sessions a minute from one address. See README.md.
+[[ratelimits]]
+name = "CHECKOUT_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+# Serve the Worker on the hostname the app calls (src/card-donation.cjs).
+[[routes]]
+pattern = "donate.hadesktopwidget.com"
+custom_domain = true

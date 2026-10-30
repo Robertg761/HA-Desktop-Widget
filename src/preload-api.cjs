@@ -229,6 +229,9 @@ function createElectronApi(ipcRenderer, platform) {
     getOsInfo: () => invoke('get-os-info'),
     openLogs: () => invoke('open-logs'),
     openExternal: (url) => invoke('open-external', url),
+    // Resolves with { status: 'complete' | 'cancelled' | 'failed' | 'already-open' } once the
+    // checkout window is done with.
+    startCardDonation: (amount) => invoke('start-card-donation', { amount }),
     writeClipboardText: (text) => invokeChecked('write-clipboard-text', text),
     testHaConnection: (url, token) => invoke('test-ha-connection', url, token),
     // Resolves with { success: false, code } instead of throwing: an error thrown across the

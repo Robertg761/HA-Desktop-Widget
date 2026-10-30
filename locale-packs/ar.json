@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2229,6 +2229,15 @@
     "Where the name sits at the top of each desktop pin.": "مكان الاسم أعلى كل عنصر مثبت على سطح المكتب.",
     "Left": "يسار",
     "Center": "وسط",
-    "Right": "يمين"
+    "Right": "يمين",
+    "Thank you for considering a donation! Pick an amount, then donate by card right here or continue on GitHub Sponsors.": "شكرًا لتفكيرك في التبرع! اختر مبلغًا، ثم تبرّع بالبطاقة هنا مباشرةً أو تابع على GitHub Sponsors.",
+    "Monthly donations go through GitHub Sponsors.": "تتم التبرعات الشهرية عبر GitHub Sponsors.",
+    "Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors opens in your browser. This app never sees your payment details.": "تُعالج Stripe مدفوعات البطاقات في نافذة دفع آمنة، ويُفتح GitHub Sponsors في متصفحك. هذا التطبيق لا يطّلع أبدًا على بيانات الدفع الخاصة بك.",
+    "Donate by card": "تبرّع بالبطاقة",
+    "Waiting for checkout...": "بانتظار إتمام الدفع...",
+    "Thank you for your donation!": "شكرًا لتبرعك!",
+    "Could not open card checkout. Please try again.": "تعذر فتح صفحة الدفع بالبطاقة. يرجى المحاولة مرة أخرى.",
+    "Donate to HA Desktop Widget": "تبرّع لـ HA Desktop Widget",
+    "Donate on GitHub": "تبرّع على GitHub"
   }
 }

@@ -12801,6 +12801,8 @@ label.disabled {
 
 .donate-modal-content .modal-footer {
   display: flex;
+  /* Three buttons: in longer languages the two ways to donate wrap under Cancel. */
+  flex-wrap: wrap;
   gap: var(--space-3);
   justify-content: flex-end;
   padding: var(--space-3) var(--space-5);
@@ -12903,6 +12905,11 @@ label.disabled {
 
 .donate-secure-note {
   margin-top: var(--space-3);
+}
+
+/* Cards are one-time only; picking Monthly swaps the card button for this line. */
+.donate-monthly-note {
+  margin: var(--space-2) 0 0;
 }
 
 /* A rejected amount is said under the field, in red, until it is changed. */

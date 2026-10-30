@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.79",
+  "version": "1.2.80",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2229,6 +2229,15 @@
     "Where the name sits at the top of each desktop pin.": "Wo der Name oben in jedem Desktop-Pin steht.",
     "Left": "Links",
     "Center": "Mitte",
-    "Right": "Rechts"
+    "Right": "Rechts",
+    "Thank you for considering a donation! Pick an amount, then donate by card right here or continue on GitHub Sponsors.": "Danke, dass du eine Spende in Betracht ziehst! Wähle einen Betrag und spende dann direkt hier per Karte oder weiter über GitHub Sponsors.",
+    "Monthly donations go through GitHub Sponsors.": "Monatliche Spenden laufen über GitHub Sponsors.",
+    "Card payments are handled by Stripe in a secure checkout window, and GitHub Sponsors opens in your browser. This app never sees your payment details.": "Kartenzahlungen wickelt Stripe in einem sicheren Bezahlfenster ab, GitHub Sponsors öffnet sich in deinem Browser. Diese App sieht deine Zahlungsdaten nie.",
+    "Donate by card": "Per Karte spenden",
+    "Waiting for checkout...": "Warte auf den Bezahlvorgang...",
+    "Thank you for your donation!": "Danke für deine Spende!",
+    "Could not open card checkout. Please try again.": "Der Kartenbezahlvorgang konnte nicht geöffnet werden. Bitte versuche es erneut.",
+    "Donate to HA Desktop Widget": "An HA Desktop Widget spenden",
+    "Donate on GitHub": "Auf GitHub spenden"
   }
 }
