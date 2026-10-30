@@ -8146,34 +8146,6 @@ body.theme-light:not(.high-contrast)
   outline: none;
 }
 
-/* Keep this picker inside Chromium's top layer on Linux, where a desktop popup can lose
-   its grab as the pointer moves from the field to the options. It remains a select, with
-   the browser handling keyboard navigation, selection and dismissal. */
-@supports (appearance: base-select) {
-  body[data-platform='linux'] #primary-media-player,
-  body[data-platform='linux'] #primary-media-player::picker(select) {
-    appearance: base-select;
-  }
-
-  body[data-platform='linux'] #primary-media-player::picker(select) {
-    color: var(--text-primary);
-    background: var(--dialog-bg-solid);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-md);
-    max-height: 16rem;
-    overflow-y: auto;
-  }
-
-  body[data-platform='linux'] #primary-media-player option {
-    padding: var(--space-2) var(--space-3);
-  }
-
-  body[data-platform='linux'] #primary-media-player option:hover,
-  body[data-platform='linux'] #primary-media-player option:focus {
-    background: var(--tile-bg-hover);
-  }
-}
-
 /* Specific settings modal sizing */
 #settings-modal {
   background: rgba(8, 10, 14, 0.5);
@@ -13724,6 +13696,47 @@ body:not(.high-contrast) select:not([multiple]) {
 
 [dir='rtl'] body:not(.high-contrast) select:not([multiple]) {
   background-position: left 12px center;
+}
+
+/* Keep every select's picker inside Chromium's top layer on Linux, where a desktop popup can lose
+   its grab as the pointer moves from the field to the options, so the menu closed or slid under
+   whatever sat beneath it. Each one remains a select, with the browser handling keyboard
+   navigation, selection and dismissal. This comes after the chevron rule above so it outranks
+   that rule's appearance, and the browser's own picker icon is hidden wherever the chevron shows. */
+@supports (appearance: base-select) {
+  body[data-platform='linux'] select:not([multiple]),
+  body[data-platform='linux'] select:not([multiple])::picker(select) {
+    appearance: base-select;
+  }
+
+  /* A native select keeps its value on one line; a base-select one would wrap when narrow. */
+  body[data-platform='linux'] select:not([multiple]) {
+    white-space: nowrap;
+  }
+
+  body[data-platform='linux'] select:not([multiple])::picker(select) {
+    max-width: calc(100vw - 16px);
+    color: var(--text-primary);
+    background: var(--dialog-bg-solid);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-md);
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+
+  body[data-platform='linux'] select:not([multiple]) option {
+    padding: var(--space-2) var(--space-3);
+    white-space: normal;
+  }
+
+  body[data-platform='linux'] select:not([multiple]) option:hover,
+  body[data-platform='linux'] select:not([multiple]) option:focus {
+    background: var(--tile-bg-hover);
+  }
+
+  body[data-platform='linux']:not(.high-contrast) select:not([multiple])::picker-icon {
+    display: none;
+  }
 }
 
 textarea {
