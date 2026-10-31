@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.81",
+  "version": "1.2.82",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "आपके दान के लिए धन्यवाद!",
     "Could not open card checkout. Please try again.": "कार्ड चेकआउट नहीं खुल सका। कृपया फिर से प्रयास करें।",
     "Donate to HA Desktop Widget": "HA Desktop Widget को दान करें",
-    "Donate on GitHub": "GitHub पर दान करें"
+    "Donate on GitHub": "GitHub पर दान करें",
+    "Snap desktop pins into line": "डेस्कटॉप पिन को सीध में लाएं",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "पुनर्व्यवस्थित मोड में, किसी दूसरे पिन के किनारे के पास छोड़ा गया पिन उसकी सीध में आ जाता है। पिन को कहीं भी रखने के लिए इसे बंद करें। तीर कुंजियाँ चुने गए पिन को एक बार में 1 px (Shift के साथ 10 px) खिसकाती हैं और कभी सीध में नहीं लातीं।"
   }
 }

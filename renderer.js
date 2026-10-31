@@ -108,8 +108,13 @@ const STATE_CHANGED_FRAME_FALLBACK_MS = 250;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
-const { getDesktopPinResizeKeyDelta, getDesktopPinResizeRequest, getPointerScreenFactor } =
-  desktopPinResize;
+const {
+  DESKTOP_PIN_NUDGE_LIMIT,
+  getDesktopPinNudgeKeyDelta,
+  getDesktopPinResizeKeyDelta,
+  getDesktopPinResizeRequest,
+  getPointerScreenFactor,
+} = desktopPinResize;
 const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 // Only the main window renders tray entity icons; pin windows share this script but not the job.
@@ -4254,9 +4259,74 @@ function wireDesktopPinUI() {
         keyboardResize.running ||= sendQueuedKeyboardResizes();
       });
     });
+
+    installDesktopPinNudgeKeys();
   } catch (error) {
     log.error('Error wiring desktop pin UI:', error);
   }
+}
+
+let desktopPinNudgeKeysInstalled = false;
+
+/**
+ * In Reorganize mode the arrow keys move the pin that has the keyboard (the one last dragged or
+ * clicked) by a pixel, or 10 with Shift. Every step is saved, and a held key repeats faster than
+ * that, so the steps pressed while a request is out are added up and go in the next one.
+ */
+function installDesktopPinNudgeKeys() {
+  if (desktopPinNudgeKeysInstalled) return;
+  desktopPinNudgeKeysInstalled = true;
+  const pending = { x: 0, y: 0 };
+  let running = null;
+  // At most what Main takes in one request; the rest goes in the next.
+  const take = (value) =>
+    Math.max(-DESKTOP_PIN_NUDGE_LIMIT, Math.min(DESKTOP_PIN_NUDGE_LIMIT, value));
+  const sendPendingNudges = async () => {
+    while (pending.x || pending.y) {
+      const dx = take(pending.x);
+      const dy = take(pending.y);
+      pending.x -= dx;
+      pending.y -= dy;
+      try {
+        const result = await window.electronAPI.nudgeDesktopPin(DESKTOP_PIN_ENTITY_ID, {
+          dx,
+          dy,
+        });
+        if (result?.success === false) {
+          // Nothing moved (Reorganize ended, the desktop places the pin, the save failed), so
+          // neither will the steps after it.
+          log.warn('Desktop tile was not moved from the keyboard:', result.error);
+          pending.x = 0;
+          pending.y = 0;
+        }
+      } catch (error) {
+        log.error('Failed to move desktop tile from the keyboard:', error);
+      }
+    }
+  };
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || !desktopPinEditMode) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (typeof window.electronAPI?.nudgeDesktopPin !== 'function') return;
+    // Where the desktop decides where the tile sits, nothing in the app can move it.
+    if (
+      !desktopPinSupportsWindowPositioning &&
+      state.CONFIG?.desktopCapabilities?.canDrag !== true
+    ) {
+      return;
+    }
+    // A resize handle's own arrow keys resize; one it did not take is not a move either.
+    if (event.target?.closest?.('.desktop-pin-resize-handle')) return;
+    const delta = getDesktopPinNudgeKeyDelta(event.key, { shiftKey: event.shiftKey });
+    if (!delta) return;
+    event.preventDefault();
+    pending.x += delta.x;
+    pending.y += delta.y;
+    // Cleared from .finally, which runs after this assignment even when the loop ends at once.
+    running ||= sendPendingNudges().finally(() => {
+      running = null;
+    });
+  });
 }
 
 window.addEventListener(

@@ -400,18 +400,33 @@ describe('desktop pin bounds on Linux', () => {
     context.createDesktopPinWindow('sensor.solar');
     const solarWindow = windows[1];
 
-    // Dropped 7 px right of the pin above it and 5 px under the 16 px gap.
+    // Dropped 7 px right of the pin above it and 21 px under it: it lines up under the pin and
+    // keeps the space it was dropped at.
     solarWindow.setPosition(207, 289);
     jest.advanceTimersByTime(180);
 
-    expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 200, y: 284 });
-    expect(solarWindow.getBounds()).toMatchObject({ x: 200, y: 284 });
+    expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 200, y: 289 });
+    expect(solarWindow.getBounds()).toMatchObject({ x: 200, y: 289 });
     expect(pinWindow.getBounds()).toMatchObject({ x: 200, y: 120 });
 
     // Dropped well away from it, the pin stays where it was dropped.
     solarWindow.setPosition(600, 400);
     jest.advanceTimersByTime(180);
     expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 600, y: 400 });
+  });
+
+  it('leaves a dropped pin where it was dropped with snapping turned off', () => {
+    const { context, windows } = loadPinRuntime();
+    context.config.ui.desktopPinSnap = false;
+    context.config.desktopPins['sensor.solar'] = { x: 200, y: 300, width: 168, height: 148 };
+    context.createDesktopPinWindow('sensor.solar');
+    const solarWindow = windows[1];
+
+    solarWindow.setPosition(207, 289);
+    jest.advanceTimersByTime(180);
+
+    expect(context.config.desktopPins['sensor.solar']).toMatchObject({ x: 207, y: 289 });
+    expect(solarWindow.getBounds()).toMatchObject({ x: 207, y: 289 });
   });
 
   it('puts a pin back where it is saved after a window manager moved it outside Reorganize', () => {

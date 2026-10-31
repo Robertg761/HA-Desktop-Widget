@@ -54,14 +54,30 @@ const ARROW_DELTAS = Object.freeze({
   ArrowDown: { x: 0, y: 1 },
 });
 
-function getDesktopPinResizeKeyDelta(key, { shiftKey = false } = {}) {
+function getArrowKeyDelta(key, step) {
+  if (!Object.hasOwn(ARROW_DELTAS, key)) return null;
   const direction = ARROW_DELTAS[key];
-  if (!direction) return null;
-  const step = shiftKey ? 32 : 8;
   return { x: direction.x * step, y: direction.y * step };
 }
 
+function getDesktopPinResizeKeyDelta(key, { shiftKey = false } = {}) {
+  return getArrowKeyDelta(key, shiftKey ? 32 : 8);
+}
+
+// An arrow key moves a pin in Reorganize mode by a pixel, or 10 with Shift: finer than a drag, for
+// the spacing snapping would not leave alone.
+function getDesktopPinNudgeKeyDelta(key, { shiftKey = false } = {}) {
+  return getArrowKeyDelta(key, shiftKey ? 10 : 1);
+}
+
+// The furthest one nudge request may move a pin, on either axis. Held arrow keys add up their steps
+// while a request is out, so a request carries several steps, but never a jump across the screen.
+// The renderer splits a longer move into several requests; Main refuses one that goes further.
+const DESKTOP_PIN_NUDGE_LIMIT = 200;
+
 module.exports = {
+  DESKTOP_PIN_NUDGE_LIMIT,
+  getDesktopPinNudgeKeyDelta,
   getDesktopPinResizeKeyDelta,
   getDesktopPinResizeRequest,
   getPointerScreenFactor,

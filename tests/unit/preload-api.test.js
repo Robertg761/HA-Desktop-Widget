@@ -51,6 +51,12 @@ describe('preload Electron API', () => {
         ['light.office', objectArg],
       ],
       [
+        'nudgeDesktopPin',
+        ['light.office', objectArg],
+        'nudge-desktop-pin',
+        ['light.office', objectArg],
+      ],
+      [
         'syncDesktopPinContentMinBounds',
         ['light.office', objectArg],
         'sync-desktop-pin-content-min-bounds',

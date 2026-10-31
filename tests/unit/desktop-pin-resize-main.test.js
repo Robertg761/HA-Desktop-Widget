@@ -8,6 +8,8 @@ const {
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 const { clampLayerPosition } = require('../../src/layer-placement.cjs');
+const { DESKTOP_PIN_NUDGE_LIMIT } = require('../../src/desktop-pin-resize.cjs');
+const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -50,6 +52,9 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
     isHyprland: () => true,
     layerActualMonitor: layer?.monitor || null,
     layerPositions: new Map(),
+    layerDrag: null,
+    DESKTOP_PIN_NUDGE_LIMIT,
+    snapDesktopPinPosition,
     clampLayerPosition,
     desktopPinEditMode: true,
     desktopPinContentMinBounds: new Map(),
@@ -89,6 +94,8 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
         '// The monitor surfaces are placed on, from Electron',
         'const hyprlandConfigReloadWatcher'
       ),
+      sliceMain('function getDesktopPinBounds(', 'function applyDesktopPinDesktopBehavior'),
+      sliceMain('// Snapping is on until it is turned off', 'const DESKTOP_PIN_SNAP_BACK_DELAY_MS'),
     ].join('\n'),
     context
   );
@@ -622,5 +629,222 @@ describe('resizing a desktop pin in the main process', () => {
     const result = await context.updateDesktopPinBounds('light.office', { x: 300, y: 200 });
     expect(result.pinBounds).toEqual({ x: 300, y: 200, width: 168, height: 148 });
     expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('nudging a desktop pin from the arrow keys', () => {
+  // The pin window is drawn where its saved bounds put it, and follows setBounds.
+  function loadNudgeRuntime(options) {
+    const runtime = loadResizeRuntime(options);
+    const { context, pinWindow } = runtime;
+    let current = context.getDesktopPinWindowBounds(
+      'light.office',
+      context.config.desktopPins['light.office']
+    );
+    pinWindow.getBounds = () => ({ ...current });
+    pinWindow.setBounds.mockImplementation((bounds) => {
+      current = { ...bounds };
+    });
+    return runtime;
+  }
+
+  it('moves a pin drawn on another screen from where it is drawn', async () => {
+    // Saved on a third monitor that is unplugged: drawn against the right edge of the second.
+    const { context, pinWindow } = loadNudgeRuntime({
+      bounds: { x: 5000, y: 100, width: 168, height: 148 },
+    });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 3672, y: 100 });
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: -1, dy: 0 });
+
+    expect(result.pinBounds).toMatchObject({ x: 3671, y: 100 });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 3671, y: 100 });
+  });
+
+  it('saves nothing for a step that would not show above 100% text size', async () => {
+    // At 150% the window is 252 wide, so it is drawn at 1668 against the right edge.
+    const { context, pinWindow } = loadNudgeRuntime({
+      scale: 1.5,
+      bounds: { x: 1668, y: 100, width: 168, height: 148 },
+    });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 1668 });
+
+    await context.nudgeDesktopPin('light.office', { dx: 1, dy: 0 });
+    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+
+    const left = await context.nudgeDesktopPin('light.office', { dx: -1, dy: 0 });
+    expect(left.pinBounds).toMatchObject({ x: 1667 });
+    expect(pinWindow.getBounds()).toMatchObject({ x: 1667 });
+  });
+
+  it('moves a pin window by the step, saves it and does not snap', async () => {
+    const { context, pinWindow } = loadNudgeRuntime({
+      bounds: { x: 100, y: 100, width: 168, height: 148 },
+    });
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 1, dy: -10 });
+
+    expect(result).toMatchObject({ success: true, pinBounds: { x: 101, y: 90 } });
+    expect(context.config.desktopPins['light.office']).toEqual({
+      x: 101,
+      y: 90,
+      width: 168,
+      height: 148,
+    });
+    expect(pinWindow.setBounds).toHaveBeenLastCalledWith({
+      x: 101,
+      y: 90,
+      width: 168,
+      height: 148,
+    });
+    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes over from a drop that is still waiting to be saved', async () => {
+    jest.useFakeTimers();
+    const { context, pinWindow } = loadNudgeRuntime({
+      bounds: { x: 100, y: 100, width: 168, height: 148 },
+    });
+    const dropSave = jest.fn();
+    pinWindow.__desktopPinSaveTimer = setTimeout(dropSave, 180);
+    pinWindow.__desktopPinPendingBounds = { x: 407, y: 300, width: 168, height: 148 };
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 1, dy: 0 });
+    jest.advanceTimersByTime(1000);
+
+    // From where it was dropped, not the saved spot, and the drop's save no longer runs.
+    expect(result.pinBounds).toMatchObject({ x: 408, y: 300 });
+    expect(dropSave).not.toHaveBeenCalled();
+    expect(pinWindow.__desktopPinSaveTimer).toBeNull();
+    expect(pinWindow.__desktopPinPendingBounds).toBeNull();
+  });
+
+  it('keeps a drop the nudge after it could not save', async () => {
+    jest.useFakeTimers();
+    const { context, pinWindow } = loadNudgeRuntime({
+      bounds: { x: 100, y: 100, width: 168, height: 148 },
+    });
+    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'disk full' });
+    pinWindow.__desktopPinSaveTimer = setTimeout(jest.fn(), 180);
+    pinWindow.__desktopPinPendingBounds = { x: 407, y: 300, width: 168, height: 148 };
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 1, dy: 0 });
+
+    expect(result.success).toBe(false);
+    // Where it was dropped, as the drop's own save would have left it, not before the drag.
+    expect(context.config.desktopPins['light.office']).toMatchObject({ x: 407, y: 300 });
+    expect(pinWindow.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ x: 407, y: 300 })
+    );
+  });
+
+  it('keeps a nudged pin on the work area, and saves nothing when it cannot move', async () => {
+    const { context } = loadNudgeRuntime({ bounds: { x: 0, y: 0, width: 168, height: 148 } });
+    const result = await context.nudgeDesktopPin('light.office', { dx: -1, dy: -10 });
+    expect(result).toMatchObject({ success: true, pinBounds: { x: 0, y: 0 } });
+    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+
+    // Along the edge it still moves.
+    const along = await context.nudgeDesktopPin('light.office', { dx: -1, dy: 10 });
+    expect(along.pinBounds).toMatchObject({ x: 0, y: 10 });
+    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+  });
+
+  it('snaps a drop still waiting to be saved before the arrow keys move it on', async () => {
+    jest.useFakeTimers();
+    const { context, pinWindow } = loadNudgeRuntime({
+      bounds: { x: 100, y: 100, width: 168, height: 148 },
+    });
+    context.desktopPinWindows.set('light.other', {
+      isDestroyed: () => false,
+      isVisible: () => true,
+      getBounds: () => ({ x: 400, y: 100, width: 168, height: 148 }),
+    });
+    pinWindow.__desktopPinSaveTimer = setTimeout(jest.fn(), 180);
+    // Dropped 5 px right of the other pin's left edge.
+    pinWindow.__desktopPinPendingBounds = { x: 405, y: 300, width: 168, height: 148 };
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 0, dy: 1 });
+
+    // Snapped to 400 as the drop, then one step down by the key.
+    expect(result.pinBounds).toMatchObject({ x: 400, y: 301 });
+
+    // With snapping off, the drop stays where it was dropped.
+    context.config.ui.desktopPinSnap = false;
+    pinWindow.__desktopPinSaveTimer = setTimeout(jest.fn(), 180);
+    pinWindow.__desktopPinPendingBounds = { x: 405, y: 500, width: 168, height: 148 };
+    const unsnapped = await context.nudgeDesktopPin('light.office', { dx: 0, dy: 1 });
+    expect(unsnapped.pinBounds).toMatchObject({ x: 405, y: 501 });
+  });
+
+  it('moves a layer surface by its layer position and saves that', async () => {
+    const monitor = {
+      name: 'DP-2',
+      x: 1920,
+      y: 0,
+      width: 1920,
+      height: 1080,
+      workArea: { x: 0, y: 30, width: 1920, height: 1050 },
+    };
+    const { context, place } = loadNudgeRuntime({
+      bounds: { x: 2100, y: 200, width: 168, height: 148 },
+      layer: { monitor },
+    });
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 10, dy: 1 });
+
+    expect(result.success).toBe(true);
+    expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 190, y: 201 });
+    expect(context.config.layerPositions['light.office']['DP-2']).toEqual({ x: 190, y: 201 });
+    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts a layer surface back, and only its own saved spot, when the nudge cannot be saved', async () => {
+    const monitor = {
+      name: 'DP-2',
+      x: 1920,
+      y: 0,
+      width: 1920,
+      height: 1080,
+      workArea: { x: 0, y: 30, width: 1920, height: 1050 },
+    };
+    const other = { 'DP-2': { x: 600, y: 600 } };
+    const { context, place } = loadNudgeRuntime({
+      bounds: { x: 2100, y: 200, width: 168, height: 148 },
+      layer: { monitor, layerPositions: { 'light.other': other } },
+    });
+    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'disk full' });
+
+    const result = await context.nudgeDesktopPin('light.office', { dx: 10, dy: 0 });
+
+    expect(result.success).toBe(false);
+    expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 180, y: 200 });
+    expect(context.layerPositions.get('light.office')).toEqual({ x: 180, y: 200 });
+    expect(context.config.layerPositions).toEqual({ 'light.other': other });
+  });
+
+  it('refuses outside Reorganize, where the desktop places pins, and odd steps', async () => {
+    const bounds = { x: 100, y: 100, width: 168, height: 148 };
+    const notEditing = loadNudgeRuntime({ bounds }).context;
+    notEditing.desktopPinEditMode = false;
+    const compositor = loadNudgeRuntime({ bounds, compositorPlacement: true }).context;
+    const odd = loadNudgeRuntime({ bounds }).context;
+
+    for (const [context, delta] of [
+      [notEditing, { dx: 1, dy: 0 }],
+      [compositor, { dx: 1, dy: 0 }],
+      [odd, { dx: 0.5, dy: 0 }],
+      [odd, { dx: 5000, dy: 0 }],
+      [odd, { dx: 'left', dy: 0 }],
+      [odd, { dx: '5', dy: 0 }],
+      [odd, { dx: true, dy: 0 }],
+      [odd, { dx: [1], dy: 0 }],
+    ]) {
+      expect(await context.nudgeDesktopPin('light.office', delta)).toMatchObject({
+        success: false,
+      });
+      expect(context.saveConfigDurably).not.toHaveBeenCalled();
+      expect(context.config.desktopPins['light.office']).toEqual(bounds);
+    }
   });
 });

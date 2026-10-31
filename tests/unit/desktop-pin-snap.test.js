@@ -34,38 +34,76 @@ describe('desktop pin snapping', () => {
     });
   });
 
-  test('puts a pin beside one it is level with, touching or a gap apart', () => {
+  test('leaves a pin dropped near another the distance from it it was dropped at', () => {
     const other = pin(400, 200);
-    // Its right edge is at 568.
-    expect(snapDesktopPinPosition(pin(572, 210), { others: [other], workArea })).toEqual({
-      x: 568,
-      y: 200,
-    });
-    expect(snapDesktopPinPosition(pin(580, 210), { others: [other], workArea })).toEqual({
-      x: 584,
-      y: 200,
-    });
-    // Above it: its top is at 200, so a 148-tall pin ends there at 52, or 36 with the gap.
-    expect(snapDesktopPinPosition(pin(400, 40), { others: [other], workArea })).toEqual({
+    // 8 px under it (its bottom is at 348) and 4 px right of it (its right edge is at 568): there
+    // is no fixed space to settle at beside a pin.
+    expect(snapDesktopPinPosition(pin(400, 356), { others: [other], workArea })).toEqual({
       x: 400,
-      y: 36,
+      y: 356,
     });
-  });
-
-  test('does not put a pin beside one far away on the other axis', () => {
-    // Level with nothing: x 572 is only near the far pin's right edge, which is a side-by-side
-    // target, not an edge to line up with.
-    expect(snapDesktopPinPosition(pin(572, 800), { others: [pin(400, 200)], workArea })).toEqual({
+    expect(snapDesktopPinPosition(pin(572, 600), { others: [other], workArea })).toEqual({
       x: 572,
-      y: 800,
+      y: 600,
     });
   });
 
-  test('snaps to the work area edges', () => {
-    expect(snapDesktopPinPosition(pin(4, 1040 - 148 - 20), { workArea })).toEqual({
-      x: 0,
-      y: 1040 - 148 - 16,
+  test('puts a pin dropped a little over another up against it', () => {
+    const other = pin(400, 200);
+    // 5 px into its bottom (348): touching. 4 px into its left side (400): touching.
+    expect(snapDesktopPinPosition(pin(400, 343), { others: [other], workArea }).y).toBe(348);
+    expect(snapDesktopPinPosition(pin(236, 260), { others: [other], workArea }).x).toBe(232);
+  });
+
+  test('spaces a column evenly at the spacing already used in it', () => {
+    // Two pins 8 px apart; the third, dropped 13 px under the second, settles 8 px under it.
+    const others = [pin(400, 200), pin(400, 356)];
+    expect(snapDesktopPinPosition(pin(404, 517), { others, workArea })).toEqual({
+      x: 400,
+      y: 512,
     });
+  });
+
+  test('does not take a space between pins in two different columns as spacing', () => {
+    // Column A ends at 120 and goes on at 200; column B goes on at 180. A wide pin over both columns
+    // has all of them in its line, but 120 to 180 is no column's spacing: only 80 and 10 are.
+    const others = [pin(0, 0, 168, 120), pin(0, 200), pin(200, 0, 168, 170), pin(200, 180)];
+    const wide = (y) => pin(0, y, 368, 100);
+    // 60 under the second pin of column B would be 388; dropped at 384, it stays.
+    expect(snapDesktopPinPosition(wide(384), { others, workArea }).y).toBe(384);
+    // Column B's own 10 px spacing is still offered: 328 + 10 = 338.
+    expect(snapDesktopPinPosition(wide(342), { others, workArea }).y).toBe(338);
+  });
+
+  test('keeps a column evenly spaced when an edge of the column beside it is nearly as close', () => {
+    // The issue's layout: small pins 10 px apart on the left, a tall pin on the right whose bottom
+    // edge lines a 120-tall pin up at 270. Dropped at 262, the column's spacing (260) is nearer.
+    const small = (y) => pin(6, y, 145, 120);
+    const others = [small(0), small(130), pin(160, 0, 168, 390)];
+    expect(snapDesktopPinPosition(small(262), { others, workArea }).y).toBe(260);
+    // Dropped at 268, the edge is nearer, and wins.
+    expect(snapDesktopPinPosition(small(268), { others, workArea }).y).toBe(270);
+  });
+
+  test('takes spacing only from its own column, not the one beside it', () => {
+    // The column to the right is spaced 30 px apart; the pin dropped 25 px under the left pin stays.
+    const others = [pin(400, 200), pin(600, 600), pin(600, 778)];
+    expect(snapDesktopPinPosition(pin(400, 373), { others, workArea })).toEqual({
+      x: 400,
+      y: 373,
+    });
+  });
+
+  test('lines a column up instead of settling beside the column next to it', () => {
+    // The issue's layout: a column of smaller pins at x 6, a column of bigger ones 9 px to the
+    // right of it. The pin dropped at x 12 is 3 px from touching the right column and 6 px from its
+    // own column's edge; it goes to its column.
+    const small = (y) => pin(6, y, 145, 120);
+    const others = [small(0), small(130), pin(160, 0, 168, 320), pin(160, 330, 168, 320)];
+    expect(snapDesktopPinPosition(small(262), { others, workArea }).x).toBe(6);
+    // A column edge also wins over the work area's edge, even a nearer one.
+    expect(snapDesktopPinPosition(small(400), { others, workArea: null }).x).toBe(6);
+    expect(snapDesktopPinPosition(pin(2, 500, 145, 120), { others, workArea }).x).toBe(6);
   });
 
   test('leaves a pin dropped away from every target where it was dropped', () => {

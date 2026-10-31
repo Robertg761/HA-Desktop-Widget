@@ -108,12 +108,15 @@ describe('dropping a pin on a Hyprland layer surface', () => {
       desktopPinWindows: new Map(Object.entries(pins)),
       clampLayerPosition,
       snapDesktopPinPosition,
+      config: { ui: {} },
     };
     const start = mainSource.indexOf('function snapLayerPinPosition');
     const end = mainSource.indexOf("ipcMain.handle('begin-layer-drag'");
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
-    vm.runInNewContext(mainSource.slice(start, end), context);
+    const helper = mainSource.match(/function desktopPinSnapEnabled\(\) \{[^}]*\}/);
+    expect(helper).not.toBeNull();
+    vm.runInNewContext(`${helper[0]}\n${mainSource.slice(start, end)}`, context);
     return { context, pins, place };
   }
 
@@ -123,9 +126,20 @@ describe('dropping a pin on a Hyprland layer surface', () => {
 
     context.snapLayerPinPosition({ id: 'light.two', window: pins['light.two'] });
 
-    // Under light.one (bottom at 248), the app's 16px gap apart.
-    expect(context.layerPositions.get('light.two')).toEqual({ x: 400, y: 264 });
-    expect(place).toHaveBeenCalledWith('HA Pin: light.two', { x: 400, y: 264 });
+    // Under light.one's left edge, still 15 px under its bottom (248), where it was dropped.
+    expect(context.layerPositions.get('light.two')).toEqual({ x: 400, y: 263 });
+    expect(place).toHaveBeenCalledWith('HA Pin: light.two', { x: 400, y: 263 });
+  });
+
+  it('leaves a dropped pin where it was dropped with snapping turned off', () => {
+    const { context, pins, place } = loadSnapRuntime();
+    context.config.ui.desktopPinSnap = false;
+    context.layerPositions.set('light.two', { x: 405, y: 263 });
+
+    context.snapLayerPinPosition({ id: 'light.two', window: pins['light.two'] });
+
+    expect(context.layerPositions.get('light.two')).toEqual({ x: 405, y: 263 });
+    expect(place).not.toHaveBeenCalled();
   });
 
   it('leaves a pin dropped away from the others alone', () => {

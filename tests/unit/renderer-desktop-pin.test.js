@@ -936,4 +936,110 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       expect(mockElectronAPI.updateDesktopPinBounds).not.toHaveBeenCalled();
     });
   });
+
+  describe('nudging the pin with the arrow keys', () => {
+    const press = (key, options = {}) =>
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options })
+      );
+
+    it('moves the pin a pixel per press, 10 with Shift', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true } });
+
+      press('ArrowLeft');
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenLastCalledWith('light.bedroom', {
+        dx: -1,
+        dy: 0,
+      });
+      press('ArrowDown', { shiftKey: true });
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenLastCalledWith('light.bedroom', {
+        dx: 0,
+        dy: 10,
+      });
+    });
+
+    it('adds up the presses that arrive while a nudge is being saved', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true } });
+      const replies = [];
+      mockElectronAPI.nudgeDesktopPin.mockImplementation(
+        () => new Promise((resolve) => replies.push(() => resolve({ success: true })))
+      );
+
+      press('ArrowRight');
+      press('ArrowRight');
+      press('ArrowUp');
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenCalledTimes(1);
+
+      replies.shift()();
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenCalledTimes(2);
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenLastCalledWith('light.bedroom', {
+        dx: 1,
+        dy: -1,
+      });
+      replies.shift()();
+      await flushAsync();
+    });
+
+    it('leaves the arrow keys alone outside edit mode and with Alt, Ctrl or Command', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: false } });
+      press('ArrowRight');
+      triggerMockEvent('desktopPinUpdate', { entityId: 'light.bedroom', editMode: true });
+      await flushAsync();
+      press('ArrowRight', { altKey: true });
+      press('ArrowRight', { ctrlKey: true });
+      press('ArrowRight', { metaKey: true });
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).not.toHaveBeenCalled();
+    });
+
+    it('does nothing where the desktop decides where the pin sits', async () => {
+      await loadRenderer({
+        bootstrapOverrides: { editMode: true, supportsWindowPositioning: false },
+      });
+      press('ArrowRight');
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).not.toHaveBeenCalled();
+    });
+
+    it('does not nudge the pin from a handle that is not ready to resize yet', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true, pinBounds: null } });
+      document
+        .querySelector('[data-corner="bottom-right"]')
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).not.toHaveBeenCalled();
+    });
+
+    it('keeps working after a nudge that failed before it was sent', async () => {
+      await loadRenderer({ bootstrapOverrides: { editMode: true } });
+      mockElectronAPI.nudgeDesktopPin.mockImplementationOnce(() => {
+        throw new Error('bridge gone');
+      });
+      press('ArrowRight');
+      await flushAsync();
+      press('ArrowLeft');
+      await flushAsync();
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenCalledTimes(2);
+      expect(mockElectronAPI.nudgeDesktopPin).toHaveBeenLastCalledWith('light.bedroom', {
+        dx: -1,
+        dy: 0,
+      });
+    });
+
+    it('does not nudge the pin when an arrow key resizes it from a handle', async () => {
+      await loadRenderer({
+        bootstrapOverrides: { editMode: true, pinBounds: { x: 0, y: 0, width: 168, height: 148 } },
+      });
+      document
+        .querySelector('[data-corner="bottom-right"]')
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await flushAsync();
+      expect(mockElectronAPI.updateDesktopPinBounds).toHaveBeenCalled();
+      expect(mockElectronAPI.nudgeDesktopPin).not.toHaveBeenCalled();
+    });
+  });
 });
