@@ -149,6 +149,7 @@ function createElectronApi(ipcRenderer, platform) {
     setDesktopPinEditMode: (enabled) => invoke('set-desktop-pin-edit-mode', enabled),
     updateDesktopPinBounds: (entityId, bounds) =>
       invoke('update-desktop-pin-bounds', entityId, bounds),
+    nudgeDesktopPin: (entityId, delta) => invoke('nudge-desktop-pin', entityId, delta),
     syncDesktopPinContentMinBounds: (entityId, minBounds) =>
       invoke('sync-desktop-pin-content-min-bounds', entityId, minBounds),
     getDesktopPinBootstrap: (entityId) => invoke('get-desktop-pin-bootstrap', entityId),

@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "Danke für deine Spende!",
     "Could not open card checkout. Please try again.": "Der Kartenbezahlvorgang konnte nicht geöffnet werden. Bitte versuche es erneut.",
     "Donate to HA Desktop Widget": "An HA Desktop Widget spenden",
-    "Donate on GitHub": "Auf GitHub spenden"
+    "Donate on GitHub": "Auf GitHub spenden",
+    "Snap desktop pins into line": "Desktop-Pins ausrichten",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "Beim Neu-Anordnen richtet sich ein Pin, den du nahe an der Kante eines anderen Pins ablegst, daran aus. Schalte es aus, um Pins frei zu platzieren. Die Pfeiltasten verschieben einen ausgewählten Pin um 1 px (mit Shift um 10 px) und richten nie aus."
   }
 }

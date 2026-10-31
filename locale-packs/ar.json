@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.81",
+  "version": "1.2.82",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "شكرًا لتبرعك!",
     "Could not open card checkout. Please try again.": "تعذر فتح صفحة الدفع بالبطاقة. يرجى المحاولة مرة أخرى.",
     "Donate to HA Desktop Widget": "تبرّع لـ HA Desktop Widget",
-    "Donate on GitHub": "تبرّع على GitHub"
+    "Donate on GitHub": "تبرّع على GitHub",
+    "Snap desktop pins into line": "محاذاة العناصر المثبتة على سطح المكتب",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "في وضع إعادة الترتيب، يُحاذى العنصر الذي تُفلته قرب حافة عنصر آخر معه. أوقف هذا الخيار لوضع العناصر بحرية. تحرّك مفاتيح الأسهم العنصر المحدد 1 px في كل مرة (10 px مع Shift) دون محاذاته أبدًا."
   }
 }

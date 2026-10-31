@@ -79,6 +79,7 @@ const SETTINGS_SCHEMA = {
     customColors: listOf({ id: 'string', name: 'text', color: 'string' }),
     density: oneOf('comfortable', 'compact'),
     desktopPinNameAlign: oneOf('left', 'center', 'right'),
+    desktopPinSnap: 'boolean',
     activeTileGlow: 'boolean',
     highContrast: 'boolean',
     opaquePanels: 'boolean',

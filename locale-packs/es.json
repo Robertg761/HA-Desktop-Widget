@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "¡Gracias por tu donación!",
     "Could not open card checkout. Please try again.": "No se pudo abrir el pago con tarjeta. Inténtalo de nuevo.",
     "Donate to HA Desktop Widget": "Donar a HA Desktop Widget",
-    "Donate on GitHub": "Donar en GitHub"
+    "Donate on GitHub": "Donar en GitHub",
+    "Snap desktop pins into line": "Alinear los elementos anclados al escritorio",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En el modo de reorganización, un elemento que sueltas cerca del borde de otro se alinea con él. Desactívalo para colocarlos libremente. Las flechas mueven el elemento seleccionado 1 px cada vez (10 px con Shift) y nunca lo alinean."
   }
 }

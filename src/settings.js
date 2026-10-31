@@ -5580,6 +5580,7 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
   const preset = document.getElementById('readable-preset');
   const density = document.getElementById('density-select');
   const activeTileGlow = document.getElementById('active-tile-glow');
+  const pinSnap = document.getElementById('desktop-pin-snap');
   const next = { ...ui };
   if (scale) next.scale = Number(scale.value) || 1;
   if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
@@ -5590,6 +5591,10 @@ function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
   const pinNameAlign = readPinNameAlignInput(ui);
   if (pinNameAlign) next.desktopPinNameAlign = pinNameAlign;
   if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
+  // Stored once turned off, so an untouched switch keeps following the default (on).
+  if (pinSnap && (!pinSnap.checked || Object.hasOwn(ui, 'desktopPinSnap'))) {
+    next.desktopPinSnap = !!pinSnap.checked;
+  }
   const seasonal = readSeasonalInputs(ui.seasonal);
   if (seasonal) next.seasonal = seasonal;
   return next;
@@ -5823,6 +5828,9 @@ function bindAppearanceSettingsUi() {
   if (scale) scale.value = String(ui.scale || 1);
   if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
   if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
+  const pinSnap = document.getElementById('desktop-pin-snap');
+  // Opt-out, like the glow: pins snap until someone turns it off.
+  if (pinSnap) pinSnap.checked = ui.desktopPinSnap !== false;
   if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
   const pinNameAlign = document.getElementById('pin-name-align-select');
   pinNameAlignTouched = false;
@@ -6123,6 +6131,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
   ['#density-select', ['ui.density']],
   ['#pin-name-align-select', ['ui.desktopPinNameAlign']],
+  ['#desktop-pin-snap', ['ui.desktopPinSnap']],
   ['#active-tile-glow', ['ui.activeTileGlow']],
   ['#seasonal-settings', ['ui.seasonal']],
   ['#ui-scale-select', ['ui.scale']],

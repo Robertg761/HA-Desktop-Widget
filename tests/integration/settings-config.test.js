@@ -300,6 +300,10 @@ function createSettingsModalDOM() {
         <option value="center">Center</option>
         <option value="right">Right</option>
       </select>
+      <label for="desktop-pin-snap">
+        <input type="checkbox" id="desktop-pin-snap" />
+        Snap desktop pins into line
+      </label>
 
       <label for="active-tile-glow">
         <input type="checkbox" id="active-tile-glow" />
@@ -845,6 +849,32 @@ describe('Settings + Config Integration', () => {
       expect(window.electronAPI.updateConfig).toHaveBeenLastCalledWith(
         expect.objectContaining({ ui: expect.objectContaining({ density: 'compact' }) })
       );
+    });
+
+    test('stores the pin snapping switch only once it is turned off', async () => {
+      await settings.openSettings();
+      const pinSnap = document.getElementById('desktop-pin-snap');
+      const density = document.getElementById('density-select');
+      density.value = 'compact';
+      density.dispatchEvent(new Event('change', { bubbles: true }));
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui).not.toHaveProperty(
+        'desktopPinSnap'
+      );
+
+      await settings.openSettings();
+      pinSnap.checked = false;
+      pinSnap.dispatchEvent(new Event('change', { bubbles: true }));
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui.desktopPinSnap).toBe(false);
+
+      // Turned back on, the stored choice follows.
+      await settings.openSettings();
+      expect(pinSnap.checked).toBe(false);
+      pinSnap.checked = true;
+      pinSnap.dispatchEvent(new Event('change', { bubbles: true }));
+      await settings.saveSettings();
+      expect(window.electronAPI.updateConfig.mock.calls.at(-1)[0].ui.desktopPinSnap).toBe(true);
     });
 
     test('leaves pin names following the language until a side is picked', async () => {
@@ -5217,8 +5247,10 @@ describe('Settings + Config Integration', () => {
       const preset = document.getElementById('readable-preset');
       const densitySelect = document.getElementById('density-select');
       const activeTileGlow = document.getElementById('active-tile-glow');
-      // Defaults on: a config that predates the setting still gets the glow.
+      const pinSnap = document.getElementById('desktop-pin-snap');
+      // Defaults on: a config that predates the setting still gets the glow, and pins still snap.
       expect(activeTileGlow.checked).toBe(true);
+      expect(pinSnap.checked).toBe(true);
 
       scale.value = '1.5';
       scale.dispatchEvent(new Event('change'));
@@ -5228,6 +5260,7 @@ describe('Settings + Config Integration', () => {
       densitySelect.dispatchEvent(new Event('change'));
       activeTileGlow.checked = false;
       activeTileGlow.dispatchEvent(new Event('change'));
+      pinSnap.checked = false;
       await Promise.resolve();
 
       expect(mockUiUtils.applyUiPreferences).toHaveBeenLastCalledWith(
@@ -5258,6 +5291,7 @@ describe('Settings + Config Integration', () => {
             opaquePanels: true,
             density: 'compact',
             activeTileGlow: false,
+            desktopPinSnap: false,
           }),
         })
       );
@@ -5270,6 +5304,7 @@ describe('Settings + Config Integration', () => {
       expect(preset.checked).toBe(true);
       expect(densitySelect.value).toBe('compact');
       expect(activeTileGlow.checked).toBe(false);
+      expect(pinSnap.checked).toBe(false);
     });
 
     test('cancel reverts previewed appearance choices without saving them', async () => {

@@ -2,7 +2,7 @@
   "locale": "zh",
   "displayName": "简体中文",
   "englishName": "Chinese (Simplified)",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "Simplified Chinese language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "感谢你的捐赠！",
     "Could not open card checkout. Please try again.": "无法打开银行卡结账，请重试。",
     "Donate to HA Desktop Widget": "向 HA Desktop Widget 捐赠",
-    "Donate on GitHub": "在 GitHub 上捐赠"
+    "Donate on GitHub": "在 GitHub 上捐赠",
+    "Snap desktop pins into line": "自动对齐桌面固定项",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "在整理模式下，放在另一个固定项边缘附近的固定项会与其对齐。关闭后可自由放置。方向键每次将选中的固定项移动 1 px（按住 Shift 时为 10 px），且不会对齐。"
   }
 }

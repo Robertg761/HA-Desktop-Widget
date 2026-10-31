@@ -22,6 +22,12 @@ changes to pinned desktop tiles.
 - A pin is its tile and nothing else: there is no header or drag strip. A tile can only be
   moved or resized in edit mode, when the whole tile is the drag surface and the corner
   handles resize it (with the arrow keys too, Shift for larger steps).
+- A tile dropped within 12 px of another tile's edge, of the spacing already used in its
+  column or row, or of touching a tile it was dropped a little over, snaps there (then to
+  another tile's middle or the screen edge). Settings → Appearance → Snap desktop pins into
+  line turns snapping off. In edit mode the arrow keys move the focused tile 1 px (10 px with
+  Shift) and never snap. Like a drag, they do nothing where the app cannot move a pin itself:
+  layer-shell pins outside Hyprland, and pin windows on native Wayland.
 - `Open widget` (or `Open` for a camera, which opens its viewer in the main window) is the
   only way to the main widget from a tile; `Focus Main` is used for fallback states.
 - Hovering a tile shows the entity's name, so a name cut by the window can still be read.
@@ -98,6 +104,11 @@ These checks need a packaged Electron build and a real close/relaunch cycle:
 - [ ] On Hyprland, Sway, niri or river (layer-shell pins), resize a pin from each corner,
       after dragging it first where the compositor allows: the edge opposite the handle must
       not move, and a restart must bring the pin back at the size and position it ended with.
+- [ ] In edit mode, drag a column of different-sized pins: each lines up with the column's
+      edge, keeps the space it was dropped at (or the spacing already used in the column),
+      and is not pulled beside the next column. Click a pin and press the arrow keys, with and
+      without Shift, then restart: the pin comes back where the keys left it. Repeat with
+      Snap desktop pins into line off: a dropped pin stays exactly where it was dropped.
 - [ ] Pin several tiles in a row, unpin one, and pin another: new pins open in the first free
       spot from the top-right corner of the widget's monitor and never on top of each other.
 

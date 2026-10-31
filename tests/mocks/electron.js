@@ -294,6 +294,7 @@ function createMockElectronAPI() {
     updateDesktopPinBounds: jest.fn((_entityId, bounds) =>
       Promise.resolve({ success: true, pinBounds: bounds })
     ),
+    nudgeDesktopPin: jest.fn((_entityId, _delta) => Promise.resolve({ success: true })),
     syncDesktopPinContentMinBounds: jest.fn((_entityId, minBounds) =>
       Promise.resolve({
         success: true,

@@ -1739,5 +1739,7 @@
   "Thank you for your donation!": "Thank you for your donation!",
   "Could not open card checkout. Please try again.": "Could not open card checkout. Please try again.",
   "Donate to HA Desktop Widget": "Donate to HA Desktop Widget",
-  "Donate on GitHub": "Donate on GitHub"
+  "Donate on GitHub": "Donate on GitHub",
+  "Snap desktop pins into line": "Snap desktop pins into line",
+  "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap."
 }

@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.80",
+  "version": "1.2.81",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2238,6 +2238,8 @@
     "Thank you for your donation!": "Merci pour votre don !",
     "Could not open card checkout. Please try again.": "Impossible d'ouvrir le paiement par carte. Veuillez réessayer.",
     "Donate to HA Desktop Widget": "Faire un don à HA Desktop Widget",
-    "Donate on GitHub": "Donner sur GitHub"
+    "Donate on GitHub": "Donner sur GitHub",
+    "Snap desktop pins into line": "Aligner les éléments épinglés au bureau",
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En mode réorganisation, un élément déposé près du bord d'un autre s'aligne sur lui. Désactivez cette option pour placer les éléments librement. Les flèches déplacent l'élément sélectionné de 1 px à la fois (10 px avec Shift) sans jamais l'aligner."
   }
 }

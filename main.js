@@ -380,6 +380,7 @@ const {
   sanitizeDesktopPinSupportInfo,
 } = require('./src/desktop-pin-support.cjs');
 const { snapDesktopPinPosition } = require('./src/desktop-pin-snap.cjs');
+const { DESKTOP_PIN_NUDGE_LIMIT } = require('./src/desktop-pin-resize.cjs');
 const {
   getTrayIconSizeForPlatform,
   normalizeEntityId: normalizeTrayEntityId,
@@ -3498,6 +3499,108 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   };
 }
 
+function normalizeDesktopPinNudge(delta) {
+  const read = (value) =>
+    Number.isInteger(value) && Math.abs(value) <= DESKTOP_PIN_NUDGE_LIMIT ? value : null;
+  const dx = read(delta?.dx ?? 0);
+  const dy = read(delta?.dy ?? 0);
+  return dx === null || dy === null ? null : { dx, dy };
+}
+
+/**
+ * Move a pin by a few pixels from the arrow keys in Reorganize mode. A nudge is the fine control
+ * for spacing snapping would undo, so it never snaps: it only stays on the work area.
+ */
+async function nudgeDesktopPin(entityId, delta) {
+  const normalizedEntityId = normalizeEntityId(entityId);
+  const step = normalizeDesktopPinNudge(delta);
+  if (!normalizedEntityId || !step) return { success: false, error: 'Invalid nudge' };
+  if (!desktopPinEditMode) {
+    return { success: false, error: 'Desktop pin edit mode is not active' };
+  }
+  const pin = config?.desktopPins?.[normalizedEntityId];
+  if (!pin) return { success: false, error: 'Desktop pin does not exist' };
+  if (step.dx === 0 && step.dy === 0) return { success: true, pinBounds: pin };
+
+  // A layer surface sits at its layer position, in its monitor's coordinates, like a drag leaves it.
+  // It is on native Wayland, but placed by the app, so it is moved before the check below. Every
+  // placed surface has a position in layerPositions, also a pin the app placed itself that has no
+  // saved one in config.layerPositions yet.
+  const layerPlacement = getDesktopPinLayerPlacement(normalizedEntityId);
+  const pinWindow = desktopPinWindows.get(normalizedEntityId);
+  if (layerPlacement && pinWindow && !pinWindow.isDestroyed()) {
+    if (layerDrag?.id === normalizedEntityId) return { success: false, error: 'Pin is dragged' };
+    const { monitor, origin } = layerPlacement;
+    const position = clampLayerPosition(
+      { x: origin.x + step.dx, y: origin.y + step.dy },
+      pinWindow.getBounds(),
+      monitor
+    );
+    // Held against the work area's edge: nothing moves, so there is nothing to save.
+    if (position.x === origin.x && position.y === origin.y)
+      return { success: true, pinBounds: pin };
+    const savedPosition = config.layerPositions?.[normalizedEntityId]?.[monitor.name] || null;
+    layerPositions.set(normalizedEntityId, position);
+    layerShellRaiser?.place(pinWindow.getTitle(), position);
+    setDesktopPinLayerPosition(normalizedEntityId, monitor.name, position);
+    const persistence = await saveConfigDurably();
+    if (!persistence.success) {
+      setDesktopPinLayerPosition(normalizedEntityId, monitor.name, savedPosition);
+      // Unless a drag of the pin began during the save: the pin is the drag's now.
+      if (layerDrag?.id !== normalizedEntityId) {
+        layerPositions.set(normalizedEntityId, origin);
+        layerShellRaiser?.place(pinWindow.getTitle(), origin);
+      }
+      return {
+        success: false,
+        error: mainT('Failed to save desktop pin position: {{error}}', {
+          error: persistence.error,
+        }),
+      };
+    }
+    return { success: true, pinBounds: pin };
+  }
+  if (usesCompositorOwnedPlacement) return { success: false, error: 'unsupported' };
+
+  // The keys move the pin from where it is drawn, as a drag does. That is its saved spot, unless the
+  // saved spot is off every screen (its monitor is unplugged) and it is drawn on one that is left.
+  //
+  // A drop still waiting out its save would land after this and put the pin back where it was
+  // dropped. It is settled here instead, snapped as its own save would have snapped it (only the
+  // arrow keys never snap), and the keys move the pin on from there. It is kept in the config as the
+  // drop's save would have kept it, so a nudge that cannot be saved leaves the pin where it was
+  // dropped, not back where it was before the drag.
+  const drawn = pinWindow && !pinWindow.isDestroyed();
+  let start = drawn ? getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow) : pin;
+  let dropSettled = false;
+  if (drawn && pinWindow.__desktopPinSaveTimer) {
+    clearTimeout(pinWindow.__desktopPinSaveTimer);
+    pinWindow.__desktopPinSaveTimer = null;
+    const droppedBounds =
+      pinWindow.__desktopPinPendingBounds ||
+      getDesktopPinBoundsFromWindow(normalizedEntityId, pinWindow);
+    pinWindow.__desktopPinPendingBounds = null;
+    start = snapDesktopPinBounds(normalizedEntityId, pinWindow, droppedBounds);
+    config.desktopPins[normalizedEntityId] = start;
+    dropSettled = true;
+  }
+  const next = clampDesktopPinBounds(
+    { ...start, x: start.x + step.dx, y: start.y + step.dy },
+    normalizedEntityId,
+    0,
+    start,
+    { clampPosition: true }
+  );
+  // Held against the work area's edge, with no drop to save either: nothing to do. Judged by where
+  // the pin would be drawn, since above 100% text size a pin drawn against the edge can be saved
+  // further along, and steps it would not show are not worth saving.
+  const unmoved = drawn
+    ? desktopPinWindowIsPlaced(pinWindow, normalizedEntityId, next)
+    : next.x === pin.x && next.y === pin.y;
+  if (!dropSettled && unmoved) return { success: true, pinBounds: pin };
+  return updateDesktopPinBounds(normalizedEntityId, { x: next.x, y: next.y });
+}
+
 function createDesktopPinWindow(entityId, options = {}) {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) return null;
@@ -3690,11 +3793,17 @@ function createDesktopPinWindow(entityId, options = {}) {
   return pinWindow;
 }
 
+// Snapping is on until it is turned off in Settings > Appearance.
+function desktopPinSnapEnabled() {
+  return config?.ui?.desktopPinSnap !== false;
+}
+
 /**
  * The saved bounds of a pin dropped in Reorganize mode, lined up with the other pins and the
  * screen edges when the drop was close to one, so a column of pins forms a straight line.
  */
 function snapDesktopPinBounds(entityId, pinWindow, droppedBounds) {
+  if (!desktopPinSnapEnabled()) return droppedBounds;
   const { width, height } = pinWindow.getBounds();
   const rect = { x: droppedBounds.x, y: droppedBounds.y, width, height };
   const others = [...desktopPinWindows.entries()]
@@ -10239,6 +10348,18 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  'nudge-desktop-pin',
+  serializeConfigMutationHandler(async (event, entityId, delta = {}) => {
+    const sender = authorizeIpcSender(event, 'nudge-desktop-pin', { allowDesktopPin: true });
+    if (!sender) return rejectUnauthorizedIpc('nudge-desktop-pin');
+    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+      return { success: false, error: 'Unauthorized' };
+    }
+    return nudgeDesktopPin(entityId, delta);
+  })
+);
+
+ipcMain.handle(
   'sync-desktop-pin-content-min-bounds',
   serializeConfigMutationHandler(async (event, entityId, minBounds = {}) => {
     const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
@@ -10740,7 +10861,7 @@ async function updateLayerDrag(drag) {
 // in the monitor's coordinates that layer positions use.
 function snapLayerPinPosition(drag) {
   const position = layerPositions.get(drag.id);
-  if (!position) return;
+  if (!position || !desktopPinSnapEnabled()) return;
   const { width, height } = drag.window.getBounds();
   const others = [...desktopPinWindows.entries()]
     .filter(([entityId, other]) => entityId !== drag.id && !other.isDestroyed())
