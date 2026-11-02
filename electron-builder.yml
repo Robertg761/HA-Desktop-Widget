@@ -161,6 +161,10 @@ publish: null
 
 mac:
   minimumSystemVersion: '12.0'
+  # The legacy build's names carry its version, 4.1.0-macos12, so neither file can be mistaken for
+  # 4.1.0's HA-Desktop-Widget-4.1.0-universal.dmg and -universal-mac.zip. The dashes are the ones
+  # release.yml would give the names when it publishes.
+  artifactName: 'HA-Desktop-Widget-${version}-${arch}-mac.${ext}'
   # The system no longer masks a third-party icon, so this is the artwork already in build/icon.png,
   # set on Apple's icon grid by scripts/derive-icons.py (which also writes the other sizes).
   icon: build/icon-mac.png
@@ -270,6 +274,8 @@ mac:
     - '!node_modules/stream-combiner/**/*'
     - '!node_modules/uiohook-napi/prebuilds/linux-*/**/*'
     - '!node_modules/uiohook-napi/prebuilds/win32-*/**/*'
+dmg:
+  artifactName: 'HA-Desktop-Widget-${version}-${arch}.${ext}'
 win:
   icon: build/icon.ico
   # package.json and the dbus-next list of mac.files, then the uiohook-napi prebuilds of the other

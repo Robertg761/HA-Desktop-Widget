@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-macos12] - 2026-11-02
+
+The final version for macOS 12 Monterey: 4.1.0 built for a Mac that cannot move to macOS 13. Every later version needs macOS 13 Ventura or later. See [LEGACY-MACOS12.md](LEGACY-MACOS12.md).
+
+### Changed
+
+- Run on Electron 43.8.6, the last Electron that supports macOS 12, instead of Electron 45.
+- Never check for updates. There will be none for macOS 12, and every later version needs macOS 13, so this build neither looks for nor offers one, and Settings says it is up to date.
+
 ## [4.1.0] - 2026-11-02
 
 ### Added
