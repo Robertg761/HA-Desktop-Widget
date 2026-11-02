@@ -56,6 +56,7 @@ function loadMain({
   selfUpdating = true,
   currentVersion = '4.0.0',
   savedPrerelease = false,
+  legacy = false,
   releases = [],
   checkResult = {
     isUpdateAvailable: true,
@@ -122,6 +123,7 @@ function loadMain({
     ensureUpdateConfigDefaults: jest.fn(),
     mainT: (key, vars = {}) =>
       key.replace(/\{\{(\w+)\}\}/g, (_m, name) => vars[name] ?? `{{${name}}}`),
+    LEGACY_UPDATES_DISABLED: legacy,
     isPortableBuild: () => portable,
     supportsAutoUpdater: () => selfUpdating,
     getAutoUpdater: () => autoUpdater,
@@ -657,5 +659,63 @@ describe('the app name', () => {
     // matched no window once index.html was renamed.
     expect(script).toContain("item.title === 'HA Desktop Widget'");
     expect(script).not.toContain('Home Assistant Widget');
+  });
+});
+
+// The legacy macOS 12 build (LEGACY-MACOS12.md) is the last that runs on Monterey, so it must never
+// offer, fetch or install a later one, which would not start there.
+describe('the legacy macOS 12 build', () => {
+  it('switches update checks off in main.js', () => {
+    expect(mainSource).toMatch(/^const LEGACY_UPDATES_DISABLED = true;$/m);
+  });
+
+  it.each([
+    ['a build that cannot update itself (macOS)', { selfUpdating: false }],
+    ['a self-updating build', { selfUpdating: true }],
+    ['the Windows Portable build', { portable: true, selfUpdating: false }],
+  ])('answers a manual check without asking GitHub, for %s', async (_label, options) => {
+    const main = withAuthorizedSender(
+      loadMain({ ...options, legacy: true, releases: [GITHUB_RELEASE('v4.1.1')] })
+    );
+
+    await expect(main.ipcCheck({ allowPrerelease: true })).resolves.toEqual({
+      status: 'none',
+      message: 'You are up to date!',
+    });
+    expect(main.fetchUrls).toEqual([]);
+    expect(main.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it('answers the tray item the same way', async () => {
+    const main = loadMain({ legacy: true, releases: [GITHUB_RELEASE('v4.1.1')] });
+
+    await main.run('runTrayUpdateCheck()');
+
+    expect(main.sent.at(-1)[1]).toEqual({ status: 'none', message: 'You are up to date!' });
+    expect(main.fetchUrls).toEqual([]);
+  });
+
+  it('schedules no checks and never listens to the updater', () => {
+    const main = loadMain({ legacy: true, selfUpdating: true });
+
+    main.run('setupAutoUpdates()');
+
+    expect(main.run('updateCheckScheduler')).toBeNull();
+    expect(main.powerListeners.resume).toBeUndefined();
+    expect(main.autoUpdater.on).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when a scheduled check runs anyway', async () => {
+    const main = loadMain({
+      legacy: true,
+      selfUpdating: true,
+      releases: [GITHUB_RELEASE('v4.1.1')],
+    });
+
+    await main.run('runScheduledUpdateCheck()');
+
+    expect(main.autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+    expect(main.fetchUrls).toEqual([]);
+    expect(main.notifications).toEqual([]);
   });
 });

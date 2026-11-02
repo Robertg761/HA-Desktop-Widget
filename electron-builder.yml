@@ -153,11 +153,11 @@ electronLanguages:
   - hi
   - zh-CN
   - zh-TW
-publish:
-  - provider: github
-    owner: Robertg761
-    repo: HA-Desktop-Widget
-    releaseType: release
+# The legacy macOS 12 build publishes nowhere and updates from nowhere (see LEGACY-MACOS12.md).
+# With no publish provider electron-builder writes no app-update.yml into the app and no
+# latest-mac.yml beside the DMG, so neither the build nor anything uploaded with it can point an
+# updater at a release.
+publish: null
 
 mac:
   minimumSystemVersion: '12.0'

@@ -121,6 +121,10 @@ const {
 } = require('./src/layer-placement.cjs');
 const { supportsLiveTrayValues } = require('./packages/widget-renderer/src/release-features.cjs');
 const LIVE_TRAY_VALUES_ENABLED = supportsLiveTrayValues(pkg.version);
+// The legacy macOS 12 build (branch legacy/macos12, see LEGACY-MACOS12.md) is the last version
+// that runs on Monterey; every later release needs macOS 13. It never looks for an update, on a
+// schedule or when asked, so it can never offer or fetch a build that will not start here.
+const LEGACY_UPDATES_DISABLED = true;
 
 // ---------------------------------------------------------------------------
 // Early startup: profile selection and the layer-shell handoff. Everything in
@@ -12398,6 +12402,8 @@ ipcMain.handle('check-for-updates', async (event, options) => {
  */
 async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
   if (!app.isPackaged) return { status: 'dev' };
+  // Nothing newer runs on macOS 12, so there is nothing to look for.
+  if (LEGACY_UPDATES_DISABLED) return { status: 'none', message: mainT('You are up to date!') };
   if (isPortableBuild()) {
     return checkPortableUpdate({ allowPrerelease });
   }
@@ -12468,7 +12474,11 @@ ipcMain.handle('quit-and-install', async (event) => {
   if (!app.isPackaged) {
     return { success: false, error: 'Update install is only available in packaged builds' };
   }
-  if (isPortableBuild() || !supportsAutoUpdater(process.platform, process.env)) {
+  if (
+    LEGACY_UPDATES_DISABLED ||
+    isPortableBuild() ||
+    !supportsAutoUpdater(process.platform, process.env)
+  ) {
     return { success: false, error: 'In-app updates are not supported for this package' };
   }
   if (!autoUpdateDownloaded) {
@@ -14386,7 +14396,7 @@ function getLastManualUpdateResult() {
  * download notification, any other build is told of a newer release by a notification.
  */
 async function runScheduledUpdateCheck() {
-  if (!app.isPackaged || isQuitting) return;
+  if (!app.isPackaged || isQuitting || LEGACY_UPDATES_DISABLED) return;
   const selfUpdating = !isPortableBuild() && supportsAutoUpdater(process.platform, process.env);
   if (selfUpdating) {
     // The update that is already downloaded installs on exit; checking again would only fetch it
@@ -14423,6 +14433,10 @@ let updateCheckScheduler = null;
 // App event handlers
 function setupAutoUpdates() {
   if (!app.isPackaged) return;
+  if (LEGACY_UPDATES_DISABLED) {
+    log.info('Legacy macOS 12 build: update checks are switched off.');
+    return;
+  }
   const selfUpdating = !isPortableBuild() && supportsAutoUpdater(process.platform, process.env);
   if (selfUpdating) {
     try {

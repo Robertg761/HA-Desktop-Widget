@@ -35,6 +35,8 @@ function loadInstall() {
     ipcMain: { handle: (name, handler) => (handlers[name] = handler) },
     authorizeIpcSender: () => ({ type: 'main' }),
     rejectUnauthorizedIpc: () => ({ success: false }),
+    // The legacy macOS 12 build switches all of this off; the flow it switches off is tested here.
+    LEGACY_UPDATES_DISABLED: false,
     isPortableBuild: () => false,
     supportsAutoUpdater: () => true,
     process: { platform: 'linux', env: { APPIMAGE: '/app.AppImage' } },
