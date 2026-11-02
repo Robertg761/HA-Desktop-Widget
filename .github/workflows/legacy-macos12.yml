@@ -1,0 +1,201 @@
+# The one-time legacy build of 4.1.0 for macOS 12 Monterey (see LEGACY-MACOS12.md). It builds the
+# universal DMG and zip from the legacy/macos12 branch and keeps them as this run's artifacts. It
+# publishes nothing: no tag, no release, no release assets, no update manifest.
+#
+# Signing:
+#   auto          Developer ID signed and notarized when every secret below is set, else ad-hoc
+#                 signed like every macOS release so far (release.yml). A push always uses auto.
+#   adhoc         ad-hoc signed only.
+#   developer-id  Developer ID signed and notarized; fails when a secret is missing.
+#
+# Developer ID needs these repository secrets, none of which exist yet:
+#   MAC_CSC_LINK            the Developer ID Application certificate and key, a base64 .p12
+#   MAC_CSC_KEY_PASSWORD    the .p12's password
+#   APPLE_API_KEY_P8        an App Store Connect API key (the .p8 file's text), for notarytool
+#   APPLE_API_KEY_ID        that key's ID
+#   APPLE_API_ISSUER        its issuer ID
+name: Legacy macOS 12 build
+
+on:
+  # Only a workflow on the default branch can be dispatched before it has run. This one stays off
+  # main, so a push to its own branch is what first runs it.
+  push:
+    branches: [legacy/macos12]
+  workflow_dispatch:
+    inputs:
+      signing:
+        description: auto, adhoc or developer-id
+        required: true
+        default: auto
+        type: choice
+        options: [auto, adhoc, developer-id]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-macos12
+  cancel-in-progress: true
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Refuse any other branch
+        if: github.ref != 'refs/heads/legacy/macos12'
+        run: |
+          echo "This workflow only builds legacy/macos12, not $GITHUB_REF." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check the legacy settings
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          const builder = fs.readFileSync('electron-builder.yml', 'utf8');
+          const main = fs.readFileSync('main.js', 'utf8');
+          const checks = [
+            ['package.json version is 4.1.0-macos12', pkg.version === '4.1.0-macos12'],
+            ['package-lock.json version is 4.1.0-macos12', lock.packages[''].version === '4.1.0-macos12'],
+            ['Electron is pinned to a 43.x release', /^43\.\d+\.\d+$/.test(pkg.devDependencies.electron)],
+            ['the lock file installs that Electron', lock.packages['node_modules/electron'].version === pkg.devDependencies.electron],
+            ["minimumSystemVersion is '12.0'", /^  minimumSystemVersion: '12\.0'$/m.test(builder)],
+            ['publish is null', /^publish: null$/m.test(builder)],
+            ['update checks are switched off', /^const LEGACY_UPDATES_DISABLED = true;$/m.test(main)],
+          ];
+          const failed = checks.filter(([, ok]) => !ok);
+          checks.forEach(([label, ok]) => console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}`));
+          if (failed.length) process.exit(1);
+          EOF
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint -- --max-warnings=0
+
+      - name: Run tests
+        run: npm test -- --runInBand
+
+      - name: Choose signing
+        id: signing
+        env:
+          REQUESTED: ${{ github.event.inputs.signing || 'auto' }}
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          have_all=true
+          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [[ -z "${!name}" ]]; then
+              echo "Secret $name is not set."
+              have_all=false
+            fi
+          done
+          mode="$REQUESTED"
+          if [[ "$mode" == auto ]]; then
+            mode=$([[ "$have_all" == true ]] && echo developer-id || echo adhoc)
+          fi
+          if [[ "$mode" == developer-id && "$have_all" != true ]]; then
+            echo "Developer ID signing was asked for, but a secret above is missing." >&2
+            exit 1
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Signing: $mode"
+
+      - name: Build macOS artifacts (ad-hoc signed)
+        if: steps.signing.outputs.mode == 'adhoc'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:mac -- --publish never
+
+      - name: Build macOS artifacts (Developer ID signed and notarized)
+        if: steps.signing.outputs.mode == 'developer-id'
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          # notarytool takes the API key as a file.
+          export APPLE_API_KEY="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          trap 'rm -f "$APPLE_API_KEY"' EXIT
+          npm run dist:mac -- --publish never
+
+      - name: Verify the app
+        env:
+          SIGNING: ${{ steps.signing.outputs.mode }}
+        run: |
+          set -euo pipefail
+          app="dist/mac-universal/HA Desktop Widget.app"
+          test -d "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+          architectures="$(lipo -archs "$app/Contents/MacOS/HA Desktop Widget")"
+          if [[ " $architectures " != *" x86_64 "* || " $architectures " != *" arm64 "* ]]; then
+            echo "Expected a universal executable; found: $architectures" >&2
+            exit 1
+          fi
+
+          minimum="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          echo "LSMinimumSystemVersion=$minimum CFBundleShortVersionString=$version"
+          [[ "$minimum" == 12.0 ]] || { echo "Expected LSMinimumSystemVersion 12.0" >&2; exit 1; }
+          [[ "$version" == 4.1.0-macos12 ]] || { echo "Expected version 4.1.0-macos12" >&2; exit 1; }
+
+          # Nothing in the app or beside it may point an updater anywhere.
+          if [[ -e "$app/Contents/Resources/app-update.yml" ]]; then
+            echo "The app carries an app-update.yml." >&2
+            exit 1
+          fi
+          if compgen -G 'dist/*.yml' | grep -v builder-debug.yml; then
+            echo "The build wrote an update manifest." >&2
+            exit 1
+          fi
+
+          if [[ "$SIGNING" == developer-id ]]; then
+            codesign -dv --verbose=4 "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime)'
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+          else
+            echo "Ad-hoc signed: Gatekeeper will ask the person to allow the app, as for every macOS release so far."
+          fi
+
+      # On the runner's own macOS, which is newer than 12: it shows that the app starts, not that it
+      # starts on Monterey.
+      - name: Smoke launch
+        timeout-minutes: 2
+        run: |
+          "dist/mac-universal/HA Desktop Widget.app/Contents/MacOS/HA Desktop Widget" --smoke-test
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 *.dmg *-mac.zip | tee SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: legacy-macos12-${{ steps.signing.outputs.mode }}
+          path: |
+            dist/*.dmg
+            dist/*-mac.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
