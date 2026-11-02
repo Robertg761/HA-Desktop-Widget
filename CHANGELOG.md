@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-02
+
 ### Added
 
 - Find the emoji added in Unicode 18, such as the lighthouse, meteor, pickle and monarch butterfly, in the custom icon picker, named in every language the app speaks. They show where the system's emoji font can draw them. The emoji names and keywords now come from Unicode CLDR 49.
