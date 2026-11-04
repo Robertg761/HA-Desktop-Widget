@@ -71,7 +71,7 @@
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",
     "events": "^3.3.0",
-    "globals": "^15.9.0",
+    "globals": "^17.13.0",
     "hls.js": "^1.7.3",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",
