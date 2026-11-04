@@ -68,7 +68,7 @@
     "concurrently": "^10.0.6",
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
-    "eslint": "^9.39.5",
+    "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "events": "^3.3.0",
     "globals": "^17.13.0",
