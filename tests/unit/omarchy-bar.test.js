@@ -1027,7 +1027,9 @@ describe('bar requests and installation', () => {
     ].forEach((line) => expect(parseOmarchyBarSocketLine(line)).toBeNull());
   });
 
-  (process.platform === 'win32' ? it.skip : it)(
+  // Linux only: the Omarchy bar is an Arch/Hyprland feature, and macOS's /var/folders tmpdir pushes
+  // this socket path past the ~104-byte sun_path limit, so listen fails and the wait below never ends.
+  (process.platform === 'linux' ? it : it.skip)(
     'listens on a private socket and passes each request line on',
     async () => {
       const socketPath = path.join(root, 'run', 'ha-desktop-widget', 'omarchy-bar.sock');

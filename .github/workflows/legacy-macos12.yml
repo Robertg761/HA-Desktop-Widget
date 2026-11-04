@@ -40,6 +40,7 @@ concurrency:
 jobs:
   build-mac:
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - name: Refuse any other branch
         if: github.ref != 'refs/heads/legacy/macos12'
@@ -85,6 +86,7 @@ jobs:
         run: npm run lint -- --max-warnings=0
 
       - name: Run tests
+        timeout-minutes: 20
         run: npm test -- --runInBand
 
       - name: Choose signing
