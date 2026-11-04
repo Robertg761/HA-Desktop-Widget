@@ -69,7 +69,7 @@
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
     "eslint": "^9.39.5",
-    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-prettier": "^10.1.8",
     "events": "^3.3.0",
     "globals": "^15.9.0",
     "hls.js": "^1.7.3",
