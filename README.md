@@ -5,8 +5,10 @@ A free, open-source Home Assistant desktop app and frosted-glass widget for Wind
 [![CI](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/ci.yml)
 [![Release](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml/badge.svg)](https://github.com/Robertg761/HA-Desktop-Widget/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/Robertg761/HA-Desktop-Widget/total?color=blue&label=downloads)](https://github.com/Robertg761/HA-Desktop-Widget/releases)[![Commit Archive 2026](https://commitarchive.lol/badge/2026/Robertg761/HA-Desktop-Widget.svg)](https://commitarchive.lol/2026/Robertg761/HA-Desktop-Widget)
+[![Downloads](https://img.shields.io/github/downloads/Robertg761/HA-Desktop-Widget/total?color=blue&label=downloads)](https://github.com/Robertg761/HA-Desktop-Widget/releases)
+[![Commit Archive 2026](https://commitarchive.lol/badge/2026/Robertg761/HA-Desktop-Widget.svg)](https://commitarchive.lol/2026/Robertg761/HA-Desktop-Widget)
 
+- Website: https://hadesktopwidget.com
 - Download: https://github.com/Robertg761/HA-Desktop-Widget/releases
 
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Support_the_project-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/Robertg761)
@@ -57,7 +59,7 @@ The widget only moves its own link: the one it made, or one that already led to 
 - **Quick Access Dashboard**: Customizable grid of your most-used entities
 - **Duplicate Pages**: In reorganize mode, use Duplicate page beside the active page name. The copy opens beside the original with the same tile order and its own copies of comparison charts. Device names and tile preferences remain shared for the same Home Assistant entity.
 - **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
-- **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles
+- **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles. In reorganize mode, a pin dropped within 12 px of another pin's edge snaps into line with it, and the arrow keys move a selected pin 1 px at a time (10 px with Shift) without snapping. **Settings → Appearance** has **Desktop pin names** (Left, Center, or Right) and **Snap desktop pins into line**
 - **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
 - **Tile Options**: Adjust selected Quick Access readout sizing for dense or prominent tiles
 - **Camera Tile Previews**: Opt into a visibility-scoped authenticated HLS stream or snapshots, then click the tile to grow that same feed into a larger view and reconnect a stale camera session when needed
@@ -70,6 +72,7 @@ The widget only moves its own link: the one it made, or one that already led to 
 - **Themes**: Auto, Dark or Light (Auto follows the system)
 - **Color Personalization**: Built-in and custom accent/background colors with live preview
 - **Weather Effects**: Optional subtle rain, snow, clouds, sun, and storm animations when frosted glass is enabled
+- **Seasonal Themes**: Halloween, Christmas, New Year, Lunar New Year, Valentine's Day, St. Patrick's Day, Easter, and Thanksgiving decorate the window and bring their own colors. **Settings → Appearance → Seasonal themes** switches each holiday on or off and can show any holiday now. They start off when the system asks for reduced motion or high contrast is on
 - **Smooth Animations**: Fluid drag-and-drop and hover effects
 - **Toast Notifications**: Real-time feedback for all actions
 
@@ -77,7 +80,12 @@ The widget only moves its own link: the one it made, or one that already led to 
 
 - **Lights**: Toggle on/off, brightness control, and desktop-pin brightness presets
 - **Switches, Fans & Input Booleans**: Simple on/off controls, with fan speed controls where available
-- **Covers & Locks**: Open/close and lock/unlock controls
+- **Covers & Locks**: Open/close and lock/unlock controls. A tile click asks before it unlocks a lock
+- **Valves, Humidifiers & Sirens**: Toggle from their tiles and hotkeys
+- **Vacuums**: Controls limited to the actions each vacuum supports
+- **Number & Select Helpers**: Dialogs with the helper's current bounds or options
+- **Alarm Panels**: Arm and disarm from [command search](#command-search), with a code prompt when Home Assistant requires one
+- **To-do Lists & Calendars**: Open a list's tasks or a calendar's events from the tile
 - **Sensors & Binary Sensors**: Real-time value display with units and state-aware icons
 - **Timers**: Live countdown displays for active timers
 - **Cameras**: Optional Quick Access snapshots plus live feed viewing with snapshot fallback
@@ -88,7 +96,7 @@ The widget only moves its own link: the one it made, or one that already led to 
 
 ### Advanced Features
 
-- **Updates**: Windows installer and Linux AppImage builds download and install updates themselves; portable, macOS, and Linux deb builds are told once per new version and open the GitHub Releases download
+- **Updates**: Windows installer and Linux AppImage builds download and install updates themselves; portable, macOS, Linux deb, and Arch package builds are told once per new version and open the GitHub Releases download
 - **System Tray**: Hide to tray with quick access menu
 - **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
 - **Start at Login**: Optional OS login startup control
@@ -97,7 +105,7 @@ The widget only moves its own link: the one it made, or one that already led to 
 - **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
 - **Appearance**: Auto, dark or light theme, accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
 - **Line icons**: Entities are drawn with crisp line icons that take the accent color when on; your own emoji and Home Assistant icons still win
-- **Localization**: Auto/system language mode with downloadable offline language packs
+- **Localization**: English, German, Spanish, French, Arabic, Hindi, and Chinese, with an Auto/system language mode and downloadable offline language packs
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
 - **Alerts**: Desktop notifications for entity state changes
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
@@ -146,6 +154,8 @@ Planned for a future release:
 
 ### Download & Install
 
+The app runs on Windows 10 and 11 (x64), macOS 13 Ventura or later (Intel and Apple Silicon), and x64 Linux desktops.
+
 1. Go to the [Releases](https://github.com/Robertg761/HA-Desktop-Widget/releases) page and download the latest available build for your OS.
 2. Windows: run the `.exe` installer or portable build. macOS: open the universal `.dmg` or `.zip` (older releases may be Apple Silicon-only). Linux: use the `.AppImage` or install the `.deb` package.
 3. Open the app and follow its setup to connect Home Assistant (see [First-Time Setup](#first-time-setup)).
@@ -191,6 +201,12 @@ native Home Assistant devices and supports `show`, `hide`, `toggle`, `switch_pag
 connection for registration, state reporting, command delivery, and acknowledgements. It never
 accepts arbitrary shell commands, JavaScript, file access, URLs, or generic Electron IPC from
 Home Assistant.
+
+The integration lives in its own repository,
+[HA-Desktop-Widget-Companion](https://github.com/Robertg761/HA-Desktop-Widget-Companion), and
+installs through HACS as a custom repository. The
+[companion page](https://hadesktopwidget.com/companion) has the steps and the Home Assistant
+version it needs.
 
 `apply_profile` applies a named profile authored in Home Assistant: a bounded configuration
 document covering appearance (theme, accent, background, opacity, frosted glass), primary cards,
@@ -256,7 +272,7 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 - **Covers**: Click to open/close, long-press for open/stop/close controls
 - **Climate**: Long-press for target temperature and mode controls
 - **Media Players**: Use the media tile controls or long-press a media player for details and seek controls
-- **Cameras**: Click to open the camera viewer (snapshot, with a Live button)
+- **Cameras**: Click to open the camera viewer (snapshot, with a Live button). A tile that already shows a preview grows that feed into the larger view instead
 - **Sensors**: Display real-time values with automatic unit formatting
 - **Timers**: Show live countdown when active
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
@@ -272,7 +288,7 @@ power controls without a brightness slider.
 
 - **Hide to Tray**: The minimize button, the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all hide the widget to the system tray, and it keeps running. Choose **Quit** from the tray menu (or the app menu on macOS) to exit
 - **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” (“Hide to menu bar when focus is lost” on macOS) under General → Window & behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
-- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, and Linux deb builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
+- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, Linux deb, and Arch package builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
 - **Settings**: Access via the Settings button or right-click the tray icon
@@ -296,6 +312,8 @@ power controls without a brightness slider.
 
 ### Build from Source
 
+Building needs Node.js 22.18 or later and npm.
+
 ```bash
 git clone https://github.com/Robertg761/HA-Desktop-Widget.git
 cd HA-Desktop-Widget
@@ -311,8 +329,8 @@ npm run dist:mac    # Build macOS distribution artifacts
 npm run dist:linux  # Build Linux AppImage and deb artifacts
 ```
 
-Building the Linux artifacts additionally requires a Rust toolchain (1.98 or newer, as
-pinned in `.mise.toml`) and `python3`: `npm run dist:linux` compiles the bundled
+Building the Linux artifacts additionally requires a Rust toolchain, 1.80 or newer
+(`.mise.toml` pins 1.98.0), and `python3`: `npm run dist:linux` compiles the bundled
 `windowtolayer` layer-shell helper from `vendor/windowtolayer` before packaging.
 
 ### Climate UI Demo (Development Only)
@@ -341,10 +359,10 @@ cannot start while a copy of the widget is already running — quit that one fir
 
 ### Release Channels
 
-- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, and Linux deb users download it from GitHub Releases.
+- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, Linux deb, and Arch package users download it from GitHub Releases.
 - **Tester prereleases**: Push a SemVer prerelease tag like `v4.1.0-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings → Advanced are offered these builds.
 - **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
-- **Manual-update builds**: Portable, macOS, and Linux deb users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
+- **Manual-update builds**: Portable, macOS, Linux deb, and Arch package users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
 
 The minimum planned beta version is stored in `.github/beta-target`. The nightly job starts the
 active series at that version (for example `v4.0.0-beta.1`). Once that version is stable, it
@@ -353,7 +371,9 @@ series instead.
 
 Release builds align their package version from the tag. Manually prepared betas commit matching
 prerelease metadata before tagging; automated nightly betas align it only inside the build.
-Stable releases continue to sync `package.json` and `package-lock.json` after publishing.
+If a stable tag's version is not yet in `package.json` and `package-lock.json` on `main`, the
+release workflow commits it there after publishing. With the bump landed first, as above, it has
+nothing to commit.
 
 The notes of a stable release are its `CHANGELOG.md` section, followed by a link to the full
 changelog, and the release fails without a non-empty section. A beta uses its own section when the
@@ -392,12 +412,7 @@ your own checkout, so it only proves anything on a clean, up-to-date `main`.)
   - **macOS**: `~/Library/Application Support/home-assistant-widget/config.json`
   - **Linux**: `~/.config/home-assistant-widget/config.json` (or `$XDG_CONFIG_HOME/home-assistant-widget/config.json`)
   - **Development builds**: use the sibling `home-assistant-widget-dev` folder
-- **Config Contents**: `homeAssistant` (url and auth method; encrypted token fields only for legacy-token authentication), `desktopCompanion` (a random installation ID), `favoriteEntities`, `customEntityNames`,
-  `desktopPins`, `customEntityIcons`, `quickAccessTileOptions`, `tileSpans`, `selectedWeatherEntity`, `primaryMediaPlayer`,
-  `globalHotkeys`, `entityAlerts`, `popupHotkey`, `windowPosition`, `windowSize`, `opacity`, `ui` (theme, accent, background,
-  language, customColors, timeFormat, dateFormat, use24HourClock, weatherEffectsEnabled, weatherOverride, enableInteractionDebugLogs),
-  and `customTabs`. Other stored values include `primaryCards`, `alwaysOnTop`, `frostedGlass`,
-  `popupHotkeyHideOnRelease`, `popupHotkeyToggleMode`, `updates`, and `profileSync`.
+- **Config Contents**: The Home Assistant URL and auth method under `homeAssistant` (encrypted token fields only for legacy-token authentication), a random installation ID under `desktopCompanion`, and everything you set up in the app: Quick Access pages, tiles, names, icons, and comparison graphs, desktop pins, tray values, hotkeys, alerts, the window's position, size, and display, appearance and language choices under `ui`, and the update and profile sync settings. The defaults are in `defaultConfig` in `main.js`.
 - **Security**: OAuth refresh tokens are stored in a separate OS-encrypted credential file and
   short-lived access tokens remain in memory. OAuth pairing fails closed when secure storage is
   unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
@@ -530,7 +545,7 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 ### Performance Issues
 
 - **Reduce Entities**: Limit the number of entities in Quick Access
-- **Visual Effects**: Disable transparency if experiencing performance issues
+- **Visual Effects**: Under **Settings → Appearance → Window effects**, turn off **Frosted glass background** and weather effects, or set **Window opacity** to 100%
 
 ### Common Solutions
 
@@ -546,9 +561,12 @@ We welcome contributions! Here's how you can help:
 
 - **Bug Reports**: Use the [Issues](https://github.com/Robertg761/HA-Desktop-Widget/issues) page
 - **Feature Requests**: Submit enhancement ideas with detailed descriptions
+- **Security Issues**: Report them privately, as [SECURITY.md](SECURITY.md) describes
 - **Documentation**: Help improve this README or add usage examples
 
 ### Development
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full setup, coding standards, and testing notes.
 
 - **Fork & Clone**: Fork the repository and clone your fork
 - **Create Branch**: Make changes in a feature branch
@@ -566,6 +584,8 @@ We welcome contributions! Here's how you can help:
 HA Desktop Widget is independently developed and will remain free and open source. Sponsorship helps support ongoing development, maintenance, cross-platform testing, and other project expenses.
 
 [Become a sponsor](https://github.com/sponsors/Robertg761) or see the [full sponsor list and recognition details](SPONSORS.md).
+
+You can also give once by card, without a GitHub account. Open **Settings → Advanced → Support this project**, pick an amount, and choose **Donate by card**. The app opens a Stripe checkout in a window of its own. Monthly donations go through GitHub Sponsors.
 
 ## License
 
