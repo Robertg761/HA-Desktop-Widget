@@ -15,141 +15,6 @@ A free, open-source Home Assistant desktop app and frosted-glass widget for Wind
 
 <img src="images/Main_View.png?v=20261015" alt="Main view" width="280"> <img src="images/Edit_View.png?v=20261004" alt="Edit view" width="280"> <img src="images/Light_Adjust.png?v=20261015" alt="Light adjust" width="280">
 
-## Settings
-
-<img src="images/Settings_Appearance.png?v=20261015" alt="Appearance settings" width="320">
-
-Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior, language), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, profile sync, diagnostics).
-
-Use **Search settings** at the top of Settings to find an option by its name or help text. Choose a result to open its page and any collapsed section. Press Escape in the search field to clear the search.
-
-In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Desktop pins grow with it, so a pin keeps showing all of its controls.
-
-Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls. Keyboard users can also focus a tile and press **Shift+Enter**.
-
-## Omarchy and Arch Linux
-
-See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, the Omarchy 4 bar plugin, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
-
-## Sway, niri and river
-
-On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` for the AppImage. With the `.deb`:
-
-- Sway: `bindsym $mod+Shift+h exec home-assistant-widget --toggle`
-- niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
-- river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
-
-The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows. The Copy button under it copies the command. With the AppImage:
-
-- Sway: `bindsym $mod+Shift+h exec ~/.local/bin/ha-desktop-widget --toggle`
-- niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`
-- river: `riverctl map normal Super+Shift H spawn '~/.local/bin/ha-desktop-widget --toggle'`
-
-The widget only moves its own link: the one it made, or one that already led to the AppImage when the widget had no link of its own. It leaves that name alone if something else already has it, such as a file or a link of yours there (even one to another AppImage) or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
-
-## Weather Effects
-
-<img src="images/Rain_Effect.png?v=20261004" alt="Rain effect" width="280"> <img src="images/Snow_Effect.png?v=20261004" alt="Snow effect" width="280">
-
-## Features
-
-### Smart Home Control
-
-- **Real-time Updates**: WebSocket connection for instant entity state changes
-- **Quick Access Dashboard**: Customizable grid of your most-used entities
-- **Duplicate Pages**: In reorganize mode, use Duplicate page beside the active page name. The copy opens beside the original with the same tile order and its own copies of comparison charts. Device names and tile preferences remain shared for the same Home Assistant entity.
-- **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
-- **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles. In reorganize mode, a pin dropped within 12 px of another pin's edge snaps into line with it, and the arrow keys move a selected pin 1 px at a time (10 px with Shift) without snapping. **Settings → Appearance** has **Desktop pin names** (Left, Center, or Right) and **Snap desktop pins into line**
-- **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
-- **Tile Options**: Adjust selected Quick Access readout sizing for dense or prominent tiles
-- **Camera Tile Previews**: Opt into a visibility-scoped authenticated HLS stream or snapshots, then click the tile to grow that same feed into a larger view and reconnect a stale camera session when needed
-- **Interactive Controls**: Toggle lights, switches, scenes, and more with a single click
-
-### Modern Interface
-
-- **Frosted-glass Design**: One pane of frosted glass with clear, separate tiles; a solid panel where the system cannot blur
-- **Responsive Layout**: Auto-sizing tiles that adapt to content
-- **Themes**: Auto, Dark or Light (Auto follows the system)
-- **Color Personalization**: Built-in and custom accent/background colors with live preview
-- **Weather Effects**: Optional subtle rain, snow, clouds, sun, and storm animations when frosted glass is enabled
-- **Seasonal Themes**: Halloween, Christmas, New Year, Lunar New Year, Valentine's Day, St. Patrick's Day, Easter, and Thanksgiving decorate the window and bring their own colors. **Settings → Appearance → Seasonal themes** switches each holiday on or off and can show any holiday now. They start off when the system asks for reduced motion or high contrast is on
-- **Smooth Animations**: Fluid drag-and-drop and hover effects
-- **Toast Notifications**: Real-time feedback for all actions
-
-### Entity Support
-
-- **Lights**: Toggle on/off, brightness control, and desktop-pin brightness presets
-- **Switches, Fans & Input Booleans**: Simple on/off controls, with fan speed controls where available
-- **Covers & Locks**: Open/close and lock/unlock controls. A tile click asks before it unlocks a lock
-- **Valves, Humidifiers & Sirens**: Toggle from their tiles and hotkeys
-- **Vacuums**: Controls limited to the actions each vacuum supports
-- **Number & Select Helpers**: Dialogs with the helper's current bounds or options
-- **Alarm Panels**: Arm and disarm from [command search](#command-search), with a code prompt when Home Assistant requires one
-- **To-do Lists & Calendars**: Open a list's tasks or a calendar's events from the tile
-- **Sensors & Binary Sensors**: Real-time value display with units and state-aware icons
-- **Timers**: Live countdown displays for active timers
-- **Cameras**: Optional Quick Access snapshots plus live feed viewing with snapshot fallback
-- **Climate**: Temperature display and control
-- **Media Players**: Play/pause, previous/next, artwork, seek bar, and 10-second rewind/fast-forward where supported
-- **Scenes, Scripts & Buttons**: One-click scene activation, script running, and button/input-button pressing
-- **Automations**: Trigger, toggle, enable, or disable from configured hotkeys
-
-### Advanced Features
-
-- **Updates**: Windows installer and Linux AppImage builds download and install updates themselves; portable, macOS, Linux deb, and Arch package builds are told once per new version and open the GitHub Releases download
-- **System Tray**: Hide to tray with quick access menu
-- **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style
-- **Start at Login**: Optional OS login startup control
-- **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
-- **Performance**: Optimized rendering and memory management
-- **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
-- **Appearance**: Auto, dark or light theme, accent/background themes, custom colors, window opacity, frosted glass, weather effects, custom icons, and desktop pins
-- **Line icons**: Entities are drawn with crisp line icons that take the accent color when on; your own emoji and Home Assistant icons still win
-- **Localization**: English, German, Spanish, French, Arabic, Hindi, and Chinese, with an Auto/system language mode and downloadable offline language packs
-- **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
-- **Alerts**: Desktop notifications for entity state changes
-- **Primary Cards**: Configure the top two cards (weather/time or any entity)
-- **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
-- **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
-- **Media Tile**: Choose a primary media player or hide the tile
-- **Profile Sync (Opt-in)**: Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder you already sync (see [Profile sync](#profile-sync))
-
-## Export and import settings
-
-Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, hotkeys, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
-
-Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
-
-The widget saves a backup before applying an import. Restore it under **Advanced → Settings files → Backups**, even with profile sync disabled. Imports and restores follow your existing sync scope when sync is enabled. Settings files use a versioned format and have a 1 MB limit.
-
-## Live tray values (beta only)
-
-Live tray values are available only in beta builds. Stable builds retain saved tray preferences
-without showing the feature. Enable **Receive beta updates** in Settings to receive beta releases.
-
-Right-click a Quick Access tile and choose **Show in Tray**, or enable **Show in system tray**
-under **Edit tile settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
-Hover for its name and full value; use its menu to show the widget or remove the icon.
-
-Tile settings also provides an optional short name. On macOS it appears before the value in the
-menu bar, with units and decimal precision retained. On Windows and Linux it appears in tooltips
-and menus; an optional icon color helps distinguish multiple readings at a glance.
-
-An offline connection displays `--` in bitmap trays or a translated **Offline** label on macOS.
-Values return after a fresh Home Assistant snapshot. An unavailable entity uses `!`, and an
-unknown state uses `?`, with the full explanation in the tooltip. Warning colors take precedence
-over custom icon colors. A renderer failure or reload clears the last value to a placeholder.
-
-Active timers refresh each second even when the widget is hidden. The dashboard retains its
-normal background behavior, including pausing hidden camera previews. On Windows and Linux,
-activating a tray value toggles the widget; on macOS, clicking opens its menu.
-
-## Roadmap
-
-Planned for a future release:
-
-- **HA Assist voice**: A microphone button wired to Home Assistant's Assist pipeline (speech-to-text → intent → text-to-speech) so you can talk to your smart home from the desktop. Deferred as a standalone update because it needs the full HA server-side audio pipeline and real device testing.
-
 ## Quick Start
 
 ### Download & Install
@@ -193,34 +58,71 @@ The app runs on Windows 10 and 11 (x64), macOS 13 Ventura or later (Intel and Ap
 The legacy long-lived access-token form remains under **Settings > General > Legacy access token
 (advanced)** for compatibility. New setups should use browser authorization.
 
-### Home Assistant Companion Integration
+## Features
 
-The optional `HA Desktop Widget Companion` custom integration makes registered desktops visible as
-native Home Assistant devices and supports `show`, `hide`, `toggle`, `switch_page`, and
-`apply_profile` actions. The desktop uses the same authenticated Home Assistant WebSocket
-connection for registration, state reporting, command delivery, and acknowledgements. It never
-accepts arbitrary shell commands, JavaScript, file access, URLs, or generic Electron IPC from
-Home Assistant.
+### Smart Home Control
 
-The integration lives in its own repository,
-[HA-Desktop-Widget-Companion](https://github.com/Robertg761/HA-Desktop-Widget-Companion), and
-installs through HACS as a custom repository. The
-[companion page](https://hadesktopwidget.com/companion) has the steps and the Home Assistant
-version it needs.
+- **Real-time Updates**: WebSocket connection for instant entity state changes
+- **Quick Access Dashboard**: Customizable grid of your most-used entities
+- **Duplicate Pages**: In reorganize mode, use Duplicate page beside the active page name. The copy opens beside the original with the same tile order and its own copies of comparison charts. Device names and tile preferences remain shared for the same Home Assistant entity.
+- **Entity Management**: Add, remove, rename, and reorder entities with drag-and-drop
+- **Desktop Pins**: Pin selected Quick Access entities as movable, resizable desktop tiles. In reorganize mode, a pin dropped within 12 px of another pin's edge snaps into line with it, and the arrow keys move a selected pin 1 px at a time (10 px with Shift) without snapping. **Settings → Appearance** has **Desktop pin names** (Left, Center, or Right) and **Snap desktop pins into line**
+- **Custom Names & Icons**: Rename entities and override entity icons without changing Home Assistant
+- **Tile Options**: Adjust selected Quick Access readout sizing for dense or prominent tiles
+- **Interactive Controls**: Toggle lights, switches, scenes, and more with a single click
 
-`apply_profile` applies a named profile authored in Home Assistant: a bounded configuration
-document covering appearance (theme, accent, background, opacity, frosted glass), primary cards,
-Quick Access pages and tiles, comparison graphs, custom icons, and tile options. Profiles never
-carry credentials, hotkeys, window geometry, desktop pins, or file-sync settings; those stay
-local to each machine. The desktop reports which profile revision it last applied so Home
-Assistant can flag out-of-date desktops.
+### Modern Interface
 
-> [!NOTE]
-> A Home Assistant profile overwrites the sections it contains. If [profile sync](#profile-sync) is
-> also on for the same sections, the applied profile counts as a local change and syncs to your
-> other computers — avoid managing the same settings with both at once.
+- **Frosted-glass Design**: One pane of frosted glass with clear, separate tiles; a solid panel where the system cannot blur
+- **Responsive Layout**: Auto-sizing tiles that adapt to content
+- **Themes**: Auto, Dark or Light (Auto follows the system)
+- **Color Personalization**: Built-in and custom accent/background colors with live preview, and adjustable window opacity
+- **Weather Effects**: Optional subtle rain, snow, clouds, sun, and storm animations when frosted glass is enabled
+- **Seasonal Themes**: Halloween, Christmas, New Year, Lunar New Year, Valentine's Day, St. Patrick's Day, Easter, and Thanksgiving decorate the window and bring their own colors. **Settings → Appearance → Seasonal themes** switches each holiday on or off and can show any holiday now. They start off when the system asks for reduced motion or high contrast is on
+- **Smooth Animations**: Fluid drag-and-drop and hover effects
+- **Toast Notifications**: Real-time feedback for all actions
+
+<img src="images/Rain_Effect.png?v=20261004" alt="Rain effect" width="280"> <img src="images/Snow_Effect.png?v=20261004" alt="Snow effect" width="280">
+
+### Entity Support
+
+- **Lights**: Toggle on/off, brightness control, and desktop-pin brightness presets
+- **Switches, Fans & Input Booleans**: Simple on/off controls, with fan speed controls where available
+- **Covers & Locks**: Open/close and lock/unlock controls. A tile click asks before it unlocks a lock
+- **Valves, Humidifiers & Sirens**: Toggle from their tiles and hotkeys
+- **Vacuums**: Controls limited to the actions each vacuum supports
+- **Number & Select Helpers**: Dialogs with the helper's current bounds or options
+- **Alarm Panels**: Arm and disarm from [command search](#command-search), with a code prompt when Home Assistant requires one
+- **To-do Lists & Calendars**: Open a list's tasks or a calendar's events from the tile
+- **Sensors & Binary Sensors**: Real-time value display with units and state-aware icons
+- **Timers**: Live countdown displays for active timers
+- **Cameras**: Optional live or snapshot previews on the tile, and a larger viewer with a live feed and snapshot fallback
+- **Climate**: Temperature display and control
+- **Media Players**: Play/pause, previous/next, artwork, seek bar, and 10-second rewind/fast-forward where supported
+- **Scenes, Scripts & Buttons**: One-click scene activation, script running, and button/input-button pressing
+- **Automations**: Trigger, toggle, enable, or disable from configured hotkeys
+
+### Advanced Features
+
+- **Updates**: In-app updates on the Windows installer and Linux AppImage, and a notice for each new version on the other builds (see [System Integration](#system-integration))
+- **System Tray**: Hide to tray with quick access menu
+- **Tray Entity Icons (Beta only)**: Show any entity's live value (battery %, temperature, ON/OFF, timer countdown, …) as its own icon in the system tray, CPU-Z style (see [Live tray values](#live-tray-values-beta-only))
+- **Start at Login**: Optional OS login startup control
+- **Configuration**: Native Home Assistant browser authorization; legacy access-token setup remains available as an advanced fallback
+- **Cross-Platform**: Windows x64, universal macOS (Intel and Apple Silicon), and Linux x64 support with transparency effects where available
+- **Line icons**: Entities are drawn with crisp line icons that take the accent color when on; your own emoji and Home Assistant icons still win
+- **Localization**: English, German, Spanish, French, Arabic, Hindi, and Chinese, with an Auto/system language mode and downloadable offline language packs
+- **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
+- **Alerts**: Desktop notifications for entity state changes
+- **Primary Cards**: Configure the top two cards (weather/time or any entity)
+- **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
+- **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
+- **Media Tile**: Choose a primary media player or hide the tile
+- **Profile Sync (Opt-in)**: Keep Quick Access, appearance, alerts, and weather and media choices the same on every computer through a folder you already sync (see [Profile sync](#profile-sync))
 
 ## How to Use
+
+### Choosing a display
 
 On Windows, macOS, and Linux X11, choose the widget's display in **Settings > General > Window & behavior > Display**, or use **Move to Monitor** in the tray menu. The choice stays on this computer. If the display disconnects, the widget moves to an available display and returns when the selected one reconnects. Dragging onto another connected display updates the selection. **Automatic** remembers the last window position without choosing a preferred display. Individual desktop pins keep their own positions. Linux desktop-layer mode continues to use its tray monitor menu.
 
@@ -277,6 +179,8 @@ Open **Settings > General > Connection diagnostics** to inspect connection attem
 - **Timers**: Show live countdown when active
 - **Scenes, Scripts & Buttons**: Click to activate, run, or press instantly
 
+Light, climate, fan, cover, and media tiles include a **Controls** button (the sliders icon in the tile corner) to open their detailed controls.
+
 Use Tab to focus a primary card or the Quick Access grid. Arrow keys move between Quick Access
 tiles; Enter or Space activates the focused device. Shift+Enter opens its available detail controls.
 With several pages, Tab reaches the page tabs once: Left and Right (or Home and End) move along them
@@ -284,150 +188,64 @@ and switch page. The tabs scroll to keep the active page in view, and the mouse 
 Heat/cool thermostats provide separate heating and cooling targets, and on/off-only lights show
 power controls without a brightness slider.
 
+### Live tray values (beta only)
+
+Live tray values are available only in beta builds. Stable builds retain saved tray preferences
+without showing the feature. Enable **Receive beta updates** in Settings to receive beta releases.
+
+Right-click a Quick Access tile and choose **Show in Tray**, or enable **Show in system tray**
+under **Edit tile settings**. Each selected entity gets its own tray icon or macOS menu-bar value.
+Hover for its name and full value; use its menu to show the widget or remove the icon.
+
+Tile settings also provides an optional short name. On macOS it appears before the value in the
+menu bar, with units and decimal precision retained. On Windows and Linux it appears in tooltips
+and menus; an optional icon color helps distinguish multiple readings at a glance.
+
+An offline connection displays `--` in bitmap trays or a translated **Offline** label on macOS.
+Values return after a fresh Home Assistant snapshot. An unavailable entity uses `!`, and an
+unknown state uses `?`, with the full explanation in the tooltip. Warning colors take precedence
+over custom icon colors. A renderer failure or reload clears the last value to a placeholder.
+
+Active timers refresh each second even when the widget is hidden. The dashboard retains its
+normal background behavior, including pausing hidden camera previews. On Windows and Linux,
+activating a tray value toggles the widget; on macOS, clicking opens its menu.
+
 ### System Integration
 
 - **Hide to Tray**: The minimize button, the title-bar X, Ctrl+W (Cmd+W on macOS) and Alt+F4 all hide the widget to the system tray, and it keeps running. Choose **Quit** from the tray menu (or the app menu on macOS) to exit
 - **Hide on Focus Loss**: Enable “Hide to tray when focus is lost” (“Hide to menu bar when focus is lost” on macOS) under General → Window & behavior to dismiss the widget when switching apps. This is off by default. Reopen it from the tray or with the popup hotkey. Desktop pins and Linux desktop-layer mode stay visible.
-- **Updates**: Windows installer and Linux AppImage builds can update in app; portable, macOS, Linux deb, and Arch package builds offer a GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version
+- **Updates**: Windows installer and Linux AppImage builds download and install updates themselves. Portable, macOS, Linux deb, and Arch package builds are told once per new version and open the GitHub Releases download. The app checks 30 seconds after it starts and then every six hours, and **What's new** under the update buttons opens the release notes of the running version. Turn on **Receive beta updates** under Settings → Advanced to be offered prerelease builds
 - **Start at Login**: Enable or disable startup from Settings > General
 - **Start Hidden**: Add `--hide` to the launch command to start with the widget hidden in the tray. The [Omarchy guide](docs/omarchy.md) lists the related `--toggle` and `--show` actions
 - **Settings**: Access via the Settings button or right-click the tray icon
 
+## Settings
+
+<img src="images/Settings_Appearance.png?v=20261015" alt="Appearance settings" width="320">
+
+Settings are organized into six pages on the left: **General** (Home Assistant connection, window behavior such as always on top and start at login, language packs), **Appearance** (light or dark theme, colors, window effects, readability), **Dashboard** (primary cards, date and time formats, weather source, media tile, custom entity icons), **Hotkeys**, **Alerts**, and **Advanced** (updates, [profile sync](#profile-sync), settings files, logs, diagnostics).
+
+Use **Search settings** at the top of Settings to find an option by its name or help text. Choose a result to open its page and any collapsed section. Press Escape in the search field to clear the search.
+
+In **Appearance → Readability**, choose **Text and control size** (100%, 115%, 130%, or 150%) to enlarge the interface, dialogs, and desktop pins. Enable **High contrast with opaque panels** for a dark, solid background and brighter text and borders. These preferences save immediately. Desktop pins grow with it, so a pin keeps showing all of its controls.
+
 ### Settings Highlights
 
-- **General**: Configure Home Assistant connection, always-on-top, startup behavior, and language packs
-- **Themes**: Choose built-in or custom accent and background colors
 - **Window Effects**: Adjust opacity, toggle frosted glass, and enable subtle weather effects. On Windows, frosted glass needs Windows 11 version 22H2 or later; Windows 10 and older Windows 11 builds draw the solid panel instead
-- **Primary Cards**: Pin weather/time or any entity to the top two cards
 - **Custom Entity Icons**: Search or paste emoji/glyph overrides for entity icons
-- **Media Tile**: Select the primary media player or hide the tile
 - **Hotkeys**: Configure global entity hotkeys, action-specific shortcuts, and a popup hotkey (hold/toggle on macOS and Windows; press/toggle on Linux)
 
   On macOS the popup hotkey needs **System Settings > Privacy & Security > Accessibility** access. The widget asks when you set the hotkey and says so if it is still missing. macOS may ask again after an update; if the popup hotkey stops working, switch the widget on in that list and set the hotkey once more.
 
 - **Alerts**: Enable desktop notifications for entity state changes or target states, and choose whether Home Assistant's own notifications (new devices, repairs, updates) also reach the desktop; they always appear in the bell
-- **Advanced**: Updates, [profile sync](#profile-sync), logs, and interaction diagnostics for troubleshooting
 
-## Advanced Usage
+### Export and import settings
 
-### Build from Source
+Open **Settings → Advanced → Settings files** to export your saved pages, appearance, alerts, weather and media choices to a JSON file. Connection details and credentials, desktop pins, hotkeys, tray preferences, text size, Omarchy theme following, startup, updates, and profile sync settings stay on each computer.
 
-Building needs Node.js 22.18 or later and npm.
+Import shows the sections that will change, page names, and how many referenced devices are missing from the current Home Assistant connection. Confirming applies the file immediately and replaces unsaved Settings edits. Imported entity IDs still refer to the original Home Assistant devices; importing does not create devices or automations.
 
-```bash
-git clone https://github.com/Robertg761/HA-Desktop-Widget.git
-cd HA-Desktop-Widget
-npm install
-npm run dev   # Development mode (separate app and DevTools windows)
-npm run dev:climate-demo # Isolated simulated Fahrenheit air-conditioner demo (no HA required)
-npm start     # Regular run (builds the renderer, then starts Electron)
-npm run lint  # Run ESLint
-npm test      # Run Jest tests
-npm run dist        # Build Windows NSIS and portable artifacts
-npm run dist:win    # Build Windows NSIS installer artifacts
-npm run dist:mac    # Build macOS distribution artifacts
-npm run dist:linux  # Build Linux AppImage and deb artifacts
-```
-
-Building the Linux artifacts additionally requires a Rust toolchain, 1.80 or newer
-(`.mise.toml` pins 1.98.0), and `python3`: `npm run dist:linux` compiles the bundled
-`windowtolayer` layer-shell helper from `vendor/windowtolayer` before packaging.
-
-### Climate UI Demo (Development Only)
-
-Run `npm run dev:climate-demo` to launch a simulated **Demo Air Conditioner** without a Home
-Assistant server. The demo starts with a Fahrenheit AC entity in Quick Access and advertises
-its HVAC, fan, and preset modes plus a 60–86°F target range with 1°F steps. Click the tile to
-toggle it; press and hold it to exercise the target-temperature, mode, fan, and preset controls.
-
-This command only works with the development `--dev` launch path. It creates a fresh temporary
-Electron profile for that run, blocks all real Home Assistant service calls, and never reads or
-writes the normal app configuration, token, desktop pins, or profile-sync data. Remove the
-`dev:climate-demo` script and `development/dev-climate-demo.js` when the fixture is no longer useful.
-
-To test the card alongside a real Home Assistant connection, run
-`npm run dev:climate-overlay`. This development-only mode leaves the normal Electron profile and
-Home Assistant connection intact, then places a renderer-local **Demo Air Conditioner** card at
-the start of Quick Access for the current session. Its fake state and climate service calls stay
-in memory and are intercepted before the WebSocket layer; the card is not saved as a favorite,
-cannot be edited/removed in Quick Access, and is never written into the normal configuration or
-sent to Home Assistant. The existing `npm run dev:climate-demo` remains the fully isolated mode.
-
-Because the overlay uses the normal Electron profile, and only one widget runs per profile, it
-cannot start while a copy of the widget is already running — quit that one first. The isolated
-`dev:climate-demo` gets its own temporary profile and runs alongside the real widget.
-
-### Release Channels
-
-- **Stable releases**: Land the version bump (`package.json`, `package-lock.json`) and a `CHANGELOG.md` section for the version on `main`, wait for CI to pass there, then run the **Tag Release** workflow from the Actions tab with the version. It tags `main` and starts the release workflow, which publishes a normal release. Windows installer and Linux AppImage users can receive it through the in-app updater; portable, macOS, Linux deb, and Arch package users download it from GitHub Releases.
-- **Tester prereleases**: Push a SemVer prerelease tag like `v4.1.0-beta.1`. GitHub Actions marks it as a prerelease. Only users who enable **Receive beta updates** in Settings → Advanced are offered these builds.
-- **Nightly betas**: At 07:17 UTC, GitHub Actions checks `main` against the last successfully published beta in the active series. When unreleased changes exist, it creates the next `vX.Y.Z-beta.N` tag and runs the normal release workflow. The job can also be started manually from the Actions tab.
-- **Manual-update builds**: Portable, macOS, Linux deb, and Arch package users update from GitHub Releases. The update checker shows the appropriate stable or prerelease download when beta updates are enabled.
-
-The minimum planned beta version is stored in `.github/beta-target`. The nightly job starts the
-active series at that version (for example `v4.0.0-beta.1`). Once that version is stable, it
-automatically moves to the next patch (`v4.0.1-beta.N`); increasing the file starts a future minor
-series instead.
-
-Release builds align their package version from the tag. Manually prepared betas commit matching
-prerelease metadata before tagging; automated nightly betas align it only inside the build.
-If a stable tag's version is not yet in `package.json` and `package-lock.json` on `main`, the
-release workflow commits it there after publishing. With the bump landed first, as above, it has
-nothing to commit.
-
-The notes of a stable release are its `CHANGELOG.md` section, followed by a link to the full
-changelog, and the release fails without a non-empty section. A beta uses its own section when the
-changelog has one; otherwise GitHub generates its notes from merged pull requests, comparing against
-the previous published prerelease in the same version series (or the latest stable release for the
-first beta). Notes are written once, when the release is created; to replace a published release's
-notes, add or correct its `CHANGELOG.md` section on `main` and run the **Update Release Notes**
-workflow with the release's tag.
-
-The website in `website/` is not deployed by GitHub: a change merged to `main` goes live only when
-someone publishes it with the Vercel CLI, usually before a release is tagged, so every line on it
-has to read correctly on both sides of the release. Publish exactly what `main` holds, not a local
-folder that may be stale or have uncommitted edits:
-
-```bash
-(
-  set -euo pipefail # any failed step, a fetch included, stops before the deploy
-  git fetch origin
-  rm -rf /tmp/ha-site # one command a line: set -e ignores a failure on the left of &&
-  mkdir -p /tmp/ha-site
-  git archive origin/main website | tar -x -C /tmp/ha-site # exactly what main holds
-  cp -r website/.vercel /tmp/ha-site/website/              # the link `vercel link` made
-  cd /tmp/ha-site/website
-  vercel deploy --prod
-)
-```
-
-Then run the Website deploy check workflow, which checks out `main` and compares every live page,
-asset and response header with it. (`node scripts/check-website-deploy.cjs` does the same against
-your own checkout, so it only proves anything on a clean, up-to-date `main`.)
-
-### Configuration
-
-- **Config Location**: Stored as `config.json` in Electron's userData directory.
-  - **Windows**: `%APPDATA%\home-assistant-widget\config.json`
-  - **macOS**: `~/Library/Application Support/home-assistant-widget/config.json`
-  - **Linux**: `~/.config/home-assistant-widget/config.json` (or `$XDG_CONFIG_HOME/home-assistant-widget/config.json`)
-  - **Development builds**: use the sibling `home-assistant-widget-dev` folder
-- **Config Contents**: The Home Assistant URL and auth method under `homeAssistant` (encrypted token fields only for legacy-token authentication), a random installation ID under `desktopCompanion`, and everything you set up in the app: Quick Access pages, tiles, names, icons, and comparison graphs, desktop pins, tray values, hotkeys, alerts, the window's position, size, and display, appearance and language choices under `ui`, and the update and profile sync settings. The defaults are in `defaultConfig` in `main.js`.
-- **Security**: OAuth refresh tokens are stored in a separate OS-encrypted credential file and
-  short-lived access tokens remain in memory. OAuth pairing fails closed when secure storage is
-  unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
-  plaintext as a fallback.
-
-### Anonymous install count
-
-Release download numbers count every update, so they can't say how many people use the app.
-If you turn on **Settings → Advanced → Count this install** (it is off by default), packaged
-builds send one request a day with a random install ID, the app version, and the OS family
-(Windows, macOS, or Linux). Nothing about you, your Home Assistant, or your settings is sent, and
-the counter does not store IP addresses. The ID lives in `usage-ping.json` next to `config.json`
-and is never synced or exported. `DO_NOT_TRACK=1` stops the request even when the setting is on.
-The counter service is in
-[`services/usage-counter`](services/usage-counter/README.md).
+The widget saves a backup before applying an import. Restore it under **Advanced → Settings files → Backups**, even with profile sync disabled. Imports and restores follow your existing sync scope when sync is enabled. Settings files use a versioned format and have a 1 MB limit.
 
 ### Profile sync
 
@@ -525,6 +343,81 @@ to 4.0.
 
 See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recovery, and returning to 3.x.
 
+### Configuration
+
+- **Config Location**: Stored as `config.json` in Electron's userData directory.
+  - **Windows**: `%APPDATA%\home-assistant-widget\config.json`
+  - **macOS**: `~/Library/Application Support/home-assistant-widget/config.json`
+  - **Linux**: `~/.config/home-assistant-widget/config.json` (or `$XDG_CONFIG_HOME/home-assistant-widget/config.json`)
+  - **Development builds**: use the sibling `home-assistant-widget-dev` folder
+- **Config Contents**: The Home Assistant URL and auth method under `homeAssistant` (encrypted token fields only for legacy-token authentication), a random installation ID under `desktopCompanion`, and everything you set up in the app: Quick Access pages, tiles, names, icons, and comparison graphs, desktop pins, tray values, hotkeys, alerts, the window's position, size, and display, appearance and language choices under `ui`, and the update and profile sync settings. The defaults are in `defaultConfig` in `main.js`.
+- **Security**: OAuth refresh tokens are stored in a separate OS-encrypted credential file and
+  short-lived access tokens remain in memory. OAuth pairing fails closed when secure storage is
+  unavailable. Legacy tokens are encrypted at rest when supported by the OS and are never stored in
+  plaintext as a fallback.
+
+### Anonymous install count
+
+Release download numbers count every update, so they can't say how many people use the app.
+If you turn on **Settings → Advanced → Count this install** (it is off by default), packaged
+builds send one request a day with a random install ID, the app version, and the OS family
+(Windows, macOS, or Linux). Nothing about you, your Home Assistant, or your settings is sent, and
+the counter does not store IP addresses. The ID lives in `usage-ping.json` next to `config.json`
+and is never synced or exported. `DO_NOT_TRACK=1` stops the request even when the setting is on.
+The counter service is in
+[`services/usage-counter`](services/usage-counter/README.md).
+
+## Home Assistant Companion Integration
+
+The optional `HA Desktop Widget Companion` custom integration makes registered desktops visible as
+native Home Assistant devices and supports `show`, `hide`, `toggle`, `switch_page`, and
+`apply_profile` actions. The desktop uses the same authenticated Home Assistant WebSocket
+connection for registration, state reporting, command delivery, and acknowledgements. It never
+accepts arbitrary shell commands, JavaScript, file access, URLs, or generic Electron IPC from
+Home Assistant.
+
+The integration lives in its own repository,
+[HA-Desktop-Widget-Companion](https://github.com/Robertg761/HA-Desktop-Widget-Companion), and
+installs through HACS as a custom repository. The
+[companion page](https://hadesktopwidget.com/companion) has the steps and the Home Assistant
+version it needs.
+
+`apply_profile` applies a named profile authored in Home Assistant: a bounded configuration
+document covering appearance (theme, accent, background, opacity, frosted glass), primary cards,
+Quick Access pages and tiles, comparison graphs, custom icons, and tile options. Profiles never
+carry credentials, hotkeys, window geometry, desktop pins, or file-sync settings; those stay
+local to each machine. The desktop reports which profile revision it last applied so Home
+Assistant can flag out-of-date desktops.
+
+> [!NOTE]
+> A Home Assistant profile overwrites the sections it contains. If [profile sync](#profile-sync) is
+> also on for the same sections, the applied profile counts as a local change and syncs to your
+> other computers — avoid managing the same settings with both at once.
+
+## Linux desktops
+
+The keyring and AppImage notes for a first install are under [Download & Install](#download--install), and fixes for common problems are under [Troubleshooting](#linux). GNOME and KDE on Wayland are covered in the [Linux Wayland notes](docs/linux-wayland-notes.md).
+
+### Omarchy and Arch Linux
+
+See the [Omarchy guide](docs/omarchy.md) for native desktop layers, independent desktop pins, the Omarchy 4 bar plugin, Hyprland shortcut setup, live theme following, and Arch packaging. Build a local pacman package with `npm run dist:arch` followed by `makepkg --nodeps` in `dist/arch`.
+
+### Sway, niri and river
+
+On Sway, niri and river the widget sits on the desktop under your windows, as it does on Hyprland. To bring it forward, bind a key to its `--toggle` command, which shows or hides it. **Settings → Hotkeys** shows the command for your installation: `ha-desktop-widget` for the Arch package, `home-assistant-widget` for the `.deb`, and `~/.local/bin/ha-desktop-widget` for the AppImage. With the `.deb`:
+
+- Sway: `bindsym $mod+Shift+h exec home-assistant-widget --toggle`
+- niri: `Mod+Shift+H { spawn "home-assistant-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn 'home-assistant-widget --toggle'`
+
+The AppImage's file name includes its version. An update saves the new version under a new name and deletes the old file, so a key bound to the file itself stops working after the first update. Bind the link instead. Each time the AppImage starts, the widget points `~/.local/bin/ha-desktop-widget` at it. niri does not expand `~`, so give it the full path that Settings shows. The Copy button under it copies the command. With the AppImage:
+
+- Sway: `bindsym $mod+Shift+h exec ~/.local/bin/ha-desktop-widget --toggle`
+- niri: `Mod+Shift+H { spawn "/home/you/.local/bin/ha-desktop-widget" "--toggle"; }`
+- river: `riverctl map normal Super+Shift H spawn '~/.local/bin/ha-desktop-widget --toggle'`
+
+The widget only moves its own link: the one it made, or one that already led to the AppImage when the widget had no link of its own. It leaves that name alone if something else already has it, such as a file or a link of yours there (even one to another AppImage) or the Arch package's `ha-desktop-widget`. Settings then names the AppImage file itself. To keep that working across updates, rename the file to a name with no version number and no spaces, such as `~/Applications/ha-desktop-widget.AppImage`. Updates then replace it under the same name.
+
 ## Troubleshooting
 
 ### Connection Issues
@@ -552,6 +445,39 @@ See the [4.0 migration guide](docs/MIGRATION.md) for backups, credential recover
 - **Restart**: Close and reopen the app if entities aren't updating
 - **Reconnect**: Go to Settings and click **Reconnect with Home Assistant**
 - **Check Logs**: Use **Settings > Advanced > Show log file** to show the log file in your file manager (its path is copied if no file manager opens)
+
+## Roadmap
+
+Planned for a future release:
+
+- **HA Assist voice**: A microphone button wired to Home Assistant's Assist pipeline (speech-to-text → intent → text-to-speech) so you can talk to your smart home from the desktop. Deferred as a standalone update because it needs the full HA server-side audio pipeline and real device testing.
+
+## Build from Source
+
+Building needs Node.js 22.18 or later and npm.
+
+```bash
+git clone https://github.com/Robertg761/HA-Desktop-Widget.git
+cd HA-Desktop-Widget
+npm install
+npm run dev   # Development mode (separate app and DevTools windows)
+npm run dev:climate-demo # Isolated simulated Fahrenheit air-conditioner demo (no HA required)
+npm start     # Regular run (builds the renderer, then starts Electron)
+npm run lint  # Run ESLint
+npm test      # Run Jest tests
+npm run dist        # Build Windows NSIS and portable artifacts
+npm run dist:win    # Build Windows NSIS installer artifacts
+npm run dist:mac    # Build macOS distribution artifacts
+npm run dist:linux  # Build Linux AppImage and deb artifacts
+```
+
+Building the Linux artifacts additionally requires a Rust toolchain, 1.80 or newer
+(`.mise.toml` pins 1.98.0), and `python3`: `npm run dist:linux` compiles the bundled
+`windowtolayer` layer-shell helper from `vendor/windowtolayer` before packaging.
+
+[CONTRIBUTING.md](CONTRIBUTING.md#climate-ui-demo) describes `npm run dev:climate-demo` and its
+`dev:climate-overlay` variant. [docs/RELEASING.md](docs/RELEASING.md) covers release channels,
+release notes, and publishing the website.
 
 ## Contributing
 

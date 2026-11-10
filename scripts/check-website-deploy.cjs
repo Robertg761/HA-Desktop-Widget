@@ -3,11 +3,12 @@
  * Compares the deployed website with website/ in this checkout.
  *
  * The site is published by hand with the Vercel CLI, from an export of main's website/ (see
- * "Release Channels" in the README). It is not deployed by GitHub, and for a week the live pages
- * still described features the app did not have because no one had deployed the changes. Every
- * file is fetched from the site (pages without their .html, as the host's clean URLs serve them)
- * and compared byte for byte, and each file's response headers are compared with the vercel.json
- * rules for its path, so a deployment that skipped the configuration shows up as well.
+ * "Publishing the website" in docs/RELEASING.md). It is not deployed by GitHub, and for a week
+ * the live pages still described features the app did not have because no one had deployed the
+ * changes. Every file is fetched from the site (pages without their .html, as the host's clean
+ * URLs serve them) and compared byte for byte, and each file's response headers are compared with
+ * the vercel.json rules for its path, so a deployment that skipped the configuration shows up as
+ * well.
  *
  * Usage: node scripts/check-website-deploy.cjs [--url https://hadesktopwidget.com] [--wait 600]
  *   --url   the site to check (default: the production site)
