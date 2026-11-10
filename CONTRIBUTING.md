@@ -148,6 +148,30 @@ git add locales locale-packs
 - Add tests for new features when appropriate
 - Ensure all tests pass before submitting
 
+### Climate UI Demo
+
+Run `npm run dev:climate-demo` to launch a simulated **Demo Air Conditioner** without a Home
+Assistant server. The demo starts with a Fahrenheit AC entity in Quick Access and advertises
+its HVAC, fan, and preset modes plus a 60–86°F target range with 1°F steps. Click the tile to
+toggle it; press and hold it to exercise the target-temperature, mode, fan, and preset controls.
+
+This command only works with the development `--dev` launch path. It creates a fresh temporary
+Electron profile for that run, blocks all real Home Assistant service calls, and never reads or
+writes the normal app configuration, token, desktop pins, or profile-sync data. Remove the
+`dev:climate-demo` script and `development/dev-climate-demo.js` when the fixture is no longer useful.
+
+To test the card alongside a real Home Assistant connection, run
+`npm run dev:climate-overlay`. This development-only mode leaves the normal Electron profile and
+Home Assistant connection intact, then places a renderer-local **Demo Air Conditioner** card at
+the start of Quick Access for the current session. Its fake state and climate service calls stay
+in memory and are intercepted before the WebSocket layer; the card is not saved as a favorite,
+cannot be edited/removed in Quick Access, and is never written into the normal configuration or
+sent to Home Assistant. The existing `npm run dev:climate-demo` remains the fully isolated mode.
+
+Because the overlay uses the normal Electron profile, and only one widget runs per profile, it
+cannot start while a copy of the widget is already running — quit that one first. The isolated
+`dev:climate-demo` gets its own temporary profile and runs alongside the real widget.
+
 ## 📋 Pull Request Guidelines
 
 ### Before Submitting
@@ -208,7 +232,7 @@ HA-Desktop-Widget/
 └── dist/                # Build output (generated)
 ```
 
-The website in `website/` is not deployed by GitHub. A change merged to main goes live when someone publishes it with the Vercel CLI, from an export of main rather than a working folder (see "Release Channels" in the README for the commands; link `website/` once with `vercel link`). Afterwards the Website deploy check workflow, which always checks out main, confirms that the live pages, assets and headers match it.
+The website in `website/` is not deployed by GitHub. A change merged to main goes live when someone publishes it with the Vercel CLI, from an export of main rather than a working folder (see [Publishing the website](docs/RELEASING.md#publishing-the-website) for the commands; link `website/` once with `vercel link`). Afterwards the Website deploy check workflow, which always checks out main, confirms that the live pages, assets and headers match it.
 
 ## 🎨 Design Guidelines
 
