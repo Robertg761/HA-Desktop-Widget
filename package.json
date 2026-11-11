@@ -63,7 +63,7 @@
   "devDependencies": {
     "@babel/core": "^8.1.0",
     "@babel/preset-env": "^8.0.7",
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "babel-jest": "^30.5.2",
     "concurrently": "^10.0.7",
     "electron": "^45.2.3",
