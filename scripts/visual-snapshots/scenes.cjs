@@ -648,13 +648,18 @@ async function dragPinNextToAnother(ctx) {
   await wait(800);
   const scale = await pin.evaluate('devicePixelRatio');
   const at = async () => pin.evaluate('[screenX, screenY]');
-  // Each drop is 7 or 4 px off its spot: under the sensor, 16 px apart, then beside it, touching.
-  // The last is far from everything and stays where it is dropped, give or take the mouse's pixel,
-  // which tells a drag that missed its point from a pin that did not snap.
+  // Snapping keeps the space a pin is dropped at (src/desktop-pin-snap.cjs), so each drop names
+  // only the axes that snap; null on an axis means it stays where it was dropped, give or take the
+  // mouse's pixel, which tells a drag that missed its point from a pin that did not snap.
+  // 1. Under the sensor, 7 px off its left edge and 21 px below it: lines up with that edge and
+  //    keeps its 21 px gap (it used to be pulled to a fixed 16 px).
+  // 2. Beside the sensor, 4 px over its right edge and 6 px below its top: up against it, tops
+  //    in line.
+  // 3. Far from everything: stays where it is dropped.
   const drops = [
-    { to: { x: 647, y: 40 + 148 + 21 }, settles: [640, 204] },
-    { to: { x: 640 + 168 + 4, y: 46 }, settles: [808, 40] },
-    { to: { x: 700, y: 450 }, settles: null },
+    { to: { x: 647, y: 40 + 148 + 21 }, settles: [640, null] },
+    { to: { x: 640 + 168 - 4, y: 46 }, settles: [808, 40] },
+    { to: { x: 700, y: 450 }, settles: [null, null] },
   ];
   try {
     for (const { to, settles } of drops) {
@@ -667,15 +672,15 @@ async function dragPinNextToAnother(ctx) {
       if (landed[0] === x && landed[1] === y) {
         throw new Error(`The mouse drag did not move the pin from ${x},${y}`);
       }
-      if (!settles) {
-        if (Math.abs(landed[0] - to.x) > 2 || Math.abs(landed[1] - to.y) > 2) {
-          throw new Error(`The mouse drag to ${to.x},${to.y} dropped the pin at ${landed}`);
-        }
-        continue;
-      }
-      if (landed[0] !== settles[0] || landed[1] !== settles[1]) {
+      const expected = [settles[0] ?? to.x, settles[1] ?? to.y];
+      const wrong = [0, 1].some((axis) =>
+        settles[axis] === null
+          ? Math.abs(landed[axis] - expected[axis]) > 2
+          : landed[axis] !== expected[axis]
+      );
+      if (wrong) {
         throw new Error(
-          `A pin dropped at ${to.x},${to.y} settled at ${landed}, not at ${settles} (scale ${scale})`
+          `A pin dropped at ${to.x},${to.y} settled at ${landed}, not at ${expected} (scale ${scale})`
         );
       }
     }
