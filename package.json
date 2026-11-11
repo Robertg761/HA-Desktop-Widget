@@ -61,17 +61,17 @@
     "url": "https://github.com/Robertg761/HA-Desktop-Widget/issues"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.10",
+    "@babel/core": "^8.1.0",
     "@babel/preset-env": "^8.0.7",
     "@eslint/js": "^9.39.5",
     "babel-jest": "^30.5.2",
-    "concurrently": "^10.0.6",
-    "electron": "^45.2.1",
+    "concurrently": "^10.0.7",
+    "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "events": "^3.3.0",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "hls.js": "^1.7.3",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",
@@ -79,7 +79,7 @@
     "regenerate-unicode-properties": "10.3.0",
     "sortablejs": "^1.15.6",
     "stylelint": "^17.16.0",
-    "vite": "^8.3.5"
+    "vite": "^8.3.6"
   },
   "dependencies": {
     "@mdi/font": "7.4.47",
