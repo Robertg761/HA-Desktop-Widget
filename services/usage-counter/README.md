@@ -29,7 +29,8 @@ environment stops it even when the setting is on. Development, demo and smoke-te
 ## Deploying
 
 The counter is live at `usage.hadesktopwidget.com`, and `wrangler.toml` holds
-its database id. To ship a change to the Worker, run `npx wrangler deploy` from
+its database id. To ship a change to the Worker, run the **Deploy Workers**
+workflow in GitHub Actions after merging it to main, or `npx wrangler deploy` from
 this folder. The steps below set it up from scratch on a Cloudflare account
 (the free plan is enough).
 
