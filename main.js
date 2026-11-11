@@ -1818,7 +1818,7 @@ function getOneDriveFolderCandidates(home) {
 }
 
 async function getProviderDefaultFolderCandidates(provider) {
-  let home = '';
+  let home;
   try {
     home = app.getPath('home');
   } catch {
@@ -5227,7 +5227,8 @@ async function keepSyncFileCopy(prefix, extension, writeCopy) {
     throw new Error(
       mainT('The sync file was not updated because its backup failed: {{error}}', {
         error: describeSyncFileSystemError(error) || mainTError(error),
-      })
+      }),
+      { cause: error }
     );
   }
   await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.${extension}$`));
@@ -5264,7 +5265,8 @@ async function backupLocalProfileBeforePullApply(
     throw new Error(
       mainT('Remote profile was not applied because the local backup failed: {{error}}', {
         error: error?.message || String(error),
-      })
+      }),
+      { cause: error }
     );
   }
 }
@@ -5284,7 +5286,8 @@ async function backupRemoteSectionsBeforePush(remoteSections, { discarded = [] }
     throw new Error(
       mainT('The sync file was not updated because its backup failed: {{error}}', {
         error: error?.message || String(error),
-      })
+      }),
+      { cause: error }
     );
   }
 }

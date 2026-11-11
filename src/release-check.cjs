@@ -128,7 +128,7 @@ function createReleaseChecker({
         currentVersion: getCurrentVersion(),
       });
     } catch (error) {
-      throw new Error(error?.message || String(error));
+      throw new Error(error?.message || String(error), { cause: error });
     }
   }
 

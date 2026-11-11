@@ -474,9 +474,8 @@ function getAccentHoverColor(rgb, onAccent, isLightTheme) {
   const label = hexToRgb(onAccent);
   const toward = isLightTheme || onAccent === '#ffffff' ? BLACK : WHITE;
   const floor = Math.min(4.5, contrastBetween(label, rgb));
-  let hover = rgb;
   for (let mix = isLightTheme ? 0.18 : 0.22; mix > 0; mix -= 0.02) {
-    hover = mixRgb(rgb, toward, mix);
+    const hover = mixRgb(rgb, toward, mix);
     if (contrastBetween(label, hover) >= floor) return hover;
   }
   return rgb;

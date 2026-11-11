@@ -762,7 +762,7 @@ class HomeAssistantOAuthClient {
   }
 
   async revoke() {
-    let credentials = null;
+    let credentials;
     try {
       credentials = this.readCredentials();
     } catch (error) {

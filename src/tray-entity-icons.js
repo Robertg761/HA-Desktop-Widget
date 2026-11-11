@@ -191,7 +191,7 @@ export function renderTrayIconRepresentations({ text, fontSize, accent, scheme, 
     ctx.strokeText(text, x, y);
     ctx.fillText(text, x, y);
 
-    let dataURL = '';
+    let dataURL;
     try {
       dataURL = canvas.toDataURL('image/png');
     } catch {

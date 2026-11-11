@@ -561,7 +561,7 @@ function addInstalledDependencies(shipped, root) {
   try {
     lock = JSON.parse(text);
   } catch (error) {
-    throw new Error(`Could not read ${LOCK_FILE}: ${error.message}`);
+    throw new Error(`Could not read ${LOCK_FILE}: ${error.message}`, { cause: error });
   }
   const packages = packageField(lock, 'packages');
   if (Object.keys(packages).length === 0) {
