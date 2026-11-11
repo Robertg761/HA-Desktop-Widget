@@ -2,7 +2,8 @@
  * Counts HA Desktop Widget installs from the app's anonymous daily ping
  * (src/usage-ping.cjs in the app). Stores the random install ID, the UTC days
  * it was first and last seen, and its latest version and OS family. It never
- * reads or stores the caller's IP address or user agent.
+ * stores the caller's IP address or user agent; the address is only handed to
+ * Cloudflare's rate limiter as its key.
  *
  *   POST /v1/ping   {"id": "<uuid v4>", "version": "4.0.0", "os": "win32"}  -> 204
  *   GET  /v1/stats  Authorization: Bearer <STATS_TOKEN>                    -> JSON
@@ -147,8 +148,34 @@ const json = (status, body) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
+/**
+ * True when this address is within PING_LIMITER's limit, or when the Worker has
+ * no limiter (tests, or a copy deployed without the binding). A limiter that
+ * fails lets the request through rather than dropping real pings.
+ */
+export async function isWithinRateLimit(request, env) {
+  if (!env.PING_LIMITER) return true;
+  const key = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    const { success } = await env.PING_LIMITER.limit({ key });
+    return success !== false;
+  } catch (error) {
+    console.error('Rate limiter failed', error);
+    return true;
+  }
+}
+
 export async function handleRequest(request, env, now = new Date()) {
   const { pathname } = new URL(request.url);
+
+  // Every install pings once a day, so a burst from one address is someone
+  // inflating the count or guessing the stats token. The app retries an hour later.
+  if (
+    (pathname === '/v1/ping' || pathname === '/v1/stats') &&
+    !(await isWithinRateLimit(request, env))
+  ) {
+    return new Response(null, { status: 429, headers: { 'Retry-After': '60' } });
+  }
 
   if (pathname === '/v1/ping') {
     if (request.method !== 'POST') return new Response(null, { status: 405 });

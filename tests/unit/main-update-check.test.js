@@ -15,6 +15,7 @@ const {
   UpdateCheckScheduler,
   summarizeUpdateCheck,
 } = require('../../src/update-flow.cjs');
+const { createReleaseChecker } = require('../../src/release-check.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -26,10 +27,6 @@ function sliceBetween(startMarker, endMarker) {
   return mainSource.slice(start, end);
 }
 
-const VERSION_HELPERS = sliceBetween(
-  'function normalizeVersion(',
-  'function generateProfileSyncDeviceId('
-);
 const CHANNEL_AND_RELEASES = sliceBetween(
   'function getUpdatesConfig()',
   '// Tells the person, once per version'
@@ -136,11 +133,11 @@ function loadMain({
     summarizeUpdateCheck,
     createUpdateAnnouncer,
     UpdateCheckScheduler,
+    createReleaseChecker,
     setTimers: timers,
   });
   vm.runInContext(
     `let autoUpdateDownloaded = false;
-     ${VERSION_HELPERS}
      ${CHANNEL_AND_RELEASES}
      ${UPDATE_IPC}
      ${SCHEDULE}`,

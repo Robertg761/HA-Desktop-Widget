@@ -1,0 +1,85 @@
+name: Deploy Workers
+
+# Deploys the Cloudflare Workers in this repository from main: the usage counter
+# (services/usage-counter), Cloud Sync (cloud-sync-service, its production config) and card
+# donations (services/donations). Run it by hand after merging a change to one of them.
+#
+# Needs two repository secrets:
+#   CLOUDFLARE_API_TOKEN   An API token with Account: Workers Scripts Edit, Account: D1 Edit,
+#                          Account: Account Settings Read, Zone: Workers Routes Edit and Zone: Read
+#                          on hadesktopwidget.com (the Workers are served on custom domains there).
+#   CLOUDFLARE_ACCOUNT_ID  The Cloudflare account the Workers belong to.
+# The Workers' own secrets (Stripe, OAuth, STATS_TOKEN) stay on Cloudflare; a deploy keeps them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: Which Worker to deploy
+        type: choice
+        default: all
+        options:
+          - all
+          - usage-counter
+          - cloud-sync
+          - donations
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-workers
+  cancel-in-progress: false
+
+env:
+  WRANGLER_VERSION: 4.160.1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # What is deployed must be what is on main, whichever branch the run was started from.
+          ref: main
+
+      - name: Use Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Check the Cloudflare secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first."
+            exit 1
+          fi
+
+      - name: Deploy the usage counter
+        if: inputs.worker == 'all' || inputs.worker == 'usage-counter'
+        working-directory: services/usage-counter
+        run: npx --yes "wrangler@$WRANGLER_VERSION" deploy
+
+      # Pending D1 migrations go first, so the new code never runs against an old schema
+      # (docs/cloud-sync-setup.md). Applying them when there are none changes nothing.
+      - name: Apply Cloud Sync database migrations
+        if: inputs.worker == 'all' || inputs.worker == 'cloud-sync'
+        working-directory: cloud-sync-service
+        run: >-
+          npx --yes "wrangler@$WRANGLER_VERSION" d1 migrations apply
+          ha-widget-cloud-sync-production --remote --config wrangler.production.toml
+
+      - name: Deploy Cloud Sync
+        if: inputs.worker == 'all' || inputs.worker == 'cloud-sync'
+        working-directory: cloud-sync-service
+        run: npx --yes "wrangler@$WRANGLER_VERSION" deploy --config wrangler.production.toml
+
+      - name: Deploy donations
+        if: inputs.worker == 'all' || inputs.worker == 'donations'
+        working-directory: services/donations
+        run: npx --yes "wrangler@$WRANGLER_VERSION" deploy

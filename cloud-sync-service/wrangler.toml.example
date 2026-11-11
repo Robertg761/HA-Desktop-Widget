@@ -12,6 +12,21 @@ database_name = "ha-widget-cloud-sync"
 database_id = "REPLACE_WITH_DATABASE_ID"
 migrations_dir = "migrations"
 
+# Per-address request limits (src/rate-limit.js). Sign-in needs no account and
+# writes a row per attempt, so it gets the tight one. The address is only the
+# limiter's key and is never stored. Each namespace_id must be a number
+# no other Worker on your Cloudflare account uses. Leave both blocks out to run
+# without limits.
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "API_LIMITER"
+namespace_id = "1004"
+simple = { limit = 120, period = 60 }
+
 [vars]
 # The address the service is reachable at. Google and GitHub redirect back to
 # <PUBLIC_URL>/v1/auth/callback/<provider>, so it must match what you register there.

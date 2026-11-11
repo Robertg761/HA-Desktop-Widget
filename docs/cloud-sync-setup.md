@@ -207,7 +207,15 @@ npx wrangler d1 execute ha-widget-cloud-sync-production --remote --config wrangl
 If it lists any address, merge those accounts or clear the extra `users.email` values first,
 then migrate.
 
-Apply all pending D1 migrations before deploying an updated Worker:
+Both Wrangler files limit requests from each address with Cloudflare's Rate Limiting
+bindings: `AUTH_LIMITER` allows 20 sign-in requests a minute and `API_LIMITER` allows 120
+other requests a minute. Stripe webhooks and `/v1/health` are never limited. A request over
+the limit gets a 429. Leave the `[[ratelimits]]` blocks out to run without limits.
+
+The **Deploy Workers** workflow in GitHub Actions applies pending migrations and deploys the
+production Worker from main (it needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+repository secrets). To do it by hand instead, apply all pending D1 migrations before deploying
+an updated Worker:
 
 ```sh
 npx wrangler d1 migrations apply ha-widget-cloud-sync-production --remote --config wrangler.production.toml

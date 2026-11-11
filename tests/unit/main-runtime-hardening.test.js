@@ -769,10 +769,9 @@ describe('main-process wiring safeguards', () => {
       'autoUpdater.allowPrerelease = resolveAllowPrerelease(allowPrerelease)'
     );
     expect(mainSource).toContain('await autoUpdater.checkForUpdates()');
-    expect(mainSource).toContain('function selectPortableRelease');
-    expect(mainSource).toContain('allowPrerelease || !release.prerelease');
-    expect(mainSource).toContain('releases?per_page=20');
-    expect(mainSource).toContain('/releases/latest');
+    // Choosing the release itself is tested in tests/unit/release-check.test.js.
+    expect(mainSource).toContain('const releaseChecker = createReleaseChecker(');
+    expect(mainSource).toContain('resolveAllowPrerelease,');
   });
 
   it('routes tray and renderer update checks through the same package capability guard', () => {
@@ -803,8 +802,7 @@ describe('main-process wiring safeguards', () => {
       updateCheckSource.indexOf('supportsAutoUpdater(process.platform, process.env)')
     ).toBeLessThan(updateCheckSource.indexOf('getAutoUpdater()'));
     expect(updateCheckSource).toContain('return checkManualReleaseUpdate({ allowPrerelease })');
-    expect(mainSource).toContain('async function checkManualReleaseUpdate(');
-    expect(mainSource).toContain("status: 'manual'");
+    expect(mainSource).toContain('function checkManualReleaseUpdate(');
   });
 
   it('flushes config and pending window bounds before an update closes windows', () => {

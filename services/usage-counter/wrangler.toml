@@ -6,6 +6,14 @@ compatibility_date = "2026-09-01"
 [observability]
 enabled = false
 
+# At most 20 requests a minute from one address (src/index.js). The address is
+# only the limiter's key and is never stored. The donations Worker uses
+# namespace 1001 and Cloud Sync 1003 and 1004.
+[[ratelimits]]
+name = "PING_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ha-desktop-widget-usage"
