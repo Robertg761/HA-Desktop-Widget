@@ -571,6 +571,7 @@ const {
   createUpdateAnnouncer,
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
+const { createReleaseChecker } = require('./src/release-check.cjs');
 
 // package.json names the app "home-assistant-widget", and app.getName() is that, not what the
 // person knows it as, so text names the app with this instead. app.getName() itself stays: it is
@@ -1920,64 +1921,6 @@ function getWindowsStartupLookupOptions(target) {
     path: target.path,
     args: target.args,
   };
-}
-
-function normalizeVersion(value) {
-  if (!value) return '';
-  return String(value).trim().replace(/^v/i, '');
-}
-
-function parseVersionParts(value) {
-  const normalized = normalizeVersion(value);
-  const match = normalized.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
-  if (!match) return null;
-  return {
-    version: normalized,
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease: match[4] || '',
-  };
-}
-
-function comparePrereleaseIdentifiers(left, right) {
-  const leftNumeric = /^\d+$/.test(left);
-  const rightNumeric = /^\d+$/.test(right);
-  if (leftNumeric && rightNumeric) return Number(left) - Number(right);
-  if (leftNumeric) return -1;
-  if (rightNumeric) return 1;
-  return left.localeCompare(right);
-}
-
-function compareVersions(leftValue, rightValue) {
-  const left = parseVersionParts(leftValue);
-  const right = parseVersionParts(rightValue);
-  if (!left && !right) return 0;
-  if (!left) return -1;
-  if (!right) return 1;
-
-  for (const key of ['major', 'minor', 'patch']) {
-    if (left[key] !== right[key]) return left[key] - right[key];
-  }
-
-  if (!left.prerelease && !right.prerelease) return 0;
-  if (!left.prerelease) return 1;
-  if (!right.prerelease) return -1;
-
-  const leftParts = left.prerelease.split('.');
-  const rightParts = right.prerelease.split('.');
-  const max = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < max; index += 1) {
-    if (leftParts[index] === undefined) return -1;
-    if (rightParts[index] === undefined) return 1;
-    const compared = comparePrereleaseIdentifiers(leftParts[index], rightParts[index]);
-    if (compared !== 0) return compared;
-  }
-  return 0;
-}
-
-function isPrereleaseVersion(value) {
-  return !!parseVersionParts(value)?.prerelease;
 }
 
 function generateProfileSyncDeviceId() {
@@ -14210,33 +14153,10 @@ function configureAutoUpdaterChannel(autoUpdater = getAutoUpdater(), allowPrerel
   return autoUpdater;
 }
 
-function selectPortableRelease(releases, allowPrerelease) {
-  const currentVersion = normalizeVersion(app.getVersion());
-  return (
-    (Array.isArray(releases) ? releases : [])
-      .filter((release) => release && !release.draft)
-      .filter((release) => allowPrerelease || !release.prerelease)
-      .filter((release) => {
-        const version = normalizeVersion(release.tag_name || release.name || '');
-        if (!version) return false;
-        return !currentVersion || compareVersions(version, currentVersion) > 0;
-      })
-      .sort((left, right) => {
-        const leftVersion = normalizeVersion(left.tag_name || left.name || '');
-        const rightVersion = normalizeVersion(right.tag_name || right.name || '');
-        return compareVersions(rightVersion, leftVersion);
-      })[0] || null
-  );
-}
-
-async function fetchGitHubUpdateRelease({ allowPrerelease: requested } = {}) {
-  const repo = 'Robertg761/HA-Desktop-Widget';
-  const allowPrerelease = resolveAllowPrerelease(requested);
-  const apiUrl = allowPrerelease
-    ? `https://api.github.com/repos/${repo}/releases?per_page=20`
-    : `https://api.github.com/repos/${repo}/releases/latest`;
-  try {
-    const response = await fetchChecked((url, init) => net.fetch(url, init), apiUrl, {
+// Finding a newer release for builds that cannot update themselves lives in src/release-check.cjs.
+const releaseChecker = createReleaseChecker({
+  fetchJson: async (url) => {
+    const response = await fetchChecked((target, init) => net.fetch(target, init), url, {
       timeoutMs: 10000,
       headers: {
         'User-Agent': 'HA-Desktop-Widget',
@@ -14244,113 +14164,26 @@ async function fetchGitHubUpdateRelease({ allowPrerelease: requested } = {}) {
       },
       errorPrefix: 'GitHub release request failed',
     });
+    return response.json();
+  },
+  getCurrentVersion: () => app.getVersion(),
+  resolveAllowPrerelease,
+  t: (key, vars) => mainT(key, vars),
+  log,
+  homepage: pkg.homepage,
+  getArch: () => process.arch,
+});
 
-    const data = await response.json();
-    const releases = Array.isArray(data) ? data : [data];
-    return selectPortableRelease(releases, allowPrerelease);
-  } catch (error) {
-    throw new Error(error?.message || String(error));
-  }
-}
-
-// electron-updater errors carry full HTTP headers and stack traces; the
-// settings pane should only ever show a short human-readable summary while the
-// log keeps the raw detail.
 function describeUpdateError(error) {
-  const raw = (error?.message || String(error ?? '')).trim();
-  log.warn('Update check failed:', raw);
-  if (/404|cannot find .* in the latest release/i.test(raw)) {
-    return mainT('Update information is not available for this version yet. Try again later.');
-  }
-  if (
-    /enotfound|econnrefused|econnreset|etimedout|eai_again|net::err|socket hang up|internetdisconnected/i.test(
-      raw
-    )
-  ) {
-    return mainT('Could not reach GitHub to check for updates. Check your internet connection.');
-  }
-  if (/sha512|checksum|corrupt/i.test(raw)) {
-    return mainT('The downloaded update appears to be corrupted. Please try checking again.');
-  }
-  const firstLine = raw.split('\n', 1)[0].trim();
-  if (!firstLine) return mainT('Unknown error');
-  return firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+  return releaseChecker.describeUpdateError(error);
 }
 
-async function checkManualReleaseUpdate({ allowPrerelease } = {}) {
-  try {
-    const release = await fetchGitHubUpdateRelease({ allowPrerelease });
-    if (!release) {
-      return { status: 'none', message: mainT('You are up to date!') };
-    }
-    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
-    const downloadUrl =
-      release.html_url ||
-      (pkg.homepage && release.tag_name
-        ? `${pkg.homepage}/releases/tag/${encodeURIComponent(release.tag_name)}`
-        : pkg.homepage
-          ? `${pkg.homepage}/releases`
-          : '');
-    if (!latestVersion) {
-      return {
-        status: 'error',
-        error: mainT('Unable to determine the latest release version.'),
-        downloadUrl,
-      };
-    }
-    // The window words it (src/update-status.js), so the line follows a later language change.
-    return { status: 'manual', version: latestVersion, downloadUrl };
-  } catch (error) {
-    return { status: 'error', error: describeUpdateError(error) };
-  }
+function checkManualReleaseUpdate(options) {
+  return releaseChecker.checkManualReleaseUpdate(options);
 }
 
-async function checkPortableUpdate({ allowPrerelease } = {}) {
-  try {
-    const release = await fetchGitHubUpdateRelease({ allowPrerelease });
-    if (!release) {
-      return { status: 'none', message: mainT('You are up to date!') };
-    }
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    const arch = process.arch || 'x64';
-    const archToken = `win-${arch}`;
-    let portableAsset = assets.find((asset) => {
-      const name = String(asset?.name || '').toLowerCase();
-      return name.includes('portable') && name.includes(archToken);
-    });
-    if (!portableAsset) {
-      portableAsset = assets.find((asset) =>
-        String(asset?.name || '')
-          .toLowerCase()
-          .includes('portable')
-      );
-    }
-
-    const latestVersion = normalizeVersion(release.tag_name || release.name || '');
-    const currentVersion = normalizeVersion(app.getVersion());
-    const downloadUrl = portableAsset?.browser_download_url || release.html_url || '';
-    if (!latestVersion) {
-      return {
-        status: 'error',
-        error: mainT('Unable to determine the latest Portable release version.'),
-        downloadUrl,
-      };
-    }
-
-    if (currentVersion && compareVersions(latestVersion, currentVersion) <= 0) {
-      return { status: 'none', message: mainT('You are up to date!') };
-    }
-
-    // The window words it (src/update-status.js), so the line follows a later language change.
-    return {
-      status: 'portable',
-      version: latestVersion,
-      prerelease: isPrereleaseVersion(latestVersion),
-      downloadUrl,
-    };
-  } catch (error) {
-    return { status: 'error', error: describeUpdateError(error) };
-  }
+function checkPortableUpdate(options) {
+  return releaseChecker.checkPortableUpdate(options);
 }
 
 // Tells the person, once per version, about a release this package cannot install itself.
