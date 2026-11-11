@@ -602,14 +602,17 @@ function setupHotkeyEventListenersInternal() {
             try {
               const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
               if (!restoredConfig?.homeAssistant) {
-                throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'));
+                throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'), {
+                  cause: error,
+                });
               }
               state.setConfig(restoredConfig);
               const rollbackRegistration = await window.electronAPI.registerHotkeys();
               if (rollbackRegistration?.success === false) {
                 throw new Error(
                   rollbackRegistration.error ||
-                    t('The previous hotkey action was restored, but its runtime binding was not')
+                    t('The previous hotkey action was restored, but its runtime binding was not'),
+                  { cause: error }
                 );
               }
             } catch (rollbackError) {

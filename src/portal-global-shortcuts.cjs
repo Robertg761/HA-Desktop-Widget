@@ -350,7 +350,8 @@ function createPortalGlobalShortcutsController(options = {}) {
     } catch (error) {
       if (requireRegistry) {
         throw new Error(
-          `app id "${appId}" is not registered with the portal: ${error?.message || error}`
+          `app id "${appId}" is not registered with the portal: ${error?.message || error}`,
+          { cause: error }
         );
       }
       // Non-fatal: the portal can still derive an app id from our systemd scope.

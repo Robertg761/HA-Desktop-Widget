@@ -11,7 +11,8 @@ async function requireExistingSyncParentDirectory(filePath, fsModule) {
   } catch (error) {
     if (error?.code === 'ENOENT') {
       throw new Error(
-        'The selected sync folder is unavailable. Reconnect the cloud provider or choose the folder again.'
+        'The selected sync folder is unavailable. Reconnect the cloud provider or choose the folder again.',
+        { cause: error }
       );
     }
     throw error;
