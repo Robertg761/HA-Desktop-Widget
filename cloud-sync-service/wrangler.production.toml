@@ -12,6 +12,20 @@ database_name = "ha-widget-cloud-sync-production"
 database_id = "b404e3ea-5af8-473f-a446-06114d289cb4"
 migrations_dir = "migrations"
 
+# Per-address request limits (src/rate-limit.js). Sign-in needs no account and
+# writes a row per attempt, so it gets the tight one. The address is only the
+# limiter's key and is never stored. namespace_id must be unique on the
+# Cloudflare account: the donations Worker uses 1001 and the usage counter 1002.
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "API_LIMITER"
+namespace_id = "1004"
+simple = { limit = 120, period = 60 }
+
 [vars]
 PUBLIC_URL = "https://sync.hadesktopwidget.com"
 LAUNCH_MODE = "public"

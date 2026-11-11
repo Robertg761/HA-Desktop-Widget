@@ -43,6 +43,68 @@ describe('cloud sync service', () => {
     expect(world.calls).toHaveLength(0);
   });
 
+  describe('rate limits', () => {
+    const limiter = (allowed) => ({
+      calls: [],
+      async limit({ key }) {
+        this.calls.push(key);
+        return { success: allowed };
+      },
+    });
+
+    test('sign-in over its limit gets a page in the browser and JSON in the app', async () => {
+      const auth = limiter(false);
+      const api = limiter(true);
+      const world = createWorld({ AUTH_LIMITER: auth, API_LIMITER: api });
+
+      const start = await world.request('/v1/auth/start?provider=google', {
+        headers: { 'CF-Connecting-IP': '203.0.113.9' },
+      });
+      expect(start.status).toBe(429);
+      expect(start.headers.get('Content-Type')).toContain('text/html');
+      expect(start.headers.get('Retry-After')).toBe('60');
+      expect(await start.text()).toContain('Too many sign-in attempts');
+
+      const token = await world.request('/v1/auth/token', { method: 'POST', body: '{}' });
+      expect(token.status).toBe(429);
+      expect((await token.json()).error).toBe('rate_limited');
+
+      expect(auth.calls).toEqual(['203.0.113.9', 'unknown']);
+      expect(api.calls).toEqual([]);
+      expect(world.env.DB.raw.prepare('SELECT * FROM oauth_states').all()).toHaveLength(0);
+    });
+
+    test('signed-in requests use the looser limiter', async () => {
+      const world = createWorld({ AUTH_LIMITER: limiter(true), API_LIMITER: limiter(true) });
+      world.googleUsers.set('g-code', { sub: 'g-1', email: 'a@example.com', email_verified: true });
+      const { body } = await world.signIn('google', 'g-code');
+      expect(world.env.AUTH_LIMITER.calls).toHaveLength(3);
+
+      expect((await world.authed(body.token, '/v1/account')).status).toBe(200);
+      world.env.API_LIMITER = limiter(false);
+      const limited = await world.authed(body.token, '/v1/profile');
+      expect(limited.status).toBe(429);
+      expect((await limited.json()).error).toBe('rate_limited');
+    });
+
+    test('health checks and Stripe webhooks are never limited', async () => {
+      const world = createWorld({ AUTH_LIMITER: limiter(false), API_LIMITER: limiter(false) });
+      expect((await world.request('/v1/health')).status).toBe(200);
+      // An unsigned webhook is refused for its signature, not for the limit.
+      const webhook = await world.request('/v1/billing/webhook', { method: 'POST', body: '{}' });
+      expect(webhook.status).not.toBe(429);
+      expect(world.env.API_LIMITER.calls).toEqual([]);
+    });
+
+    test('a failing limiter lets requests through', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      const broken = { limit: async () => Promise.reject(new Error('down')) };
+      const world = createWorld({ AUTH_LIMITER: broken, API_LIMITER: broken });
+      expect((await world.request('/v1/config')).status).toBe(200);
+      console.error.mockRestore();
+    });
+  });
+
   test('private mode admits only verified allowlisted email and blocks old sessions', async () => {
     const world = createWorld({
       LAUNCH_MODE: 'private',
