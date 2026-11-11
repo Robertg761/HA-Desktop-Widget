@@ -137,6 +137,37 @@ describe('usage counter worker: validation', () => {
     expect(env.DB.prepare).not.toHaveBeenCalled();
   });
 
+  test('turns away an address over the rate limit before touching the database', async () => {
+    const limit = jest.fn(async () => ({ success: false }));
+    const env = { DB: { prepare: jest.fn() }, STATS_TOKEN: TOKEN, PING_LIMITER: { limit } };
+    const ping = new Request('https://usage.example/v1/ping', {
+      method: 'POST',
+      headers: { 'CF-Connecting-IP': '203.0.113.9' },
+      body: JSON.stringify({ id: ID_A, version: '4.1.0', os: 'linux' }),
+    });
+    const response = await handleRequest(ping, env);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(limit).toHaveBeenCalledWith({ key: '203.0.113.9' });
+
+    const stats = new Request('https://usage.example/v1/stats', {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    expect((await handleRequest(stats, env)).status).toBe(429);
+    expect(env.DB.prepare).not.toHaveBeenCalled();
+  });
+
+  test('a failing rate limiter lets the ping through', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const env = {
+      DB: { prepare: jest.fn() },
+      PING_LIMITER: { limit: jest.fn(async () => Promise.reject(new Error('down'))) },
+    };
+    // Reaches validation (400) instead of being turned away (429).
+    expect((await handleRequest(pingRequest({ id: 'x' }), env)).status).toBe(400);
+    console.error.mockRestore();
+  });
+
   test('exports a fetch handler', () => {
     expect(typeof worker.fetch).toBe('function');
   });

@@ -18,8 +18,9 @@ Once per UTC day, packaged builds `POST` this to `https://usage.hadesktopwidget.
   profile sync and settings export never copy it to another computer.
 - Nothing else is sent: no Home Assistant URL, entities, settings, hostname or
   usage events.
-- The Worker never reads or stores IP addresses or user agents, and Workers
-  Logs are off in `wrangler.toml`.
+- The Worker never stores IP addresses or user agents, and Workers Logs are
+  off in `wrangler.toml`. The address is only handed to Cloudflare's rate
+  limiter, which allows 20 requests a minute from one address.
 
 It is off by default: users opt in with **Settings → Updates → Count this
 install**. Setting `DO_NOT_TRACK=1` or `HA_WIDGET_DISABLE_USAGE_PING=1` in the
@@ -73,5 +74,7 @@ curl -H "Authorization: Bearer $STATS_TOKEN" https://usage.hadesktopwidget.com/v
   removed. A reinstall that wipes the profile folder counts as a new install.
 - `daily` keeps per-day totals for the last 90 days.
 
-Anyone can send pings, so a determined person could inflate the count. Turn on
-a Cloudflare rate-limiting rule for `/v1/ping` if that ever happens.
+Anyone can send pings, so a determined person could inflate the count. The
+`PING_LIMITER` binding in `wrangler.toml` caps each address at 20 requests a
+minute to `/v1/ping` and `/v1/stats`, which slows that down without affecting
+real installs: each pings once a day and retries an hour later if turned away.

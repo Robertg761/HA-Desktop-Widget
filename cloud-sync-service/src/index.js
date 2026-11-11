@@ -21,6 +21,7 @@ import {
   listConfiguredProviders,
 } from './oauth.js';
 import { handleGetProfile, handlePutProfile } from './profile.js';
+import { isWithinRateLimit } from './rate-limit.js';
 import { errorResponse, htmlPage, json } from './util.js';
 
 function defaultDeps() {
@@ -46,6 +47,21 @@ export async function handleRequest(request, env, deps = defaultDeps()) {
       pathname !== '/v1/health'
     ) {
       return errorResponse(503, 'not_launched', 'Cloud Sync is not available yet.');
+    }
+    if (!(await isWithinRateLimit(request, env, pathname))) {
+      // The browser shows sign-in pages, so answer those with a page; the app reads JSON.
+      if (method === 'GET' && pathname.startsWith('/v1/auth/')) {
+        const page = htmlPage(
+          'Too many sign-in attempts',
+          'Wait a minute, then start signing in again from HA Desktop Widget.',
+          429
+        );
+        page.headers.set('Retry-After', '60');
+        return page;
+      }
+      return errorResponse(429, 'rate_limited', 'Too many requests. Wait a minute and try again.', {
+        'Retry-After': '60',
+      });
     }
     if (pathname === '/' && method === 'GET') {
       return htmlPage(
