@@ -5,7 +5,7 @@ const zlib = require('zlib');
 
 const site = path.resolve(__dirname, '../../website');
 const read = (file) => fs.readFileSync(path.join(site, file), 'utf8');
-const pages = ['index', 'download', 'companion', 'privacy', 'terms'];
+const pages = ['index', 'download', 'faq', 'companion', 'privacy', 'terms'];
 const html = Object.fromEntries(pages.map((page) => [page, read(`${page}.html`)]));
 const vercel = JSON.parse(read('vercel.json'));
 const headerValue = (key, source = '/(.*)') =>
@@ -15,7 +15,9 @@ describe('the website pages', () => {
   it.each(pages)(
     '%s has no inline script or style, which its content security policy forbids',
     (page) => {
-      expect(html[page]).not.toMatch(/<script(?![^>]*\bsrc=)/);
+      // Structured data is the one exception: browsers never run a JSON-LD block, so the policy
+      // does not apply to it.
+      expect(html[page]).not.toMatch(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/ld\+json")/);
       expect(html[page]).not.toMatch(/<style[\s>]/);
       expect(html[page]).not.toMatch(/\sstyle="/);
     }
@@ -46,11 +48,52 @@ describe('the website pages', () => {
     expect(html[page]).toContain('<a href="/#screenshots">Screenshots</a>');
     expect(html[page]).toContain('<a href="/companion"');
     expect(html[page]).not.toContain('href="/#cloud-sync"');
-    for (const link of ['/download', '/privacy', '/terms', '/licenses.txt']) {
+    for (const link of ['/download', '/faq', '/privacy', '/terms', '/licenses.txt']) {
       expect(html[page]).toContain(`href="${link}"`);
     }
     expect(html[page]).toContain('property="og:title"');
     expect(html[page]).toContain('name="twitter:title"');
+  });
+
+  it('redirects www to the bare domain, so search engines index one copy of each page', () => {
+    expect(vercel.redirects).toContainEqual({
+      source: '/:path*',
+      has: [{ type: 'host', value: 'www.hadesktopwidget.com' }],
+      destination: 'https://hadesktopwidget.com/:path*',
+      permanent: true,
+    });
+  });
+
+  it('describes the app to search engines in structured data that parses', () => {
+    const blocks = [
+      ...html.index.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ];
+    expect(blocks).toHaveLength(1);
+    const graph = JSON.parse(blocks[0][1])['@graph'];
+    const app = graph.find((node) => node['@type'] === 'SoftwareApplication');
+    expect(app.offers).toEqual({ '@type': 'Offer', price: '0', priceCurrency: 'USD' });
+    expect(app.operatingSystem).toMatch(/Windows.*macOS.*Linux/);
+    for (const url of [app.image, ...app.screenshot]) {
+      const file = url.replace('https://hadesktopwidget.com/', '');
+      expect(fs.existsSync(path.join(site, file))).toBe(true);
+    }
+  });
+
+  it.each(pages)('%s has its own title, description and canonical address', (page) => {
+    const url =
+      page === 'index' ? 'https://hadesktopwidget.com/' : `https://hadesktopwidget.com/${page}`;
+    expect(html[page]).toContain(`<link rel="canonical" href="${url}">`);
+    expect(html[page]).toContain(`<meta property="og:url" content="${url}">`);
+    expect(html[page]).toMatch(/<meta name="description" content="[^"]{50,}">/);
+    expect(html[page]).toContain('name="twitter:image:alt"');
+  });
+
+  it('answers a missing address with a page that links back and is kept out of search', () => {
+    const notFound = read('404.html');
+    expect(notFound).toContain('<meta name="robots" content="noindex">');
+    expect(notFound).not.toContain('rel="canonical"');
+    expect(notFound).toMatch(/<body>\s*<a class="skip-link" href="#main">/);
+    expect(notFound).toContain('href="/download"');
   });
 
   it('answers robots.txt and lists every page in the sitemap', () => {
@@ -59,7 +102,9 @@ describe('the website pages', () => {
     for (const page of pages) {
       const url =
         page === 'index' ? 'https://hadesktopwidget.com/' : `https://hadesktopwidget.com/${page}`;
-      expect(sitemap).toContain(`<loc>${url}</loc>`);
+      expect(sitemap).toMatch(
+        new RegExp(`<loc>${url}</loc><lastmod>\\d{4}-\\d{2}-\\d{2}</lastmod>`)
+      );
     }
   });
 
@@ -91,7 +136,12 @@ describe('the legal pages', () => {
   });
 
   it('keeps the subscription price and trial off the home page', () => {
-    expect(html.index).not.toMatch(/USD|14 day|per year|\/year/);
+    // The structured data names the app's own price, free, in USD; the rule is about what the page shows.
+    const shown = html.index.replace(
+      /<script type="application\/ld\+json">[\s\S]*?<\/script>/g,
+      ''
+    );
+    expect(shown).not.toMatch(/USD|14 day|per year|\/year/);
   });
 
   it('describes the requests the app and the site make, which the old page left out', () => {
@@ -188,6 +238,17 @@ describe('the website images', () => {
       expect(twitter).toBe(openGraph);
     }
   );
+
+  it('offers a WebP copy of every screenshot, with the PNG as the fallback', () => {
+    const shots = [...html.index.matchAll(/<img src="\/assets\/([\w-]+)\.png"[^>]*height="760">/g)];
+    expect(shots.length).toBeGreaterThanOrEqual(3);
+    for (const [tag, name] of shots) {
+      expect(html.index).toContain(
+        `<picture><source srcset="/assets/${name}.webp" type="image/webp">${tag}</picture>`
+      );
+      expect(fs.existsSync(path.join(site, `assets/${name}.webp`))).toBe(true);
+    }
+  });
 
   it('shows the app icon of the packages, not the old square one', () => {
     const packaged = path.resolve(__dirname, '../../build/icons/64x64.png');
