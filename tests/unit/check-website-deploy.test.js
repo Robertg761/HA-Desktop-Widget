@@ -50,8 +50,9 @@ function serve(dir, { headers = true, assetCache = true } = {}) {
     );
     const file = candidates.find((entry) => fs.existsSync(entry) && fs.statSync(entry).isFile());
     if (!file || /vercel\.json$/.test(file)) {
+      const notFound = path.join(dir, '404.html');
       response.writeHead(404);
-      response.end('not found');
+      response.end(fs.existsSync(notFound) ? fs.readFileSync(notFound) : 'not found');
       return;
     }
     const sent = headers ? { 'x-content-type-options': 'nosniff' } : {};
@@ -83,6 +84,19 @@ describe('check-website-deploy', () => {
     expect(servedPath('privacy.html')).toBe('/privacy');
     expect(servedPath('site.js')).toBe('/site.js');
     expect(servedPath('assets/icon.png')).toBe('/assets/icon.png');
+    // The not-found page is what an address without a file answers, so it is checked at one.
+    expect(servedPath('404.html')).toBe('/deploy-check-missing-page');
+  });
+
+  it('expects the not-found page with a 404 status at an address that has no file', async () => {
+    const dir = makeSite({ '404.html': '<h1>Page not found</h1>' });
+    expect(await compareDeployment({ baseUrl: await start(dir), siteDir: dir })).toEqual([]);
+    // A host that still answers with its own plain 404 is caught.
+    const old = makeSite();
+    const problems = await compareDeployment({ baseUrl: await start(old), siteDir: dir });
+    expect(problems).toEqual([
+      expect.stringMatching(/deploy-check-missing-page: differs from website\/404\.html/),
+    ]);
   });
 
   it('lists what the host serves, with forward slashes, and not its configuration', () => {

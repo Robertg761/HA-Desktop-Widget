@@ -27,6 +27,10 @@ const REQUEST_TIMEOUT_MS = 30 * 1000;
 const request = () => ({ cache: 'no-store', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
 // Files of website/ the host does not serve.
 const NOT_SERVED = new Set(['vercel.json', '.gitignore']);
+// The page the host answers with, and a 404 status, for an address that has no file. It is checked
+// at such an address, since requesting /404 itself says nothing about what visitors see.
+const NOT_FOUND_PAGE = '404.html';
+const MISSING_PATH = '/deploy-check-missing-page';
 
 function listFiles(dir, base = dir) {
   return fs
@@ -43,6 +47,7 @@ function listFiles(dir, base = dir) {
 /** The path a file is served at: index.html is the root, other pages lose their extension. */
 function servedPath(file) {
   if (file === 'index.html') return '/';
+  if (file === NOT_FOUND_PAGE) return MISSING_PATH;
   if (file.endsWith('.html')) return `/${file.slice(0, -'.html'.length)}`;
   return `/${file}`;
 }
@@ -94,24 +99,28 @@ async function compareDeployment({ baseUrl, siteDir, fetchImpl = fetch }) {
   for (const file of listFiles(siteDir)) {
     const urlPath = servedPath(file);
     const url = root + urlPath;
+    const notFoundPage = file === NOT_FOUND_PAGE;
     let response;
     let deployed;
     try {
       response = await fetchImpl(url, request());
       // Reading the body can fail after the headers arrived (a reset or a stall); that is a
       // problem to retry like any other, not the end of the check.
-      if (response.ok) deployed = Buffer.from(await response.arrayBuffer());
+      const expected = notFoundPage ? response.status === 404 : response.ok;
+      if (expected) deployed = Buffer.from(await response.arrayBuffer());
     } catch (error) {
       problems.push(`${url}: ${error.message}`);
       continue;
     }
-    if (!response.ok) {
-      problems.push(`${url}: HTTP ${response.status}`);
+    if (!deployed) {
+      problems.push(`${url}: HTTP ${response.status}${notFoundPage ? ', expected 404' : ''}`);
       continue;
     }
     if (!deployed.equals(fs.readFileSync(path.join(siteDir, file)))) {
       problems.push(`${url}: differs from website/${file}`);
     }
+    // The configured headers are held to the files themselves, not to the not-found answer.
+    if (notFoundPage) continue;
     for (const [key, value] of Object.entries(headersFor(rules, urlPath))) {
       if (response.headers.get(key) === value) continue;
       if (!headerMisses.has(key)) headerMisses.set(key, []);
