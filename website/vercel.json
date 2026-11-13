@@ -3,9 +3,9 @@
   "trailingSlash": false,
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "has": [{ "type": "host", "value": "www.hadesktopwidget.com" }],
-      "destination": "https://hadesktopwidget.com/:path*",
+      "destination": "https://hadesktopwidget.com/$1",
       "permanent": true
     }
   ],

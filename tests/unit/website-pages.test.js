@@ -57,9 +57,10 @@ describe('the website pages', () => {
 
   it('redirects www to the bare domain, so search engines index one copy of each page', () => {
     expect(vercel.redirects).toContainEqual({
-      source: '/:path*',
+      // (.*) matches the home page too; /:path* left www.hadesktopwidget.com/ serving a copy.
+      source: '/(.*)',
       has: [{ type: 'host', value: 'www.hadesktopwidget.com' }],
-      destination: 'https://hadesktopwidget.com/:path*',
+      destination: 'https://hadesktopwidget.com/$1',
       permanent: true,
     });
   });
