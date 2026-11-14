@@ -1741,5 +1741,11 @@
   "Donate to HA Desktop Widget": "An HA Desktop Widget spenden",
   "Donate on GitHub": "Auf GitHub spenden",
   "Snap desktop pins into line": "Desktop-Pins ausrichten",
-  "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "Beim Neu-Anordnen richtet sich ein Pin, den du nahe an der Kante eines anderen Pins ablegst, daran aus. Schalte es aus, um Pins frei zu platzieren. Die Pfeiltasten verschieben einen ausgewählten Pin um 1 px (mit Shift um 10 px) und richten nie aus."
+  "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "Beim Neu-Anordnen richtet sich ein Pin, den du nahe an der Kante eines anderen Pins ablegst, daran aus. Schalte es aus, um Pins frei zu platzieren. Die Pfeiltasten verschieben einen ausgewählten Pin um 1 px (mit Shift um 10 px) und richten nie aus.",
+  "Edit Tile Settings...": "Kacheleinstellungen bearbeiten...",
+  "Finish Reorganizing": "Neu-Anordnen beenden",
+  "Tile color": "Kachelfarbe",
+  "Use the accent color": "Akzentfarbe verwenden",
+  "Pick another color": "Andere Farbe wählen",
+  "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Färbt das Symbol dieser Kachel, ihre Bedienelemente und ihr Leuchten, wenn sie an ist. Hoher Kontrast behält seine eigenen Farben."
 }

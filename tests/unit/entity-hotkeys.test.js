@@ -103,6 +103,41 @@ describe('the action a hotkey runs', () => {
   });
 });
 
+describe("a tile menu's edit items", () => {
+  const start = mainSource.indexOf('function entityTileEditMenuItems(');
+  const end = mainSource.indexOf("ipcMain.handle('show-entity-tile-menu'", start);
+
+  const itemsFor = (reorganizing) => {
+    const requestTileAction = jest.fn();
+    const context = { mainT: (text) => text };
+    vm.runInNewContext(mainSource.slice(start, end), context);
+    const items = context.entityTileEditMenuItems(reorganizing, requestTileAction);
+    return { labels: items.map((item) => item.label), items, requestTileAction };
+  };
+
+  it('leads the menu, ahead of the hotkey items, and follows Reorganize mode', () => {
+    expect(start).toBeGreaterThan(-1);
+    const handler = mainSource.slice(end, mainSource.indexOf('menu.popup(', end));
+    expect(handler).toContain('entityTileEditMenuItems(desktopPinEditMode,');
+    expect(handler.indexOf('...editItems')).toBeLessThan(handler.indexOf('...hotkeyItems'));
+    expect(handler).toContain("'entity-tile-action-requested'");
+  });
+
+  it('offers the tile settings and Reorganize, or the way out of it while it is on', () => {
+    expect(itemsFor(false).labels).toEqual(['Edit Tile Settings...', 'Reorganize Quick Access']);
+    expect(itemsFor(true).labels).toEqual(['Edit Tile Settings...', 'Finish Reorganizing']);
+  });
+
+  it('asks the renderer for the action each item names', () => {
+    const off = itemsFor(false);
+    off.items.forEach((item) => item.click());
+    expect(off.requestTileAction.mock.calls).toEqual([['edit-settings'], ['reorganize']]);
+    const on = itemsFor(true);
+    on.items[1].click();
+    expect(on.requestTileAction.mock.calls).toEqual([['finish-reorganize']]);
+  });
+});
+
 describe("a tile menu's hotkey items", () => {
   const start = mainSource.indexOf('function entityTileHotkeyMenuItems(');
   const end = mainSource.indexOf("ipcMain.handle('show-entity-tile-menu'", start);

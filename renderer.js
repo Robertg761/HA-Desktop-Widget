@@ -3347,6 +3347,14 @@ window.electronAPI.onEntityTileHotkeyRequested(({ entityId, remove } = {}) => {
   else hotkeys.assignHotkeyToEntity(entityId);
 });
 
+// The tile menu's Edit Tile Settings and Reorganize items, which main shows but the dashboard runs.
+window.electronAPI.onEntityTileActionRequested?.(({ entityId, action } = {}) => {
+  if (IS_DESKTOP_PIN_MODE) return;
+  if (action === 'edit-settings' && entityId) ui.openTileSettings(entityId);
+  else if (action === 'reorganize') ui.enterReorganizeMode();
+  else if (action === 'finish-reorganize') ui.exitReorganizeMode();
+});
+
 window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
   void desktopCompanionClient?.reportState(null, nextState);
 });
