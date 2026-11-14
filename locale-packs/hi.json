@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.82",
+  "version": "1.2.83",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2240,6 +2240,12 @@
     "Donate to HA Desktop Widget": "HA Desktop Widget को दान करें",
     "Donate on GitHub": "GitHub पर दान करें",
     "Snap desktop pins into line": "डेस्कटॉप पिन को सीध में लाएं",
-    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "पुनर्व्यवस्थित मोड में, किसी दूसरे पिन के किनारे के पास छोड़ा गया पिन उसकी सीध में आ जाता है। पिन को कहीं भी रखने के लिए इसे बंद करें। तीर कुंजियाँ चुने गए पिन को एक बार में 1 px (Shift के साथ 10 px) खिसकाती हैं और कभी सीध में नहीं लातीं।"
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "पुनर्व्यवस्थित मोड में, किसी दूसरे पिन के किनारे के पास छोड़ा गया पिन उसकी सीध में आ जाता है। पिन को कहीं भी रखने के लिए इसे बंद करें। तीर कुंजियाँ चुने गए पिन को एक बार में 1 px (Shift के साथ 10 px) खिसकाती हैं और कभी सीध में नहीं लातीं।",
+    "Edit Tile Settings...": "टाइल सेटिंग्स संपादित करें...",
+    "Finish Reorganizing": "पुनर्व्यवस्थित करना समाप्त करें",
+    "Tile color": "टाइल का रंग",
+    "Use the accent color": "एक्सेंट रंग का उपयोग करें",
+    "Pick another color": "कोई दूसरा रंग चुनें",
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "चालू होने पर इस टाइल के आइकन, उसके कंट्रोल और उसकी चमक को रंगता है। उच्च कंट्रास्ट अपने ही रंग रखता है।"
   }
 }

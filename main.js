@@ -10586,6 +10586,22 @@ function entityTileHotkeyMenuItems(entityId, hasHotkey, requestHotkey) {
   return items;
 }
 
+// The first items of a tile's menu: its settings (name, icon, size, colour) and Reorganize mode,
+// which a right-click is where people look for them. Reorganize mode and the pins' edit mode go
+// together, so `reorganizing` offers the way out instead. `requestTileAction(action)` hands the
+// request to the renderer.
+function entityTileEditMenuItems(reorganizing, requestTileAction) {
+  return [
+    {
+      label: mainT('Edit Tile Settings...'),
+      click: () => requestTileAction('edit-settings'),
+    },
+    reorganizing
+      ? { label: mainT('Finish Reorganizing'), click: () => requestTileAction('finish-reorganize') }
+      : { label: mainT('Reorganize Quick Access'), click: () => requestTileAction('reorganize') },
+  ];
+}
+
 ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
   const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
   if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
@@ -10616,7 +10632,16 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
       remove,
     });
   });
+  const editItems = entityTileEditMenuItems(desktopPinEditMode, (action) => {
+    senderWindow.focus();
+    senderWindow.webContents.send('entity-tile-action-requested', {
+      entityId: normalizedEntityId,
+      action,
+    });
+  });
   const menu = Menu.buildFromTemplate([
+    ...editItems,
+    { type: 'separator' },
     ...hotkeyItems,
     ...(hotkeyItems.length ? [{ type: 'separator' }] : []),
     {

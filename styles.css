@@ -259,8 +259,11 @@ html {
   );
   --dash-tile-border: rgba(255, 255, 255, 0.18);
   --dash-tile-border-hover: rgba(255, 255, 255, 0.28);
-  --dash-tile-wash: 24%;
-  --dash-tile-wash-hover: 30%;
+  /* A tile in a colour of its own that is not warm takes the full wash under a warm accent too. */
+  --dash-tile-wash-cool: 24%;
+  --dash-tile-wash-cool-hover: 30%;
+  --dash-tile-wash: var(--dash-tile-wash-cool);
+  --dash-tile-wash-hover: var(--dash-tile-wash-cool-hover);
   /* With an accent near the amber or the red of a tile that needs attention, a lit tile takes about
      half the wash (see the attention rules). */
   --dash-tile-wash-warm: 12%;
@@ -550,8 +553,10 @@ body {
   --dash-tile-bg-hover: rgba(255, 255, 255, 0.96);
   --dash-tile-border: rgba(0, 0, 0, 0.26);
   --dash-tile-border-hover: rgba(0, 0, 0, 0.36);
-  --dash-tile-wash: 18%;
-  --dash-tile-wash-hover: 24%;
+  --dash-tile-wash-cool: 18%;
+  --dash-tile-wash-cool-hover: 24%;
+  --dash-tile-wash: var(--dash-tile-wash-cool);
+  --dash-tile-wash-hover: var(--dash-tile-wash-cool-hover);
   --dash-tile-wash-warm: 9%;
   --dash-tile-wash-warm-hover: 12%;
   --dash-attention-wash: 18%;
@@ -6577,6 +6582,77 @@ body[data-accent-warm]:not(.high-contrast) {
   --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
 }
 
+/* A Quick Access tile with a colour of its own (Tile settings > Tile color). ui-utils solves the
+   colour's accent values for both themes as --tile-* properties on the tile (getTileColorStyle),
+   and here they become the tile's accent, so its lit wash and edge, its icon and the controls in it
+   follow the colour as they follow the window's accent, with the same contrast. The Readable preset
+   keeps its own palette, so it leaves tile colours out. */
+body:not(.high-contrast) #quick-controls .control-item[data-tile-color] {
+  --accent: var(--tile-accent);
+  --accent-rgb: var(--tile-accent-rgb);
+  --accent-hover: var(--tile-accent-hover-dark);
+  --on-accent: var(--tile-on-accent);
+  --accent-text-dark: var(--tile-accent-text-dark);
+  --accent-text-dark-hover: var(--tile-accent-text-dark-hover);
+  --accent-text-light: var(--tile-accent-text-light);
+  --accent-text-light-hover: var(--tile-accent-text-light-hover);
+  --accent-ring-dark: var(--tile-accent-ring-dark);
+  --accent-text: var(--tile-accent-text-dark);
+  --accent-text-hover: var(--tile-accent-text-dark-hover);
+  --accent-bg: rgba(var(--tile-accent-rgb), 0.18);
+  --focus-ring: var(--tile-accent-ring-dark);
+  --glow-accent: 0 0 20px rgba(var(--tile-accent-rgb), 0.35);
+  --glow-focus: 0 0 0 3px rgba(var(--tile-accent-rgb), 0.25);
+  --dash-tile-wash: var(--dash-tile-wash-cool);
+  --dash-tile-wash-hover: var(--dash-tile-wash-cool-hover);
+}
+
+body.theme-light:not(.high-contrast) #quick-controls .control-item[data-tile-color] {
+  --accent-hover: var(--tile-accent-hover-light);
+  --accent-text: var(--tile-accent-text-light);
+  --accent-text-hover: var(--tile-accent-text-light-hover);
+  --accent-bg: rgba(var(--tile-accent-rgb), 0.12);
+  --focus-ring: color-mix(in srgb, var(--tile-accent) 55%, #000);
+  --glow-accent: 0 0 20px rgba(var(--tile-accent-rgb), 0.22);
+  --glow-focus: 0 0 0 3px rgba(var(--tile-accent-rgb), 0.18);
+}
+
+/* A warm tile colour takes the lighter wash a warm accent gives, for the same reason. */
+body:not(.high-contrast) #quick-controls .control-item[data-tile-color-tone='warm'] {
+  --dash-tile-wash: var(--dash-tile-wash-warm);
+  --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
+}
+
+/* The colour is what tells the tile apart, so its icon wears it when the tile is off too. A grey
+   has no hue to show, and a tile that needs attention or is unavailable keeps its own look. */
+body:not(.high-contrast)
+  #quick-controls
+  .control-item[data-tile-color]:not(
+    [data-tile-color-tone='neutral'],
+    [data-attention],
+    [data-unavailable='true']
+  )
+  .control-icon {
+  color: var(--accent-text);
+}
+
+/* Under a grey window accent a lit icon is drawn in the text colour (above); a tile in a colour
+   with a hue keeps that colour, and a tile in a grey of its own gets the text colour whatever the
+   window's accent is. */
+body.active-tile-glow:not(.high-contrast)
+  #quick-controls
+  .control-item[data-tile-color][data-active='true']:not([data-attention])
+  .control-icon {
+  color: var(--accent-text);
+}
+
+body.active-tile-glow:not(.high-contrast)
+  #quick-controls
+  .control-item[data-tile-color-tone='neutral'][data-active='true']:not([data-attention])
+  .control-icon {
+  color: var(--text-primary);
+}
+
 /* Security states that have to catch the eye: an alarm that went off (red), a lock that is jammed
    or a door that is unlocked (amber). They used to be lit like an "on" tile in their own colour,
    and a holiday's orange or red, or the Amber accent, lit an armed alarm or a lamp the same way, so
@@ -10704,6 +10780,122 @@ body {
 /* The last field needs no margin of its own: the body's padding already closes the dialog. */
 .rename-modal .modal-body > .form-group:last-child {
   margin-bottom: 0;
+}
+
+/* Tile color: a row of round swatches (radio buttons underneath, so arrow keys move the choice),
+   the accent's own first, then the colour picker for any other colour. */
+.rename-modal .tile-color-setting {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.rename-modal .tile-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.rename-modal .tile-color-setting .tile-color-option {
+  position: relative;
+  display: inline-flex;
+  margin: 0;
+  cursor: pointer;
+}
+
+.rename-modal .tile-color-option input[type='radio'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.rename-modal .tile-color-swatch {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch, var(--accent));
+  border: 2px solid var(--control-border);
+  box-sizing: border-box;
+  transition: var(--transition-base);
+}
+
+/* The accent's choice is a chip with its name beside the swatch, since the accent may be one of
+   the presets after it and the two would otherwise look the same. */
+.rename-modal .tile-color-setting .tile-color-option-accent {
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-3) 2px 2px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--control-border);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.rename-modal .tile-color-option-accent .tile-color-swatch {
+  width: 22px;
+  height: 22px;
+}
+
+.rename-modal .tile-color-option-accent:has(input:checked) {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.rename-modal .tile-color-option-accent input:checked + .tile-color-swatch {
+  border-color: var(--control-border);
+  box-shadow: none;
+}
+
+.rename-modal .tile-color-option-accent:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.rename-modal .tile-color-option-accent input:focus-visible + .tile-color-swatch {
+  outline: 0;
+}
+
+.rename-modal .tile-color-option:hover .tile-color-swatch {
+  border-color: var(--control-border-hover);
+}
+
+.rename-modal .tile-color-option input:checked + .tile-color-swatch,
+.rename-modal .tile-color-setting input[type='color'][data-selected='true'] {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.rename-modal .tile-color-option input:focus-visible + .tile-color-swatch {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.rename-modal .tile-color-setting input[type='color'] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid var(--control-border);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.rename-modal .tile-color-setting input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.rename-modal .tile-color-setting input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
 }
 
 /* Responsive adjustments */

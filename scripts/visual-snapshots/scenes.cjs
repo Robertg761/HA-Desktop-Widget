@@ -1495,6 +1495,18 @@ async function openDiagnostics(ctx) {
   await ctx.waitForSelector('.diagnostics-report');
 }
 
+// Home with tiles in colours of their own: a warm preset, a cool one, a grey and a custom colour,
+// on lit and idle tiles, beside tiles that keep the window's accent.
+const tileColorsPage = {
+  quickAccessTileOptions: {
+    'light.desk_lamp': { color: '#F43F5E' },
+    'light.shelf_leds': { color: '#10B981' },
+    'sensor.office_temp': { color: '#AB34CD' },
+    'fan.bedroom': { color: '#94A3B8' },
+    'scene.movie_time': { color: '#F59E0B' },
+  },
+};
+
 // A saved custom colour in the summary line and the hex field of the editor under it.
 const customColour = { customColors: [{ id: 'custom-ab34cd', name: '', color: '#AB34CD' }] };
 
@@ -2833,6 +2845,13 @@ const scenes = [
   {
     name: 'dialog-tile-settings-light',
     ui: { theme: 'light' },
+    setup: (ctx) => openTileSettings(ctx),
+  },
+  { name: 'dashboard-tile-colors', config: tileColorsPage },
+  { name: 'dashboard-tile-colors-light', ui: { theme: 'light' }, config: tileColorsPage },
+  {
+    name: 'dialog-tile-settings-color',
+    config: tileColorsPage,
     setup: (ctx) => openTileSettings(ctx),
   },
   {

@@ -2176,6 +2176,37 @@ describe('UI Utilities', () => {
     });
   });
 
+  describe('tile colours', () => {
+    it('solves the accent values of a tile colour for both themes', () => {
+      const style = uiUtils.getTileColorStyle('#5f62ef');
+      expect(style.color).toBe('#5F62EF');
+      expect(style.tone).toBe('cool');
+      expect(style.properties).toMatchObject({
+        '--tile-accent': '#5F62EF',
+        '--tile-accent-rgb': '95, 98, 239',
+        '--tile-on-accent': '#ffffff',
+        '--tile-accent-text-dark': uiUtils.getAccentTextOnDark({ r: 95, g: 98, b: 239 }),
+        '--tile-accent-text-light': uiUtils.getAccentTextOnLight({ r: 95, g: 98, b: 239 }),
+      });
+      // Indigo is too dark to read as text on the dark tiles; the solved text colour is lifted.
+      expect(style.properties['--tile-accent-text-dark']).not.toBe('rgb(95, 98, 239)');
+    });
+
+    it('marks a grey and a red or amber as the stylesheet treats such accents', () => {
+      expect(uiUtils.getTileColorStyle('#94a3b8').tone).toBe('neutral');
+      expect(uiUtils.getTileColorStyle('#f43f5e').tone).toBe('warm');
+      expect(uiUtils.getTileColorStyle('#f59e0b').tone).toBe('warm');
+      expect(uiUtils.getTileColorStyle('#10b981').tone).toBe('cool');
+    });
+
+    it('takes nothing that is not a hex colour', () => {
+      expect(uiUtils.getTileColorStyle('red')).toBeNull();
+      expect(uiUtils.getTileColorStyle('#12345')).toBeNull();
+      expect(uiUtils.getTileColorStyle('#123456; color: red')).toBeNull();
+      expect(uiUtils.getTileColorStyle(null)).toBeNull();
+    });
+  });
+
   describe('accent text colours', () => {
     const luminance = (r, g, b) => {
       const linear = (c) => {

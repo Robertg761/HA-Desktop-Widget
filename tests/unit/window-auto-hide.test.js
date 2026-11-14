@@ -485,6 +485,49 @@ describe('optional hide on focus loss', () => {
     });
   });
 
+  describe('tile menu actions', () => {
+    // The renderer's listener for the tile menu's Edit Tile Settings and Reorganize items.
+    const run = (payload, isPin = false) => {
+      const rendererSource = fs.readFileSync(path.resolve(__dirname, '../../renderer.js'), 'utf8');
+      const start = rendererSource.indexOf('window.electronAPI.onEntityTileActionRequested');
+      const block = rendererSource.slice(start, rendererSource.indexOf('\n});\n', start) + 4);
+      let listener;
+      const context = {
+        IS_DESKTOP_PIN_MODE: isPin,
+        ui: {
+          openTileSettings: jest.fn(),
+          enterReorganizeMode: jest.fn(),
+          exitReorganizeMode: jest.fn(),
+        },
+        window: {
+          electronAPI: { onEntityTileActionRequested: (callback) => (listener = callback) },
+        },
+      };
+      vm.runInNewContext(block, context);
+      listener(payload);
+      return context.ui;
+    };
+
+    test('opens the tile settings, and turns Reorganize mode on and off', () => {
+      expect(
+        run({ entityId: 'light.desk', action: 'edit-settings' }).openTileSettings
+      ).toHaveBeenCalledWith('light.desk');
+      expect(
+        run({ entityId: 'light.desk', action: 'reorganize' }).enterReorganizeMode
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        run({ entityId: 'light.desk', action: 'finish-reorganize' }).exitReorganizeMode
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    test('does nothing in a desktop pin window, or for an action it does not know', () => {
+      const pin = run({ entityId: 'light.desk', action: 'edit-settings' }, true);
+      expect(pin.openTileSettings).not.toHaveBeenCalled();
+      const unknown = run({ entityId: 'light.desk', action: 'delete' });
+      expect(Object.values(unknown).every((fn) => fn.mock.calls.length === 0)).toBe(true);
+    });
+  });
+
   describe('Home Assistant browser authorization', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
     const start = source.indexOf("ipcMain.handle('start-home-assistant-oauth'");
