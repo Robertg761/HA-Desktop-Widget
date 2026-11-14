@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Give a Quick Access tile a color of its own with **Tile color** in its settings: one of the accent presets, a custom color you saved, or any color from the picker. The tile's icon, its controls and its glow when it is on take the color, solved for contrast in both themes as the accent is. High contrast keeps its own colors ([#245](https://github.com/Robertg761/HA-Desktop-Widget/discussions/245)).
+- Open a tile's settings, or start and finish Reorganize mode, from the tile's right-click menu. The Reorganize and add buttons above Quick Access now have names screen readers announce ([#245](https://github.com/Robertg761/HA-Desktop-Widget/discussions/245)).
+
 ## [4.1.0] - 2026-11-02
 
 ### Added

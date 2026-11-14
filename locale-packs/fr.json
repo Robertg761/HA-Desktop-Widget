@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.81",
+  "version": "1.2.82",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2240,6 +2240,12 @@
     "Donate to HA Desktop Widget": "Faire un don à HA Desktop Widget",
     "Donate on GitHub": "Donner sur GitHub",
     "Snap desktop pins into line": "Aligner les éléments épinglés au bureau",
-    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En mode réorganisation, un élément déposé près du bord d'un autre s'aligne sur lui. Désactivez cette option pour placer les éléments librement. Les flèches déplacent l'élément sélectionné de 1 px à la fois (10 px avec Shift) sans jamais l'aligner."
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En mode réorganisation, un élément déposé près du bord d'un autre s'aligne sur lui. Désactivez cette option pour placer les éléments librement. Les flèches déplacent l'élément sélectionné de 1 px à la fois (10 px avec Shift) sans jamais l'aligner.",
+    "Edit Tile Settings...": "Modifier les paramètres de la vignette...",
+    "Finish Reorganizing": "Terminer la réorganisation",
+    "Tile color": "Couleur de la vignette",
+    "Use the accent color": "Utiliser la couleur d'accent",
+    "Pick another color": "Choisir une autre couleur",
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colore l'icône de cette vignette, ses commandes et sa lueur lorsqu'elle est allumée. Le contraste élevé garde ses propres couleurs."
   }
 }

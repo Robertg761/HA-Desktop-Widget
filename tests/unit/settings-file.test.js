@@ -31,7 +31,13 @@ const config = {
   opacity: 0.9,
   frostedGlass: true,
   quickAccessTileOptions: {
-    'sensor.temp': { chartType: 'gauge', gaugeMin: null, gaugeMax: 30, passphrase: 'secret' },
+    'sensor.temp': {
+      chartType: 'gauge',
+      gaugeMin: null,
+      gaugeMax: 30,
+      color: '#F43F5E',
+      passphrase: 'secret',
+    },
   },
   customEntityNames: { 'light.desk': 'Desk' },
   entityAlerts: {
@@ -72,6 +78,12 @@ describe('portable settings files', () => {
     });
     expect(settings.entityAlerts).toEqual(config.entityAlerts);
     expect(settings.ui.customColors).toEqual([{ id: 'custom', name: 'Ocean', color: '#123456' }]);
+    expect(settings.quickAccessTileOptions['sensor.temp']).toEqual({
+      chartType: 'gauge',
+      gaugeMin: null,
+      gaugeMax: 30,
+      color: '#F43F5E',
+    });
     expect(settingsFileSections(settings).visualPersonalization).toEqual({
       opacity: 0.9,
       frostedGlass: true,

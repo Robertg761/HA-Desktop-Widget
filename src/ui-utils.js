@@ -481,6 +481,45 @@ function getAccentHoverColor(rgb, onAccent, isLightTheme) {
   return rgb;
 }
 
+/**
+ * What a Quick Access tile needs to wear its own colour: the accent values applyAccentColor works
+ * out for the window, solved for this colour and for both themes, as `--tile-*` custom properties.
+ * The stylesheet maps them onto the tile's `--accent` family (picking the theme's text and hover
+ * colours, and leaving them out under the Readable preset), so the tile's lit wash, its icon and
+ * the controls inside it take the colour with the same contrast the accent gets.
+ * @param {string} color - A hex colour.
+ * @returns {{color: string, tone: 'neutral'|'warm'|'cool', properties: Object<string, string>}|null}
+ *   Null for anything that is not a hex colour.
+ */
+function getTileColorStyle(color) {
+  const normalizedColor = normalizeHexColor(color);
+  const rgb = hexToRgb(normalizedColor);
+  if (!normalizedColor || !rgb) return null;
+  const onAccent = getReadableTextColor(rgb);
+  const hoverDark = getAccentHoverColor(rgb, onAccent, false);
+  const hoverLight = getAccentHoverColor(rgb, onAccent, true);
+  const chroma = (Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)) / 255;
+  let tone = 'cool';
+  if (chroma < NEUTRAL_ACCENT_CHROMA) tone = 'neutral';
+  else if (isWarmAccent(rgb)) tone = 'warm';
+  return {
+    color: normalizedColor,
+    tone,
+    properties: {
+      '--tile-accent': normalizedColor,
+      '--tile-accent-rgb': `${rgb.r}, ${rgb.g}, ${rgb.b}`,
+      '--tile-on-accent': onAccent,
+      '--tile-accent-hover-dark': rgbString(hoverDark),
+      '--tile-accent-hover-light': rgbString(hoverLight),
+      '--tile-accent-text-dark': getAccentTextOnDark(rgb),
+      '--tile-accent-text-dark-hover': getAccentTextOnDark(rgb, 6.5),
+      '--tile-accent-text-light': getAccentTextOnLight(rgb),
+      '--tile-accent-text-light-hover': getAccentTextOnLight(rgb, 6.5),
+      '--tile-accent-ring-dark': getAccentTextOnDark(rgb, 3.2),
+    },
+  };
+}
+
 function applyAccentColor(color, accentId = 'custom-preview') {
   const normalizedColor = normalizeHexColor(color);
   const rgb = hexToRgb(normalizedColor);
@@ -2687,6 +2726,7 @@ export {
   getAccentTextOnDark,
   getAccentTextOnLight,
   getReadableTextColor,
+  getTileColorStyle,
   miredsToKelvin,
   hasSupportedFeature,
   __forceAnimatedModalTransitions,

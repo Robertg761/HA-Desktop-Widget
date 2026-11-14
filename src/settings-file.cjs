@@ -48,6 +48,7 @@ const SETTINGS_SCHEMA = {
     chartType: 'string',
     gaugeMin: 'number?',
     gaugeMax: 'number?',
+    color: 'string',
   }),
   primaryCards: listOf('string', MAX_PRIMARY_CARDS),
   opacity: 'opacity',

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.81",
+  "version": "1.2.82",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2240,6 +2240,12 @@
     "Donate to HA Desktop Widget": "Donar a HA Desktop Widget",
     "Donate on GitHub": "Donar en GitHub",
     "Snap desktop pins into line": "Alinear los elementos anclados al escritorio",
-    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En el modo de reorganización, un elemento que sueltas cerca del borde de otro se alinea con él. Desactívalo para colocarlos libremente. Las flechas mueven el elemento seleccionado 1 px cada vez (10 px con Shift) y nunca lo alinean."
+    "In Reorganize mode, a pin dropped close to another pin's edge lines up with it. Turn off to place pins freely. The arrow keys move a selected pin 1 px at a time (10 px with Shift) and never snap.": "En el modo de reorganización, un elemento que sueltas cerca del borde de otro se alinea con él. Desactívalo para colocarlos libremente. Las flechas mueven el elemento seleccionado 1 px cada vez (10 px con Shift) y nunca lo alinean.",
+    "Edit Tile Settings...": "Editar los ajustes de la tarjeta...",
+    "Finish Reorganizing": "Terminar de reorganizar",
+    "Tile color": "Color de la tarjeta",
+    "Use the accent color": "Usar el color de acento",
+    "Pick another color": "Elegir otro color",
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colorea el icono de esta tarjeta, sus controles y su brillo cuando está encendida. El alto contraste mantiene sus propios colores."
   }
 }

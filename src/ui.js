@@ -2238,6 +2238,7 @@ function toggleReorganizeMode() {
         setLineIconContent(btn, 'check');
         btn.classList.add('reorganize-active');
         btn.title = t('Save and exit reorganize mode (Esc)');
+        btn.setAttribute('aria-label', t('Save and exit reorganize mode (Esc)'));
       }
 
       // Initialize SortableJS for drag-and-drop
@@ -2287,6 +2288,7 @@ function toggleReorganizeMode() {
         setLineIconContent(btn, 'grip-vertical');
         btn.classList.remove('reorganize-active');
         btn.title = t('Reorganize Quick Access');
+        btn.setAttribute('aria-label', t('Reorganize Quick Access'));
       }
       saveQuickAccessOrder();
       removeRemoveButtons();
@@ -2315,6 +2317,16 @@ function toggleReorganizeMode() {
  */
 function exitReorganizeMode() {
   if (isReorganizeMode) toggleReorganizeMode();
+}
+
+/** Turns Reorganize mode on if it is off: the tile menu's Reorganize item, which never toggles. */
+function enterReorganizeMode() {
+  if (!isReorganizeMode) toggleReorganizeMode();
+}
+
+/** Opens a Quick Access tile's settings, as its pencil in Reorganize mode does: the tile menu. */
+function openTileSettings(entityId) {
+  showRenameModal(entityId);
 }
 
 function addRemoveButtons() {
@@ -2500,6 +2512,7 @@ function showRenameModal(entityId) {
     let currentChartType = getQuickAccessTileChartType(entityId);
     let currentGaugeRange = getQuickAccessTileGaugeRange(entityId);
     let currentTrayEnabled = isEntityInTray(entityId);
+    let currentTileColor = getQuickAccessTileColor(entityId);
     let currentTrayOptions = trayEntitySupport.normalizeTrayEntityOptions(
       state.CONFIG.trayEntities?.[entityId]
     );
@@ -2543,6 +2556,31 @@ function showRenameModal(entityId) {
             <div class="form-help">${utils.escapeHtml(t('Leave a field blank to size that side of the gauge automatically from the sensor unit, attributes, or recent history.'))}</div>
           </div>`
       : '';
+    // The colours on offer are the accent presets and the user's own custom colours, each once.
+    // The tile keeps the hex colour itself, so a custom colour deleted later stays on the tile.
+    const tileColorChoices = [];
+    (uiUtils.getAccentThemes?.() || []).forEach((theme) => {
+      const color = uiUtils.getTileColorStyle(theme.color)?.color;
+      if (color && !tileColorChoices.some((choice) => choice.color === color)) {
+        tileColorChoices.push({ color, name: theme.name });
+      }
+    });
+    const tileColorOptionMarkup = (color, name, { extraClass = '', visibleLabel = '' } = {}) => `
+                <label class="tile-color-option${extraClass}" title="${escapeHtmlAttribute(name)}">
+                  <input type="radio" name="tile-color" value="${escapeHtmlAttribute(color)}"${color === currentTileColor ? ' checked' : ''}${visibleLabel ? ` aria-label="${escapeHtmlAttribute(name)}"` : ''}>
+                  <span class="tile-color-swatch" aria-hidden="true"${color ? ` style="--swatch: ${escapeHtmlAttribute(color)}"` : ''}></span>
+                  ${visibleLabel ? `<span aria-hidden="true">${utils.escapeHtml(visibleLabel)}</span>` : `<span class="sr-only">${utils.escapeHtml(name)}</span>`}
+                </label>`;
+    const tileColorControlMarkup = `
+          <fieldset class="form-group tile-color-setting">
+            <legend class="form-label">${utils.escapeHtml(t('Tile color'))}</legend>
+            <div class="tile-color-swatches">
+              ${tileColorOptionMarkup('', t('Use the accent color'), { extraClass: ' tile-color-option-accent', visibleLabel: t('Accent') })}
+              ${tileColorChoices.map((choice) => tileColorOptionMarkup(choice.color, choice.name)).join('')}
+              <input type="color" id="tile-color-custom" class="tile-color-custom" value="${escapeHtmlAttribute((currentTileColor || tileColorChoices[0]?.color || '#64B5F6').toLowerCase())}" title="${escapeHtmlAttribute(t('Pick another color'))}" aria-label="${escapeHtmlAttribute(t('Pick another color'))}"${currentTileColor && !tileColorChoices.some((choice) => choice.color === currentTileColor) ? ' data-selected="true"' : ''}>
+            </div>
+            <div class="form-help">${utils.escapeHtml(t("Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors."))}</div>
+          </fieldset>`;
     const trayControlMarkup = hasTrayControl
       ? `
           <div class="form-group tile-tray-setting">
@@ -2612,6 +2650,7 @@ function showRenameModal(entityId) {
             <label for="rename-input">${utils.escapeHtml(t('Display name'))}</label>
             <input type="text" id="rename-input" class="form-control" maxlength="64" value="${escapeHtmlAttribute(currentName)}" placeholder="${escapeHtmlAttribute(t('Enter custom name'))}">
           </div>
+          ${tileColorControlMarkup}
           ${valueSizeControlMarkup}
           ${chartControlMarkup}
           ${cameraPreviewControlMarkup}
@@ -2638,6 +2677,33 @@ function showRenameModal(entityId) {
     const trayOptionsGroup = modal.querySelector('#tile-tray-options');
     const trayLabelInput = modal.querySelector('#tile-tray-label');
     const trayColorSelect = modal.querySelector('#tile-tray-color');
+    const tileColorRadios = [...modal.querySelectorAll('input[name="tile-color"]')];
+    const tileColorCustomInput = modal.querySelector('#tile-color-custom');
+    // The colour the form holds: a swatch's, or the picker's once a colour is picked there.
+    let selectedTileColor = currentTileColor;
+    const showSelectedTileColor = (color) => {
+      selectedTileColor = color;
+      let matched = false;
+      tileColorRadios.forEach((radio) => {
+        radio.checked = radio.value === color;
+        if (radio.checked) matched = true;
+      });
+      if (!tileColorCustomInput) return;
+      if (matched) delete tileColorCustomInput.dataset.selected;
+      else {
+        tileColorCustomInput.dataset.selected = 'true';
+        tileColorCustomInput.value = color.toLowerCase();
+      }
+    };
+    tileColorRadios.forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (radio.checked) showSelectedTileColor(radio.value);
+      });
+    });
+    tileColorCustomInput?.addEventListener('input', () => {
+      const color = uiUtils.getTileColorStyle(tileColorCustomInput.value)?.color;
+      if (color) showSelectedTileColor(color);
+    });
     const syncTrayOptionsVisibility = () => {
       if (trayOptionsGroup) trayOptionsGroup.hidden = !trayCheckbox?.checked;
     };
@@ -2689,6 +2755,8 @@ function showRenameModal(entityId) {
       // A save that fails puts the form back for another try, with the keyboard where it was.
       reenableTileSettings = uiUtils.disableControlsKeepingFocus([
         input,
+        ...tileColorRadios,
+        tileColorCustomInput,
         valueSizeSelect,
         cameraPreviewRefreshSelect,
         chartTypeSelect,
@@ -2713,6 +2781,7 @@ function showRenameModal(entityId) {
       const authoritativeChartType = getQuickAccessTileChartType(entityId);
       const authoritativeGaugeRange = getQuickAccessTileGaugeRange(entityId);
       const authoritativeTrayEnabled = isEntityInTray(entityId);
+      const authoritativeTileColor = getQuickAccessTileColor(entityId);
       const authoritativeTrayOptions = trayEntitySupport.normalizeTrayEntityOptions(
         state.CONFIG.trayEntities?.[entityId]
       );
@@ -2722,6 +2791,7 @@ function showRenameModal(entityId) {
         authoritativeCameraRefresh !== currentCameraPreviewRefresh ||
         authoritativeChartType !== currentChartType ||
         !gaugeRangesEqual(authoritativeGaugeRange, currentGaugeRange) ||
+        authoritativeTileColor !== currentTileColor ||
         authoritativeTrayEnabled !== currentTrayEnabled ||
         JSON.stringify(authoritativeTrayOptions) !== JSON.stringify(currentTrayOptions);
 
@@ -2743,6 +2813,7 @@ function showRenameModal(entityId) {
           gaugeMaxInput.value =
             authoritativeGaugeRange.max === null ? '' : String(authoritativeGaugeRange.max);
         }
+        showSelectedTileColor(authoritativeTileColor);
         if (trayCheckbox) trayCheckbox.checked = authoritativeTrayEnabled;
         if (trayLabelInput) trayLabelInput.value = authoritativeTrayOptions.label || '';
         if (trayColorSelect) trayColorSelect.value = authoritativeTrayOptions.color || 'auto';
@@ -2753,6 +2824,7 @@ function showRenameModal(entityId) {
         currentCameraPreviewRefresh = authoritativeCameraRefresh;
         currentChartType = authoritativeChartType;
         currentGaugeRange = authoritativeGaugeRange;
+        currentTileColor = authoritativeTileColor;
         currentTrayEnabled = authoritativeTrayEnabled;
         currentTrayOptions = authoritativeTrayOptions;
       }
@@ -2780,6 +2852,11 @@ function showRenameModal(entityId) {
           nextConfig.customEntityNames[entityId] = newName;
           changed = true;
           renamed = true;
+        }
+
+        if (selectedTileColor !== currentTileColor) {
+          setQuickAccessTileColor(entityId, selectedTileColor, nextConfig);
+          changed = true;
         }
 
         const nextValueSize = hasValueSizeControl
@@ -2893,6 +2970,10 @@ function showRenameModal(entityId) {
         }
 
         const tileOptionsForReset = nextConfig.quickAccessTileOptions?.[entityId];
+        if (tileOptionsForReset?.color !== undefined) {
+          setQuickAccessTileColor(entityId, '', nextConfig);
+          changed = true;
+        }
         if (tileOptionsForReset?.chartType !== undefined) {
           setQuickAccessTileChartType(entityId, 'line', nextConfig);
           changed = true;
@@ -5755,6 +5836,53 @@ function setQuickAccessCameraPreviewRefresh(entityId, refreshValue, targetConfig
     cameraPreviewRefresh: normalized,
   };
   return normalized;
+}
+
+/**
+ * A tile's own colour from Tile settings, as an uppercase hex colour, or '' when it follows the
+ * window's accent.
+ */
+function getQuickAccessTileColor(entityId) {
+  const color = getQuickAccessTileOptions(entityId).color;
+  if (!color) return '';
+  return uiUtils.getTileColorStyle(color)?.color || '';
+}
+
+function setQuickAccessTileColor(entityId, color, targetConfig = state.CONFIG) {
+  const normalized = color ? uiUtils.getTileColorStyle(color)?.color || '' : '';
+  const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
+  if (!normalized) {
+    if (tileOptions[entityId]) {
+      delete tileOptions[entityId].color;
+      pruneQuickAccessTileOptionEntry(tileOptions, entityId);
+    }
+    return '';
+  }
+  tileOptions[entityId] = { ...(tileOptions[entityId] || {}), color: normalized };
+  return normalized;
+}
+
+/**
+ * Dresses a Quick Access tile in its own colour, or takes the colour off. The tile carries the
+ * colour's accent values as `--tile-*` properties and the stylesheet hands them to the tile's
+ * accent, so its lit wash, icon and controls follow the colour; `data-tile-color-tone` marks a grey
+ * or a warm colour, which the stylesheet treats as it treats such an accent.
+ */
+function applyQuickAccessTileColor(div, entityId, enabled = true) {
+  const color = enabled ? getQuickAccessTileOptions(entityId).color : '';
+  const style = color ? uiUtils.getTileColorStyle(color) : null;
+  if (div.dataset.tileColor) {
+    const previous = uiUtils.getTileColorStyle(div.dataset.tileColor);
+    Object.keys(previous?.properties || {}).forEach((name) => div.style.removeProperty(name));
+  }
+  if (!style) {
+    delete div.dataset.tileColor;
+    delete div.dataset.tileColorTone;
+    return;
+  }
+  Object.entries(style.properties).forEach(([name, value]) => div.style.setProperty(name, value));
+  div.dataset.tileColor = style.color;
+  div.dataset.tileColorTone = style.tone;
 }
 
 function pruneQuickAccessTileOptionEntry(tileOptions, entityId) {
@@ -10374,6 +10502,7 @@ function createControlElement(entity, options = {}) {
     if (isQuickAccessContext && isQuickAccessTileValueSizeApplicable(entity)) {
       div.dataset.valueSize = getQuickAccessTileValueSize(entity.entity_id);
     }
+    if (isQuickAccessContext) applyQuickAccessTileColor(div, entity.entity_id);
     div.addEventListener('contextmenu', (event) => {
       if (div.dataset.desktopPin === 'true') return;
       event.preventDefault();
@@ -11063,6 +11192,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (!div || !displayEntity?.entity_id || div.dataset.desktopPin === 'true') return false;
 
   applyQuickAccessTileActiveState(div, displayEntity);
+  applyQuickAccessTileColor(div, displayEntity.entity_id, isQuickAccessContext);
 
   if (displayEntity.entity_id.startsWith('media_player.')) {
     return updateExistingMediaPlayerControl(div, displayEntity);
@@ -16830,7 +16960,9 @@ export {
   updateDateDisplays,
   renderPrimaryCards,
   toggleReorganizeMode,
+  enterReorganizeMode,
   exitReorganizeMode,
+  openTileSettings,
   populateQuickControlsList,
   addComparisonGraphTile,
   isEntityVisible,

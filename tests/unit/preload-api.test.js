@@ -218,6 +218,7 @@ describe('preload Electron API', () => {
       ['onDesktopPinActionRequested', 'desktop-pin-action-requested'],
       ['onDesktopPinEditModeEnded', 'desktop-pin-edit-mode-ended'],
       ['onEntityTileHotkeyRequested', 'entity-tile-hotkey-requested'],
+      ['onEntityTileActionRequested', 'entity-tile-action-requested'],
       ['onDesktopCompanionStateChanged', 'desktop-companion-state-changed'],
       ['onLocalePacksUpdated', 'locale-packs-updated'],
     ];

@@ -57,6 +57,8 @@ jest.mock('../../src/ui-utils.js', () => {
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     isFrostedGlassAvailable: jest.fn(() => true),
+    getAccentThemes: jest.requireActual('../../src/ui-utils.js').getAccentThemes,
+    getTileColorStyle: jest.requireActual('../../src/ui-utils.js').getTileColorStyle,
     hexToRgb: jest.fn((hex) => {
       if (!hex || typeof hex !== 'string') return null;
       const normalized = hex.replace('#', '').trim();
@@ -4679,6 +4681,162 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(
         [...modal.querySelectorAll('.modal-footer button')].map((button) => button.id)
       ).toEqual(['reset-rename-btn', 'cancel-rename-btn', 'save-rename-btn']);
+    });
+
+    describe('tile color', () => {
+      const officeTile = () =>
+        document.querySelector('.control-item[data-entity-id="sensor.office_temperature"]');
+      const pickSwatch = (modal, color) => {
+        const radio = modal.querySelector(`input[name="tile-color"][value="${color}"]`);
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change'));
+      };
+      const save = async (modal) => {
+        modal.querySelector('#save-rename-btn').click();
+        await Promise.resolve();
+        await Promise.resolve();
+      };
+
+      it('starts on the accent swatch, then the presets, each named for screen readers', () => {
+        const modal = seedOfficeTemperatureTile();
+        const radios = [...modal.querySelectorAll('input[name="tile-color"]')];
+
+        expect(radios[0].value).toBe('');
+        expect(radios[0].checked).toBe(true);
+        expect(radios.map((radio) => radio.value)).toContain('#F43F5E');
+        const rose = modal.querySelector('input[name="tile-color"][value="#F43F5E"]');
+        expect(rose.closest('label').textContent.trim()).toBe('Rose');
+        expect(modal.querySelector('#tile-color-custom').getAttribute('aria-label')).toBe(
+          'Pick another color'
+        );
+      });
+
+      it('saves a swatch as the tile color and dresses the tile in it', async () => {
+        const modal = seedOfficeTemperatureTile();
+        pickSwatch(modal, '#F43F5E');
+        await save(modal);
+
+        expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature']).toEqual({
+          color: '#F43F5E',
+        });
+        expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            quickAccessTileOptions: { 'sensor.office_temperature': { color: '#F43F5E' } },
+          })
+        );
+        const tile = officeTile();
+        expect(tile.dataset.tileColor).toBe('#F43F5E');
+        expect(tile.dataset.tileColorTone).toBe('warm');
+        expect(tile.style.getPropertyValue('--tile-accent')).toBe('#F43F5E');
+        expect(tile.style.getPropertyValue('--tile-accent-rgb')).toBe('244, 63, 94');
+      });
+
+      it('takes any color from the picker, and opens on it next time', async () => {
+        let modal = seedOfficeTemperatureTile();
+        const picker = modal.querySelector('#tile-color-custom');
+        picker.value = '#123abc';
+        picker.dispatchEvent(new Event('input'));
+
+        expect([...modal.querySelectorAll('input[name="tile-color"]')].some((r) => r.checked)).toBe(
+          false
+        );
+        expect(picker.dataset.selected).toBe('true');
+        await save(modal);
+
+        expect(state.CONFIG.quickAccessTileOptions['sensor.office_temperature'].color).toBe(
+          '#123ABC'
+        );
+        expect(officeTile().dataset.tileColorTone).toBe('cool');
+
+        officeTile().querySelector('.rename-btn').click();
+        modal = document.querySelector('.rename-modal');
+        expect(modal.querySelector('#tile-color-custom').value).toBe('#123abc');
+        expect(modal.querySelector('#tile-color-custom').dataset.selected).toBe('true');
+      });
+
+      it('goes back to the accent with the accent swatch, and leaves no colour behind', async () => {
+        let modal = seedOfficeTemperatureTile();
+        pickSwatch(modal, '#94A3B8');
+        await save(modal);
+        expect(officeTile().dataset.tileColorTone).toBe('neutral');
+
+        officeTile().querySelector('.rename-btn').click();
+        modal = document.querySelector('.rename-modal');
+        expect(modal.querySelector('input[name="tile-color"][value="#94A3B8"]').checked).toBe(true);
+        pickSwatch(modal, '');
+        await save(modal);
+
+        expect(state.CONFIG.quickAccessTileOptions).toEqual({});
+        const tile = officeTile();
+        expect(tile.dataset.tileColor).toBeUndefined();
+        expect(tile.dataset.tileColorTone).toBeUndefined();
+        expect(tile.style.getPropertyValue('--tile-accent')).toBe('');
+      });
+
+      it('is cleared by Reset to default', async () => {
+        let modal = seedOfficeTemperatureTile();
+        pickSwatch(modal, '#10B981');
+        await save(modal);
+
+        officeTile().querySelector('.rename-btn').click();
+        modal = document.querySelector('.rename-modal');
+        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        modal.querySelector('#reset-rename-btn').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await Promise.resolve();
+
+        expect(state.CONFIG.quickAccessTileOptions).toEqual({});
+        expect(officeTile().dataset.tileColor).toBeUndefined();
+      });
+
+      it('ignores a saved colour that is not a hex colour', () => {
+        const config = state.CONFIG;
+        config.favoriteEntities = ['sensor.office_temperature'];
+        config.quickAccessTileOptions = { 'sensor.office_temperature': { color: 'red; x: y' } };
+        state.setConfig(config);
+        state.setStates({
+          'sensor.office_temperature': {
+            entity_id: 'sensor.office_temperature',
+            state: '21',
+            attributes: { friendly_name: 'Office Temperature', unit_of_measurement: '°C' },
+          },
+        });
+        ui.renderActiveTab();
+
+        expect(officeTile().dataset.tileColor).toBeUndefined();
+        expect(officeTile().getAttribute('style') || '').not.toContain('--tile-');
+      });
+    });
+
+    it('opens from the tile menu, and the menu turns Reorganize mode on without toggling it', () => {
+      const config = state.CONFIG;
+      config.favoriteEntities = ['sensor.office_temperature'];
+      state.setConfig(config);
+      state.setStates({
+        'sensor.office_temperature': {
+          entity_id: 'sensor.office_temperature',
+          state: '21',
+          attributes: { friendly_name: 'Office Temperature', unit_of_measurement: '°C' },
+        },
+      });
+      ui.renderActiveTab();
+      const editMode = () =>
+        document.getElementById('quick-controls').classList.contains('reorganize-mode');
+
+      ui.openTileSettings('sensor.office_temperature');
+      expect(document.querySelector('.rename-modal #rename-input').value).toBe(
+        'Office Temperature'
+      );
+
+      ui.enterReorganizeMode();
+      expect(editMode()).toBe(true);
+      ui.enterReorganizeMode();
+      expect(editMode()).toBe(true);
+      const button = document.getElementById('reorganize-quick-controls-btn');
+      expect(button.getAttribute('aria-label')).toBe('Save and exit reorganize mode (Esc)');
+      ui.exitReorganizeMode();
+      expect(editMode()).toBe(false);
+      expect(button.getAttribute('aria-label')).toBe('Reorganize Quick Access');
     });
 
     it('switches a sensor tile to a gauge with a custom range from the settings modal', async () => {
