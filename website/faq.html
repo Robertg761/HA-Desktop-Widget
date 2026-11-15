@@ -40,8 +40,18 @@
         <a href="/#features">Features</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion">Companion</a>
+        <a href="/faq" aria-current="page">FAQ</a>
       </nav>
       <div class="nav-actions">
+        <details class="nav-menu">
+          <summary class="nav-icon" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-menu"/></svg></summary>
+          <nav class="nav-menu-panel" aria-label="Menu">
+            <a href="/#features">Features</a>
+            <a href="/#screenshots">Screenshots</a>
+            <a href="/companion">Companion</a>
+            <a href="/faq" aria-current="page">FAQ</a>
+          </nav>
+        </details>
         <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
         </a>
@@ -57,8 +67,27 @@
     <h1>Frequently asked questions</h1>
     <p>HA Desktop Widget is a free, open-source Home Assistant desktop app for Windows, macOS and Linux. It puts your lights, cameras, climate, media and sensors in a small frosted-glass panel on your desktop, so you can control your home without opening a browser tab.</p>
 
+    <nav class="faq-index" aria-label="Questions">
+      <ol>
+      <li><a href="#free">Is HA Desktop Widget free?</a></li>
+      <li><a href="#platforms">Which computers does it run on?</a></li>
+      <li><a href="#official">Is this the official Home Assistant app?</a></li>
+      <li><a href="#sign-in">How does it sign in to Home Assistant? Does it see my password?</a></li>
+      <li><a href="#remote">Does it work away from home?</a></li>
+      <li><a href="#devices">What can I control with it?</a></li>
+      <li><a href="#automations">Can Home Assistant automations control the widget?</a></li>
+      <li><a href="#sync">Can I use the same layout on more than one computer?</a></li>
+      <li><a href="#privacy">Does it collect any data?</a></li>
+      <li><a href="#updates">How does it update?</a></li>
+      <li><a href="#macos-blocked">macOS says it cannot verify the developer. What do I do?</a></li>
+      <li><a href="#linux-appimage">The AppImage closes without opening a window on Ubuntu.</a></li>
+      <li><a href="#languages">Which languages does it support?</a></li>
+      <li><a href="#help">Something else?</a></li>
+      </ol>
+    </nav>
+
     <h2 id="free">Is HA Desktop Widget free?</h2>
-    <p>Yes. The app is free and open source under the MIT license, and it needs no account. Free folder Profile Sync is built in. Cloud Sync is an optional paid service for syncing settings without a sync folder; its price is in the <a href="/terms">subscription terms</a>.</p>
+    <p>Yes. The app is free and open source under the MIT license, and it needs no account. Free folder Profile Sync is built in. Cloud Sync is an optional service for syncing settings without a sync folder: USD 24 a year after a 14-day free trial, as the <a href="/terms">subscription terms</a> set out.</p>
 
     <h2 id="platforms">Which computers does it run on?</h2>
     <ul>
@@ -127,5 +156,7 @@
     </div>
     <p class="fine-print">MIT licensed, with <a href="/licenses.txt">third-party font and icon licenses</a>. HA Desktop Widget is an independent project and is not affiliated with or endorsed by Home Assistant or the Open Home Foundation.</p>
   </footer>
+
+  <script type="module" src="/site.js"></script>
 </body>
 </html>

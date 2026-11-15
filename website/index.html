@@ -78,8 +78,18 @@
         <a href="/#features">Features</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion">Companion</a>
+        <a href="/faq">FAQ</a>
       </nav>
       <div class="nav-actions">
+        <details class="nav-menu">
+          <summary class="nav-icon" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-menu"/></svg></summary>
+          <nav class="nav-menu-panel" aria-label="Menu">
+            <a href="/#features">Features</a>
+            <a href="/#screenshots">Screenshots</a>
+            <a href="/companion">Companion</a>
+            <a href="/faq">FAQ</a>
+          </nav>
+        </details>
         <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
         </a>
@@ -106,14 +116,16 @@
         <a class="btn btn-quiet" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
           Star on GitHub
+          <span class="btn-count" data-stars hidden></span>
         </a>
       </div>
       <ul class="facts" aria-label="At a glance">
         <li>No account for core features</li>
         <li>No telemetry by default</li>
         <li>MIT licensed</li>
-        <li>Automatic updates for Windows installer and Linux AppImage</li>
+        <li>Windows, macOS and Linux</li>
       </ul>
+      <p class="proof" id="proof"></p>
 
       <!-- The live demo: a desktop wallpaper with the widget sitting on it. -->
       <div class="stage-wrap">
@@ -248,23 +260,27 @@
             <p>Put up to seven sensors on one 24-hour chart and compare them at a glance.</p>
           </div>
           <div class="chart" aria-hidden="true">
-            <svg viewBox="0 0 400 150" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="g-area" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0" stop-color="var(--accent)" stop-opacity=".2"/>
-                  <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
-                </linearGradient>
-              </defs>
-              <g class="chart-grid"><path d="M0 37.5H400M0 75H400M0 112.5H400"/></g>
-              <path class="chart-area" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54 V150 H0Z"/>
-              <path class="chart-line l1" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54"/>
-              <path class="chart-line l2" d="M0 96 C50 92 80 84 120 88 S190 104 240 98 S320 76 360 80 S395 88 400 86"/>
-              <path class="chart-line l3" d="M0 124 C40 128 90 120 140 116 S210 124 260 118 S330 102 370 106 S396 112 400 110"/>
-              <path class="chart-cross" d="M300 0V150"/>
-              <circle class="chart-dot d1" cx="300" cy="42" r="4"/>
-              <circle class="chart-dot d2" cx="300" cy="81" r="4"/>
-              <circle class="chart-dot d3" cx="300" cy="106" r="4"/>
-            </svg>
+            <div class="chart-plot">
+              <svg viewBox="0 0 400 150" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="g-area" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" stop-color="var(--accent)" stop-opacity=".2"/>
+                    <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <g class="chart-grid"><path d="M0 37.5H400M0 75H400M0 112.5H400"/></g>
+                <path class="chart-area" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54 V150 H0Z"/>
+                <path class="chart-line l1" d="M0 70 C40 64 70 52 110 56 S180 80 220 72 S300 38 340 44 S390 58 400 54"/>
+                <path class="chart-line l2" d="M0 96 C50 92 80 84 120 88 S190 104 240 98 S320 76 360 80 S395 88 400 86"/>
+                <path class="chart-line l3" d="M0 124 C40 128 90 120 140 116 S210 124 260 118 S330 102 370 106 S396 112 400 110"/>
+                <path class="chart-cross" d="M300 0V150"/>
+              </svg>
+              <!-- The SVG stretches to fit the tile, which would stretch a circle too, so the dots are
+                   drawn over it at the same points (x 300 of 400, y 42, 81 and 106 of 150). -->
+              <span class="chart-dot d1"></span>
+              <span class="chart-dot d2"></span>
+              <span class="chart-dot d3"></span>
+            </div>
             <div class="chart-legend">
               <span class="lg lg1">Office 21.8°</span>
               <span class="lg lg2">Bedroom 19.6°</span>
@@ -275,52 +291,57 @@
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-command"/></svg></span>
-          <h3>Global hotkeys</h3>
-          <p>Control devices from any app. In the widget, press Ctrl+K to search devices, pages and actions.</p>
-          <div class="keys" aria-hidden="true"><kbd>Ctrl</kbd><span>+</span><kbd>K</kbd></div>
+          <h3>Search everything</h3>
+          <p>Press <kbd class="kbd-inline" data-mod-key>Ctrl</kbd>+<kbd class="kbd-inline">K</kbd> to find any device, page or action. Global hotkeys control devices from any app.</p>
+          <img class="tile-shot" src="/assets/app/feat-palette.webp" alt="The search box with Movie night and Run Movie night found for “movie”" width="720" height="216" loading="lazy">
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-grid"/></svg></span>
           <h3>Quick Access</h3>
-          <p>Your favorite devices in a grid. Click to toggle, hold for more.</p>
+          <p>Your devices in pages of tiles. Click to toggle, hold for more.</p>
+          <img class="tile-shot" src="/assets/app/feat-quick-access.webp" alt="Tiles for the living room light, kitchen, thermostat, front door, garage and a scene" width="720" height="384" loading="lazy">
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-pin"/></svg></span>
           <h3>Desktop pins</h3>
-          <p>Drop any tile onto your desktop as its own little window. On Omarchy, add your tiles to the bar too.</p>
-          <div class="presets" aria-hidden="true"><span>25%</span><span>50%</span><span class="on">75%</span><span>100%</span></div>
+          <p>Drop any tile onto your desktop as its own little window. On Omarchy, add tiles to the bar too.</p>
+          <img class="tile-shot" src="/assets/app/feat-pins.webp" alt="A light, a thermostat and a lock pinned to the desktop as small windows" width="720" height="317" loading="lazy">
         </article>
 
         <article class="tile reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-video"/></svg></span>
           <h3>Live cameras</h3>
-          <p>Watch live feeds or refreshing snapshots right in the widget.</p>
+          <p>Watch a live feed or refreshing snapshots without leaving the widget.</p>
+          <img class="tile-shot" src="/assets/app/feat-camera.webp" alt="The porch camera streaming live in the widget" width="720" height="579" loading="lazy">
         </article>
 
-        <article class="tile t-half reveal">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-palette"/></svg></span>
-          <h3>Light, dark and seasonal</h3>
-          <p>Choose Auto, Dark or Light and an accent color. Seasonal themes bring cobwebs and jack-o'-lanterns in October, snow and Santa's sleigh in December, and art for other holidays. Turn any of them off in Settings.</p>
+        <article class="tile t-wide reveal">
+          <div class="tile-text">
+            <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-palette"/></svg></span>
+            <h3>Light, dark and seasonal</h3>
+            <p>Pick Auto, Dark or Light and any accent color. Holidays bring their own art, from jack-o'-lanterns to Santa's sleigh, and you can turn it off.</p>
+          </div>
+          <img class="tile-shot" src="/assets/app/feat-themes.webp" alt="The same window in the light theme, the dark theme and the Halloween theme" width="720" height="338" loading="lazy">
+        </article>
+
+        <article class="tile reveal">
+          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-lock"/></svg></span>
+          <h3>It never sees your password</h3>
+          <p>You sign in on Home Assistant's own page, and the login is kept in your OS keychain.</p>
         </article>
 
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-bell"/></svg></span>
           <h3>Desktop alerts</h3>
-          <p>Get a notification when a door stays open, a reading crosses a threshold, or a device goes offline. Home Assistant's own notifications show up too, and wait in the bell until you dismiss them.</p>
-        </article>
-
-        <article class="tile t-half reveal">
-          <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-lock"/></svg></span>
-          <h3>It never sees your password</h3>
-          <p>You sign in on Home Assistant's own page, and your login is stored in your OS keychain when one is available.</p>
+          <p>Know when a door stays open, a reading crosses a line or a device drops off. Home Assistant's own notifications wait in the bell.</p>
         </article>
 
         <article class="tile t-half reveal">
           <span class="tile-icon"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-sync"/></svg></span>
-          <h3>Profile sync, opt-in</h3>
-          <p>Keep your layout and theme in sync through a folder you already sync. Edits merge section by section, with a backup when both computers change the same section. Optional passphrase encryption protects the file; tokens, desktop pins, window positions and hotkeys stay local.</p>
+          <h3>Same layout everywhere</h3>
+          <p>Sync your pages and theme to your other computers, free through a folder or with <a href="#cloud-sync">Cloud Sync</a>.</p>
         </article>
       </div>
     </section>
@@ -328,19 +349,34 @@
     <section id="screenshots" class="section">
       <header class="section-head reveal">
         <h2>The real thing.</h2>
+        <p class="section-sub">Every picture here is the app itself, captured from a real window.</p>
       </header>
-      <div class="shots">
-        <figure class="shot reveal">
-          <div class="shot-frame"><picture><source srcset="/assets/Main_View.webp" type="image/webp"><img src="/assets/Main_View.png" alt="Main view with weather, clock, media controls and Quick Access tiles" loading="lazy" width="500" height="760"></picture></div>
-          <figcaption><strong>Main view</strong>Weather, time, media and your devices.</figcaption>
+      <div class="gallery">
+        <figure class="shot shot-video reveal">
+          <div class="shot-frame">
+            <video id="demo-video" src="/assets/app/demo-loop.mp4" poster="/assets/app/demo-loop-poster.webp" width="760" height="978" muted loop playsinline preload="none" aria-label="The app toggling lights, switching pages and running a scene from Ctrl+K search"></video>
+            <button class="video-toggle" id="video-toggle" type="button" aria-label="Play video" hidden>
+              <svg class="ico ico-play" aria-hidden="true"><use href="/assets/icons.svg#i-play"/></svg>
+              <svg class="ico ico-pause" aria-hidden="true"><use href="/assets/icons.svg#i-pause"/></svg>
+            </button>
+          </div>
+          <figcaption><strong>In use</strong>Toggle lights, switch pages, run a scene from search.</figcaption>
         </figure>
         <figure class="shot reveal">
-          <div class="shot-frame"><picture><source srcset="/assets/Light_Adjust.webp" type="image/webp"><img src="/assets/Light_Adjust.png" alt="Brightness controls for a desk lamp with presets" loading="lazy" width="500" height="760"></picture></div>
-          <figcaption><strong>Light controls</strong>Brightness with one-click presets.</figcaption>
+          <a class="shot-frame" href="/assets/app/shot-camera-tile.webp"><img src="/assets/app/shot-camera-tile.webp" alt="A Security page with the porch camera preview, alarm, locks and lights" loading="lazy" width="760" height="979"></a>
+          <figcaption><strong>Cameras</strong>Live previews right on the tile.</figcaption>
         </figure>
         <figure class="shot reveal">
-          <div class="shot-frame"><picture><source srcset="/assets/Settings_Appearance.webp" type="image/webp"><img src="/assets/Settings_Appearance.png" alt="Appearance settings with theme mode and accent colors" loading="lazy" width="500" height="760"></picture></div>
-          <figcaption><strong>Settings</strong>Themes, colors and glass, your way.</figcaption>
+          <a class="shot-frame" href="/assets/app/shot-graph.webp"><img src="/assets/app/shot-graph.webp" alt="A Climate page with a 24-hour graph of three temperature sensors" loading="lazy" width="760" height="979"></a>
+          <figcaption><strong>Graphs</strong>Sensors side by side over 24 hours.</figcaption>
+        </figure>
+        <figure class="shot reveal">
+          <a class="shot-frame" href="/assets/app/shot-main-light.webp"><img src="/assets/app/shot-main-light.webp" alt="The main window in the light theme" loading="lazy" width="760" height="979"></a>
+          <figcaption><strong>Light theme</strong>Or Auto, to follow your system.</figcaption>
+        </figure>
+        <figure class="shot reveal">
+          <a class="shot-frame" href="/assets/app/shot-full-halloween.webp"><img src="/assets/app/shot-full-halloween.webp" alt="The main window decorated for Halloween with cobwebs and jack-o'-lanterns" loading="lazy" width="760" height="979"></a>
+          <figcaption><strong>Seasonal</strong>Halloween, Christmas and more.</figcaption>
         </figure>
       </div>
     </section>
@@ -369,13 +405,33 @@
       <p class="fine reveal">Want automations to control it? Try the <a href="/companion">companion integration</a>.</p>
     </section>
 
-    <section class="section cloud-sync-info" id="cloud-sync">
-      <div class="section-head reveal">
-        <h2>Sync without a sync folder</h2>
-        <p class="section-sub">Free folder Profile Sync is built into the desktop app. Cloud Sync is an optional paid service that does the same job without Dropbox, OneDrive or another sync app.</p>
+    <section class="section" id="cloud-sync">
+      <header class="section-head reveal">
+        <h2>Your layout on every computer.</h2>
+        <p class="section-sub">Sync your pages, tiles and theme between computers. Edits merge section by section, with a backup when two computers change the same thing. Sign-in tokens, desktop pins, window positions and hotkeys stay on each computer.</p>
+      </header>
+      <div class="plans">
+        <article class="plan reveal">
+          <h3>Folder sync</h3>
+          <p class="plan-price">Free</p>
+          <ul class="plan-list">
+            <li>Uses a folder you already sync, such as Dropbox or OneDrive</li>
+            <li>No account</li>
+            <li>Optional passphrase encryption</li>
+          </ul>
+        </article>
+        <article class="plan plan-cloud reveal">
+          <h3>Cloud Sync</h3>
+          <p class="plan-price">USD 24 <span>a year</span></p>
+          <ul class="plan-list">
+            <li>No sync app needed</li>
+            <li>Sign in with Google or GitHub</li>
+            <li>With encryption on, the service can't read your settings</li>
+            <li>14-day free trial, no card needed</li>
+          </ul>
+          <p class="plan-foot">Choose HA Desktop Widget Cloud as the sync app in Settings. <a href="/terms">Terms</a> and <a href="/privacy">privacy policy</a>.</p>
+        </article>
       </div>
-      <p class="reveal">Choose HA Desktop Widget Cloud as the sync app in Settings and sign in with Google or GitHub on each computer. It merges, backs up and encrypts your settings the same way folder sync does, and with encryption on the service cannot read your synced settings. New accounts start with a free trial.</p>
-      <p class="reveal">Read the <a href="/privacy">privacy policy</a> and the <a href="/terms">subscription terms</a>, which give the price. Folder Profile Sync stays free and needs no account.</p>
     </section>
 
     <section class="section closing reveal">
