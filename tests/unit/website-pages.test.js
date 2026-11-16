@@ -28,6 +28,7 @@ describe('the website pages', () => {
     expect(policy).toContain("script-src 'self'");
     expect(policy).toContain("style-src 'self'");
     expect(policy).toContain("connect-src 'self' https://api.github.com");
+    expect(policy).toContain("media-src 'self'");
     expect(policy).toContain("frame-ancestors 'none'");
     expect(policy).not.toContain('unsafe-inline');
     expect(headerValue('X-Content-Type-Options')).toBe('nosniff');
@@ -136,13 +137,14 @@ describe('the legal pages', () => {
     expect(html.index).not.toMatch(/the draft <a href="\/(privacy|terms)"/);
   });
 
-  it('keeps the subscription price and trial off the home page', () => {
-    // The structured data names the app's own price, free, in USD; the rule is about what the page shows.
-    const shown = html.index.replace(
-      /<script type="application\/ld\+json">[\s\S]*?<\/script>/g,
-      ''
-    );
-    expect(shown).not.toMatch(/USD|14 day|per year|\/year/);
+  // The price was kept off the home page while it was only proposed. Now the service is live, the
+  // home page names it, so the one rule is that it says what the terms say.
+  it('names the same Cloud Sync price and trial on the home page as the terms', () => {
+    const [, price] = html.terms.match(/subscription is USD (\d+) per year/) || [];
+    expect(price).toBeTruthy();
+    expect(html.index).toContain(`USD ${price} <span>a year</span>`);
+    expect(html.terms).toMatch(/for 14 days without a subscription or payment card/);
+    expect(html.index).toContain('14-day free trial, no card needed');
   });
 
   it('describes the requests the app and the site make, which the old page left out', () => {
@@ -240,15 +242,28 @@ describe('the website images', () => {
     }
   );
 
-  it('offers a WebP copy of every screenshot, with the PNG as the fallback', () => {
-    const shots = [...html.index.matchAll(/<img src="\/assets\/([\w-]+)\.png"[^>]*height="760">/g)];
-    expect(shots.length).toBeGreaterThanOrEqual(3);
-    for (const [tag, name] of shots) {
-      expect(html.index).toContain(
-        `<picture><source srcset="/assets/${name}.webp" type="image/webp">${tag}</picture>`
-      );
-      expect(fs.existsSync(path.join(site, `assets/${name}.webp`))).toBe(true);
+  // The screenshots are WebP, which every browser that runs on a system the app supports shows
+  // (Safari has since macOS 11; the app needs macOS 13). The no-script hero keeps a PNG fallback.
+  it('shows screenshots that exist, as WebP, and keeps the PNG fallback for the no-script hero', () => {
+    const media = [...html.index.matchAll(/(?:src|poster|href)="\/assets\/app\/([\w.-]+)"/g)].map(
+      (m) => m[1]
+    );
+    expect(media.length).toBeGreaterThanOrEqual(10);
+    for (const name of media) {
+      expect(name).toMatch(/\.(webp|mp4)$/);
+      expect(fs.existsSync(path.join(site, 'assets/app', name))).toBe(true);
     }
+    expect(html.index).toContain(
+      '<picture><source srcset="/assets/Main_View.webp" type="image/webp"><img src="/assets/Main_View.png"'
+    );
+  });
+
+  it('gives every new screenshot its size and words for a screen reader', () => {
+    for (const [tag] of html.index.matchAll(/<img [^>]*src="\/assets\/app\/[^>]*>/g)) {
+      expect(tag).toMatch(/ alt="[^"]{12,}"/);
+      expect(tag).toMatch(/ width="\d+" height="\d+"/);
+    }
+    expect(html.index).toMatch(/<video [^>]*muted[^>]*loop[^>]*playsinline/);
   });
 
   it('shows the app icon of the packages, not the old square one', () => {

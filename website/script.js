@@ -391,10 +391,18 @@ tabs.addEventListener('click', (ev) => {
 });
 showPage('home');
 
+/* A first visit starts with one tile already pinned on the wallpaper, so the empty half of the
+   desktop shows what pins are. Once the pins are the visitor's (moved, added or removed), they are
+   kept as left, an empty set included. */
 if (!narrowQuery.matches) {
-  Object.entries(store.get('pins', {})).forEach(([id, p]) => {
-    if (ENTITIES[id]) pin(id, p.x, p.y);
-  });
+  const savedPins = store.get('pins', null);
+  if (savedPins) {
+    Object.entries(savedPins).forEach(([id, p]) => {
+      if (ENTITIES[id]) pin(id, p.x, p.y);
+    });
+  } else {
+    pin('sensor.office', 48, 64);
+  }
 }
 
 /* The sensors drift, so the "real-time" claim is visible. The ring only
@@ -517,9 +525,29 @@ new ResizeObserver(() => {
 const fxBar = document.querySelector('.dock .seg');
 const fxCanvas = document.getElementById('weather-canvas');
 let currentFx = '';
+/* The weather card follows the sky: snow does not fall past a card that says cloudy. */
+const WEATHER_CARD = {
+  '': ['cloud', '4°C', 'Cloudy'],
+  sunny: ['cloudsun', '18°C', 'Sunny'],
+  rainy: ['cloud', '9°C', 'Rainy'],
+  snowy: ['cloud', '−2°C', 'Snowy'],
+  stormy: ['cloud', '11°C', 'Thunderstorms'],
+};
+function paintWeatherCard(effect) {
+  const [glyph, temp, cond] = WEATHER_CARD[effect] || WEATHER_CARD[''];
+  const tempEl = document.querySelector('.wx-temp');
+  const condEl = document.querySelector('.wx-cond');
+  if (tempEl) tempEl.textContent = temp;
+  if (condEl) condEl.textContent = cond;
+  const iconEl = document.querySelector('.wx-icon');
+  iconEl?.querySelector('use')?.setAttribute('href', `/assets/icons.svg#i-${glyph}`);
+  // The cloud is a filled shape; the sun and cloud is a line drawing.
+  iconEl?.classList.toggle('is-line', glyph !== 'cloud');
+}
 function applyFx(effect, { fade = false } = {}) {
   currentFx = effect || '';
   const swap = () => {
+    paintWeatherCard(currentFx);
     fx.setEffect(currentFx || null);
     syncFxLoop();
     fxCanvas.style.opacity = '1';

@@ -190,6 +190,35 @@ code {
 }
 .nav-icon:hover { color: var(--text); background: var(--surface-2); }
 .btn.btn-sm { height: 36px; padding: 0 16px; font-size: 14px; gap: 7px; }
+
+/* Below the width where the links fit, they move into this menu. A details element opens and
+   closes without script, so the menu works under the content security policy and with scripting off. */
+.nav-menu { position: relative; display: none; }
+.nav-menu summary { list-style: none; cursor: pointer; }
+.nav-menu summary::-webkit-details-marker { display: none; }
+.nav-menu[open] summary { color: var(--text); background: var(--surface-2); }
+.nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -60px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 16px;
+  background: #12161d;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.8);
+  animation: pop-in 200ms var(--ease);
+}
+.nav-menu-panel a {
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 15px;
+  text-decoration: none;
+}
+.nav-menu-panel a:hover, .nav-menu-panel a[aria-current='page'] { color: var(--text); background: var(--surface-2); }
 .btn.btn-sm .ico { width: 16px; height: 16px; }
 
 /* ---------------- Buttons ---------------- */
@@ -230,7 +259,7 @@ code {
 .hero {
   max-width: var(--max);
   margin: 0 auto;
-  padding: 72px 24px 40px;
+  padding: 52px 24px 40px;
   text-align: center;
 }
 h1, h2, h3 { font-family: var(--font-display); margin: 0; }
@@ -238,7 +267,10 @@ h1 {
   font-size: clamp(2.6rem, 6.6vw, 5.1rem);
   font-weight: 700;
   line-height: 1.02;
-  letter-spacing: -0.042em;
+  /* Plus Jakarta Sans has a narrow space: tighter than this and the words run together
+     ("browsertab"). The word spacing gives back what the tracking takes from each space. */
+  letter-spacing: -0.03em;
+  word-spacing: 0.06em;
 }
 .h1-soft {
   background: linear-gradient(180deg, #aab3c2 0%, #6c7586 100%);
@@ -271,6 +303,29 @@ h1 {
   font-size: 13.5px;
   color: var(--faint);
 }
+/* Version, release age and downloads, filled in from GitHub. The line keeps its height while it
+   is empty, so the demo below does not jump when it arrives. */
+.proof {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.proof b { color: var(--muted); font-weight: 600; }
+.btn-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
 /* The check mark is part of the line, not a flex item beside it: a fact that wraps on a phone then
    keeps its mark next to its first word instead of at the edge of the row it fills. */
 .facts li::before {
@@ -288,7 +343,7 @@ h1 {
 
 /* ---------------- Stage (the demo desktop) ---------------- */
 
-.stage-wrap { margin-top: 56px; }
+.stage-wrap { margin-top: 32px; }
 .stage {
   position: relative;
   isolation: isolate;
@@ -446,6 +501,7 @@ h1 {
 .pc-clock { flex-direction: column; border-left: 1px solid rgba(255, 255, 255, 0.07); }
 .pc-weather { gap: 14px; }
 .wx-icon .ico { width: 40px; height: 40px; fill: rgba(226, 231, 238, 0.9); stroke: none; }
+.wx-icon.is-line .ico { fill: none; stroke: rgba(226, 231, 238, 0.9); stroke-width: 1.5; }
 .wx-main { text-align: center; }
 .wx-temp { font: 600 26px/1 var(--font-display); letter-spacing: -0.03em; }
 .wx-cond { font-size: 12.5px; color: rgba(255, 255, 255, 0.6); margin-top: 3px; }
@@ -827,6 +883,17 @@ button.qa:active { transform: scale(0.96); }
 .seg button:hover { color: #fff; }
 .seg button.is-on { background: rgba(255, 255, 255, 0.14); color: #fff; }
 
+/* On a touch screen the demo's small controls get room for a finger: about 36px each. */
+@media (pointer: coarse) {
+  .swatches { gap: 14px; }
+  .swatch { position: relative; }
+  .swatch::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
+  .media-ctrls button { width: 36px; height: 36px; }
+  .tile-ctl { width: 32px; height: 32px; top: 2px; }
+  .tile-ctl { right: 2px; }
+  .seg button { height: 34px; }
+}
+
 /* ---------------- Ghost cursor ---------------- */
 
 .ghost-cursor {
@@ -878,7 +945,8 @@ h2 {
   font-size: clamp(1.9rem, 3.8vw, 2.9rem);
   font-weight: 700;
   line-height: 1.08;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.025em;
+  word-spacing: 0.04em;
 }
 .section-sub { margin: 16px 0 0; font-size: 1.05rem; color: var(--muted); }
 .section-sub a { color: var(--text); text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
@@ -930,6 +998,30 @@ h2 {
   letter-spacing: -0.02em;
 }
 .tile p { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--muted); }
+.tile p a { color: var(--text); text-underline-offset: 3px; text-decoration-color: rgba(var(--accent-rgb), 0.6); }
+.tile { display: flex; flex-direction: column; }
+.tile.t-wide { display: grid; }
+/* A crop of the real window, pinned to the bottom of its tile so the tiles in a row line up. */
+.tile-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+.tile p:has(+ .tile-shot) { margin-bottom: 22px; }
+.kbd-inline {
+  min-width: 0;
+  height: auto;
+  padding: 1px 6px;
+  margin: 0 2px;
+  display: inline-block;
+  border-radius: 6px;
+  font-size: 0.82em;
+  vertical-align: 1px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
 
 .chart {
   padding: 16px 16px 12px;
@@ -945,10 +1037,20 @@ h2 {
 .chart-line.l2 { stroke: var(--warm); }
 .chart-line.l3 { stroke: #8b95a5; }
 .chart-cross { stroke: rgba(255, 255, 255, 0.25); stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
-.chart-dot { fill: var(--bg); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.chart-dot.d1 { stroke: var(--accent); }
-.chart-dot.d2 { stroke: var(--warm); }
-.chart-dot.d3 { stroke: #8b95a5; }
+.chart-plot { position: relative; }
+.chart-dot {
+  position: absolute;
+  left: 75%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid;
+}
+.chart-dot.d1 { top: 28%; border-color: var(--accent); }
+.chart-dot.d2 { top: 54%; border-color: var(--warm); }
+.chart-dot.d3 { top: 70.67%; border-color: #8b95a5; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lg { display: flex; align-items: center; gap: 7px; }
 .lg::before { content: ''; width: 10px; height: 3px; border-radius: 2px; background: currentColor; }
@@ -987,8 +1089,37 @@ kbd {
 
 /* ---------------- Screenshots ---------------- */
 
-.shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
-.shot { margin: 0; }
+/* The video takes the left half and two rows; four stills sit in a grid beside it. */
+.gallery {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.shot-video { grid-row: span 2; }
+.shot { margin: 0; min-width: 0; }
+.shot-frame { display: block; position: relative; }
+.shot video { display: block; width: 100%; height: auto; border-radius: 12px; background: #0d1220; }
+.video-toggle {
+  position: absolute;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 15, 22, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  cursor: pointer;
+}
+.video-toggle:hover { background: rgba(12, 15, 22, 0.9); }
+.video-toggle .ico-pause, .video-toggle.is-playing .ico-play { display: none; }
+.video-toggle.is-playing .ico-pause { display: block; }
 .shot-frame {
   padding: 10px;
   border-radius: var(--radius);
@@ -999,7 +1130,7 @@ kbd {
 }
 .shot:hover .shot-frame { transform: translateY(-4px); border-color: var(--line-strong); }
 .shot img { width: 100%; height: auto; border-radius: 12px; }
-.shot figcaption { margin-top: 16px; padding: 0 4px; font-size: 14px; color: var(--muted); }
+.shot figcaption { margin-top: 14px; padding: 0 4px; font-size: 13.5px; color: var(--muted); }
 .shot figcaption strong { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
 
 /* ---------------- Setup ---------------- */
@@ -1031,6 +1162,23 @@ kbd {
 }
 .steps h3 { margin: 18px 0 8px; font-size: 1.08rem; font-weight: 650; letter-spacing: -0.02em; }
 .steps p { margin: 0; font-size: 0.95rem; color: var(--muted); }
+.step-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.step-link:hover { background: rgba(var(--accent-rgb), 0.18); }
+.step-link .ico { width: 14px; height: 14px; opacity: 0.7; }
 .callout {
   display: flex;
   gap: 18px;
@@ -1046,17 +1194,61 @@ kbd {
 .callout a { color: var(--text); text-underline-offset: 3px; text-decoration-color: rgba(var(--accent-rgb), 0.6); }
 
 /* ---------------- Closing + footer ---------------- */
-.cloud-sync-info { max-width: 760px; }
-.cloud-sync-info p { color: var(--muted); }
-.cloud-sync-info a { color: var(--text); text-underline-offset: 3px; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 880px; }
+.plan {
+  display: flex;
+  flex-direction: column;
+  padding: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.plan-cloud {
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0.02));
+}
+.plan h3 { font-size: 1.12rem; font-weight: 650; letter-spacing: -0.02em; }
+.plan-price {
+  margin: 10px 0 0;
+  font: 700 2rem/1.1 var(--font-display);
+  letter-spacing: -0.03em;
+}
+.plan-price span { font: 500 0.95rem var(--font-body); letter-spacing: 0; color: var(--muted); }
+.plan-list { list-style: none; margin: 20px 0 0; padding: 0; color: var(--muted); font-size: 0.95rem; }
+.plan-list li { position: relative; padding-left: 24px; }
+.plan-list li + li { margin-top: 8px; }
+.plan-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.38em;
+  width: 14px;
+  height: 14px;
+  background: rgba(var(--accent-rgb), 0.9);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.plan-foot { margin: auto 0 0; padding-top: 20px; font-size: 13.5px; color: var(--faint); }
+.plan-foot a { color: var(--muted); text-underline-offset: 3px; }
 .legal-page { max-width: 820px; margin: 0 auto; padding: 96px 28px 24px; }
-.legal-page h1 { font: 700 clamp(2.2rem, 5vw, 3.6rem)/1.12 var(--font-display); letter-spacing: -0.04em; }
+.legal-page h1 { font: 700 clamp(2.2rem, 5vw, 3.6rem)/1.12 var(--font-display); letter-spacing: -0.03em; word-spacing: 0.05em; }
 .legal-page h2 { margin: 48px 0 12px; font: 650 1.45rem/1.25 var(--font-display); }
 .legal-page h3 { margin: 28px 0 8px; font: 650 1.1rem/1.3 var(--font-display); }
 .legal-page p, .legal-page li { color: var(--muted); }
 .legal-page a { color: var(--text); text-underline-offset: 3px; }
 .legal-page ul { padding-left: 22px; }
 .legal-meta { color: var(--faint); font-size: 14px; }
+.faq-index {
+  margin: 32px 0 0;
+  padding: 18px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.faq-index ol { margin: 0; padding-left: 20px; columns: 2 260px; column-gap: 32px; color: var(--faint); font-size: 14.5px; }
+.faq-index li { break-inside: avoid; padding: 3px 0; }
+.legal-page .faq-index a { color: var(--muted); text-decoration: none; }
+.legal-page .faq-index a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 
 .closing {
   display: flex;
@@ -1163,7 +1355,27 @@ kbd {
 .install-steps code { white-space: nowrap; }
 .install-foot { margin: 16px 0 0; font-size: 13px; color: var(--faint); text-align: center; }
 .install-foot a { color: var(--muted); }
-.no-detect { max-width: 440px; margin: 32px auto 0; color: var(--muted); }
+.no-detect { max-width: 440px; margin: 32px auto 0; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 20px; }
+.no-detect p { margin: 0; }
+.no-detect-shot { width: 100%; max-width: 300px; height: auto; margin-top: 12px; border-radius: 16px; border: 1px solid var(--line); }
+.dl-icon { margin: 0 auto 22px; border-radius: 16px; box-shadow: 0 20px 50px -12px rgba(var(--accent-rgb), 0.35); }
+.rec-warn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 460px;
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(240, 168, 104, 0.3);
+  background: rgba(240, 168, 104, 0.07);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: left;
+}
+.rec-warn .ico { width: 16px; height: 16px; margin-top: 2px; color: var(--warm); }
+.rec-warn b { color: var(--text); font-weight: 600; }
 .dl-all { max-width: 560px; padding-top: 96px; }
 .dl-all h2 { font-size: 1.1rem; letter-spacing: -0.01em; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
 .dl-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
@@ -1176,9 +1388,25 @@ kbd {
   border-bottom: 1px solid var(--line);
 }
 .dl-os { font-weight: 600; }
-.dl-links { display: flex; gap: 20px; }
-.dl-links a { color: var(--muted); font-size: 14.5px; text-decoration: none; }
-.dl-links a:hover { color: var(--accent); }
+.dl-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+/* Outlined so they read as buttons, with the file size once GitHub has answered. */
+.dl-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.dl-links a:hover { border-color: rgba(var(--accent-rgb), 0.6); background: rgba(var(--accent-rgb), 0.1); }
+.dl-size { color: var(--faint); font-weight: 400; font-size: 12.5px; }
 .dl-foot { margin: 20px 0 0; font-size: 13.5px; color: var(--faint); }
 .dl-foot a { color: var(--muted); text-underline-offset: 3px; }
 
@@ -1376,19 +1604,32 @@ kbd {
   .tile.t-wide { grid-column: span 6; }
   .tile { grid-column: span 3; }
   .tile.t-half { grid-column: span 3; }
-  /* The homepage bento is a wide tile and eight more: the second and the last take a whole row, so
-     the pairs between them stay even. Other bentos (the companion page has four half-width tiles)
-     pair up as they are, so this is not written for every .bento. */
-  .bento-home > .tile:nth-child(2), .bento-home > .tile:last-child { grid-column: span 6; }
+  /* The homepage bento is two wide tiles and seven more, which pair up between them except the
+     last: it takes a whole row. Other bentos (the companion page has four half-width tiles) pair up
+     as they are, so this is not written for every .bento. */
+  .bento-home > .tile:last-child { grid-column: span 6; }
+  /* The stills are too small beside the video at this width: the gallery becomes a strip that
+     scrolls sideways, one window and a bit of the next in view. */
+  .gallery {
+    display: flex;
+    gap: 16px;
+    margin: 0 -24px;
+    padding: 0 24px 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding: 0 24px;
+    scrollbar-width: thin;
+  }
+  .gallery .shot { flex: 0 0 min(320px, 74vw); scroll-snap-align: start; }
 }
 
-/* The brand, the four links and the buttons need about 790px at full spacing. Just above the
-   760px where the links give way, the brand and 'Cloud Sync' used to wrap and the header grew
-   taller than the offset anchored headings scroll to; closer links keep them on one line down to
-   761px, so a tablet keeps its in-page links. */
-@media (max-width: 840px) {
-  .nav-inner { gap: 16px; }
-  .nav-links a { padding: 7px 8px; }
+/* The brand, the four links, the menu-free actions and the Download button need about 800px at
+   full spacing. Below 900px the links move into the menu instead of squeezing, so the header never
+   wraps and grows taller than the offset anchored headings scroll to. */
+@media (max-width: 900px) {
+  .nav-links { display: none; }
+  .nav-menu { display: block; }
+  .nav-actions { margin-left: auto; }
 }
 
 @media (max-width: 420px) {
@@ -1396,9 +1637,7 @@ kbd {
 }
 
 @media (max-width: 760px) {
-  .nav-links { display: none; }
-  .nav-actions { margin-left: auto; }
-  .hero { padding-top: 56px; }
+  .hero { padding-top: 44px; }
   .stage-wrap { margin: 48px -12px 0; }
   .stage {
     height: auto;
@@ -1441,11 +1680,12 @@ kbd {
   .dock-sep { display: none; }
   .section { padding-top: 88px; }
   .section-head { margin-bottom: 32px; }
-  .bento, .steps, .shots { grid-template-columns: 1fr; }
-  .tile, .tile.t-wide, .tile.t-half, .bento-home > .tile:nth-child(2), .bento-home > .tile:last-child { grid-column: auto; }
+  .bento, .steps, .plans { grid-template-columns: 1fr; }
+  .tile, .tile.t-wide, .tile.t-half, .bento-home > .tile:last-child { grid-column: auto; }
   .tile.t-wide { grid-template-columns: 1fr; }
   .tile, .steps li { padding: 22px; }
-  .shots { max-width: 420px; margin: 0 auto; }
+  .gallery { margin: 0 -24px; }
+  .plan { padding: 22px; }
   .page-hero { padding-top: 56px; }
   .callout { flex-direction: column; padding: 22px; }
   .closing { padding-top: 112px; }

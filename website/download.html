@@ -41,8 +41,18 @@
         <a href="/#features">Features</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion">Companion</a>
+        <a href="/faq">FAQ</a>
       </nav>
       <div class="nav-actions">
+        <details class="nav-menu">
+          <summary class="nav-icon" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-menu"/></svg></summary>
+          <nav class="nav-menu-panel" aria-label="Menu">
+            <a href="/#features">Features</a>
+            <a href="/#screenshots">Screenshots</a>
+            <a href="/companion">Companion</a>
+            <a href="/faq">FAQ</a>
+          </nav>
+        </details>
         <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
         </a>
@@ -56,6 +66,7 @@
 
   <main id="main">
     <section class="page-hero dl-hero">
+      <img class="dl-icon" src="/assets/icon-180.png" alt="" width="72" height="72">
       <h1>Download HA Desktop Widget</h1>
       <p class="lede">Free for Windows, macOS and Linux.</p>
 
@@ -65,7 +76,8 @@
           <span data-download-label>Choose your platform</span>
         </a>
         <p class="rec-sub" data-version data-version-prefix="Version " hidden></p>
-        <p class="rec-req">Windows 10 or later, macOS 13 or later, or 64-bit Linux.</p>
+        <p class="rec-req" id="rec-req">Windows 10 or later, macOS 13 or later, or 64-bit Linux.</p>
+        <p class="rec-warn" id="rec-warn" hidden><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-info"/></svg><span data-warn-text></span></p>
         <p class="rec-beta" id="beta-line" hidden>Want to test upcoming changes? <a id="beta-link" href="https://github.com/Robertg761/HA-Desktop-Widget/releases"></a></p>
         <p class="rec-arch" id="rec-arch" hidden></p>
         <details class="install-help" id="install-help">
@@ -80,7 +92,14 @@
           <p class="install-foot" id="install-foot" hidden>Didn’t start? <a id="install-retry" href="#">Try again</a>.</p>
         </details>
       </div>
-      <p class="no-detect" id="no-detect" hidden>HA Desktop Widget runs on computers. Open this page on yours to download it.</p>
+      <div class="no-detect" id="no-detect" hidden>
+        <p id="no-detect-text">HA Desktop Widget runs on Windows, macOS and Linux computers. Send yourself the link and open it there.</p>
+        <button class="btn btn-primary" type="button" data-share-download hidden>
+          <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-send"/></svg>
+          <span data-share-label>Send to your computer</span>
+        </button>
+        <img class="no-detect-shot" src="/assets/app/demo-loop-poster.webp" alt="The HA Desktop Widget window with weather, music and device tiles" width="760" height="979" loading="lazy">
+      </div>
     </section>
 
     <section class="section dl-all" id="all">
@@ -89,26 +108,26 @@
         <li data-os="windows">
           <span class="dl-os">Windows</span>
           <span class="dl-links">
-            <a data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer</a>
-            <a data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable</a>
+            <a data-asset="win-setup" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Installer<span class="dl-size" data-size hidden></span></a>
+            <a data-asset="win-portable" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">Portable<span class="dl-size" data-size hidden></span></a>
           </span>
         </li>
         <li data-os="mac">
           <span class="dl-os">macOS</span>
           <span class="dl-links">
-            <a data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.dmg</a>
-            <a data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.zip</a>
+            <a data-asset="mac-dmg" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.dmg<span class="dl-size" data-size hidden></span></a>
+            <a data-asset="mac-zip" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.zip<span class="dl-size" data-size hidden></span></a>
           </span>
         </li>
         <li data-os="linux">
           <span class="dl-os">Linux</span>
           <span class="dl-links">
-            <a data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage</a>
-            <a data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.deb</a>
+            <a data-asset="linux-appimage" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">AppImage<span class="dl-size" data-size hidden></span></a>
+            <a data-asset="linux-deb" href="https://github.com/Robertg761/HA-Desktop-Widget/releases/latest">.deb<span class="dl-size" data-size hidden></span></a>
           </span>
         </li>
       </ul>
-      <p class="dl-foot">Older versions are on <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">GitHub</a>.</p>
+      <p class="dl-foot">The Windows installer and the Linux AppImage update themselves; the other builds tell you when a new version is out. Older versions are on <a href="https://github.com/Robertg761/HA-Desktop-Widget/releases" target="_blank" rel="noopener">GitHub</a>.</p>
     </section>
   </main>
 

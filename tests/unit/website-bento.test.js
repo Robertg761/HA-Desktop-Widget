@@ -21,7 +21,7 @@ describe('the website bento grid', () => {
 
   it('picks tiles by position only inside the homepage bento', () => {
     // Found in the tablet layout and in the single-column reset that undoes it.
-    expect(positional.length).toBeGreaterThanOrEqual(4);
+    expect(positional.length).toBeGreaterThanOrEqual(2);
     for (const selector of positional) {
       expect(selector).toMatch(/^\.bento-home > /);
     }

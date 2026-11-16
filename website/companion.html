@@ -41,8 +41,18 @@
         <a href="/#features">Features</a>
         <a href="/#screenshots">Screenshots</a>
         <a href="/companion" aria-current="page">Companion</a>
+        <a href="/faq">FAQ</a>
       </nav>
       <div class="nav-actions">
+        <details class="nav-menu">
+          <summary class="nav-icon" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-menu"/></svg></summary>
+          <nav class="nav-menu-panel" aria-label="Menu">
+            <a href="/#features">Features</a>
+            <a href="/#screenshots">Screenshots</a>
+            <a href="/companion" aria-current="page">Companion</a>
+            <a href="/faq">FAQ</a>
+          </nav>
+        </details>
         <a class="nav-icon" href="https://github.com/Robertg761/HA-Desktop-Widget" target="_blank" rel="noopener" aria-label="GitHub repository">
           <svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-github"/></svg>
         </a>
@@ -120,7 +130,7 @@
               <svg class="ico ico-done" aria-hidden="true"><use href="/assets/icons.svg#i-check"/></svg>
             </button>
           </div>
-<pre id="ex1"><span class="k">triggers:</span>
+<pre id="ex1" tabindex="0" aria-label="Example automation"><span class="k">triggers:</span>
   - <span class="k">trigger:</span> state
     <span class="k">entity_id:</span> media_player.living_room_tv
     <span class="k">to:</span> <span class="s">playing</span>
@@ -141,7 +151,8 @@
         <li class="reveal">
           <span class="step-n">1</span>
           <h3>Add it to HACS</h3>
-          <p>In HACS, open <strong>Custom repositories</strong> and add <code>Robertg761/HA-Desktop-Widget-Companion</code> as an Integration.</p>
+          <p>Open it in HACS with one click, or add <code>Robertg761/HA-Desktop-Widget-Companion</code> under <strong>Custom repositories</strong> as an Integration.</p>
+          <a class="step-link" href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Robertg761&amp;repository=HA-Desktop-Widget-Companion&amp;category=integration" target="_blank" rel="noopener">Open in HACS<svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-external"/></svg></a>
         </li>
         <li class="reveal">
           <span class="step-n">2</span>
@@ -152,6 +163,7 @@
           <span class="step-n">3</span>
           <h3>Turn it on</h3>
           <p>In <strong>Settings › Devices &amp; services</strong>, add HA Desktop Widget. Your desktops appear next time they connect.</p>
+          <a class="step-link" href="https://my.home-assistant.io/redirect/config_flow_start/?domain=ha_desktop_widget" target="_blank" rel="noopener">Add the integration<svg class="ico" aria-hidden="true"><use href="/assets/icons.svg#i-external"/></svg></a>
         </li>
       </ol>
       <p class="fine reveal">Needs Home Assistant 2026.7 or newer. Currently in beta. No HACS? <a href="https://github.com/Robertg761/HA-Desktop-Widget-Companion#manual-installation" target="_blank" rel="noopener">Install it manually.</a></p>
