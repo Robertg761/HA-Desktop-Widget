@@ -178,6 +178,10 @@ code {
 }
 .nav-links a:hover { color: var(--text); background: var(--surface-2); }
 .nav-links a[aria-current='page'] { color: var(--text); }
+.nav-links a.nav-sponsor, .nav-menu-panel a.nav-sponsor { display: inline-flex; align-items: center; gap: 6px; }
+.nav-links a.nav-sponsor .ico { width: 15px; height: 15px; }
+.nav-menu-panel a.nav-sponsor { gap: 8px; }
+.nav-menu-panel a.nav-sponsor .ico { width: 16px; height: 16px; }
 .nav-actions { display: flex; align-items: center; gap: 8px; }
 .nav-icon {
   display: grid;
@@ -1623,10 +1627,10 @@ kbd {
   .gallery .shot { flex: 0 0 min(320px, 74vw); scroll-snap-align: start; }
 }
 
-/* The brand, the four links, the menu-free actions and the Download button need about 800px at
-   full spacing. Below 900px the links move into the menu instead of squeezing, so the header never
+/* The brand, the five links, the menu-free actions and the Download button need about 900px at
+   full spacing. Below 1000px the links move into the menu instead of squeezing, so the header never
    wraps and grows taller than the offset anchored headings scroll to. */
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .nav-links { display: none; }
   .nav-menu { display: block; }
   .nav-actions { margin-left: auto; }
