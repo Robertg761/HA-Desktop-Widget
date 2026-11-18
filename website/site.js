@@ -238,8 +238,8 @@ if (platform.mobile) {
   });
 }
 
-/* The narrow-screen menu is a details element: close it after a pick, on Escape and on a click
-   outside, as a menu does. */
+/* The narrow-screen menu is a details element: close it after a pick, on Escape, on a click
+   outside and when the keyboard tabs out of it, as a menu does. */
 const menu = document.querySelector('.nav-menu');
 if (menu) {
   menu.addEventListener('click', (ev) => {
@@ -247,6 +247,9 @@ if (menu) {
   });
   document.addEventListener('click', (ev) => {
     if (menu.open && !menu.contains(ev.target)) menu.open = false;
+  });
+  menu.addEventListener('focusout', (ev) => {
+    if (menu.open && ev.relatedTarget && !menu.contains(ev.relatedTarget)) menu.open = false;
   });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && menu.open) {
@@ -322,7 +325,7 @@ if (document.querySelector('[data-version], [data-asset]')) {
   getRelease().then((rel) => {
     if (!rel) return;
     document.querySelectorAll('[data-version]').forEach((el) => {
-      el.textContent = (el.dataset.versionPrefix || '') + rel.tag_name;
+      el.textContent = rel.tag_name;
       el.hidden = false;
     });
     for (const [key, pattern] of Object.entries(ASSET_PATTERNS)) {

@@ -132,7 +132,7 @@ function renderTile(id, pinned = false) {
   const pinBtn = document.createElement('button');
   pinBtn.type = 'button';
   pinBtn.className = 'pin-btn';
-  pinBtn.setAttribute('aria-label', pinned ? 'Unpin tile' : 'Pin tile to the desktop');
+  pinBtn.setAttribute('aria-label', pinned ? `Unpin ${e.name}` : `Pin ${e.name} to the desktop`);
   pinBtn.title = pinned ? 'Unpin' : 'Pin to desktop';
   pinBtn.innerHTML = icon(pinned ? 'x' : 'pin');
   slot.append(pinBtn);

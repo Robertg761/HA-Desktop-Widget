@@ -225,6 +225,65 @@ describe('the facts under the home page buttons', () => {
   });
 });
 
+describe('the narrow and the keyboard-only views', () => {
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const media = (query) =>
+    css.match(new RegExp(`@media \\(${query}\\) \\{\\n([\\s\\S]*?)\\n\\}`))?.[1] ?? '';
+
+  // At 420px and under the header shows the icon without the name, so the first paragraph is the
+  // only place on a phone's first screen that says what the product is called.
+  it('names the product in the first paragraph of the home page', () => {
+    expect(media('max-width: 420px')).toMatch(/\.brand span \{ display: none; \}/);
+    expect(html.index).toMatch(/<p class="lede">\s*HA Desktop Widget is /);
+  });
+
+  // Hung from its button the 200px panel started 21px off the left of a 320px screen.
+  it('hangs the menu from the header, inside both edges, on the narrowest screens', () => {
+    const narrow = media('max-width: 420px');
+    expect(narrow).toMatch(/\.nav-menu \{ position: static; \}/);
+    expect(narrow).toMatch(/\.nav-menu-panel \{[^}]*left: 12px; right: 12px; min-width: 0; \}/);
+  });
+
+  // Each card of the gallery fades in when it is first seen. In the sideways strip that meant a
+  // swipe showed empty cards for a moment.
+  it('shows the cards of the gallery strip without a fade', () => {
+    const strip = media('max-width: 1020px');
+    expect(strip).toMatch(/\.gallery \{[^}]*overflow-x: auto/);
+    expect(strip).toMatch(
+      /\.gallery \.shot\.reveal \{ opacity: 1; transform: none; transition: none;/
+    );
+  });
+
+  // An 820px column of 16px text ran to about 100 characters a line.
+  it('keeps the text pages to a readable line', () => {
+    const width = Number(css.match(/\.legal-page \{ max-width: (\d+)px;/)?.[1]);
+    expect(width).toBeGreaterThanOrEqual(560);
+    expect(width).toBeLessThanOrEqual(680);
+  });
+
+  // A linked section brings its own top padding; adding the page's scroll padding to it put the
+  // heading a quarter of the way down the screen.
+  it('lands a linked section with its heading under the header', () => {
+    const padding = Number(css.match(/html \{[^}]*scroll-padding-top: (\d+)px/)?.[1]);
+    expect(css).toContain(`.section[id] { scroll-margin-top: -${padding}px; }`);
+  });
+
+  // The demo has about thirty controls between the hero buttons and the rest of the page.
+  it('lets a keyboard step over the demo, and names each pin button after its tile', () => {
+    expect(html.index).toMatch(
+      /<div class="stage-wrap">\s*<a class="skip-link skip-demo" href="#features">Skip the demo<\/a>/
+    );
+    expect(html.index).toContain('<section id="features"');
+    const demo = read('script.js');
+    expect(demo).toContain('`Pin ${e.name} to the desktop`');
+    expect(demo).toContain('`Unpin ${e.name}`');
+  });
+
+  it('keeps the no-script screenshot in proportion', () => {
+    expect(css).toMatch(/\.noscript-shot img \{[^}]*width: 100%; height: auto;/);
+  });
+});
+
 describe('the website images', () => {
   const shareImages = (page) => [
     html[page].match(/property="og:image" content="([^"]+)"/)?.[1],
