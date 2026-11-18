@@ -214,7 +214,7 @@ the limit gets a 429. Leave the `[[ratelimits]]` blocks out to run without limit
 
 The **Deploy Workers** workflow in GitHub Actions applies pending migrations and deploys the
 production Worker from main (it needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
-repository secrets). To do it by hand instead, apply all pending D1 migrations before deploying
+secrets in the `production` environment, and waits for your approval). To do it by hand instead, apply all pending D1 migrations before deploying
 an updated Worker:
 
 ```sh

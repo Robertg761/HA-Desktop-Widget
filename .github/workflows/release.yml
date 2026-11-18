@@ -409,9 +409,14 @@ jobs:
   publish-release:
     needs: [validate, build, build-mac, build-linux]
     runs-on: ubuntu-latest
+    # Holds UPDATE_SIGNING_KEY and only accepts runs for v* tags.
+    environment: release
     permissions:
       actions: read
       contents: write
+      # For the build provenance attestation.
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout validated release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -443,6 +448,51 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      # Every file gets its published name first, so the checksum list and the attestation name
+      # the files people download.
+      - name: Prepare release files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          debug_artifact="$(find release-artifacts -type f -name 'builder-debug.yml' -print -quit)"
+          if [[ -n "$debug_artifact" ]]; then
+            echo "Internal electron-builder metadata must not be published: $debug_artifact" >&2
+            exit 1
+          fi
+
+          mkdir release-files
+          count=0
+          while IFS= read -r -d '' artifact; do
+            base="$(basename "$artifact")"
+            normalized="${base/#HA Desktop Widget-/HA-Desktop-Widget-}"
+            normalized="${normalized/#HA.Desktop.Widget-/HA-Desktop-Widget-}"
+            if [[ -e "release-files/$normalized" ]]; then
+              echo "Two release artifacts are both named $normalized." >&2
+              exit 1
+            fi
+            mv "$artifact" "release-files/$normalized"
+            count=$((count + 1))
+          done < <(find release-artifacts -type f -print0)
+
+          if [[ "$count" -eq 0 ]]; then
+            echo "No release artifacts were downloaded." >&2
+            exit 1
+          fi
+
+      # SHA256SUMS lists every release file and SHA256SUMS.sig signs that list. The app installs
+      # an update only when its hash is in a list signed with this key (src/update-signature.cjs),
+      # so a release without them cannot be installed by the updater.
+      - name: Sign release checksums
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: node scripts/sign-release-checksums.cjs release-files
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release-files/SHA256SUMS
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -455,36 +505,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          debug_artifact="$(find release-artifacts -type f -name 'builder-debug.yml' -print -quit)"
-          if [[ -n "$debug_artifact" ]]; then
-            echo "Internal electron-builder metadata must not be published: $debug_artifact" >&2
-            exit 1
-          fi
-
           artifacts=()
           while IFS= read -r -d '' artifact; do
             artifacts+=("$artifact")
-          done < <(find release-artifacts -type f -print0)
-
-          if [[ "${#artifacts[@]}" -eq 0 ]]; then
-            echo "No release artifacts were downloaded." >&2
-            exit 1
-          fi
-
-          for artifact in "${artifacts[@]}"; do
-            dir="$(dirname "$artifact")"
-            base="$(basename "$artifact")"
-            normalized="${base/#HA Desktop Widget-/HA-Desktop-Widget-}"
-            normalized="${normalized/#HA.Desktop.Widget-/HA-Desktop-Widget-}"
-            if [[ "$normalized" != "$base" ]]; then
-              mv "$artifact" "$dir/$normalized"
-            fi
-          done
-
-          artifacts=()
-          while IFS= read -r -d '' artifact; do
-            artifacts+=("$artifact")
-          done < <(find release-artifacts -type f -print0)
+          done < <(find release-files -type f -print0)
 
           # Close the gap between the validation job and publication. Release tags
           # are expected to be immutable; refuse to upload if this one moved.
@@ -499,7 +523,16 @@ jobs:
           fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${artifacts[@]}" --clobber
+            # Published files are never replaced: people and updaters may already have them, and
+            # the signed checksum list of this run would no longer describe the release. A release
+            # made by hand before the run, with no files yet, is filled in.
+            existing_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets | length')"
+            if [[ "$existing_assets" != "0" ]]; then
+              echo "Release $RELEASE_TAG already has files; refusing to replace them." >&2
+              echo "Delete the release (or its files) by hand to publish it again." >&2
+              exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "${artifacts[@]}"
             if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
               gh release edit "$RELEASE_TAG" --prerelease
             else

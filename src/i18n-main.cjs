@@ -136,6 +136,31 @@ function hashContent(content) {
   return nodeCrypto.createHash('sha256').update(content).digest('hex');
 }
 
+// The largest bundled pack is well under a tenth of this.
+const MAX_LOCALE_PACK_CHARS = 4 * 1024 * 1024;
+
+/**
+ * A remote manifest may only point at packs served over HTTPS from its own
+ * folder, so a tampered manifest cannot send the download to another host or
+ * to a file on this computer. A local (development) manifest is trusted.
+ */
+function isTrustedPackUrl(downloadUrl, manifestUrl) {
+  if (typeof downloadUrl !== 'string' || !downloadUrl) return false;
+  if (isFileSource(manifestUrl)) return true;
+  try {
+    const packUrl = new URL(downloadUrl);
+    const manifestFolder = new URL('.', manifestUrl);
+    return (
+      packUrl.protocol === 'https:' &&
+      manifestFolder.protocol === 'https:' &&
+      packUrl.origin === manifestFolder.origin &&
+      packUrl.pathname.startsWith(manifestFolder.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isFileSource(source) {
   return typeof source === 'string' && source.startsWith('file://');
 }
@@ -444,7 +469,7 @@ function createLocalizationService(options = {}) {
             return pathToFileURL(localPackPath).toString();
           }
         }
-        return pack.downloadUrl || '';
+        return isTrustedPackUrl(pack.downloadUrl, manifestUrl) ? pack.downloadUrl : '';
       })(),
       sha256: (pack.sha256 || '').toLowerCase(),
       notes: pack.notes || '',
@@ -526,7 +551,15 @@ function createLocalizationService(options = {}) {
       throw new Error('Language pack is not available for download.');
     }
 
+    // A downloaded pack always needs the manifest's hash. Only a pack read from
+    // the local development folder may go without one.
+    if (!manifestEntry.sha256 && !isFileSource(manifestEntry.downloadUrl)) {
+      throw new Error('Language pack failed integrity verification.');
+    }
     const content = await readTextSource(manifestEntry.downloadUrl);
+    if (content.length > MAX_LOCALE_PACK_CHARS) {
+      throw new Error('Language pack is too large.');
+    }
     const actualHash = hashContent(content).toLowerCase();
     if (manifestEntry.sha256 && manifestEntry.sha256 !== actualHash) {
       throw new Error('Language pack failed integrity verification.');

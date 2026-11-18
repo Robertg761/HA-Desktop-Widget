@@ -82,7 +82,7 @@ Keep exceptions narrow, dated, and temporary:
 ### Application Security
 
 - **Electron isolation**: The renderer uses `contextIsolation: true` and `nodeIntegration: false`; privileged operations are exposed through the preload IPC bridge.
-- **Updates and authenticity**: Update delivery is based on the GitHub release channel and Electron updater behavior for supported package types. Current macOS artifacts are not Apple Developer-ID signed or notarized. Their ad-hoc packaging signature checks bundle integrity only; it does not authenticate the developer or satisfy Gatekeeper. Treat other platform artifacts as unsigned unless a release explicitly states otherwise.
+- **Updates and authenticity**: Update delivery is based on the GitHub release channel and Electron updater behavior for supported package types. From the first release after 4.2.0, each release carries a signed checksum list (`SHA256SUMS` and `SHA256SUMS.sig`), and the in-app updater installs a download only when its hash is in a list signed with the project's update key. Releases also carry a GitHub build provenance attestation. Current macOS artifacts are not Apple Developer-ID signed or notarized. Their ad-hoc packaging signature checks bundle integrity only; it does not authenticate the developer or satisfy Gatekeeper. Treat other platform artifacts as unsigned unless a release explicitly states otherwise.
 - **Build formats**: Windows installer and portable builds, macOS archives, and Linux packages may have different updater and signing capabilities.
 
 ## Known Security Considerations
@@ -124,4 +124,4 @@ Thank you to security researchers and community members who help keep HA Desktop
 
 ---
 
-**Last updated**: October 4, 2026
+**Last updated**: November 17, 2026

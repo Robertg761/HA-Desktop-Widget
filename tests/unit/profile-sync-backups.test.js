@@ -290,12 +290,42 @@ describe('what Settings is told about the sync folder', () => {
       path.join(desktop.userData, 'ha-widget-profile-sync.json')
     );
 
+    // The folder dialog is what makes a folder a valid sync target.
+    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
+      path.dirname(syncFilePath())
+    );
     const chosen = await desktop.saveSettings({
       profileSync: { enabled: true, cloudFilePath: syncFilePath() },
     });
     expect(chosen.update.success).not.toBe(false);
     expect(desktop.rendererConfig().profileSync.cloudFilePath).toBe(syncFilePath());
     expect(readSyncFile().updatedByDeviceId).toBe(desktop.config.profileSync.deviceId);
+  });
+
+  test('a sync file path the folder dialog never returned is refused', async () => {
+    const desktop = createDevice('desktop', { syncing: false });
+    const privatePath = path.join(desktop.userData, 'ha-widget-profile-sync.json');
+    desktop.config.profileSync.cloudFilePath = privatePath;
+    const outside = path.join(path.dirname(desktop.userData), 'Outside');
+    fs.mkdirSync(outside, { recursive: true });
+
+    // A folder nobody picked, and a picked folder with a file name of the caller's choosing.
+    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
+      path.dirname(syncFilePath())
+    );
+    for (const cloudFilePath of [
+      path.join(outside, 'ha-widget-profile-sync.json'),
+      path.join(path.dirname(syncFilePath()), 'notes.json'),
+      'relative/ha-widget-profile-sync.json',
+    ]) {
+      const next = desktop.rendererConfig();
+      next.profileSync = { ...next.profileSync, enabled: true, cloudFilePath };
+      const result = await desktop.invoke('update-config', next);
+      expect(result.success).toBe(false);
+      expect(desktop.config.profileSync.cloudFilePath).toBe(privatePath);
+      expect(desktop.config.profileSync.enabled).toBe(false);
+    }
+    expect(fs.readdirSync(outside)).toEqual([]);
   });
 
   test('enabling with an unchosen folder re-saves the same default without a resolution gate', async () => {

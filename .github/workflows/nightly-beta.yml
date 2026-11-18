@@ -90,9 +90,11 @@ jobs:
         name: Check for unreleased changes
         env:
           LATEST_STABLE_TAG: ${{ steps.version.outputs.latest_stable_tag }}
+          # A tag name is passed through the environment, never pasted into the script.
+          BASELINE_TAG: ${{ steps.baseline.outputs.baseline_tag }}
         run: >-
           node scripts/resolve-nightly-beta.cjs
-          --baseline "${{ steps.baseline.outputs.baseline_tag }}"
+          --baseline "$BASELINE_TAG"
 
       - name: Skip unchanged main
         if: steps.changes.outputs.has_changes != 'true'

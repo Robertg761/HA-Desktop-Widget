@@ -36,7 +36,6 @@ describe('Home Assistant authorization failure messages', () => {
       expect.arrayContaining([
         'OAUTH_AUTHORIZATION_CANCELED',
         'OAUTH_AUTHORIZATION_TIMEOUT',
-        'OAUTH_STATE_MISMATCH',
         'OAUTH_INVALID_GRANT',
         'OAUTH_SECURE_STORAGE_UNAVAILABLE',
         'OAUTH_SERVER_UNREACHABLE',

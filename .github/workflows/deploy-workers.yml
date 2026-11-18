@@ -4,7 +4,8 @@ name: Deploy Workers
 # (services/usage-counter), Cloud Sync (cloud-sync-service, its production config) and card
 # donations (services/donations). Run it by hand after merging a change to one of them.
 #
-# Needs two repository secrets:
+# Needs two secrets in the "production" environment, which only main may deploy to and which waits
+# for a reviewer's approval. A workflow file changed on another branch therefore cannot read them:
 #   CLOUDFLARE_API_TOKEN   An API token with Account: Workers Scripts Edit, Account: D1 Edit,
 #                          Account: Account Settings Read, Zone: Workers Routes Edit and Zone: Read
 #                          on hadesktopwidget.com (the Workers are served on custom domains there).
@@ -38,6 +39,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -56,7 +58,7 @@ jobs:
       - name: Check the Cloudflare secrets
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first."
+            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to the production environment first."
             exit 1
           fi
 

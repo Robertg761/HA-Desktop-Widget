@@ -24,13 +24,14 @@ function stripeReturning(status, body) {
 }
 
 describe('donations worker', () => {
-  test('accepts whole-dollar amounts from $1 to $12,000 only', () => {
+  test('accepts whole-dollar amounts from $3 to $12,000 only', () => {
     expect(parseCheckoutRequest({ amount: 5 })).toEqual({ amount: 5, locale: 'auto' });
     expect(parseCheckoutRequest({ amount: 12000, locale: 'de' })).toEqual({
       amount: 12000,
       locale: 'de',
     });
-    for (const amount of [0, 12001, 2.5, '5', null, -1]) {
+    expect(parseCheckoutRequest({ amount: 3 })).toEqual({ amount: 3, locale: 'auto' });
+    for (const amount of [0, 1, 2, 12001, 2.5, '5', null, -1]) {
       expect(parseCheckoutRequest({ amount })).toBeNull();
     }
     expect(parseCheckoutRequest({ amount: 5, locale: 7 })).toBeNull();
@@ -57,6 +58,12 @@ describe('donations worker', () => {
     expect(params.get('locale')).toBe('es');
     expect(params.get('success_url')).toBe(`${ORIGIN}/v1/return?result=complete`);
     expect(params.get('cancel_url')).toBe(`${ORIGIN}/v1/return?result=cancelled`);
+  });
+
+  test('lets an unused checkout session close after 35 minutes, not a day', () => {
+    const now = Date.UTC(2026, 10, 17, 12, 0, 0);
+    const params = checkoutSessionParams({ amount: 5, locale: 'auto' }, ORIGIN, now);
+    expect(Number(params.get('expires_at'))).toBe(now / 1000 + 35 * 60);
   });
 
   test('returns the checkout URL Stripe creates', async () => {

@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.82",
+  "version": "1.2.83",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2246,6 +2246,8 @@
     "Tile color": "Color de la tarjeta",
     "Use the accent color": "Usar el color de acento",
     "Pick another color": "Elegir otro color",
-    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colorea el icono de esta tarjeta, sus controles y su brillo cuando está encendida. El alto contraste mantiene sus propios colores."
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colorea el icono de esta tarjeta, sus controles y su brillo cuando está encendida. El alto contraste mantiene sus propios colores.",
+    "The update could not be verified and was not installed.": "No se pudo verificar la actualización y no se instaló.",
+    "Card donations start at $3.": "Las donaciones con tarjeta empiezan en 3 $."
   }
 }

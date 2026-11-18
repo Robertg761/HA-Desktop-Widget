@@ -22,6 +22,15 @@ If a stable tag's version is not yet in `package.json` and `package-lock.json` o
 release workflow commits it there after publishing. With the bump landed first, as above, it has
 nothing to commit.
 
+## Signed checksums
+
+Every release carries `SHA256SUMS`, the SHA-256 of each file in it, and `SHA256SUMS.sig`, an Ed25519 signature of that list. The installers are not code-signed, so this is what tells the app that an update came from this project: it installs a download only when its hash is in a list signed with a key in `UPDATE_PUBLIC_KEYS` (`src/update-signature.cjs`). A release without the two files cannot be installed by the updater. The release also gets a GitHub build provenance attestation, which anyone can check with `gh attestation verify <file> --repo Robertg761/HA-Desktop-Widget`.
+
+- **The key**: the private key is the `UPDATE_SIGNING_KEY` secret of the `release` environment, which only runs for `v*` tags. Keep a copy somewhere safe outside GitHub. If it is lost, no installed copy can be updated in place again; people would have to download the next release by hand.
+- **Changing the key**: add the new public key to `UPDATE_PUBLIC_KEYS` and release while the old key still signs. Switch the secret once that release has reached people, and remove the old public key a release later.
+- **A failed publish**: published files are never replaced. If the publish job fails after the release exists with files, delete the release by hand and run the workflow again.
+- **What it does not cover**: someone who controls the GitHub account can run the release workflow and get a valid signature. The signature stops a release's files from being swapped afterwards; it is not a substitute for a signing key held off GitHub.
+
 ## Release notes
 
 The notes of a stable release are its `CHANGELOG.md` section, followed by a link to the full
