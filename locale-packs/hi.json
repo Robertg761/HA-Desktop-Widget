@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.84",
+  "version": "1.2.85",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -225,7 +225,6 @@
     "Window & Behavior": "विंडो और व्यवहार",
     "Language & Localization": "भाषा और स्थानीयकरण",
     "Profile Syncing": "प्रोफ़ाइल सिंकिंग",
-    "Support Development": "विकास का समर्थन करें",
     "HA Desktop Widget is free and open source. If it saves you time, you can support its development.": "HA Desktop Widget मुफ़्त और ओपन सोर्स है। अगर यह आपका समय बचाता है, तो आप इसके विकास का समर्थन कर सकते हैं।",
     "Support this project": "इस प्रोजेक्ट का समर्थन करें",
     "Support HA Desktop Widget": "HA Desktop Widget का समर्थन करें",
@@ -2248,6 +2247,10 @@
     "Pick another color": "कोई दूसरा रंग चुनें",
     "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "चालू होने पर इस टाइल के आइकन, उसके कंट्रोल और उसकी चमक को रंगता है। उच्च कंट्रास्ट अपने ही रंग रखता है।",
     "The update could not be verified and was not installed.": "अपडेट सत्यापित नहीं हो सका और इंस्टॉल नहीं किया गया।",
-    "Card donations start at $3.": "कार्ड से दान $3 से शुरू होता है।"
+    "Card donations start at $3.": "कार्ड से दान $3 से शुरू होता है।",
+    "Support Development": "विकास का समर्थन करें",
+    "Updated to version {{version}}": "संस्करण {{version}} में अपडेट किया गया",
+    "Enjoying the widget? You can support its development.": "विजेट पसंद आ रहा है? आप इसके विकास का समर्थन कर सकते हैं।",
+    "Support": "समर्थन करें"
   }
 }

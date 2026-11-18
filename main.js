@@ -9073,6 +9073,16 @@ function buildTrayContextMenu() {
         shell.openExternal(url);
       },
     },
+    {
+      // The heart is outside the translation so every language keeps it.
+      label: mainT('Support Development') + ' \u2665',
+      click: () => {
+        showMainWindowFromTray();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('open-support-development');
+        }
+      },
+    },
     { type: 'separator' },
     {
       label: mainT('Quit'),

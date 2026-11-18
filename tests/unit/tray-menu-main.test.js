@@ -135,6 +135,20 @@ describe('the tray menu', () => {
     expect(() => menu.find((item) => item.label === 'Reload').click()).not.toThrow();
   });
 
+  it('offers Support Development, which brings the widget up with the donate dialog', () => {
+    const context = loadTrayMenu();
+    context.mainWindow.webContents.send = jest.fn();
+    const menu = context.buildTrayContextMenu();
+    const item = menu.find((entry) => entry.label === 'Support Development \u2665');
+    expect(item).toBeDefined();
+    // Beside Report Issue, above Quit.
+    expect(menu.indexOf(item)).toBe(menu.findIndex((entry) => entry.label === 'Report Issue') + 1);
+
+    item.click();
+    expect(context.showMainWindowFromTray).toHaveBeenCalled();
+    expect(context.mainWindow.webContents.send).toHaveBeenCalledWith('open-support-development');
+  });
+
   describe('Always on Top', () => {
     const alwaysOnTopItem = (context) =>
       context.buildTrayContextMenu().find((item) => item.label === 'Always on Top');

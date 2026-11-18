@@ -1749,5 +1749,9 @@
   "Pick another color": "Pick another color",
   "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.",
   "The update could not be verified and was not installed.": "The update could not be verified and was not installed.",
-  "Card donations start at $3.": "Card donations start at $3."
+  "Card donations start at $3.": "Card donations start at $3.",
+  "Support Development": "Support Development",
+  "Updated to version {{version}}": "Updated to version {{version}}",
+  "Enjoying the widget? You can support its development.": "Enjoying the widget? You can support its development.",
+  "Support": "Support"
 }

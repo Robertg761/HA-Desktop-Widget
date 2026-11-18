@@ -427,6 +427,7 @@ function createMockElectronAPI() {
         if (index > -1) eventListeners.openSettings.splice(index, 1);
       };
     }),
+    onOpenSupportDevelopment: jest.fn(() => () => {}),
     onProfileSyncStatus: jest.fn((callback) => {
       eventListeners.profileSyncStatus.push(callback);
       return () => {

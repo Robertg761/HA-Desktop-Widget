@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.83",
+  "version": "1.2.84",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -225,7 +225,6 @@
     "Window & Behavior": "Fenêtre et comportement",
     "Language & Localization": "Langue et localisation",
     "Profile Syncing": "Synchronisation du profil",
-    "Support Development": "Soutenir le développement",
     "HA Desktop Widget is free and open source. If it saves you time, you can support its development.": "HA Desktop Widget est gratuit et open source. S'il vous fait gagner du temps, vous pouvez soutenir son développement.",
     "Support this project": "Soutenir ce projet",
     "Support HA Desktop Widget": "Soutenir HA Desktop Widget",
@@ -2248,6 +2247,10 @@
     "Pick another color": "Choisir une autre couleur",
     "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colore l'icône de cette vignette, ses commandes et sa lueur lorsqu'elle est allumée. Le contraste élevé garde ses propres couleurs.",
     "The update could not be verified and was not installed.": "La mise à jour n'a pas pu être vérifiée et n'a pas été installée.",
-    "Card donations start at $3.": "Les dons par carte commencent à 3 $."
+    "Card donations start at $3.": "Les dons par carte commencent à 3 $.",
+    "Support Development": "Soutenir le développement",
+    "Updated to version {{version}}": "Mis à jour vers la version {{version}}",
+    "Enjoying the widget? You can support its development.": "Vous appréciez le widget ? Vous pouvez soutenir son développement.",
+    "Support": "Soutenir"
   }
 }

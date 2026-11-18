@@ -1334,13 +1334,15 @@ function dismissNewestToastForEscape(event) {
  * @param {Object} [options] - Extra behaviour.
  * @param {boolean} [options.passive=false] - A notice that asks nothing of the user: it ignores the pointer, so it never swallows a drag aimed at what is under it, and cannot take focus.
  * @param {string} [options.source] - Tags the toast so its caller can take it down later with {@link dismissToasts}, without keeping hold of the element.
+ * @param {string} [options.detail] - A second, quieter line under the message.
+ * @param {Array<{id?: string, label: string, icon?: string, onClick: Function}>} [options.actions] - Buttons under the message. A press runs its action and dismisses the toast; a toast with actions also carries a close button, so the keyboard can reach and leave it.
  * @returns {HTMLElement|undefined} The toast element, or undefined when it could not be shown.
  */
 function showToast(
   message,
   type = 'success',
   timeout = 2000,
-  { passive = false, source = '' } = {}
+  { passive = false, source = '', detail = '', actions = [] } = {}
 ) {
   try {
     const container = document.getElementById('toast-container');
@@ -1389,7 +1391,53 @@ function showToast(
     const body = document.createElement('span');
     body.className = 'toast-message';
     body.textContent = text;
-    toast.appendChild(body);
+    const toastActions = passive || !Array.isArray(actions) ? [] : actions.filter(Boolean);
+    if (detail || toastActions.length) {
+      // The message keeps its own element, which the duplicate check above reads; the detail line
+      // and the buttons stack under it.
+      const column = document.createElement('div');
+      column.className = 'toast-body';
+      column.appendChild(body);
+      if (detail) {
+        const detailEl = document.createElement('span');
+        detailEl.className = 'toast-detail';
+        detailEl.textContent = String(detail);
+        column.appendChild(detailEl);
+      }
+      if (toastActions.length) {
+        const row = document.createElement('div');
+        row.className = 'toast-actions';
+        toastActions.forEach((action) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'toast-action';
+          if (action.id) button.dataset.action = action.id;
+          if (action.icon) {
+            const glyph = document.createElement('span');
+            glyph.className = 'toast-action-icon';
+            glyph.setAttribute('aria-hidden', 'true');
+            setLineIconContent(glyph, action.icon);
+            button.appendChild(glyph);
+          }
+          button.appendChild(document.createTextNode(String(action.label ?? '')));
+          button.addEventListener('click', (event) => {
+            // The toast's own click handler would dismiss it as well; once is enough.
+            event.stopPropagation();
+            dismissToast(toast);
+            try {
+              action.onClick?.(event);
+            } catch (error) {
+              console.error('Toast action failed:', error);
+            }
+          });
+          row.appendChild(button);
+        });
+        column.appendChild(row);
+      }
+      toast.appendChild(column);
+    } else {
+      toast.appendChild(body);
+    }
 
     toastTiming.set(toast, {
       remaining: lifetime,
@@ -1408,7 +1456,7 @@ function showToast(
         event.preventDefault();
         dismissToast(toast);
       });
-      if (kind === 'error' || kind === 'warning') {
+      if (kind === 'error' || kind === 'warning' || toastActions.length) {
         // The keyboard's way to a problem that waits: a real button, so a screen reader that
         // reaches it by Tab hears what it does, and which message it closes. The toast itself is
         // not a Tab stop: a focusable box with no role said only its text.

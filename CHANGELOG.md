@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- See which version you were moved to after an update. On the first start of a new release, a small notice names the version and offers **What's new** and **Support**. It goes away by itself after 15 seconds and does not come back until the next update.
+- Open the Support dialog from the tray menu with **Support Development ♥**.
+
 ## [4.2.0] - 2026-11-16
 
 ### Added

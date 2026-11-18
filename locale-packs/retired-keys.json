@@ -1407,10 +1407,6 @@
     "retiredIn": "4.0.0",
     "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
   },
-  "Support Development": {
-    "retiredIn": "4.0.0",
-    "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."
-  },
   "Diagnostics & Troubleshooting": {
     "retiredIn": "4.0.0",
     "reason": "Written in sentence case like the rest of 4.0 (re-audit R-119)."

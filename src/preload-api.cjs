@@ -253,6 +253,8 @@ function createElectronApi(ipcRenderer, platform) {
     onHotkeyRegistrationFailed: (callback) => subscribe('hotkey-registration-failed', callback),
     onAutoUpdate: (callback) => subscribe('auto-update', callback),
     onOpenSettings: (callback) => subscribe('open-settings', callback, { includeData: false }),
+    onOpenSupportDevelopment: (callback) =>
+      subscribe('open-support-development', callback, { includeData: false }),
     onProfileSyncStatus: (callback) => subscribe('profile-sync-status', callback),
     onConfigUpdated: subscribeConfigUpdated,
     onConfigPersistenceWarning: (callback) => subscribe('config-persistence-warning', callback),
