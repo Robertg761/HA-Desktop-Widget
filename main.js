@@ -1939,6 +1939,24 @@ function getDefaultProfileSyncFilePath() {
   return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME);
 }
 
+// A sync file path the renderer may switch to: the fixed file name inside the
+// app data folder, the folder already in use, or a folder picked in the native
+// dialog during this run.
+function isApprovedProfileSyncFilePath(filePath, currentFilePath = '') {
+  if (typeof filePath !== 'string' || !filePath || !path.isAbsolute(filePath)) return false;
+  const resolvedPath = path.resolve(filePath);
+  if (path.basename(resolvedPath) !== PROFILE_SYNC_DEFAULT_FILE_NAME) return false;
+  const folder = path.dirname(resolvedPath);
+  const approvedFolders = [
+    app.getPath('userData'),
+    currentFilePath ? path.dirname(currentFilePath) : '',
+    ...profileSyncRuntime.approvedCopyDestinationFolders,
+  ];
+  return approvedFolders.some(
+    (approved) => typeof approved === 'string' && approved && path.resolve(approved) === folder
+  );
+}
+
 function getNormalizedProfileSyncScopeValue(value) {
   return profileSyncCore.normalizeSyncScope(value);
 }
@@ -6515,10 +6533,13 @@ function backupConfig(reason = 'migration') {
   const timestampedBackupPath = path.join(userDataDir, `config.${backupLabel}.${timestamp}.json`);
   try {
     if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf8');
-      fs.writeFileSync(timestampedBackupPath, configContent);
-      fs.writeFileSync(backupPath, configContent);
+      // A config from before token encryption holds the token in plaintext. The
+      // backup outlives the migration, so it never carries that token.
+      const configContent = redactPlaintextTokenFromConfigText(fs.readFileSync(configPath, 'utf8'));
+      writePrivateConfigBackup(timestampedBackupPath, configContent);
+      writePrivateConfigBackup(backupPath, configContent);
       log.info('Config backup created at', timestampedBackupPath);
+      scrubPlaintextTokensFromConfigBackups(userDataDir);
       return true;
     }
   } catch (error) {
@@ -6530,6 +6551,72 @@ function backupConfig(reason = 'migration') {
 function ensureConfigBackupBeforeFirstWrite(reason = 'pre-save') {
   if (configBackupCreatedThisRun) return;
   configBackupCreatedThisRun = backupConfig(reason);
+}
+
+// Returns the config text with a plaintext Home Assistant token blanked. Text
+// that is not a config object, or holds no plaintext token, comes back as is.
+function redactPlaintextTokenFromConfigText(content) {
+  if (typeof content !== 'string' || !content.includes('"token"')) return content;
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content;
+  }
+  const homeAssistant = parsed?.homeAssistant;
+  if (
+    !homeAssistant ||
+    typeof homeAssistant !== 'object' ||
+    typeof homeAssistant.token !== 'string' ||
+    !homeAssistant.token ||
+    homeAssistant.token === HOME_ASSISTANT_TOKEN_PLACEHOLDER ||
+    homeAssistant.tokenEncrypted === true
+  ) {
+    return content;
+  }
+  homeAssistant.token = '';
+  return JSON.stringify(parsed, null, 2);
+}
+
+function writePrivateConfigBackup(filePath, content) {
+  fs.writeFileSync(filePath, content, { mode: 0o600 });
+  // The mode option only applies to a file this call creates.
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Windows and some network filesystems have no POSIX modes.
+  }
+}
+
+// Backups written by earlier versions kept the plaintext token and default
+// permissions. Runs once per process, after the first backup of the run.
+let configBackupsScrubbedThisRun = false;
+function scrubPlaintextTokensFromConfigBackups(userDataDir) {
+  if (configBackupsScrubbedThisRun) return;
+  configBackupsScrubbedThisRun = true;
+  let names;
+  try {
+    names = fs.readdirSync(userDataDir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === CONFIG_FILE_NAME || !/^config\..+\.json$/.test(name)) continue;
+    const filePath = path.join(userDataDir, name);
+    try {
+      if (!fs.lstatSync(filePath).isFile()) continue;
+      const content = fs.readFileSync(filePath, 'utf8');
+      const redacted = redactPlaintextTokenFromConfigText(content);
+      if (redacted !== content) {
+        writePrivateConfigBackup(filePath, redacted);
+        log.info('Removed a plaintext token from an old config backup:', name);
+      } else {
+        fs.chmodSync(filePath, 0o600);
+      }
+    } catch (error) {
+      log.warn('Could not check an old config backup:', name, error?.message || error);
+    }
+  }
 }
 
 function shouldBlockPotentialConfigClobber() {
@@ -9607,6 +9694,20 @@ ipcMain.handle(
     const pathChanged =
       !isHostedProfileSyncProvider(normalizedNextProvider) &&
       normalizedNextPath !== previousCloudFilePath;
+    // The sync engine reads this path and renames a temp file over it, so a new
+    // one is only taken from a folder the user picked in the native dialog (or
+    // one already in use), never as free text from the renderer.
+    if (
+      normalizedNextPath !== previousCloudFilePath &&
+      !isApprovedProfileSyncFilePath(normalizedNextPath, previousCloudFilePath)
+    ) {
+      log.warn('Rejected a profile sync file path that was not chosen through the folder dialog');
+      return {
+        success: false,
+        error: mainT('Choose a sync folder before enabling profile sync.'),
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
     const remoteTargetChanged =
       prevSyncEnabled &&
       profileSync.enabled &&
@@ -12668,14 +12769,20 @@ ipcMain.handle('debug-log', (event, payload) => {
   const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('debug-log');
   try {
+    // Renderer text goes on one line of its own, so it cannot forge other log entries.
+    const singleLine = (value, maxLength) =>
+      String(value)
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+        .slice(0, maxLength);
     if (typeof payload === 'string') {
-      log.info(`[RendererDebug] ${payload}`);
+      log.info(`[RendererDebug] ${singleLine(payload, 6000)}`);
       return { success: true };
     }
 
     if (payload && typeof payload === 'object') {
-      const scope = String(payload.scope || 'renderer');
-      const eventName = String(payload.event || 'log');
+      const scope = singleLine(payload.scope || 'renderer', 64);
+      const eventName = singleLine(payload.event || 'log', 128);
       const details = payload.details && typeof payload.details === 'object' ? payload.details : {};
       let serializedDetails = '';
 
@@ -12695,7 +12802,7 @@ ipcMain.handle('debug-log', (event, payload) => {
       return { success: true };
     }
 
-    log.info(`[RendererDebug] ${String(payload)}`);
+    log.info(`[RendererDebug] ${singleLine(payload, 6000)}`);
     return { success: true };
   } catch (error) {
     log.error('Failed to persist renderer debug log:', error);

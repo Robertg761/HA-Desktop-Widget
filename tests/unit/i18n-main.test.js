@@ -323,6 +323,40 @@ describe('main localization service', () => {
     await expect(service.downloadLocalePack('fr')).rejects.toThrow('integrity verification');
   });
 
+  it.each([
+    ['another host', 'https://evil.example/fr.json', 'abc'],
+    ['plain HTTP', 'http://example.test/fr.json', 'abc'],
+    ['a file on this computer', 'file:///etc/hostname', 'abc'],
+    ['a folder above the manifest', 'https://example.test/other/fr.json', 'abc'],
+    ['no hash', 'https://example.test/packs/fr.json', ''],
+  ])(
+    'does not download a pack a remote manifest places at %s',
+    async (_name, downloadUrl, sha256) => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          packs: [{ locale: 'fr', version: '1.0.0', minAppVersion: '1.0.0', downloadUrl, sha256 }],
+        }),
+      });
+
+      const service = createLocalizationService({
+        bundledDir,
+        getUserDataDir: () => userDataDir,
+        appVersion: '1.0.0',
+        getDetectedLocale: () => 'en',
+        manifestUrl: 'https://example.test/packs/manifest.json',
+        fetchImpl: fetchMock,
+      });
+
+      await expect(service.downloadLocalePack('fr')).rejects.toThrow(
+        /not available for download|integrity verification/
+      );
+      // Only the manifest was fetched: the pack itself was never requested.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it('loads a local manifest and downloads sibling locale packs in dev mode', async () => {
     const packPayload = {
       locale: 'es',

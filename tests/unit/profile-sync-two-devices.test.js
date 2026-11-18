@@ -433,6 +433,10 @@ describe('a computer that did not change the encryption', () => {
       'ha-widget-profile-sync.json'
     );
     fs.mkdirSync(path.dirname(next.profileSync.cloudFilePath));
+    // As if picked in the folder dialog, which is the only way to a new folder.
+    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
+      path.dirname(next.profileSync.cloudFilePath)
+    );
     desktop.context.profileSyncRuntime.remoteEncrypted = true;
     await desktop.invoke('update-config', next);
     expect(desktop.status().remoteEncrypted).toBeNull();

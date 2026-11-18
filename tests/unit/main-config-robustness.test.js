@@ -264,3 +264,61 @@ describe('a damaged config does not stop the widget from starting', () => {
     expect(handler.indexOf('IS_SMOKE_TEST_MODE')).toBeLessThan(handler.indexOf('showErrorBox'));
   });
 });
+
+describe('config backups', () => {
+  function loadBackupFunctions(userData) {
+    const context = {
+      fs,
+      path,
+      app: { getPath: () => userData },
+      log: { info() {}, warn() {} },
+      CONFIG_FILE_NAME: 'config.json',
+      HOME_ASSISTANT_TOKEN_PLACEHOLDER: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
+    };
+    vm.createContext(context);
+    vm.runInContext(
+      sliceMain(
+        'function getSafeConfigBackupLabel(',
+        '\nfunction shouldBlockPotentialConfigClobber('
+      ) + '\nthis.backupConfig = backupConfig;',
+      context
+    );
+    return context;
+  }
+
+  test('never keep a plaintext token, in new backups or ones an older version left', () => {
+    const os = require('os');
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'ha-widget-backup-'));
+    try {
+      const plaintext = { homeAssistant: { url: 'http://ha.local:8123', token: 'secret-token' } };
+      const encrypted = { homeAssistant: { token: 'c2VhbGVk', tokenEncrypted: true } };
+      fs.writeFileSync(path.join(userData, 'config.json'), JSON.stringify(plaintext));
+      fs.writeFileSync(
+        path.join(userData, 'config.migration.2025-01-01.json'),
+        JSON.stringify(plaintext)
+      );
+      fs.writeFileSync(path.join(userData, 'config.pre-save.old.json'), JSON.stringify(encrypted));
+
+      expect(loadBackupFunctions(userData).backupConfig('migration')).toBe(true);
+
+      const backups = fs.readdirSync(userData).filter((name) => name !== 'config.json');
+      expect(backups).toHaveLength(4);
+      for (const name of backups) {
+        const filePath = path.join(userData, name);
+        expect(fs.readFileSync(filePath, 'utf8')).not.toContain('secret-token');
+        if (process.platform !== 'win32') {
+          expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
+        }
+      }
+      // The live config and an already-encrypted backup are left as they were.
+      expect(JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8'))).toEqual(
+        plaintext
+      );
+      expect(
+        JSON.parse(fs.readFileSync(path.join(userData, 'config.pre-save.old.json'), 'utf8'))
+      ).toEqual(encrypted);
+    } finally {
+      fs.rmSync(userData, { recursive: true, force: true });
+    }
+  });
+});

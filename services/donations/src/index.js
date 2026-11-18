@@ -165,8 +165,14 @@ export async function handleRequest(request, env, { fetchImpl = fetch } = {}) {
     // per-address limit. The address is only handed to the limiter, never stored.
     if (env.CHECKOUT_LIMITER) {
       const key = request.headers.get('CF-Connecting-IP') || 'unknown';
-      const { success } = await env.CHECKOUT_LIMITER.limit({ key });
-      if (!success) return new Response(null, { status: 429 });
+      let allowed = true;
+      try {
+        ({ success: allowed } = await env.CHECKOUT_LIMITER.limit({ key }));
+      } catch (error) {
+        // A limiter outage should not take donations down with it.
+        console.error(error.message);
+      }
+      if (!allowed) return new Response(null, { status: 429 });
     }
     const declaredLength = Number(request.headers.get('Content-Length'));
     if (declaredLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });
