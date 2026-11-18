@@ -298,10 +298,7 @@ describe('Omarchy bar plugin package', () => {
       eachWithConjuncts([
         ['Devanagari with vowel signs and conjuncts', 'नमस्ते हिंदी क्षत्रिय श्री'],
         ['conjuncts of Bengali, Gujarati, Oriya, Telugu and Malayalam', 'ক্ষ ક્ષ କ୍ଷ క్ష ക്ഷ'],
-        [
-          'a conjunct chain, and one broken by a joiner or a non-joiner',
-          'क्त्य क्\u200dष क्\u200cष',
-        ],
+        ['a conjunct chain, and one broken by a joiner or a non-joiner', 'क्त्य क्\u200dष क्\u200cष'],
       ])('for %s', (_name, text) => {
         expect(graphemes(text)).toEqual(expected(text));
       });
