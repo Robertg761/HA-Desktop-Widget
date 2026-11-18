@@ -220,9 +220,9 @@ describe('card donation flow', () => {
     expect(elsewhere.flow.isBusy()).toBe(false);
   });
 
-  test('refuses an amount outside $1 to $12,000 without calling the service', async () => {
+  test('refuses an amount outside $3 to $12,000 without calling the service', async () => {
     const { flow, fetchMock } = setup();
-    for (const amount of [0, 12001, 2.5, '5', undefined]) {
+    for (const amount of [0, 2, 12001, 2.5, '5', undefined]) {
       await expect(flow.start({ amount })).resolves.toEqual(
         expect.objectContaining({ status: 'failed' })
       );

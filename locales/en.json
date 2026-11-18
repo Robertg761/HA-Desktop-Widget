@@ -1747,5 +1747,7 @@
   "Tile color": "Tile color",
   "Use the accent color": "Use the accent color",
   "Pick another color": "Pick another color",
-  "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors."
+  "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.",
+  "The update could not be verified and was not installed.": "The update could not be verified and was not installed.",
+  "Card donations start at $3.": "Card donations start at $3."
 }

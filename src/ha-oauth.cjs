@@ -160,7 +160,9 @@ async function authorizeWithLoopback({
       return;
     }
 
-    settled = true;
+    // Anything on this machine can call the loopback address, so a request without
+    // this authorization's state is turned away without ending the pairing it did
+    // not start. The pairing still ends on its own timeout.
     const returnedState = requestUrl.searchParams.get('state') || '';
     if (!statesMatch(state, returnedState)) {
       send(
@@ -168,11 +170,9 @@ async function authorizeWithLoopback({
         t('Authorization rejected'),
         t('The authorization state did not match. Return to the app and try again.')
       );
-      rejectCallback(
-        createOAuthError('Home Assistant returned an invalid OAuth state', 'OAUTH_STATE_MISMATCH')
-      );
       return;
     }
+    settled = true;
 
     const oauthError = (
       requestUrl.searchParams.get('error_description') ||

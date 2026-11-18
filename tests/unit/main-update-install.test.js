@@ -39,8 +39,10 @@ function loadInstall() {
     supportsAutoUpdater: () => true,
     process: { platform: 'linux', env: { APPIMAGE: '/app.AppImage' } },
     getAutoUpdater: () => updater,
+    // The download passes the signed-checksum check (tests/unit/update-signature.test.js).
+    verifyDownloadedUpdate: async () => {},
     configureAutoUpdaterChannel: () => {},
-    log: { warn() {}, error() {}, transports: { file: {} } },
+    log: { info() {}, warn() {}, error() {}, transports: { file: {} } },
     sendUpdaterCheckEvent: (event) => sent.push(event),
     sendAutoUpdateToWindow: (event) => sent.push(event),
     describeUpdateError: (error) => error.message,
@@ -88,7 +90,11 @@ function loadInstall() {
     updater,
     context,
     sent,
-    install: () => handlers['quit-and-install']({}),
+    install: async () => {
+      // The download is verified asynchronously before it counts as ready to install.
+      await new Promise((resolve) => setImmediate(resolve));
+      return handlers['quit-and-install']({});
+    },
     mutate: () => vm.runInContext('runSerializedConfigMutation(() => "saved")', context),
     state: () => ({
       quitFinalized: context.quitFinalized,
@@ -123,6 +129,8 @@ test('recovers when the real BaseUpdater catches an installer failure and emits 
   // the platform installer, which must never launch from a unit test.
   Object.setPrototypeOf(main.updater, BaseUpdater.prototype);
   main.updater._logger = { info() {}, warn() {}, error() {} };
+  // The real updater registers its install-on-quit handler with the app it wraps.
+  main.updater.app = { onQuit() {} };
   main.updater.downloadedUpdateHelper = {
     file: '/download/update.AppImage',
     downloadedFileInfo: {},

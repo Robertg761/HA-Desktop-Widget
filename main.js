@@ -571,6 +571,7 @@ const {
   createUpdateAnnouncer,
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
+const { verifyDownloadedUpdate } = require('./src/update-signature.cjs');
 const { createReleaseChecker } = require('./src/release-check.cjs');
 
 // package.json names the app "home-assistant-widget", and app.getName() is that, not what the
@@ -1937,6 +1938,24 @@ function generateProfileSyncDeviceId() {
 
 function getDefaultProfileSyncFilePath() {
   return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME);
+}
+
+// A sync file path the renderer may switch to: the fixed file name inside the
+// app data folder, the folder already in use, or a folder picked in the native
+// dialog during this run.
+function isApprovedProfileSyncFilePath(filePath, currentFilePath = '') {
+  if (typeof filePath !== 'string' || !filePath || !path.isAbsolute(filePath)) return false;
+  const resolvedPath = path.resolve(filePath);
+  if (path.basename(resolvedPath) !== PROFILE_SYNC_DEFAULT_FILE_NAME) return false;
+  const folder = path.dirname(resolvedPath);
+  const approvedFolders = [
+    app.getPath('userData'),
+    currentFilePath ? path.dirname(currentFilePath) : '',
+    ...profileSyncRuntime.approvedCopyDestinationFolders,
+  ];
+  return approvedFolders.some(
+    (approved) => typeof approved === 'string' && approved && path.resolve(approved) === folder
+  );
 }
 
 function getNormalizedProfileSyncScopeValue(value) {
@@ -6515,10 +6534,13 @@ function backupConfig(reason = 'migration') {
   const timestampedBackupPath = path.join(userDataDir, `config.${backupLabel}.${timestamp}.json`);
   try {
     if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf8');
-      fs.writeFileSync(timestampedBackupPath, configContent);
-      fs.writeFileSync(backupPath, configContent);
+      // A config from before token encryption holds the token in plaintext. The
+      // backup outlives the migration, so it never carries that token.
+      const configContent = redactPlaintextTokenFromConfigText(fs.readFileSync(configPath, 'utf8'));
+      writePrivateConfigBackup(timestampedBackupPath, configContent);
+      writePrivateConfigBackup(backupPath, configContent);
       log.info('Config backup created at', timestampedBackupPath);
+      scrubPlaintextTokensFromConfigBackups(userDataDir);
       return true;
     }
   } catch (error) {
@@ -6530,6 +6552,72 @@ function backupConfig(reason = 'migration') {
 function ensureConfigBackupBeforeFirstWrite(reason = 'pre-save') {
   if (configBackupCreatedThisRun) return;
   configBackupCreatedThisRun = backupConfig(reason);
+}
+
+// Returns the config text with a plaintext Home Assistant token blanked. Text
+// that is not a config object, or holds no plaintext token, comes back as is.
+function redactPlaintextTokenFromConfigText(content) {
+  if (typeof content !== 'string' || !content.includes('"token"')) return content;
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return content;
+  }
+  const homeAssistant = parsed?.homeAssistant;
+  if (
+    !homeAssistant ||
+    typeof homeAssistant !== 'object' ||
+    typeof homeAssistant.token !== 'string' ||
+    !homeAssistant.token ||
+    homeAssistant.token === HOME_ASSISTANT_TOKEN_PLACEHOLDER ||
+    homeAssistant.tokenEncrypted === true
+  ) {
+    return content;
+  }
+  homeAssistant.token = '';
+  return JSON.stringify(parsed, null, 2);
+}
+
+function writePrivateConfigBackup(filePath, content) {
+  fs.writeFileSync(filePath, content, { mode: 0o600 });
+  // The mode option only applies to a file this call creates.
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Windows and some network filesystems have no POSIX modes.
+  }
+}
+
+// Backups written by earlier versions kept the plaintext token and default
+// permissions. Runs once per process, after the first backup of the run.
+let configBackupsScrubbedThisRun = false;
+function scrubPlaintextTokensFromConfigBackups(userDataDir) {
+  if (configBackupsScrubbedThisRun) return;
+  configBackupsScrubbedThisRun = true;
+  let names;
+  try {
+    names = fs.readdirSync(userDataDir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === CONFIG_FILE_NAME || !/^config\..+\.json$/.test(name)) continue;
+    const filePath = path.join(userDataDir, name);
+    try {
+      if (!fs.lstatSync(filePath).isFile()) continue;
+      const content = fs.readFileSync(filePath, 'utf8');
+      const redacted = redactPlaintextTokenFromConfigText(content);
+      if (redacted !== content) {
+        writePrivateConfigBackup(filePath, redacted);
+        log.info('Removed a plaintext token from an old config backup:', name);
+      } else {
+        fs.chmodSync(filePath, 0o600);
+      }
+    } catch (error) {
+      log.warn('Could not check an old config backup:', name, error?.message || error);
+    }
+  }
 }
 
 function shouldBlockPotentialConfigClobber() {
@@ -9607,6 +9695,20 @@ ipcMain.handle(
     const pathChanged =
       !isHostedProfileSyncProvider(normalizedNextProvider) &&
       normalizedNextPath !== previousCloudFilePath;
+    // The sync engine reads this path and renames a temp file over it, so a new
+    // one is only taken from a folder the user picked in the native dialog (or
+    // one already in use), never as free text from the renderer.
+    if (
+      normalizedNextPath !== previousCloudFilePath &&
+      !isApprovedProfileSyncFilePath(normalizedNextPath, previousCloudFilePath)
+    ) {
+      log.warn('Rejected a profile sync file path that was not chosen through the folder dialog');
+      return {
+        success: false,
+        error: mainT('Choose a sync folder before enabling profile sync.'),
+        config: sanitizeConfigForRenderer(config),
+      };
+    }
     const remoteTargetChanged =
       prevSyncEnabled &&
       profileSync.enabled &&
@@ -12378,6 +12480,7 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
   try {
     const autoUpdater = getAutoUpdater();
     configureAutoUpdaterChannel(autoUpdater, allowPrerelease);
+    notifyWhenUpdateConfirmed = false;
     // Someone is waiting for this one, even when a scheduled check was already running and the
     // updater hands this call that same check: its events are theirs to see.
     manualUpdateCheckRunning = true;
@@ -12668,14 +12771,20 @@ ipcMain.handle('debug-log', (event, payload) => {
   const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
   if (!sender) return rejectUnauthorizedIpc('debug-log');
   try {
+    // Renderer text goes on one line of its own, so it cannot forge other log entries.
+    const singleLine = (value, maxLength) =>
+      String(value)
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+        .slice(0, maxLength);
     if (typeof payload === 'string') {
-      log.info(`[RendererDebug] ${payload}`);
+      log.info(`[RendererDebug] ${singleLine(payload, 6000)}`);
       return { success: true };
     }
 
     if (payload && typeof payload === 'object') {
-      const scope = String(payload.scope || 'renderer');
-      const eventName = String(payload.event || 'log');
+      const scope = singleLine(payload.scope || 'renderer', 64);
+      const eventName = singleLine(payload.event || 'log', 128);
       const details = payload.details && typeof payload.details === 'object' ? payload.details : {};
       let serializedDetails = '';
 
@@ -12695,7 +12804,7 @@ ipcMain.handle('debug-log', (event, payload) => {
       return { success: true };
     }
 
-    log.info(`[RendererDebug] ${String(payload)}`);
+    log.info(`[RendererDebug] ${singleLine(payload, 6000)}`);
     return { success: true };
   } catch (error) {
     log.error('Failed to persist renderer debug log:', error);
@@ -14259,14 +14368,10 @@ async function runScheduledUpdateCheck() {
     configureAutoUpdaterChannel(autoUpdater);
     backgroundUpdateCheckRunning = true;
     try {
-      await autoUpdater.checkForUpdatesAndNotify({
-        title: mainT('A new update is ready to install'),
-        // electron-updater fills {version} itself when the download finishes.
-        body: mainT(
-          '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
-          { appName: APP_DISPLAY_NAME, version: '{version}' }
-        ),
-      });
+      // Not checkForUpdatesAndNotify: its notification would promise an install before the
+      // download is verified. confirmDownloadedUpdate shows it once that has passed.
+      notifyWhenUpdateConfirmed = true;
+      await autoUpdater.checkForUpdates();
     } finally {
       backgroundUpdateCheckRunning = false;
     }
@@ -14280,6 +14385,64 @@ async function runScheduledUpdateCheck() {
 }
 
 let updateCheckScheduler = null;
+// Set by a scheduled check: the person did not ask for it, so a verified download is announced.
+let notifyWhenUpdateConfirmed = false;
+
+// The installers are not code-signed, so a download counts as an update only once its hash is
+// in the checksum list this project signed for that release (src/update-signature.cjs).
+async function confirmDownloadedUpdate(autoUpdater, info) {
+  autoUpdateDownloaded = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  const version = info?.version;
+  const filePath = info?.downloadedFile;
+  try {
+    await verifyDownloadedUpdate({
+      filePath,
+      version,
+      fetchImpl: (url, init) => net.fetch(url, init),
+    });
+  } catch (error) {
+    log.error(`Update ${version} was not verified and will not be installed:`, error?.message);
+    // A download that failed the check is not offered again from the updater's cache. One whose
+    // signed list could not be fetched is kept: the next check verifies it again.
+    if (error?.kind !== 'unavailable' && typeof filePath === 'string' && filePath) {
+      await fs.promises.rm(filePath, { force: true }).catch(() => {});
+    }
+    sendUpdaterCheckEvent({
+      status: 'error',
+      error: mainT('The update could not be verified and was not installed.'),
+    });
+    return false;
+  }
+  log.info(`Update ${version} matches its signed release checksums`);
+  autoUpdateDownloaded = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  // electron-updater only arms install-on-quit when a download finishes, and it was off then.
+  try {
+    autoUpdater.addQuitHandler?.();
+  } catch (error) {
+    // The Install button still works; only install-on-quit is lost.
+    log.warn('Could not arm install-on-quit for the update:', error?.message || error);
+  }
+  sendAutoUpdateToWindow({ status: 'downloaded', info: { version } });
+  if (notifyWhenUpdateConfirmed) {
+    notifyWhenUpdateConfirmed = false;
+    try {
+      if (ElectronNotification.isSupported()) {
+        new ElectronNotification({
+          title: mainT('A new update is ready to install'),
+          body: mainT(
+            '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+            { appName: APP_DISPLAY_NAME, version }
+          ),
+        }).show();
+      }
+    } catch (error) {
+      log.warn('Could not show the update notification:', error?.message || error);
+    }
+  }
+  return true;
+}
 
 // App event handlers
 function setupAutoUpdates() {
@@ -14291,7 +14454,9 @@ function setupAutoUpdates() {
       autoUpdater.logger = log;
       autoUpdater.logger.transports.file.level = 'info';
       autoUpdater.autoDownload = true;
-      autoUpdater.autoInstallOnAppQuit = true;
+      // Nothing is installed, on quit or on request, until confirmDownloadedUpdate has checked
+      // the download against the release's signed checksum list.
+      autoUpdater.autoInstallOnAppQuit = false;
       configureAutoUpdaterChannel(autoUpdater);
 
       autoUpdater.on('checking-for-update', () => {
@@ -14310,8 +14475,7 @@ function setupAutoUpdates() {
         sendAutoUpdateToWindow({ status: 'downloading', progress: { percent: progress?.percent } });
       });
       autoUpdater.on('update-downloaded', (info) => {
-        autoUpdateDownloaded = true;
-        sendAutoUpdateToWindow({ status: 'downloaded', info: { version: info?.version } });
+        void confirmDownloadedUpdate(autoUpdater, info);
       });
       autoUpdater.on('error', (err) => {
         autoUpdateDownloaded = false;

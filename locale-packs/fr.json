@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.82",
+  "version": "1.2.83",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2246,6 +2246,8 @@
     "Tile color": "Couleur de la vignette",
     "Use the accent color": "Utiliser la couleur d'accent",
     "Pick another color": "Choisir une autre couleur",
-    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colore l'icône de cette vignette, ses commandes et sa lueur lorsqu'elle est allumée. Le contraste élevé garde ses propres couleurs."
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colore l'icône de cette vignette, ses commandes et sa lueur lorsqu'elle est allumée. Le contraste élevé garde ses propres couleurs.",
+    "The update could not be verified and was not installed.": "La mise à jour n'a pas pu être vérifiée et n'a pas été installée.",
+    "Card donations start at $3.": "Les dons par carte commencent à 3 $."
   }
 }

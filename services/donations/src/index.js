@@ -11,7 +11,9 @@
 
 const STRIPE_CHECKOUT_SESSIONS_URL = 'https://api.stripe.com/v1/checkout/sessions';
 // Whole US dollars, the same bounds the app's donate dialog accepts (GitHub Sponsors' cap).
-export const MIN_AMOUNT = 1;
+// Small enough for a first-time donor, large enough that the endpoint is a poor way to test
+// stolen cards a dollar at a time.
+export const MIN_AMOUNT = 3;
 export const MAX_AMOUNT = 12000;
 const MAX_BODY_BYTES = 1024;
 const PRODUCT_NAME = 'Donation to HA Desktop Widget';
@@ -40,8 +42,13 @@ export function checkoutLocale(locale) {
 }
 
 /** The form fields for Stripe's "create a Checkout Session" call. */
-export function checkoutSessionParams({ amount, locale }, origin) {
+// Stripe's shortest allowed session life is 30 minutes; the default is a day.
+const SESSION_LIFETIME_SECONDS = 35 * 60;
+
+export function checkoutSessionParams({ amount, locale }, origin, now = Date.now()) {
   return new URLSearchParams({
+    // An unused session closes soon, so abandoned ones cannot be collected and reused later.
+    expires_at: String(Math.floor(now / 1000) + SESSION_LIFETIME_SECONDS),
     mode: 'payment',
     submit_type: 'donate',
     // Cards only: other payment methods can hand off to a bank's or provider's own site, which
@@ -165,8 +172,14 @@ export async function handleRequest(request, env, { fetchImpl = fetch } = {}) {
     // per-address limit. The address is only handed to the limiter, never stored.
     if (env.CHECKOUT_LIMITER) {
       const key = request.headers.get('CF-Connecting-IP') || 'unknown';
-      const { success } = await env.CHECKOUT_LIMITER.limit({ key });
-      if (!success) return new Response(null, { status: 429 });
+      let allowed = true;
+      try {
+        ({ success: allowed } = await env.CHECKOUT_LIMITER.limit({ key }));
+      } catch (error) {
+        // A limiter outage should not take donations down with it.
+        console.error(error.message);
+      }
+      if (!allowed) return new Response(null, { status: 429 });
     }
     const declaredLength = Number(request.headers.get('Content-Length'));
     if (declaredLength > MAX_BODY_BYTES) return new Response(null, { status: 413 });

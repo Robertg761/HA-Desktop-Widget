@@ -75,7 +75,8 @@ export const PROVIDERS = {
       const url = new URL('https://github.com/login/oauth/authorize');
       url.searchParams.set('client_id', env.GITHUB_CLIENT_ID);
       url.searchParams.set('redirect_uri', redirectUri);
-      url.searchParams.set('scope', 'read:user user:email');
+      // /user needs no scope and /user/emails needs only this one.
+      url.searchParams.set('scope', 'user:email');
       url.searchParams.set('state', state);
       return url.toString();
     },

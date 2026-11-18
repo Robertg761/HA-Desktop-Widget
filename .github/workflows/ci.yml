@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  # Lets any failing job cancel the rest of the run.
-  actions: write
 
 jobs:
   # Kept separate from lint-and-test so a newly published advisory fails on its
@@ -38,6 +36,10 @@ jobs:
 
   lint-and-test:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      # Lets this job cancel the rest of the run when it fails.
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,6 +104,10 @@ jobs:
 
   lint-and-test-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets this job cancel the rest of the run when it fails.
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -175,6 +181,10 @@ jobs:
 
   package-macos:
     runs-on: macos-latest
+    permissions:
+      contents: read
+      # Lets this job cancel the rest of the run when it fails.
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

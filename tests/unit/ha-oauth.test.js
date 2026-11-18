@@ -119,21 +119,32 @@ describe('Home Assistant OAuth', () => {
     expect(exchangeCode).toHaveBeenCalledTimes(1);
   });
 
-  test('rejects a callback whose state does not match', async () => {
-    await expect(
-      authorizeWithLoopback({
-        baseUrl: 'http://ha.local:8123',
-        timeoutMs: 2000,
-        openExternal: async (rawAuthorizationUrl) => {
-          const authorizationUrl = new URL(rawAuthorizationUrl);
-          const callbackUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
-          callbackUrl.searchParams.set('code', 'stolen-code');
-          callbackUrl.searchParams.set('state', 'wrong-state');
-          await requestCallback(callbackUrl);
-        },
-        exchangeCode: jest.fn(),
-      })
-    ).rejects.toMatchObject({ code: 'OAUTH_STATE_MISMATCH' });
+  test('turns away a callback whose state does not match without ending the pairing', async () => {
+    const exchangeCode = jest.fn(async ({ code }) => ({ code }));
+    let forgedStatus;
+    const result = await authorizeWithLoopback({
+      baseUrl: 'http://ha.local:8123',
+      timeoutMs: 2000,
+      openExternal: async (rawAuthorizationUrl) => {
+        const authorizationUrl = new URL(rawAuthorizationUrl);
+        const forgedUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
+        forgedUrl.searchParams.set('code', 'stolen-code');
+        forgedUrl.searchParams.set('state', 'wrong-state');
+        forgedStatus = await requestCallback(forgedUrl);
+
+        // Home Assistant's own redirect still completes the pairing afterwards.
+        const callbackUrl = new URL(authorizationUrl.searchParams.get('redirect_uri'));
+        callbackUrl.searchParams.set('code', 'one-time-code');
+        callbackUrl.searchParams.set('state', authorizationUrl.searchParams.get('state'));
+        await requestCallback(callbackUrl);
+      },
+      exchangeCode,
+    });
+
+    expect(forgedStatus).toBe(400);
+    expect(result.code).toBe('one-time-code');
+    expect(exchangeCode).toHaveBeenCalledTimes(1);
+    expect(exchangeCode.mock.calls[0][0].code).toBe('one-time-code');
   });
 
   test('shows the browser callback pages in the app language, escaped', async () => {
@@ -225,6 +236,8 @@ describe('Home Assistant OAuth', () => {
         callbackUrl.searchParams.set('code', 'stolen-code');
         callbackUrl.searchParams.set('state', 'wrong-state');
         page = await requestCallbackPage(callbackUrl);
+        // The forged callback leaves the pairing waiting, so the test ends it.
+        client.cancelPairing();
       },
       postForm: jest.fn(),
       isSecureStorageAvailable: () => true,
@@ -232,7 +245,7 @@ describe('Home Assistant OAuth', () => {
     });
 
     await expect(client.pair('http://ha.local:8123')).rejects.toMatchObject({
-      code: 'OAUTH_STATE_MISMATCH',
+      code: 'OAUTH_AUTHORIZATION_CANCELED',
     });
     expect(page.statusCode).toBe(400);
     expect(page.body).toContain('<h1>Autorisierung abgelehnt</h1>');

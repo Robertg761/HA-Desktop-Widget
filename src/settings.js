@@ -469,6 +469,8 @@ const PROFILE_SYNC_HELP_URL = 'https://github.com/Robertg761/HA-Desktop-Widget#p
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/robertg761';
 // GitHub Sponsors caps custom amounts at $12,000; higher values 404 the checkout page.
 const GITHUB_SPONSORS_MAX_AMOUNT = 12000;
+// The donation service refuses less (services/donations); GitHub Sponsors takes $1.
+const CARD_DONATION_MIN_AMOUNT = 3;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
 const PROFILE_SYNC_SCOPE_SECTION_KEYS = [
   'quickAccessLayout',
@@ -4654,6 +4656,12 @@ function bindSupportDevelopmentUi() {
     cardBtn.onclick = async () => {
       if (cardBtn.getAttribute('aria-busy') === 'true' || rejectInvalidAmount()) return;
       const { amount } = getSelectedDonationAmount(modal);
+      if (amount < CARD_DONATION_MIN_AMOUNT) {
+        setAmountError(t('Card donations start at $3.'));
+        customInput?.focus();
+        customInput?.select();
+        return;
+      }
       // The button stays busy while the checkout window is open, also if this dialog is closed
       // and opened again meanwhile: a second checkout would only bring the first one forward.
       const label = cardBtn.textContent;
