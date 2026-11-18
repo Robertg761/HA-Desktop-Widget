@@ -9995,6 +9995,19 @@ describe('Settings + Config Integration', () => {
           expect(mockElectronAPI.startCardDonation).not.toHaveBeenCalled();
           expect(document.getElementById('donate-amount-error').hidden).toBe(false);
         });
+
+        test('says that a card donation starts at $3, which GitHub Sponsors does not', async () => {
+          mockElectronAPI.startCardDonation = jest.fn();
+          const card = await openDonate();
+          document.getElementById('donate-custom-amount').value = '2';
+          card.click();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+
+          expect(mockElectronAPI.startCardDonation).not.toHaveBeenCalled();
+          expect(document.getElementById('donate-amount-error').textContent).toBe(
+            'Card donations start at $3.'
+          );
+        });
       });
     });
   });

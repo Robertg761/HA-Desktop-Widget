@@ -69,8 +69,9 @@ function loadMain({
     on: jest.fn((event, handler) => {
       listeners[event] = handler;
     }),
+    autoInstallOnAppQuit: true,
+    addQuitHandler: jest.fn(),
     checkForUpdates: jest.fn(async () => checkResult),
-    checkForUpdatesAndNotify: jest.fn(async () => checkResult),
   };
   const fetchUrls = [];
   const notifications = [];
@@ -122,6 +123,8 @@ function loadMain({
     isPortableBuild: () => portable,
     supportsAutoUpdater: () => selfUpdating,
     getAutoUpdater: () => autoUpdater,
+    verifyDownloadedUpdate: jest.fn(async () => {}),
+    fs: { promises: { rm: jest.fn(async () => {}) } },
     fetchChecked: jest.fn(async (_fetch, url) => {
       fetchUrls.push(url);
       return { json: async () => releases };
@@ -157,6 +160,9 @@ function loadMain({
     ipcCheck: (options) => handlers['check-for-updates']({ sender: {} }, options),
   };
 }
+
+// A downloaded update is verified asynchronously before the window hears about it.
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 // The IPC handler authorizes its sender with a function defined elsewhere in main.js.
 function withAuthorizedSender(main) {
@@ -378,7 +384,7 @@ describe('the update check in main', () => {
       main.run('updateCheckScheduler.stop()');
     });
 
-    it('only a self-updating build listens to the updater, and sends the window plain data', () => {
+    it('only a self-updating build listens to the updater, and sends the window plain data', async () => {
       const own = loadMain({ selfUpdating: true });
       own.run('setupAutoUpdates()');
       const manual = loadMain({ selfUpdating: false });
@@ -394,6 +400,7 @@ describe('the update check in main', () => {
       });
       own.listeners['download-progress']({ percent: 40, bytesPerSecond: 99, transferred: 5 });
       own.listeners['update-downloaded']({ version: '4.0.1', files: [] });
+      await flush();
       own.listeners['update-not-available']({ version: '4.0.0' });
 
       expect(own.sent).toEqual([
@@ -418,19 +425,105 @@ describe('the update check in main', () => {
     });
   });
 
+  describe('a downloaded update', () => {
+    function loadWithDownload(verify) {
+      const main = loadMain({ selfUpdating: true });
+      main.context.verifyDownloadedUpdate = jest.fn(verify);
+      main.run('setupAutoUpdates()');
+      main.run('updateCheckScheduler.stop()');
+      return main;
+    }
+
+    it('is not installable, on quit or on request, until it has been verified', async () => {
+      let pass;
+      const main = loadWithDownload(() => new Promise((resolve) => (pass = resolve)));
+      expect(main.autoUpdater.autoInstallOnAppQuit).toBe(false);
+
+      main.listeners['update-downloaded']({ version: '4.0.1', downloadedFile: '/cache/app' });
+      await flush();
+      expect(main.context.verifyDownloadedUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: '/cache/app', version: '4.0.1' })
+      );
+      expect(main.run('autoUpdateDownloaded')).toBe(false);
+      expect(main.autoUpdater.autoInstallOnAppQuit).toBe(false);
+      expect(main.sent).toEqual([]);
+
+      pass();
+      await flush();
+      expect(main.run('autoUpdateDownloaded')).toBe(true);
+      expect(main.autoUpdater.autoInstallOnAppQuit).toBe(true);
+      expect(main.autoUpdater.addQuitHandler).toHaveBeenCalledTimes(1);
+      expect(main.sent.at(-1)[1]).toEqual({ status: 'downloaded', info: { version: '4.0.1' } });
+    });
+
+    it('is deleted and never installed when it fails the check', async () => {
+      const main = loadWithDownload(async () => {
+        throw Object.assign(new Error('not in the signed list'), { kind: 'rejected' });
+      });
+
+      main.listeners['update-downloaded']({ version: '4.0.1', downloadedFile: '/cache/app' });
+      await flush();
+
+      expect(main.run('autoUpdateDownloaded')).toBe(false);
+      expect(main.autoUpdater.autoInstallOnAppQuit).toBe(false);
+      expect(main.autoUpdater.addQuitHandler).not.toHaveBeenCalled();
+      expect(main.context.fs.promises.rm).toHaveBeenCalledWith('/cache/app', { force: true });
+      expect(main.sent.at(-1)[1]).toEqual({
+        status: 'error',
+        error: 'The update could not be verified and was not installed.',
+      });
+      expect(main.notifications).toHaveLength(0);
+    });
+
+    it('is kept, but still not installed, when the signed list cannot be fetched', async () => {
+      const main = loadWithDownload(async () => {
+        throw Object.assign(new Error('offline'), { kind: 'unavailable' });
+      });
+
+      main.listeners['update-downloaded']({ version: '4.0.1', downloadedFile: '/cache/app' });
+      await flush();
+
+      expect(main.run('autoUpdateDownloaded')).toBe(false);
+      expect(main.autoUpdater.autoInstallOnAppQuit).toBe(false);
+      expect(main.context.fs.promises.rm).not.toHaveBeenCalled();
+      expect(main.sent.at(-1)[1]).toMatchObject({ status: 'error' });
+    });
+  });
+
   describe("a check on the app's own schedule", () => {
     it("fetches and announces an update in a self-updating build, under the app's real name", async () => {
       const main = loadMain({ selfUpdating: true });
 
-      await main.run('runScheduledUpdateCheck()');
+      main.run('setupAutoUpdates()');
+      main.run('updateCheckScheduler.stop()');
 
-      expect(main.autoUpdater.checkForUpdatesAndNotify).toHaveBeenCalledTimes(1);
-      const notice = main.autoUpdater.checkForUpdatesAndNotify.mock.calls[0][0];
+      await main.run('runScheduledUpdateCheck()');
+      expect(main.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+      // Nothing is announced until the download has been verified.
+      expect(main.notifications).toHaveLength(0);
+      main.listeners['update-downloaded']({ version: '4.0.1', downloadedFile: '/cache/app' });
+      await flush();
+
+      expect(main.notifications).toHaveLength(1);
+      const notice = main.notifications[0].options;
       expect(notice.title).toBe('A new update is ready to install');
       // electron-updater would fill {appName} from the package name, "home-assistant-widget".
       expect(notice.body).toBe(
-        'HA Desktop Widget version {version} has been downloaded and will be automatically installed on exit'
+        'HA Desktop Widget version 4.0.1 has been downloaded and will be automatically installed on exit'
       );
+    });
+
+    it('does not announce a download that a person asked for', async () => {
+      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      main.run('setupAutoUpdates()');
+      main.run('updateCheckScheduler.stop()');
+
+      await main.ipcCheck();
+      main.listeners['update-downloaded']({ version: '4.0.1', downloadedFile: '/cache/app' });
+      await flush();
+
+      expect(main.notifications).toHaveLength(0);
+      expect(main.sent.at(-1)[1]).toEqual({ status: 'downloaded', info: { version: '4.0.1' } });
     });
 
     it('does not fetch again an update that is already waiting to be installed', async () => {
@@ -439,7 +532,7 @@ describe('the update check in main', () => {
 
       await main.run('runScheduledUpdateCheck()');
 
-      expect(main.autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+      expect(main.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
     });
 
     it('does not check while the app is quitting', async () => {
@@ -448,7 +541,7 @@ describe('the update check in main', () => {
 
       await main.run('runScheduledUpdateCheck()');
 
-      expect(main.autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+      expect(main.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
     });
 
     it('tells a macOS or deb user about a newer release, once, and puts it in the window', async () => {
@@ -479,7 +572,7 @@ describe('the update check in main', () => {
       const main = loadMain({ selfUpdating: true });
       main.run('setupAutoUpdates()');
       let during;
-      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(async () => {
+      main.autoUpdater.checkForUpdates.mockImplementation(async () => {
         main.listeners['checking-for-update']();
         main.listeners.error(new Error('getaddrinfo ENOTFOUND github.com'));
         during = main.sent.map(([, payload]) => payload);
@@ -503,7 +596,7 @@ describe('the update check in main', () => {
     it('marks "nothing new" from its own check as background too, and not from a requested one', async () => {
       const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
       main.run('setupAutoUpdates()');
-      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(async () => {
+      main.autoUpdater.checkForUpdates.mockImplementation(async () => {
         main.listeners['update-not-available']({ version: '4.0.0' });
       });
 
@@ -537,7 +630,8 @@ describe('the update check in main', () => {
       release();
       await manual;
 
-      expect(main.autoUpdater.checkForUpdatesAndNotify).not.toHaveBeenCalled();
+      // Only the manual check reached the updater.
+      expect(main.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
       expect(main.sent.at(-1)[1].background).toBeUndefined();
     });
 
@@ -545,7 +639,7 @@ describe('the update check in main', () => {
       const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
       main.run('setupAutoUpdates()');
       let finishScheduled;
-      main.autoUpdater.checkForUpdatesAndNotify.mockImplementation(
+      main.autoUpdater.checkForUpdates.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             finishScheduled = resolve;

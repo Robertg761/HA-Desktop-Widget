@@ -571,6 +571,7 @@ const {
   createUpdateAnnouncer,
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
+const { verifyDownloadedUpdate } = require('./src/update-signature.cjs');
 const { createReleaseChecker } = require('./src/release-check.cjs');
 
 // package.json names the app "home-assistant-widget", and app.getName() is that, not what the
@@ -12479,6 +12480,7 @@ async function checkForUpdatesForCurrentPackage({ allowPrerelease } = {}) {
   try {
     const autoUpdater = getAutoUpdater();
     configureAutoUpdaterChannel(autoUpdater, allowPrerelease);
+    notifyWhenUpdateConfirmed = false;
     // Someone is waiting for this one, even when a scheduled check was already running and the
     // updater hands this call that same check: its events are theirs to see.
     manualUpdateCheckRunning = true;
@@ -14366,14 +14368,10 @@ async function runScheduledUpdateCheck() {
     configureAutoUpdaterChannel(autoUpdater);
     backgroundUpdateCheckRunning = true;
     try {
-      await autoUpdater.checkForUpdatesAndNotify({
-        title: mainT('A new update is ready to install'),
-        // electron-updater fills {version} itself when the download finishes.
-        body: mainT(
-          '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
-          { appName: APP_DISPLAY_NAME, version: '{version}' }
-        ),
-      });
+      // Not checkForUpdatesAndNotify: its notification would promise an install before the
+      // download is verified. confirmDownloadedUpdate shows it once that has passed.
+      notifyWhenUpdateConfirmed = true;
+      await autoUpdater.checkForUpdates();
     } finally {
       backgroundUpdateCheckRunning = false;
     }
@@ -14387,6 +14385,64 @@ async function runScheduledUpdateCheck() {
 }
 
 let updateCheckScheduler = null;
+// Set by a scheduled check: the person did not ask for it, so a verified download is announced.
+let notifyWhenUpdateConfirmed = false;
+
+// The installers are not code-signed, so a download counts as an update only once its hash is
+// in the checksum list this project signed for that release (src/update-signature.cjs).
+async function confirmDownloadedUpdate(autoUpdater, info) {
+  autoUpdateDownloaded = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  const version = info?.version;
+  const filePath = info?.downloadedFile;
+  try {
+    await verifyDownloadedUpdate({
+      filePath,
+      version,
+      fetchImpl: (url, init) => net.fetch(url, init),
+    });
+  } catch (error) {
+    log.error(`Update ${version} was not verified and will not be installed:`, error?.message);
+    // A download that failed the check is not offered again from the updater's cache. One whose
+    // signed list could not be fetched is kept: the next check verifies it again.
+    if (error?.kind !== 'unavailable' && typeof filePath === 'string' && filePath) {
+      await fs.promises.rm(filePath, { force: true }).catch(() => {});
+    }
+    sendUpdaterCheckEvent({
+      status: 'error',
+      error: mainT('The update could not be verified and was not installed.'),
+    });
+    return false;
+  }
+  log.info(`Update ${version} matches its signed release checksums`);
+  autoUpdateDownloaded = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  // electron-updater only arms install-on-quit when a download finishes, and it was off then.
+  try {
+    autoUpdater.addQuitHandler?.();
+  } catch (error) {
+    // The Install button still works; only install-on-quit is lost.
+    log.warn('Could not arm install-on-quit for the update:', error?.message || error);
+  }
+  sendAutoUpdateToWindow({ status: 'downloaded', info: { version } });
+  if (notifyWhenUpdateConfirmed) {
+    notifyWhenUpdateConfirmed = false;
+    try {
+      if (ElectronNotification.isSupported()) {
+        new ElectronNotification({
+          title: mainT('A new update is ready to install'),
+          body: mainT(
+            '{{appName}} version {{version}} has been downloaded and will be automatically installed on exit',
+            { appName: APP_DISPLAY_NAME, version }
+          ),
+        }).show();
+      }
+    } catch (error) {
+      log.warn('Could not show the update notification:', error?.message || error);
+    }
+  }
+  return true;
+}
 
 // App event handlers
 function setupAutoUpdates() {
@@ -14398,7 +14454,9 @@ function setupAutoUpdates() {
       autoUpdater.logger = log;
       autoUpdater.logger.transports.file.level = 'info';
       autoUpdater.autoDownload = true;
-      autoUpdater.autoInstallOnAppQuit = true;
+      // Nothing is installed, on quit or on request, until confirmDownloadedUpdate has checked
+      // the download against the release's signed checksum list.
+      autoUpdater.autoInstallOnAppQuit = false;
       configureAutoUpdaterChannel(autoUpdater);
 
       autoUpdater.on('checking-for-update', () => {
@@ -14417,8 +14475,7 @@ function setupAutoUpdates() {
         sendAutoUpdateToWindow({ status: 'downloading', progress: { percent: progress?.percent } });
       });
       autoUpdater.on('update-downloaded', (info) => {
-        autoUpdateDownloaded = true;
-        sendAutoUpdateToWindow({ status: 'downloaded', info: { version: info?.version } });
+        void confirmDownloadedUpdate(autoUpdater, info);
       });
       autoUpdater.on('error', (err) => {
         autoUpdateDownloaded = false;

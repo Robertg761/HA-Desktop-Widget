@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.82",
+  "version": "1.2.83",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -2246,6 +2246,8 @@
     "Tile color": "Kachelfarbe",
     "Use the accent color": "Akzentfarbe verwenden",
     "Pick another color": "Andere Farbe wählen",
-    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Färbt das Symbol dieser Kachel, ihre Bedienelemente und ihr Leuchten, wenn sie an ist. Hoher Kontrast behält seine eigenen Farben."
+    "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Färbt das Symbol dieser Kachel, ihre Bedienelemente und ihr Leuchten, wenn sie an ist. Hoher Kontrast behält seine eigenen Farben.",
+    "The update could not be verified and was not installed.": "Das Update konnte nicht verifiziert werden und wurde nicht installiert.",
+    "Card donations start at $3.": "Kartenspenden sind ab 3 $ möglich."
   }
 }

@@ -19,7 +19,7 @@ const { URL } = require('url');
 const DONATION_SERVICE_URL = 'https://donate.hadesktopwidget.com';
 const CHECKOUT_PARTITION = 'donate-checkout';
 const REQUEST_TIMEOUT_MS = 15000;
-const MIN_AMOUNT = 1;
+const MIN_AMOUNT = 3;
 const MAX_AMOUNT = 12000;
 // Chromium's code for a navigation that was stopped, which is what preventDefault on the
 // return page navigation reports.
