@@ -56,7 +56,9 @@ def crop_on_wall(name, box, seed=0):
     return bg.crop(box)
 
 save(crop_on_wall('palette', (0, 0, 1000, 300)), 'feat-palette', 720)
-save(crop_on_wall('main-dark', (12, 503, 988, 1024), 1), 'feat-quick-access', 720)
+# Quick Access shows the page tabs and all three rows of tiles, which makes it about as tall as the
+# camera crop: the two sit in one row of the site's grid, and a short picture leaves its tile half empty.
+save(crop_on_wall('main-dark', (12, 503, 988, 1248), 1), 'feat-quick-access', 720)
 save(crop_on_wall('camera-live', (40, 290, 960, 1030), 2), 'feat-camera', 720)
 
 # Themes: three whole windows side by side, light, dark and Halloween.
@@ -74,14 +76,13 @@ for k, w in enumerate(wins):
     bg.paste(small, (x, y), mask)
 save(bg, 'feat-themes', 720)
 
-# Desktop pins: three pinned tiles on a strip of wallpaper.
+# Desktop pins: three pinned tiles scattered on a piece of wallpaper, as they sit on a desktop. As
+# tall as the camera crop too, less the extra line of text in the pins tile.
 pins = [load('pin-' + n) for n in ['light_living_room', 'climate_thermostat', 'lock_front_door']]
-W, H = 1000, 440
+W, H = 1000, 720
 bg = wallpaper(W, H, 3)
 pw, ph = pins[0].size
-gap = (W - 3 * pw) // 4
-for k, p in enumerate(pins):
-    x, y = gap + k * (pw + gap), (H - ph) // 2 + (-14, 18, -4)[k]
+for p, (x, y) in zip(pins, [(52, 44), (612, 60), (322, 392)]):
     sh = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     ImageDraw.Draw(sh).rounded_rectangle((x, y + 14, x + pw, y + ph + 14), 28, fill=(0, 0, 0, 140))
     bg.alpha_composite(sh.filter(ImageFilter.GaussianBlur(20)))

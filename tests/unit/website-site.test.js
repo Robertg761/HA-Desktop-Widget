@@ -53,7 +53,7 @@ async function loadPage(html, { userAgent = CHROME_ON_LINUX, answers } = {}) {
 const FOOTER = '<span class="footer-version" data-version hidden></span>';
 const DOWNLOAD = `
   <div id="recommend"><a id="rec-primary" href="#all"><span data-download-label>Choose</span></a>
-    <p data-version data-version-prefix="Version " hidden></p>
+    <p data-version hidden></p>
     <p id="beta-line" hidden><a id="beta-link" href="#"></a></p>
     <p id="rec-arch" hidden></p>
     <details id="install-help"><summary id="install-summary"></summary>
@@ -141,6 +141,13 @@ describe('the version label', () => {
     const label = document.querySelector('[data-version]');
     expect(label.textContent).toBe('v4.0.0');
     expect(label.hidden).toBe(false);
+  });
+
+  // The tag already starts with a v, and the download page once put "Version " before it.
+  it('shows the tag as GitHub names it, with no word in front', async () => {
+    await loadPage(DOWNLOAD, { answers: answersFor({ stable: release('v4.0.0'), list: [] }) });
+    const labels = [...document.querySelectorAll('[data-version]')].map((el) => el.textContent);
+    expect(labels).toEqual(['v4.0.0', 'v4.0.0']);
   });
 
   it('shows no version at all, instead of a stale one, when GitHub cannot be reached', async () => {
@@ -377,6 +384,25 @@ describe('phones and keyboards', () => {
   it('leaves a computer’s Download buttons alone', async () => {
     await loadPage(BUTTON, { userAgent: CHROME_ON_LINUX });
     expect(document.querySelector('[data-download-label]').textContent).toBe('Download for Linux');
+  });
+
+  // A details element stays open when the keyboard tabs past its last link, which left the menu
+  // hanging over the page while focus moved on to the buttons beside it.
+  it('closes the menu when focus leaves it, and not while focus moves inside it', async () => {
+    await loadPage(`
+      <details class="nav-menu" open><summary>Menu</summary>
+        <nav class="nav-menu-panel"><a id="first" href="/faq">FAQ</a><a id="last" href="/x">X</a></nav>
+      </details>
+      <a id="after" href="/download">Download</a>`);
+    const menu = document.querySelector('.nav-menu');
+    const moveFocus = (from, to) =>
+      document
+        .getElementById(from)
+        .dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to }));
+    moveFocus('first', document.getElementById('last'));
+    expect(menu.open).toBe(true);
+    moveFocus('last', document.getElementById('after'));
+    expect(menu.open).toBe(false);
   });
 
   it('prints the search shortcut as a Mac keyboard does', async () => {

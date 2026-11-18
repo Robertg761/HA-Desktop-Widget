@@ -5,10 +5,14 @@ launch-4.0 capture rig (`promo/launch-4.0/rig`) against its mock Home Assistant.
 
 1. Install dev dependencies (`NODE_ENV=development npm ci --include=dev`) and make the rig's
    assets as `promo/launch-4.0/README.md` describes (`make-assets.py`, which needs `porch.jpg`).
-2. Stills, at device scale 2. The graph wants an evening clock, so set the time zone:
+2. Stills, at device scale 2. The graph wants an evening clock, so set the time zone. The screen
+   has to be taller than the window at that scale (1320 px), or the capture is cut off at the
+   screen's edge; Xvfb's own default is 1024 px. Name the shots to take after the folder (`main`,
+   `camera`, `camlive`, `graph`, `palette`, `seasonal`, `seasonalfull`, `pins`):
 
    ```sh
-   TZ=America/Los_Angeles xvfb-run -a dbus-run-session node promo/website-shots/stills.cjs <work>/out
+   TZ=America/Los_Angeles xvfb-run -a -s "-screen 0 3200x2400x24" dbus-run-session \
+     node promo/website-shots/stills.cjs <work>/out main camera camlive graph palette seasonalfull pins
    ```
 
 3. The video loop (9 s at 30 fps; it ends on the state it starts with, so it loops cleanly):
