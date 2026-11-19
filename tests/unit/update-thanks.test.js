@@ -143,11 +143,12 @@ describe('the after-update notice', () => {
     expect(toast.isConnected).toBe(false);
   });
 
-  it('goes away by itself, so it never waits on the user', () => {
+  it('stays until it is dismissed', () => {
+    expect(UPDATE_NOTICE_MS).toBe(Infinity);
     const { toast } = show();
-    jest.advanceTimersByTime(UPDATE_NOTICE_MS - 100);
+    jest.advanceTimersByTime(60 * 60 * 1000);
     expect(toast.isConnected).toBe(true);
-    jest.advanceTimersByTime(200);
+    toast.querySelector('.toast-close').click();
     expect(container().querySelector('.toast')).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 /**
  * The one notice after an update: which version is now running, a link to what changed and a quiet
  * way to support development. It shows once per release, on the first start of that release, and
- * goes away by itself; nothing asks again until the next update.
+ * stays until it is dismissed (a button, its close button, a click on it or Escape); nothing asks
+ * again until the next update.
  *
  * The version last started is kept in this computer's localStorage rather than in the settings:
  * profile sync would otherwise carry one computer's update over to another that has not updated.
@@ -11,8 +12,8 @@ import { showToast } from './ui-utils.js';
 import { t } from './i18n.js';
 
 const LAST_RUN_VERSION_KEY = 'ha-widget:last-run-version';
-// Long enough to read and reach a button; the pointer or focus on it holds the clock.
-const UPDATE_NOTICE_MS = 15000;
+// It waits for the user: a notice that left by itself was gone before anyone looked at the widget.
+const UPDATE_NOTICE_MS = Infinity;
 
 // The release notes of a version are on its GitHub release, tagged with a "v" before the version.
 const RELEASE_PAGE_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag';
