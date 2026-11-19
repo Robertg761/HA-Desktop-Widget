@@ -2119,6 +2119,10 @@ function startConfiguredRuntime() {
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
     notifications.initializePersistentNotifications();
+    if (updateThanksPending) {
+      updateThanksPending = false;
+      scheduleUpdateThanks();
+    }
   }
 
   uiUtils.showLoading(false);
@@ -3516,6 +3520,10 @@ async function initializeDesktopPinMode() {
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 // The dashboard draws first; the after-update notice follows once it has something to sit on.
 const UPDATE_THANKS_DELAY_MS = 2500;
+// Set by init on the first start after an update; the dashboard's first start takes it. That start
+// can come later than init, from a config update: a browser sign-in is still being restored when
+// init runs, and a token can be entered on the recovery screen.
+let updateThanksPending = false;
 
 function scheduleUpdateThanks() {
   setTimeout(() => {
@@ -3563,7 +3571,7 @@ async function init() {
     const config = await window.electronAPI.getConfig();
     // Noted on every start, set up or not, so that the first start after an update is the only one
     // that says so. A saved address means this computer was set up before this start.
-    const justUpdated = noteStartedVersion(APP_VERSION, {
+    updateThanksPending = noteStartedVersion(APP_VERSION, {
       wasSetUp: !!String(config?.homeAssistant?.url || '').trim(),
     });
     if (!config || !config.homeAssistant) {
@@ -3648,7 +3656,6 @@ async function init() {
     }
 
     startConfiguredRuntime();
-    if (justUpdated) scheduleUpdateThanks();
   } catch (error) {
     log.error('Initialization error:', error);
     uiUtils.showLoading(false);
