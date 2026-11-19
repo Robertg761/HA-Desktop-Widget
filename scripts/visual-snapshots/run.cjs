@@ -518,6 +518,16 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
         });
         await sleep(500);
       },
+      /**
+       * Clear the runner's own windows off the screen now, as a capture does: a scene that uses
+       * the real mouse needs it, since a window that opened over a pin takes the mouse instead
+       * (the WSL console on the Windows 11 image does). Does nothing where the keeper is not on.
+       */
+      async clearDesktop(reason) {
+        if (!desktopKeeper) return;
+        const said = await desktopKeeper.sweep(runningAppPid);
+        if (said.length) console.log(`Clearing the desktop before ${reason}: ${said.join('; ')}`);
+      },
       /** Pin an entity to the desktop and return the CDP client of its window. */
       async openPin(entityId) {
         const result = await cdp.evaluate(
