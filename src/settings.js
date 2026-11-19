@@ -4603,11 +4603,13 @@ function bindSupportDevelopmentUi() {
     chip.classList.toggle('selected', selected);
     chip.setAttribute('aria-pressed', String(selected));
   };
-  // Each visit starts at a one-time $5: the dialog is kept between visits, so without this a
-  // cancelled or failed attempt reopened on Monthly with a rejected amount and no chip chosen.
+  // Each visit starts at a monthly $5: the dialog is kept between visits, so without this a
+  // cancelled or failed attempt reopened on what it was left at, with a rejected amount and no chip
+  // chosen. Monthly is the default because steady support is what keeps the project going; One-time
+  // (and the card button that comes with it) is one click away.
   function resetDonation() {
-    const oneTime = modal.querySelector('input[name="donate-frequency"][value="one-time"]');
-    if (oneTime) oneTime.checked = true;
+    const monthly = modal.querySelector('input[name="donate-frequency"][value="recurring"]');
+    if (monthly) monthly.checked = true;
     if (customInput) customInput.value = '';
     chips.forEach((chip) => setChipSelected(chip, chip.dataset.amount === '5'));
     setAmountError('');

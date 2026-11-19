@@ -9847,7 +9847,7 @@ describe('Settings + Config Integration', () => {
         document.getElementById('open-donate-modal-btn')?.remove();
       });
 
-      test('starts every visit at one-time and $5, whatever the last one left', async () => {
+      test('starts every visit at monthly and $5, whatever the last one left', async () => {
         document.body.insertAdjacentHTML('beforeend', donateMarkup);
         await settings.openSettings();
         const open = document.getElementById('open-donate-modal-btn');
@@ -9856,9 +9856,9 @@ describe('Settings + Config Integration', () => {
         const amount = document.getElementById('donate-custom-amount');
         const chips = [...modal.querySelectorAll('.donate-amount-chip')];
 
-        // A visit that ends badly: Monthly, a rejected amount, no chip
+        // A visit that ends badly: One-time, a rejected amount, no chip
         open.click();
-        monthly.checked = true;
+        oneTime.checked = true;
         chips.forEach((chip) => chip.classList.remove('selected'));
         amount.value = '0';
         document.getElementById('donate-continue-btn').click();
@@ -9868,8 +9868,8 @@ describe('Settings + Config Integration', () => {
 
         open.click();
 
-        expect(oneTime.checked).toBe(true);
-        expect(monthly.checked).toBe(false);
+        expect(monthly.checked).toBe(true);
+        expect(oneTime.checked).toBe(false);
         expect(amount.value).toBe('');
         expect(amount.hasAttribute('aria-invalid')).toBe(false);
         expect(chips.map((chip) => chip.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
@@ -9910,6 +9910,12 @@ describe('Settings + Config Integration', () => {
           await settings.openSettings();
           document.getElementById('open-donate-modal-btn').click();
           mockUiUtils.showToast.mockClear();
+          // The dialog opens on Monthly; cards are for one-time donations.
+          const oneTime = document.querySelector(
+            'input[name="donate-frequency"][value="one-time"]'
+          );
+          oneTime.checked = true;
+          oneTime.dispatchEvent(new Event('change'));
           return document.getElementById('donate-card-btn');
         };
 
@@ -9927,10 +9933,10 @@ describe('Settings + Config Integration', () => {
           expect(card.hidden).toBe(true);
           expect(note.hidden).toBe(false);
 
-          // The next visit starts at one-time again, card button and all.
+          // The next visit starts at Monthly again, with the note in place of the card button.
           document.getElementById('open-donate-modal-btn').click();
-          expect(card.hidden).toBe(false);
-          expect(note.hidden).toBe(true);
+          expect(card.hidden).toBe(true);
+          expect(note.hidden).toBe(false);
         });
 
         test('stays busy while checkout is open, then thanks the donor and closes', async () => {
