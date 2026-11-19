@@ -2,7 +2,7 @@
   "locale": "de",
   "displayName": "Deutsch",
   "englishName": "German",
-  "version": "1.2.83",
+  "version": "1.2.84",
   "minAppVersion": "3.4.1",
   "notes": "German language pack for HA Desktop Widget.",
   "messages": {
@@ -25,7 +25,6 @@
     "Window & Behavior": "Fenster & Verhalten",
     "Language & Localization": "Sprache & Region",
     "Profile Syncing": "Profilsynchronisierung",
-    "Support Development": "Entwicklung unterstützen",
     "HA Desktop Widget is free and open source. If it saves you time, you can support its development.": "HA Desktop Widget ist kostenlos und Open Source. Wenn es dir Zeit spart, kannst du die Entwicklung unterstützen.",
     "Support this project": "Dieses Projekt unterstützen",
     "Support HA Desktop Widget": "HA Desktop Widget unterstützen",
@@ -2248,6 +2247,10 @@
     "Pick another color": "Andere Farbe wählen",
     "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Färbt das Symbol dieser Kachel, ihre Bedienelemente und ihr Leuchten, wenn sie an ist. Hoher Kontrast behält seine eigenen Farben.",
     "The update could not be verified and was not installed.": "Das Update konnte nicht verifiziert werden und wurde nicht installiert.",
-    "Card donations start at $3.": "Kartenspenden sind ab 3 $ möglich."
+    "Card donations start at $3.": "Kartenspenden sind ab 3 $ möglich.",
+    "Support Development": "Entwicklung unterstützen",
+    "Updated to version {{version}}": "Auf Version {{version}} aktualisiert",
+    "Enjoying the widget? You can support its development.": "Gefällt dir das Widget? Du kannst seine Entwicklung unterstützen.",
+    "Support": "Unterstützen"
   }
 }

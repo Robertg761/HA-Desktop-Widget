@@ -666,6 +666,8 @@ async function dragPinNextToAnother(ctx) {
       const [x, y] = await at();
       // Grab the pin by its middle, away from the resize corners.
       const grab = { x: x + 84, y: y + 74 };
+      // A runner window that opened over the pin since the last capture would take the drag.
+      await ctx.clearDesktop?.(`the drag to ${to.x},${to.y}`);
       dragWithMouseOnWindows(grab, { x: grab.x + to.x - x, y: grab.y + to.y - y }, scale);
       await wait(1000);
       const landed = await at();

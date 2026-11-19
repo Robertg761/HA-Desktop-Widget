@@ -117,6 +117,7 @@ import {
   syncRovingTabIndex,
 } from './tab-navigation.js';
 import { duplicateQuickAccessView } from './page-duplication.js';
+import { releasePageUrl } from './update-thanks.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import {
   COMPARISON_GRAPH_SPAN_OPTIONS,
@@ -16760,9 +16761,6 @@ function toggleQuickAccess(entityId) {
   }
 }
 
-// The release notes of a version are on its GitHub release, tagged with a "v" before the version.
-const RELEASE_PAGE_URL = 'https://github.com/Robertg761/HA-Desktop-Widget/releases/tag';
-
 // Disabling the check button while a check runs drops keyboard focus to <body>, and enabling it
 // again does not bring it back; disableControlsKeepingFocus does, as the entity switches in
 // Settings do.
@@ -16846,7 +16844,7 @@ function initUpdateUI() {
       const hasReleasePage = /^\d+\.\d+\.\d+/.test(version);
       whatsNewBtn.classList.toggle('hidden', !hasReleasePage);
       whatsNewBtn.onclick = () => {
-        window.electronAPI.openExternal(`${RELEASE_PAGE_URL}/v${version}`);
+        window.electronAPI.openExternal(releasePageUrl(version));
       };
     }
 

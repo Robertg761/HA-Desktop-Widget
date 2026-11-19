@@ -249,6 +249,12 @@ describe('preload Electron API', () => {
     expect(callback).toHaveBeenCalledWith();
     cleanup();
 
+    const supportCallback = jest.fn();
+    const supportCleanup = api.onOpenSupportDevelopment(supportCallback);
+    ipcRenderer.emit('open-support-development', { ignored: true }, { ignored: true });
+    expect(supportCallback).toHaveBeenCalledWith();
+    supportCleanup();
+
     expect(() => api.onHotkeyTriggered(null)).toThrow(
       'hotkey-triggered listener requires a callback'
     );

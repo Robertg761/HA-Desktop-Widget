@@ -4560,15 +4560,16 @@ function buildDonationUrl(modal) {
   return url.toString();
 }
 
+// Wires the donate dialog and returns the function that opens it (null when it is not in the page).
 function bindSupportDevelopmentUi() {
   const modal = document.getElementById('donate-modal');
   const openBtn = document.getElementById('open-donate-modal-btn');
-  if (!modal || !openBtn) return;
+  if (!modal || !openBtn) return null;
 
   const closeDonateModal = () => closeDialog(modal);
 
   const continueBtn = modal.querySelector('#donate-continue-btn');
-  openBtn.onclick = () => {
+  const openDonateModal = () => {
     resetDonation();
     openDialog(modal, {
       describedBy: 'donate-intro',
@@ -4579,6 +4580,7 @@ function bindSupportDevelopmentUi() {
       },
     });
   };
+  openBtn.onclick = openDonateModal;
 
   const customInput = modal.querySelector('#donate-custom-amount');
   const chips = [...modal.querySelectorAll('.donate-amount-chip')];
@@ -4601,11 +4603,13 @@ function bindSupportDevelopmentUi() {
     chip.classList.toggle('selected', selected);
     chip.setAttribute('aria-pressed', String(selected));
   };
-  // Each visit starts at a one-time $5: the dialog is kept between visits, so without this a
-  // cancelled or failed attempt reopened on Monthly with a rejected amount and no chip chosen.
+  // Each visit starts at a monthly $5: the dialog is kept between visits, so without this a
+  // cancelled or failed attempt reopened on what it was left at, with a rejected amount and no chip
+  // chosen. Monthly is the default because steady support is what keeps the project going; One-time
+  // (and the card button that comes with it) is one click away.
   function resetDonation() {
-    const oneTime = modal.querySelector('input[name="donate-frequency"][value="one-time"]');
-    if (oneTime) oneTime.checked = true;
+    const monthly = modal.querySelector('input[name="donate-frequency"][value="recurring"]');
+    if (monthly) monthly.checked = true;
     if (customInput) customInput.value = '';
     chips.forEach((chip) => setChipSelected(chip, chip.dataset.amount === '5'));
     setAmountError('');
@@ -4706,6 +4710,17 @@ function bindSupportDevelopmentUi() {
       }
     };
   }
+  return openDonateModal;
+}
+
+/**
+ * Open the donate dialog from outside Settings: the tray's Support Development item and the
+ * after-update notice. It is the same dialog the Support this project button opens.
+ */
+function openSupportDevelopment() {
+  const open = bindSupportDevelopmentUi();
+  open?.();
+  return !!open;
 }
 
 let profileSyncBackupsCache = [];
@@ -9029,6 +9044,7 @@ function showProfileSyncAttention() {
 }
 
 export {
+  openSupportDevelopment,
   revealUpdateStatus,
   updateOpacityReadout,
   syncSegmentedIndicators,

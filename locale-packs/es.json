@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.83",
+  "version": "1.2.84",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -225,7 +225,6 @@
     "Window & Behavior": "Ventana y comportamiento",
     "Language & Localization": "Idioma y localización",
     "Profile Syncing": "Sincronización del perfil",
-    "Support Development": "Apoyar el desarrollo",
     "HA Desktop Widget is free and open source. If it saves you time, you can support its development.": "HA Desktop Widget es gratuito y de código abierto. Si te ahorra tiempo, puedes apoyar su desarrollo.",
     "Support this project": "Apoyar este proyecto",
     "Support HA Desktop Widget": "Apoyar HA Desktop Widget",
@@ -2248,6 +2247,10 @@
     "Pick another color": "Elegir otro color",
     "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "Colorea el icono de esta tarjeta, sus controles y su brillo cuando está encendida. El alto contraste mantiene sus propios colores.",
     "The update could not be verified and was not installed.": "No se pudo verificar la actualización y no se instaló.",
-    "Card donations start at $3.": "Las donaciones con tarjeta empiezan en 3 $."
+    "Card donations start at $3.": "Las donaciones con tarjeta empiezan en 3 $.",
+    "Support Development": "Apoyar el desarrollo",
+    "Updated to version {{version}}": "Actualizado a la versión {{version}}",
+    "Enjoying the widget? You can support its development.": "¿Te gusta el widget? Puedes apoyar su desarrollo.",
+    "Support": "Apoyar"
   }
 }

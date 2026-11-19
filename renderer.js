@@ -45,6 +45,7 @@ import {
   WS_INITIAL_STATES_TIMEOUT_MS,
 } from './src/constants.js';
 import { startUpdateStatus } from './src/update-status.js';
+import { noteStartedVersion, showUpdateThanks } from './src/update-thanks.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
 import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
@@ -2118,6 +2119,10 @@ function startConfiguredRuntime() {
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
     notifications.initializePersistentNotifications();
+    if (updateThanksPending) {
+      updateThanksPending = false;
+      scheduleUpdateThanks();
+    }
   }
 
   uiUtils.showLoading(false);
@@ -3207,6 +3212,12 @@ window.electronAPI.onOpenSettings(() => {
   openSettingsModal();
 });
 
+// The tray's Support Development item opens the donate dialog.
+window.electronAPI.onOpenSupportDevelopment?.(() => {
+  if (IS_SPECIAL_PIN_MODE) return;
+  settings.openSupportDevelopment();
+});
+
 // Update events are heard from the start, not from the first time Settings opens: the check 30 s
 // after launch, one run from the tray with Settings closed and a download finishing would
 // otherwise be missed. Settings draws what has been heard when it opens.
@@ -3506,6 +3517,23 @@ async function initializeDesktopPinMode() {
   }
 }
 
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+// The dashboard draws first; the after-update notice follows once it has something to sit on.
+const UPDATE_THANKS_DELAY_MS = 2500;
+// Set by init on the first start after an update; the dashboard's first start takes it. That start
+// can come later than init, from a config update: a browser sign-in is still being restored when
+// init runs, and a token can be entered on the recovery screen.
+let updateThanksPending = false;
+
+function scheduleUpdateThanks() {
+  setTimeout(() => {
+    showUpdateThanks(APP_VERSION, {
+      openExternal: (url) => window.electronAPI.openExternal(url),
+      onSupport: () => settings.openSupportDevelopment(),
+    });
+  }, UPDATE_THANKS_DELAY_MS);
+}
+
 async function init() {
   try {
     log.info('Initializing application');
@@ -3541,6 +3569,11 @@ async function init() {
     setDisconnectedStatus(t('Disconnected from Home Assistant. Retrying automatically.'));
 
     const config = await window.electronAPI.getConfig();
+    // Noted on every start, set up or not, so that the first start after an update is the only one
+    // that says so. A saved address means this computer was set up before this start.
+    updateThanksPending = noteStartedVersion(APP_VERSION, {
+      wasSetUp: !!String(config?.homeAssistant?.url || '').trim(),
+    });
     if (!config || !config.homeAssistant) {
       log.error('Configuration is missing or invalid');
       setDisconnectedStatus(getNotSetUpStatus());

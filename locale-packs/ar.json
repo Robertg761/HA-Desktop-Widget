@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.84",
+  "version": "1.2.85",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -225,7 +225,6 @@
     "Window & Behavior": "النافذة والسلوك",
     "Language & Localization": "اللغة والتوطين",
     "Profile Syncing": "مزامنة الملف الشخصي",
-    "Support Development": "دعم التطوير",
     "HA Desktop Widget is free and open source. If it saves you time, you can support its development.": "HA Desktop Widget مجاني ومفتوح المصدر. إذا كان يوفر وقتك، يمكنك دعم تطويره.",
     "Support this project": "ادعم هذا المشروع",
     "Support HA Desktop Widget": "دعم HA Desktop Widget",
@@ -2248,6 +2247,10 @@
     "Pick another color": "اختيار لون آخر",
     "Colors this tile's icon, its controls and its glow when it is on. High contrast keeps its own colors.": "يلوّن أيقونة هذه البطاقة وعناصر التحكم فيها وتوهجها عند التشغيل. يحتفظ التباين العالي بألوانه الخاصة.",
     "The update could not be verified and was not installed.": "تعذّر التحقق من التحديث ولم يتم تثبيته.",
-    "Card donations start at $3.": "تبدأ التبرعات بالبطاقة من 3 دولارات."
+    "Card donations start at $3.": "تبدأ التبرعات بالبطاقة من 3 دولارات.",
+    "Support Development": "دعم التطوير",
+    "Updated to version {{version}}": "تم التحديث إلى الإصدار {{version}}",
+    "Enjoying the widget? You can support its development.": "هل يعجبك عنصر الواجهة؟ يمكنك دعم تطويره.",
+    "Support": "ادعم"
   }
 }
