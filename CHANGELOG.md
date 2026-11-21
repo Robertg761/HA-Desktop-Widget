@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-21
+
 ### Added
 
 - See which version you were moved to after an update. On the first start of a new release, a small notice names the version and offers **What's new** and **Support**. It stays until you close it and does not come back until the next update.
@@ -15,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The Support dialog now starts on **Monthly**. Choose **One-time** to donate once, by card or on GitHub Sponsors.
+- Card donations start at $3, and the Support dialog says so when the amount is lower.
+- Built on Electron 45.3.2.
+
+### Fixed
+
+- Keep a downloaded update ready to install when you check for updates again. A second check could not reach GitHub to verify the same download again and then turned off **Install** and install-on-quit until a later check worked. The download already verified is now kept, as long as the file is unchanged.
+- Stop a scheduled update check from showing "The update could not be verified" in Settings when the laptop lost its network right after the download. That check tries again later, like its other network errors.
+- Accept updates whose version has a hyphen in its suffix, such as `4.3.0-rc-1`. The release workflow published such versions, but the app turned them down.
+
+### Security
+
+- Install an update only when the download's hash is in a checksum list that this project signed. The installers are not code-signed, and the updater only compared the download with a hash from the same GitHub release, so replacing both would have gone unnoticed. Each release now carries `SHA256SUMS` and its signature, and the "update ready" notice appears only once the check has passed.
+- Keep the Home Assistant token out of config backups. Backups are written so only your account can read them, and backups left by older versions are cleaned the next time the app makes one.
+- Turn away a sign-in callback that carries the wrong state without ending the sign-in in progress.
+- Move the profile sync file only to a folder you picked in the folder dialog, the folder already in use, or the app's own data folder.
+- Download language packs only over HTTPS from the manifest's own folder, always with a hash, and up to a size limit.
+- Keep each debug log entry from the widget window to one line, so it cannot pass for another entry.
+- Ask GitHub only for your email address when you sign in to Cloud Sync.
 
 ## [4.2.0] - 2026-11-16
 
