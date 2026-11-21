@@ -17,7 +17,7 @@ function section(start, end) {
   return source.slice(from, to);
 }
 
-function loadInstall() {
+function loadInstall({ verify = async () => {}, hashFile = async () => undefined } = {}) {
   const app = Object.assign(new EventEmitter(), { isPackaged: true });
   const nativeUpdater = new EventEmitter();
   const updater = new EventEmitter();
@@ -26,6 +26,7 @@ function loadInstall() {
   let syncRunning = true;
   let syncRestarts = 0;
   let configWrites = 0;
+  const removed = [];
   const context = vm.createContext({
     app,
     require: (name) => {
@@ -40,7 +41,12 @@ function loadInstall() {
     process: { platform: 'linux', env: { APPIMAGE: '/app.AppImage' } },
     getAutoUpdater: () => updater,
     // The download passes the signed-checksum check (tests/unit/update-signature.test.js).
-    verifyDownloadedUpdate: async () => {},
+    verifyDownloadedUpdate: (options) => verify(options),
+    hashUpdateFile: (filePath) => hashFile(filePath),
+    fs: { promises: { rm: async (filePath) => removed.push(filePath) } },
+    mainT: (key) => key,
+    net: { fetch: async () => ({ ok: false }) },
+    backgroundUpdateCheckRunning: false,
     configureAutoUpdaterChannel: () => {},
     log: { info() {}, warn() {}, error() {}, transports: { file: {} } },
     sendUpdaterCheckEvent: (event) => sent.push(event),
@@ -90,6 +96,7 @@ function loadInstall() {
     updater,
     context,
     sent,
+    removed,
     install: async () => {
       // The download is verified asynchronously before it counts as ready to install.
       await new Promise((resolve) => setImmediate(resolve));
@@ -211,4 +218,116 @@ test('does not recover an unrelated shutdown when an updater check fails', async
   main.updater.emit('error', new Error('Network unavailable'));
   await expect(main.mutate()).rejects.toThrow('shutting down');
   expect(main.state()).toMatchObject({ isQuitting: true, syncRunning: false, syncRestarts: 0 });
+});
+
+describe('checking the downloaded update', () => {
+  const FILE = '/cache/pending/update.AppImage';
+  const unavailable = () =>
+    Object.assign(new Error('Could not fetch SHA256SUMS: ENOTFOUND'), { kind: 'unavailable' });
+  const rejected = () => Object.assign(new Error('Not in the signed list'), { kind: 'rejected' });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  async function loadVerified() {
+    const calls = { verify: 0 };
+    const behaviour = { verify: async () => 'hash-of-update', hash: 'hash-of-update' };
+    const main = loadInstall({
+      verify: async (options) => {
+        calls.verify++;
+        return behaviour.verify(options);
+      },
+      hashFile: async () => behaviour.hash,
+    });
+    // loadInstall's own download of 4.0.1 has been checked; count only this test's.
+    await settle();
+    calls.verify = 0;
+    return { main, calls, behaviour };
+  }
+
+  test('a later check of the same verified file stays installable without the network', async () => {
+    const { main, calls, behaviour } = await loadVerified();
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(calls.verify).toBe(1);
+    expect(main.updater.autoInstallOnAppQuit).toBe(true);
+
+    // "Check for updates" again: the updater hands the cached file over once more, and GitHub
+    // cannot be reached this time.
+    behaviour.verify = async () => {
+      throw unavailable();
+    };
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(calls.verify).toBe(1);
+    expect(main.updater.autoInstallOnAppQuit).toBe(true);
+    expect(main.sent.at(-1)).toEqual({ status: 'downloaded', info: { version: '4.3.0' } });
+    await expect(main.install()).resolves.toEqual({ success: true });
+  });
+
+  test('a verified file whose bytes changed is checked again', async () => {
+    const { main, calls, behaviour } = await loadVerified();
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+
+    behaviour.hash = 'something-else';
+    behaviour.verify = async () => {
+      throw rejected();
+    };
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(calls.verify).toBe(2);
+    expect(main.removed).toEqual([FILE]);
+    expect(main.updater.autoInstallOnAppQuit).toBe(false);
+    await expect(main.install()).resolves.toEqual({
+      success: false,
+      error: 'No downloaded update is ready to install',
+    });
+  });
+
+  test('another version is always checked against its own list', async () => {
+    const { main, calls } = await loadVerified();
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    main.updater.emit('update-downloaded', { version: '4.3.1', downloadedFile: FILE });
+    await settle();
+    expect(calls.verify).toBe(2);
+  });
+
+  test('a scheduled check that cannot fetch the list keeps out of the Updates row', async () => {
+    const { main, behaviour } = await loadVerified();
+    behaviour.verify = async () => {
+      throw unavailable();
+    };
+    // The scheduled check has already returned when its download finishes.
+    vm.runInContext('notifyWhenUpdateConfirmed = true', main.context);
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(main.sent.at(-1)).toMatchObject({ status: 'error', background: true });
+    // Kept for the next check to verify.
+    expect(main.removed).toEqual([]);
+
+    // A download that fails the check is shown even then.
+    behaviour.verify = async () => {
+      throw rejected();
+    };
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(main.sent.at(-1)).toEqual({
+      status: 'error',
+      error: 'The update could not be verified and was not installed.',
+    });
+    expect(main.removed).toEqual([FILE]);
+  });
+
+  test('a check someone asked for shows a list it could not fetch', async () => {
+    const { main, behaviour } = await loadVerified();
+    behaviour.verify = async () => {
+      throw unavailable();
+    };
+    main.updater.emit('update-downloaded', { version: '4.3.0', downloadedFile: FILE });
+    await settle();
+    expect(main.sent.at(-1)).toEqual({
+      status: 'error',
+      error: 'The update could not be verified and was not installed.',
+    });
+  });
 });

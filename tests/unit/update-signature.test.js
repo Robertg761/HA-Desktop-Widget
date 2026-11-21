@@ -70,7 +70,7 @@ describe('release checksum signatures', () => {
 
   test('accepts a download whose hash is in the signed list of its own release', async () => {
     const release = createRelease();
-    await expect(verify(release)).resolves.toBeUndefined();
+    await expect(verify(release)).resolves.toBe(sha256('the real AppImage'));
     expect(release.requested.sort()).toEqual([
       'https://github.com/Robertg761/HA-Desktop-Widget/releases/download/v4.3.0/SHA256SUMS',
       'https://github.com/Robertg761/HA-Desktop-Widget/releases/download/v4.3.0/SHA256SUMS.sig',
@@ -120,6 +120,17 @@ describe('release checksum signatures', () => {
       await expect(verify(release, { version })).rejects.toMatchObject({ kind: 'rejected' });
     }
     expect(release.requested).toEqual([]);
+  });
+
+  test('accepts every version form the release workflow tags', async () => {
+    // release.yml publishes v<major>.<minor>.<patch> with an optional -/+ suffix that may itself
+    // hold hyphens; the app must not refuse a release the workflow let out.
+    for (const version of ['4.3.0-rc-1', '4.3.0-beta.2', '4.3.0+build.7']) {
+      const release = createRelease({
+        listedName: `HA-Desktop-Widget-${version}-linux-x86_64.AppImage`,
+      });
+      await expect(verify(release, { version })).resolves.toBe(sha256('the real AppImage'));
+    }
   });
 
   test('matches a file name to exactly one version', () => {

@@ -571,7 +571,7 @@ const {
   createUpdateAnnouncer,
   summarizeUpdateCheck,
 } = require('./src/update-flow.cjs');
-const { verifyDownloadedUpdate } = require('./src/update-signature.cjs');
+const { verifyDownloadedUpdate, hashFile: hashUpdateFile } = require('./src/update-signature.cjs');
 const { createReleaseChecker } = require('./src/release-check.cjs');
 
 // package.json names the app "home-assistant-widget", and app.getName() is that, not what the
@@ -14397,6 +14397,19 @@ async function runScheduledUpdateCheck() {
 let updateCheckScheduler = null;
 // Set by a scheduled check: the person did not ask for it, so a verified download is announced.
 let notifyWhenUpdateConfirmed = false;
+// The last download that passed the check: { version, filePath, hash }. A later check hands the
+// same cached file over again, and it needs no second trip to GitHub while its bytes are unchanged.
+let confirmedUpdateDownload = null;
+
+async function isConfirmedUpdateDownload(version, filePath) {
+  const confirmed = confirmedUpdateDownload;
+  if (!confirmed || confirmed.version !== version || confirmed.filePath !== filePath) return false;
+  try {
+    return (await hashUpdateFile(filePath)) === confirmed.hash;
+  } catch {
+    return false;
+  }
+}
 
 // The installers are not code-signed, so a download counts as an update only once its hash is
 // in the checksum list this project signed for that release (src/update-signature.cjs).
@@ -14405,26 +14418,40 @@ async function confirmDownloadedUpdate(autoUpdater, info) {
   autoUpdater.autoInstallOnAppQuit = false;
   const version = info?.version;
   const filePath = info?.downloadedFile;
-  try {
-    await verifyDownloadedUpdate({
-      filePath,
-      version,
-      fetchImpl: (url, init) => net.fetch(url, init),
-    });
-  } catch (error) {
-    log.error(`Update ${version} was not verified and will not be installed:`, error?.message);
-    // A download that failed the check is not offered again from the updater's cache. One whose
-    // signed list could not be fetched is kept: the next check verifies it again.
-    if (error?.kind !== 'unavailable' && typeof filePath === 'string' && filePath) {
-      await fs.promises.rm(filePath, { force: true }).catch(() => {});
+  // The download finishes after a scheduled check has returned, so backgroundUpdateCheckRunning
+  // alone no longer says that nobody asked for it.
+  const background = backgroundUpdateCheckRunning || notifyWhenUpdateConfirmed;
+  if (await isConfirmedUpdateDownload(version, filePath)) {
+    log.info(`Update ${version} is the download already verified`);
+  } else {
+    confirmedUpdateDownload = null;
+    try {
+      const hash = await verifyDownloadedUpdate({
+        filePath,
+        version,
+        fetchImpl: (url, init) => net.fetch(url, init),
+      });
+      if (typeof hash === 'string') confirmedUpdateDownload = { version, filePath, hash };
+    } catch (error) {
+      log.error(`Update ${version} was not verified and will not be installed:`, error?.message);
+      const unavailable = error?.kind === 'unavailable';
+      // A download that failed the check is not offered again from the updater's cache. One whose
+      // signed list could not be fetched is kept: the next check verifies it again.
+      if (!unavailable && typeof filePath === 'string' && filePath) {
+        await fs.promises.rm(filePath, { force: true }).catch(() => {});
+      }
+      // A list that could not be fetched on a check nobody asked for, often a laptop that lost
+      // its network, stays out of the Updates row like the check's other network errors. A
+      // download that failed the check is always shown.
+      sendAutoUpdateToWindow({
+        status: 'error',
+        error: mainT('The update could not be verified and was not installed.'),
+        ...(background && unavailable ? { background: true } : {}),
+      });
+      return false;
     }
-    sendUpdaterCheckEvent({
-      status: 'error',
-      error: mainT('The update could not be verified and was not installed.'),
-    });
-    return false;
+    log.info(`Update ${version} matches its signed release checksums`);
   }
-  log.info(`Update ${version} matches its signed release checksums`);
   autoUpdateDownloaded = true;
   autoUpdater.autoInstallOnAppQuit = true;
   // electron-updater only arms install-on-quit when a download finishes, and it was off then.
