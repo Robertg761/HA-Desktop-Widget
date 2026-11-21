@@ -1,0 +1,229 @@
+name: Promote Beta
+
+# Makes the newest beta the stable release once it has been out for three days with no newer
+# beta. It tags the beta's own commit as vX.Y.Z and runs the normal release workflow on it, so the
+# stable release is a fresh build of exactly what beta testers ran, with its own SHA256SUMS and
+# SHA256SUMS.sig. The release notes are the beta commit's [Unreleased] CHANGELOG.md section, and the
+# release workflow then files those entries under the new version on main.
+#
+# Scheduled runs promote for real. Set the repository variable BETA_AUTO_PROMOTE to `false` to
+# pause them: they then only report what they would do. A manual run is a dry run unless
+# "Dry run" is unticked.
+
+on:
+  schedule:
+    # 11:07 NST / 12:07 NDT, after the nightly beta, so a failed promotion is seen during the day.
+    - cron: '37 14 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only report what would be promoted; create no tag or release
+        required: false
+        default: true
+        type: boolean
+      min_age_hours:
+        description: Hours a beta must have been out with no newer beta
+        required: false
+        default: '72'
+        type: string
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  # Shared with Tag Release, so a manual stable release and a promotion never tag at once.
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main with tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - id: mode
+        name: Choose dry run or promotion
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          INPUT_MIN_AGE_HOURS: ${{ github.event.inputs.min_age_hours }}
+          AUTO_PROMOTE: ${{ vars.BETA_AUTO_PROMOTE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == 'schedule' ]]; then
+            dry_run=false
+            if [[ "$AUTO_PROMOTE" == 'false' ]]; then
+              dry_run=true
+              echo "BETA_AUTO_PROMOTE is false: this scheduled run only reports."
+            fi
+            min_age_hours=72
+          else
+            dry_run="${INPUT_DRY_RUN:-true}"
+            min_age_hours="${INPUT_MIN_AGE_HOURS:-72}"
+          fi
+          if [[ ! "$min_age_hours" =~ ^[0-9]+$ ]]; then
+            echo "min_age_hours must be a whole number of hours; received $min_age_hours." >&2
+            exit 1
+          fi
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "min_age_hours=$min_age_hours" >> "$GITHUB_OUTPUT"
+
+      - id: decide
+        name: Find a beta that is due
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MIN_AGE_HOURS: ${{ steps.mode.outputs.min_age_hours }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          releases_file="$RUNNER_TEMP/releases.json"
+          gh release list \
+            --exclude-drafts \
+            --limit 100 \
+            --json tagName,isPrerelease,isDraft,publishedAt \
+            > "$releases_file"
+          node scripts/resolve-beta-promotion.cjs --releases "$releases_file"
+
+      - name: Stop on a stable tag without a release
+        if: steps.decide.outputs.stuck == 'true'
+        env:
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          echo "$REASON" >&2
+          exit 1
+
+      - id: check
+        name: Check the beta commit can be released
+        if: steps.decide.outputs.promote == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BETA_TAG: ${{ steps.decide.outputs.beta_tag }}
+          VERSION: ${{ steps.decide.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          beta_sha="$(git rev-parse "refs/tags/$BETA_TAG^{commit}")"
+          echo "beta_sha=$beta_sha" >> "$GITHUB_OUTPUT"
+
+          # The same gates the release workflow applies, checked here so a dry run reports them.
+          if ! git merge-base --is-ancestor "$beta_sha" origin/main; then
+            echo "$BETA_TAG ($beta_sha) is not on main; it cannot be released." >&2
+            exit 1
+          fi
+
+          successful_ci_run="$(
+            gh run list \
+              --workflow ci.yml \
+              --commit "$beta_sha" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty'
+          )"
+          if [[ -z "$successful_ci_run" ]]; then
+            echo "No successful CI run exists for $BETA_TAG ($beta_sha)." >&2
+            exit 1
+          fi
+
+          # A stable release needs notes. The beta commit's own section for the version wins,
+          # as it would for a manual release; otherwise its [Unreleased] section is what ships.
+          beta_tree="$RUNNER_TEMP/beta-changelog"
+          mkdir -p "$beta_tree"
+          git show "$beta_sha:CHANGELOG.md" > "$beta_tree/CHANGELOG.md"
+          notes_file="$RUNNER_TEMP/notes-preview.md"
+          if (cd "$beta_tree" && node "$GITHUB_WORKSPACE/scripts/extract-release-notes.cjs" "$VERSION") > "$notes_file" 2>/dev/null; then
+            echo "notes_source=CHANGELOG.md [$VERSION]" >> "$GITHUB_OUTPUT"
+          elif (cd "$beta_tree" && node "$GITHUB_WORKSPACE/scripts/extract-release-notes.cjs" --unreleased) > "$notes_file"; then
+            echo "notes_source=CHANGELOG.md [Unreleased] at $BETA_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "$BETA_TAG has no [$VERSION] or [Unreleased] CHANGELOG.md entries to use as stable release notes." >&2
+            exit 1
+          fi
+
+      - name: Report
+        if: always()
+        env:
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+          PROMOTE: ${{ steps.decide.outputs.promote }}
+          REASON: ${{ steps.decide.outputs.reason }}
+          BETA_TAG: ${{ steps.decide.outputs.beta_tag }}
+          STABLE_TAG: ${{ steps.decide.outputs.stable_tag }}
+          BETA_SHA: ${{ steps.check.outputs.beta_sha }}
+          NOTES_SOURCE: ${{ steps.check.outputs.notes_source }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            if [[ "$DRY_RUN" == 'true' ]]; then
+              echo "## Beta promotion (dry run)"
+            else
+              echo "## Beta promotion"
+            fi
+            echo
+            echo "${REASON:-The promotion check did not finish.}"
+            if [[ "$PROMOTE" == 'true' ]]; then
+              echo
+              if [[ "$CHECK_OUTCOME" != 'success' ]]; then
+                echo "**$BETA_TAG cannot be promoted yet: see the failed step's log.**"
+              elif [[ "$DRY_RUN" == 'true' ]]; then
+                echo "Would tag $BETA_SHA as **$STABLE_TAG** and run the release workflow."
+              else
+                echo "Tagging $BETA_SHA as **$STABLE_TAG** and running the release workflow."
+              fi
+              if [[ -n "$NOTES_SOURCE" ]]; then
+                echo
+                echo "Release notes from $NOTES_SOURCE:"
+                echo
+                cat "$RUNNER_TEMP/notes-preview.md"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tag the beta commit and start the release workflow
+        if: >-
+          steps.decide.outputs.promote == 'true' &&
+          steps.check.outcome == 'success' &&
+          steps.mode.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BETA_TAG: ${{ steps.decide.outputs.beta_tag }}
+          BETA_SHA: ${{ steps.check.outputs.beta_sha }}
+          STABLE_TAG: ${{ steps.decide.outputs.stable_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin --tags
+          if git rev-parse --verify "refs/tags/$STABLE_TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists: $STABLE_TAG" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse "refs/tags/$BETA_TAG^{commit}")" != "$BETA_SHA" ]]; then
+            echo "$BETA_TAG moved while the promotion was being checked." >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$STABLE_TAG" "$BETA_SHA" -m "$STABLE_TAG (promoted from $BETA_TAG)"
+          git push origin "refs/tags/$STABLE_TAG:refs/tags/$STABLE_TAG"
+
+          # Tags pushed with GITHUB_TOKEN do not trigger on-push workflows, so dispatch the
+          # release workflow explicitly (as Tag Release and Nightly Beta do).
+          gh workflow run release.yml \
+            --ref "$STABLE_TAG" \
+            --raw-field "release_tag=$STABLE_TAG" \
+            --raw-field "promoted_from=$BETA_TAG"
+          echo "Tagged $BETA_SHA as $STABLE_TAG and dispatched the release workflow."

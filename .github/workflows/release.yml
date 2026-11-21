@@ -10,6 +10,14 @@ on:
         description: Existing vX.Y.Z or vX.Y.Z-beta.N tag to publish
         required: true
         type: string
+      promoted_from:
+        description: >-
+          Beta tag this stable release promotes (set by the Promote Beta workflow). Its tag must
+          point at the same commit, and the release notes come from that commit's [Unreleased]
+          changelog section when there is no section for the version.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   actions: read
@@ -26,6 +34,7 @@ jobs:
       release_version: ${{ steps.release_meta.outputs.release_version }}
       release_prerelease: ${{ steps.release_meta.outputs.release_prerelease }}
       release_sha: ${{ steps.release_meta.outputs.release_sha }}
+      promoted_from: ${{ steps.promotion.outputs.promoted_from }}
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -100,6 +109,35 @@ jobs:
             echo "origin/main: $main_head" >&2
             exit 1
           fi
+
+      - id: promotion
+        name: Verify the promoted beta
+        shell: bash
+        env:
+          PROMOTED_FROM: ${{ github.event.inputs.promoted_from }}
+          RELEASE_VERSION: ${{ steps.release_meta.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PROMOTED_FROM" ]]; then
+            echo "promoted_from=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A promoted stable release is a rebuild of exactly what the beta testers ran.
+          if [[ ! "$PROMOTED_FROM" =~ ^v${RELEASE_VERSION//./\\.}-beta\.[0-9]+$ ]]; then
+            echo "promoted_from must be a v$RELEASE_VERSION-beta.N tag; received $PROMOTED_FROM." >&2
+            exit 1
+          fi
+          git fetch --force origin \
+            "refs/tags/$PROMOTED_FROM:refs/tags/$PROMOTED_FROM"
+          beta_sha="$(git rev-parse "refs/tags/$PROMOTED_FROM^{commit}")"
+          release_sha="$(git rev-parse HEAD)"
+          if [[ "$beta_sha" != "$release_sha" ]]; then
+            echo "$PROMOTED_FROM is commit $beta_sha, not the release commit $release_sha." >&2
+            exit 1
+          fi
+          echo "promoted_from=$PROMOTED_FROM" >> "$GITHUB_OUTPUT"
+          echo "Promoting $PROMOTED_FROM ($beta_sha) to v$RELEASE_VERSION."
 
       - name: Verify successful CI for release commit
         shell: bash
@@ -501,6 +539,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
           RELEASE_PRERELEASE: ${{ needs.validate.outputs.release_prerelease }}
           RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
+          PROMOTED_FROM: ${{ needs.validate.outputs.promoted_from }}
         shell: bash
         run: |
           set -euo pipefail
@@ -585,6 +624,17 @@ jobs:
               printf '\n[Full changelog](%s)\n' "$changelog_url" >> "$release_notes_file"
               notes_flags=(--notes-file "$release_notes_file")
               echo "Using the CHANGELOG.md section for $RELEASE_VERSION as the release notes."
+            elif [[ -n "$PROMOTED_FROM" ]] &&
+              node scripts/extract-release-notes.cjs --unreleased > "$release_notes_file"; then
+              # The beta's commit lists what it ships under [Unreleased]; sync-version files those
+              # entries under this version on main afterwards.
+              beta_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$PROMOTED_FROM"
+              changelog_url="https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md"
+              printf '\nPromoted from [%s](%s) after it was out as a beta with no newer beta.\n' \
+                "$PROMOTED_FROM" "$beta_url" >> "$release_notes_file"
+              printf '\n[Full changelog](%s)\n' "$changelog_url" >> "$release_notes_file"
+              notes_flags=(--notes-file "$release_notes_file")
+              echo "Using the [Unreleased] CHANGELOG.md section of $PROMOTED_FROM as the release notes."
             elif [[ "$RELEASE_PRERELEASE" == "true" ]]; then
               notes_flags=(--generate-notes)
               if [[ -n "$notes_start_tag" ]]; then
@@ -612,41 +662,69 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout tagged commit
+      # Main, not the tag: a promoted beta's commit is days old by the time it is released, and
+      # main may have moved on since a manual tag too. Pushing the tag commit would not fast-forward.
+      - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.validate.outputs.release_sha }}
+          ref: main
           fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: 'npm'
 
-      - name: Align package versions to release tag
-        shell: bash
-        env:
-          RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
-        run: |
-          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Commit version bump back to main
+      - name: Record the release on main
         shell: bash
         env:
           RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
           RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+          PROMOTED_FROM: ${{ needs.validate.outputs.promoted_from }}
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- package.json package-lock.json; then
-            echo "package.json and package-lock.json already match $RELEASE_TAG on the tagged commit."
-            exit 0
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "release-version-sync-$RELEASE_VERSION"
-          git add package.json package-lock.json
-          git commit -m "chore: bump version to $RELEASE_VERSION"
-          git push origin HEAD:main
+
+          # Retried from the latest main if someone merges between the fetch and the push.
+          for attempt in 1 2 3; do
+            git fetch --force origin main \
+              "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            git checkout --force -B "release-version-sync-$RELEASE_VERSION" origin/main
+
+            main_version="$(node -p "require('./package.json').version")"
+            set +e
+            node scripts/record-promoted-release.cjs version-behind "$main_version" "$RELEASE_VERSION"
+            behind=$?
+            set -e
+            if [[ "$behind" -eq 0 ]]; then
+              npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+            elif [[ "$behind" -ne 1 ]]; then
+              exit 1
+            fi
+
+            subject="chore: bump version to $RELEASE_VERSION"
+            if [[ -n "$PROMOTED_FROM" ]]; then
+              node scripts/record-promoted-release.cjs record "$RELEASE_TAG"
+              subject="chore: release $RELEASE_VERSION"
+            fi
+
+            if git diff --quiet; then
+              echo "main already records $RELEASE_TAG; nothing to commit."
+              exit 0
+            fi
+
+            git add package.json package-lock.json CHANGELOG.md \
+              tests/fixtures/locale-pack-released-keys.json
+            git commit -m "$subject"
+            if git push origin HEAD:main; then
+              echo "Recorded $RELEASE_TAG on main (attempt $attempt)."
+              exit 0
+            fi
+            echo "Push to main was refused; retrying from the latest main." >&2
+            sleep $((attempt * 10))
+          done
+
+          echo "Could not record $RELEASE_TAG on main. Land the version bump and CHANGELOG section by hand." >&2
+          exit 1
