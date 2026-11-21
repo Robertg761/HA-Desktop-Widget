@@ -69,6 +69,18 @@ describe('nightly beta change detection', () => {
     ).toBe(false);
   });
 
+  test("recognizes the release workflow's record of a promoted beta", () => {
+    const files = [
+      'CHANGELOG.md',
+      'package-lock.json',
+      'package.json',
+      'tests/fixtures/locale-pack-released-keys.json',
+    ];
+    expect(isReleaseVersionSyncCommit('chore: release 4.2.1', files)).toBe(true);
+    expect(isReleaseVersionSyncCommit('chore: release 4.2.1', [...files, 'src/ui.js'])).toBe(false);
+    expect(isReleaseVersionSyncCommit('chore: bump version to 4.2.1', files)).toBe(false);
+  });
+
   test('ignores only package-only release sync commits since the baseline', () => {
     const calls = new Map([
       ['rev-list --reverse v3.7.0..HEAD', 'sync-sha\n'],

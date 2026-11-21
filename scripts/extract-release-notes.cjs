@@ -21,14 +21,13 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function extractReleaseNotes(changelog, requestedVersion) {
-  const version = normalizeVersion(requestedVersion);
+function extractSection(changelog, label) {
   const lines = String(changelog).split(/\r?\n/);
-  const headingPattern = new RegExp(`^## \\[${escapeRegExp(version)}\\](?:\\s+-\\s+.+)?\\s*$`);
+  const headingPattern = new RegExp(`^## \\[${escapeRegExp(label)}\\](?:\\s+-\\s+.+)?\\s*$`);
   const sectionStart = lines.findIndex((line) => headingPattern.test(line));
 
   if (sectionStart === -1) {
-    throw new Error(`CHANGELOG.md has no section for ${version}.`);
+    throw new Error(`CHANGELOG.md has no section for ${label}.`);
   }
 
   const nextSectionOffset = lines
@@ -41,17 +40,30 @@ function extractReleaseNotes(changelog, requestedVersion) {
     .trim();
 
   if (!notes) {
-    throw new Error(`CHANGELOG.md section for ${version} is empty.`);
+    throw new Error(`CHANGELOG.md section for ${label} is empty.`);
   }
 
   return `${notes}\n`;
+}
+
+function extractReleaseNotes(changelog, requestedVersion) {
+  return extractSection(changelog, normalizeVersion(requestedVersion));
+}
+
+// What a commit has not released yet. A beta promoted to stable ships exactly this.
+function extractUnreleasedNotes(changelog) {
+  return extractSection(changelog, 'Unreleased');
 }
 
 function main() {
   const version = process.argv[2];
   const changelogPath = path.resolve(process.cwd(), 'CHANGELOG.md');
   const changelog = fs.readFileSync(changelogPath, 'utf8');
-  process.stdout.write(extractReleaseNotes(changelog, version));
+  process.stdout.write(
+    version === '--unreleased'
+      ? extractUnreleasedNotes(changelog)
+      : extractReleaseNotes(changelog, version)
+  );
 }
 
 if (require.main === module) {
@@ -65,5 +77,6 @@ if (require.main === module) {
 
 module.exports = {
   extractReleaseNotes,
+  extractUnreleasedNotes,
   normalizeVersion,
 };

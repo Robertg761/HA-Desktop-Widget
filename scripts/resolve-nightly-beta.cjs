@@ -5,6 +5,13 @@ const CORE_VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 const RELEASE_VERSION_SYNC_PATTERN =
   /^chore: bump version to \d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const RELEASE_VERSION_FILES = new Set(['package.json', 'package-lock.json']);
+// The release workflow's record of a promoted beta on main (scripts/record-promoted-release.cjs).
+const PROMOTED_RELEASE_SYNC_PATTERN = /^chore: release \d+\.\d+\.\d+$/;
+const PROMOTED_RELEASE_FILES = new Set([
+  ...RELEASE_VERSION_FILES,
+  'CHANGELOG.md',
+  'tests/fixtures/locale-pack-released-keys.json',
+]);
 
 function parseCoreVersion(value, label = 'version') {
   const normalized = String(value || '')
@@ -67,11 +74,14 @@ function resolveNightlyBeta({ configuredTarget, latestStableTag, tags = [] }) {
 }
 
 function isReleaseVersionSyncCommit(subject, files) {
-  return (
-    RELEASE_VERSION_SYNC_PATTERN.test(subject) &&
-    files.length > 0 &&
-    files.every((file) => RELEASE_VERSION_FILES.has(file))
-  );
+  if (files.length === 0) return false;
+  if (RELEASE_VERSION_SYNC_PATTERN.test(subject)) {
+    return files.every((file) => RELEASE_VERSION_FILES.has(file));
+  }
+  if (PROMOTED_RELEASE_SYNC_PATTERN.test(subject)) {
+    return files.every((file) => PROMOTED_RELEASE_FILES.has(file));
+  }
+  return false;
 }
 
 function hasMeaningfulChanges(baseline, head = 'HEAD', git = execFileSync) {
