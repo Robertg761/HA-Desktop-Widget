@@ -35,12 +35,37 @@ describe('release workflow hardening', () => {
     expect(release).toContain('release_sha: ${{ steps.release_meta.outputs.release_sha }}');
     expect(release).toContain('$expectedWorkflowRef = "refs/tags/$releaseTag"');
     expect(release).toContain('$env:WORKFLOW_REF -ne $expectedWorkflowRef');
+    // Every build and the publish job; sync-version writes to main instead (see below).
     expect(release.match(/ref: \$\{\{ needs\.validate\.outputs\.release_sha \}\}/g)).toHaveLength(
-      5
+      4
     );
     expect(release).toContain('git merge-base --is-ancestor "$tag_sha" "$main_head"');
     expect(release).toContain('"refs/tags/$RELEASE_TAG^{commit}"');
     expect(release).toContain('RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}');
+  });
+
+  test('promotes a beta by rebuilding its own commit as a signed stable release', () => {
+    const promote = readWorkflow('promote-beta.yml');
+    expect(promote).toContain('--commit "$beta_sha"');
+    expect(promote).toContain('--status success');
+    expect(promote).toContain('git merge-base --is-ancestor "$beta_sha" origin/main');
+    expect(promote).toContain('git tag -a "$STABLE_TAG" "$BETA_SHA"');
+    expect(promote).toContain('--ref "$STABLE_TAG"');
+    expect(promote).toContain('--raw-field "promoted_from=$BETA_TAG"');
+    expect(promote).toContain("steps.mode.outputs.dry_run != 'true'");
+    expect(promote).not.toContain('gh release edit');
+    // Inputs reach the shell through the environment, never spliced into a script.
+    for (const script of promote.split(/run: \|/).slice(1)) {
+      expect(script.split(/\n\s{6}- /)[0]).not.toContain('${{');
+    }
+
+    // The release workflow builds and signs it like any other tag, after checking that the
+    // promoted beta is the same commit.
+    expect(release).toContain('beta_sha="$(git rev-parse "refs/tags/$PROMOTED_FROM^{commit}")"');
+    expect(release).toContain('node scripts/extract-release-notes.cjs --unreleased');
+    expect(release).toContain('node scripts/sign-release-checksums.cjs release-files');
+    expect(release).toContain('node scripts/record-promoted-release.cjs record "$RELEASE_TAG"');
+    expect(release.split('sync-version:')[1]).toContain('ref: main');
   });
 
   test('requires exact-SHA CI before either manual or nightly tag creation', () => {
