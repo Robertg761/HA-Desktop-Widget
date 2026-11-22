@@ -98,8 +98,10 @@ function hashFile(filePath) {
   });
 }
 
+// Every version the release workflow will tag (release.yml), so no release it publishes is one
+// the app then refuses.
 function isVersionString(version) {
-  return typeof version === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(version);
+  return typeof version === 'string' && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version);
 }
 
 /**
@@ -154,7 +156,8 @@ async function fetchReleaseText(fetchImpl, url, timeoutMs) {
 
 /**
  * Verifies a downloaded update file against its release's signed checksum list.
- * Resolves when the file may be installed and rejects with UpdateVerificationError otherwise.
+ * Resolves with the file's SHA-256 hash when the file may be installed and rejects with
+ * UpdateVerificationError otherwise.
  *
  * @param {Object} options
  * @param {string} options.filePath - The downloaded installer or AppImage.
@@ -187,6 +190,7 @@ async function verifyDownloadedUpdate({
     );
   }
   assertChecksumsCoverFile({ checksumsText, signatureBase64, fileHash, version, publicKeys });
+  return fileHash;
 }
 
 module.exports = {
