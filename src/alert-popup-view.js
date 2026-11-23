@@ -2,7 +2,8 @@
  * A pop-up alert card, in its own small window (see src/alert-popup-windows.cjs). It shows what
  * happened, the rule's camera live when it has one, and up to two buttons, then fades away once its
  * time is up. Pointing at it or tabbing into it holds the countdown, so a card being read or used
- * does not leave under the mouse.
+ * does not leave under the mouse. The time is kept by a timer, not the bar's animation, so a system
+ * that asks for less motion (which cuts animations to nothing) still gets the whole time.
  *
  * The card has no websocket. The camera comes through the app's ha:// handler, which adds the
  * credentials in the main process, and a button is carried out by the widget window, which the
@@ -221,9 +222,33 @@ function mountAlertPopup(container, popup, { send } = {}) {
     );
   };
 
-  // The countdown is the bar's own animation, which CSS holds while the card is pointed at or has
-  // the focus; the card leaves when it ends.
+  // The countdown runs on a timer, held while the card is pointed at or has the focus. The bar only
+  // shows it: CSS holds its animation at the same moments, and when the system asks for less motion
+  // the bar stands still (its animation is cut to nothing there, so its end cannot be the signal).
+  let remainingMs = 0;
+  let deadline = 0;
+  let countdownTimer = null;
+  let pointedAt = false;
+  const isHeld = () => pointedAt || view.root.contains(document.activeElement);
+  const resumeCountdown = () => {
+    if (countdownTimer || !(remainingMs > 0) || leaving || isHeld()) return;
+    deadline = Date.now() + remainingMs;
+    countdownTimer = setTimeout(() => {
+      countdownTimer = null;
+      remainingMs = 0;
+      leave();
+    }, remainingMs);
+  };
+  const holdCountdown = () => {
+    if (!countdownTimer) return;
+    clearTimeout(countdownTimer);
+    countdownTimer = null;
+    remainingMs = Math.max(0, deadline - Date.now());
+  };
   const startCountdown = (seconds) => {
+    clearTimeout(countdownTimer);
+    countdownTimer = null;
+    remainingMs = seconds > 0 ? seconds * 1000 : 0;
     const bar = view.progress;
     bar.hidden = !(seconds > 0);
     bar.classList.remove('is-running');
@@ -232,8 +257,19 @@ function mountAlertPopup(container, popup, { send } = {}) {
     // A restart needs a style flush between taking the animation off and putting it back.
     void bar.offsetWidth;
     bar.classList.add('is-running');
+    resumeCountdown();
   };
-  view.progress.addEventListener('animationend', leave);
+  view.root.addEventListener('pointerenter', () => {
+    pointedAt = true;
+    holdCountdown();
+  });
+  view.root.addEventListener('pointerleave', () => {
+    pointedAt = false;
+    resumeCountdown();
+  });
+  view.root.addEventListener('focusin', holdCountdown);
+  // Focus moving from one button to the next passes through the body for a moment.
+  view.root.addEventListener('focusout', () => setTimeout(resumeCountdown, 0));
 
   const runAction = async (button, index, action) => {
     if (button.disabled) return;
@@ -330,6 +366,7 @@ function mountAlertPopup(container, popup, { send } = {}) {
     dispose() {
       stopCamera?.();
       clearTimeout(leaveTimer);
+      clearTimeout(countdownTimer);
       document.removeEventListener('keydown', onKeyDown);
     },
   };

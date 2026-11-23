@@ -134,16 +134,49 @@ describe('a pop-up alert card', () => {
     expect(button.disabled).toBe(false);
   });
 
-  it('counts down on its own bar and leaves when the time is up', () => {
+  it('counts down on its bar and leaves when the time is up', () => {
     mount();
     const bar = container.querySelector('.alert-popup-progress');
     expect(bar.classList.contains('is-running')).toBe(true);
     expect(bar.style.animationDuration).toBe('30s');
-    bar.dispatchEvent(new Event('animationend'));
+    jest.advanceTimersByTime(29000);
+    expect(container.querySelector('.alert-popup').classList.contains('is-leaving')).toBe(false);
+    jest.advanceTimersByTime(1000);
     expect(container.querySelector('.alert-popup').classList.contains('is-leaving')).toBe(true);
     jest.advanceTimersByTime(400);
     expect(send).toHaveBeenCalledWith('dismiss');
     expect(container.querySelector('.alert-popup-camera-stream').hasAttribute('src')).toBe(false);
+  });
+
+  it('keeps its whole time when the system cuts animations short', () => {
+    // Reduced motion cuts every animation to nothing, so the bar's animation ends at once.
+    mount();
+    container.querySelector('.alert-popup-progress').dispatchEvent(new Event('animationend'));
+    jest.advanceTimersByTime(1000);
+    expect(container.querySelector('.alert-popup').classList.contains('is-leaving')).toBe(false);
+    expect(send).not.toHaveBeenCalledWith('dismiss');
+  });
+
+  it('holds the countdown while it is pointed at or has the focus', () => {
+    mount();
+    const card = container.querySelector('.alert-popup');
+    jest.advanceTimersByTime(20000);
+    card.dispatchEvent(new Event('pointerenter'));
+    jest.advanceTimersByTime(60000);
+    expect(card.classList.contains('is-leaving')).toBe(false);
+    card.dispatchEvent(new Event('pointerleave'));
+    jest.advanceTimersByTime(9000);
+    expect(card.classList.contains('is-leaving')).toBe(false);
+
+    const button = container.querySelector('.alert-popup-action');
+    button.focus();
+    card.dispatchEvent(new FocusEvent('focusin'));
+    jest.advanceTimersByTime(60000);
+    expect(card.classList.contains('is-leaving')).toBe(false);
+    button.blur();
+    card.dispatchEvent(new FocusEvent('focusout'));
+    jest.advanceTimersByTime(1000);
+    expect(card.classList.contains('is-leaving')).toBe(true);
   });
 
   it('stays until it is closed when the rule says so', () => {

@@ -1260,6 +1260,12 @@ body.alert-popup-mode > :not(.alert-popup-shell) {
     transform: none;
     transition: none;
   }
+
+  /* The countdown bar stands full rather than snapping empty: the card still keeps its whole time,
+     on a timer of its own. Its class decides over the * of the reduced-motion block. */
+  .alert-popup-progress.is-running {
+    animation: none !important;
+  }
 }
 
 body.desktop-pin-mode {
