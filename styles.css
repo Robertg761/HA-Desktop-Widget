@@ -915,7 +915,10 @@ body.alert-popup-mode.software-glass .alert-popup {
       rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
       rgba(255, 255, 255, 0) 38%
     ),
-    rgba(var(--window-bg-rgb), var(--software-acrylic-bg-alpha, 0.55));
+    rgba(
+      var(--window-bg-rgb),
+      max(var(--software-acrylic-bg-alpha, 0.55), var(--alert-popup-min-alpha))
+    );
 }
 
 body.alert-popup-mode > :not(.alert-popup-shell) {
@@ -940,10 +943,16 @@ body.alert-popup-mode > :not(.alert-popup-shell) {
   border-radius: var(--radius-xl);
   font-family: var(--desktop-pin-ui-font, inherit);
   color: var(--text-primary);
-  /* Window opacity shows through the card as it does through a desktop pin. */
+  /* Window opacity shows through the card as it does through a desktop pin, down to a floor: the
+     card's text sits on its background, not on tiles, and over whatever window is under it, so
+     it never gets clearer than --alert-popup-min-alpha. */
+  --alert-popup-min-alpha: 0.72;
   background:
     radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 55%),
-    rgba(var(--window-bg-rgb), var(--desktop-pin-window-opacity, 1));
+    rgba(
+      var(--window-bg-rgb),
+      max(var(--desktop-pin-window-opacity, 1), var(--alert-popup-min-alpha))
+    );
   box-shadow:
     inset 0 1px 0 var(--window-highlight),
     inset 0 0 0 1px var(--tile-border-hover);
