@@ -28,8 +28,9 @@ const request = (entityId, extra = {}) => ({
   ...extra,
 });
 
-function setup() {
+function setup({ workArea = { x: 0, y: 0, width: 1920, height: 1040 } } = {}) {
   const windows = [];
+  let area = workArea;
   const forwardAction = jest.fn(() => Promise.resolve({ success: true }));
   const focusMain = jest.fn();
   const manager = createAlertPopupManager({
@@ -39,12 +40,15 @@ function setup() {
       windows.push(window);
       return window;
     }),
-    getWorkArea: () => ({ x: 0, y: 0, width: 1920, height: 1040 }),
+    getWorkArea: () => area,
     forwardAction,
     focusMain,
     log: { warn: jest.fn(), error: jest.fn() },
   });
-  return { manager, windows, forwardAction, focusMain };
+  const setWorkArea = (next) => {
+    area = next;
+  };
+  return { manager, windows, forwardAction, focusMain, setWorkArea };
 }
 
 describe('pop-up alert cards on screen', () => {
@@ -85,6 +89,37 @@ describe('pop-up alert cards on screen', () => {
     const [top, middle, bottom] = manager.list().map((popup) => popup.window.bounds);
     expect(top.y).toBeLessThan(middle.y);
     expect(middle.y).toBeLessThan(bottom.y);
+  });
+
+  it('makes room on a short screen by closing the oldest cards', () => {
+    const { manager, windows } = setup({ workArea: { x: 0, y: 0, width: 1366, height: 728 } });
+    const withCamera = (entityId) =>
+      request(entityId, {
+        camera: 'camera.front_door',
+        actions: [{ entityId: 'light.a', domain: 'light', service: 'turn_on' }],
+      });
+    manager.show(withCamera('binary_sensor.a'));
+    manager.show(withCamera('binary_sensor.b'));
+    manager.show(withCamera('binary_sensor.c'));
+    expect(windows[0].close).toHaveBeenCalled();
+    expect(manager.list().map((popup) => popup.request.entityId)).toEqual([
+      'binary_sensor.b',
+      'binary_sensor.c',
+    ]);
+    manager.list().forEach((popup) => expect(popup.window.bounds.y).toBeGreaterThanOrEqual(0));
+  });
+
+  it('keeps the stack on its screen, and moves it when the screens change', () => {
+    const { manager, windows, setWorkArea } = setup();
+    manager.show(request('binary_sensor.a'));
+    // The mouse is on the second screen now; the next card still joins the stack.
+    setWorkArea({ x: 1920, y: 0, width: 2560, height: 1400 });
+    manager.show(request('binary_sensor.b'));
+    expect(windows[1].bounds.x).toBeLessThan(1920);
+    // That screen is unplugged and the cards go to the screen in use.
+    manager.refreshWorkArea();
+    expect(windows[0].bounds.x).toBeGreaterThan(1920);
+    expect(windows[1].bounds.y + windows[1].bounds.height).toBe(1400 - 16);
   });
 
   it('closes up the stack when a card in it goes', () => {

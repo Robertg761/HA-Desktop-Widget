@@ -10,6 +10,7 @@
 
 const {
   MAX_ALERT_POPUPS,
+  fitsAlertPopups,
   getAlertPopupSize,
   layoutAlertPopups,
   sanitizeAlertPopupRequest,
@@ -103,8 +104,19 @@ function createAlertPopupManager({
     const id = `alert-popup-${nextId}`;
     nextId += 1;
     const popup = { id, request: sanitized, window: null };
-    popups.push(popup);
     stackWorkArea = stackWorkArea || getWorkArea();
+    // On a short screen three cards with cameras do not fit: the oldest make room for the new one.
+    while (
+      popups.length &&
+      !fitsAlertPopups(
+        [...popups, popup].map((candidate) => getAlertPopupSize(candidate.request)),
+        stackWorkArea
+      )
+    ) {
+      close(popups[0].id);
+      stackWorkArea = stackWorkArea || getWorkArea();
+    }
+    popups.push(popup);
     const placed = layoutAlertPopups(
       popups.map((candidate) => getAlertPopupSize(candidate.request)),
       stackWorkArea
@@ -123,6 +135,15 @@ function createAlertPopupManager({
     popup.window.on('closed', () => remove(popup));
     layout();
     return { success: true, id };
+  };
+
+  /**
+   * A screen was added, removed or changed (a laptop undocked, the taskbar moved): the stack moves
+   * to the screen the user is on now, so no card is left off screen or under the taskbar.
+   */
+  const refreshWorkArea = () => {
+    stackWorkArea = null;
+    layout();
   };
 
   const getBySender = (webContents) =>
@@ -165,6 +186,7 @@ function createAlertPopupManager({
     getBySender,
     handleAction,
     list: () => popups.slice(),
+    refreshWorkArea,
   };
 }
 

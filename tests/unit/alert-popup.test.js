@@ -1,13 +1,16 @@
 const {
   ALERT_POPUP_DURATIONS,
+  ALERT_POPUP_SERVICES,
   DEFAULT_ALERT_POPUP_SECONDS,
   MAX_ALERT_POPUP_ACTIONS,
+  fitsAlertPopups,
   getAlertPopupAction,
   getAlertPopupSize,
   isAlertPopupActionDomain,
   layoutAlertPopups,
   normalizeAlertPopupConfig,
   sanitizeAlertPopupRequest,
+  suggestAlertPopupActions,
   suggestAlertPopupCamera,
 } = require('../../src/alert-popup.cjs');
 
@@ -79,6 +82,133 @@ describe('the button an entity gets on a pop-up card', () => {
       service: 'media_play',
     });
     expect(getAlertPopupAction(entity('media_player.tv', 'off'))).toBe(null);
+  });
+
+  it('shuts a water valve that is open, and opens one that is shut', () => {
+    expect(getAlertPopupAction(entity('valve.main_water', 'open'))).toMatchObject({
+      service: 'close_valve',
+      label: 'Close',
+    });
+    expect(getAlertPopupAction(entity('valve.main_water', 'closed'))).toMatchObject({
+      service: 'open_valve',
+      context: 'Action: Open',
+    });
+  });
+
+  it('leaves out what a cover or valve says it cannot do', () => {
+    // A garage door that only opens (feature 1, OPEN).
+    expect(getAlertPopupAction(entity('cover.garage', 'open', { supported_features: 1 }))).toBe(
+      null
+    );
+    expect(
+      getAlertPopupAction(entity('cover.garage', 'closed', { supported_features: 1 }))
+    ).toMatchObject({ service: 'open_cover' });
+  });
+
+  it('disarms a triggered or armed alarm, and arms one that is disarmed', () => {
+    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'triggered'))).toMatchObject({
+      service: 'alarm_disarm',
+      label: 'Disarm',
+    });
+    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'armed_night'))).toMatchObject({
+      service: 'alarm_disarm',
+    });
+    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed'))).toMatchObject({
+      service: 'alarm_arm_away',
+      label: 'Arm',
+    });
+    expect(
+      getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed', { supported_features: 1 }))
+    ).toBe(null);
+  });
+
+  it('offers nothing an alarm wants a code for', () => {
+    const coded = { code_format: 'number' };
+    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'triggered', coded))).toBe(null);
+    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed', coded))).toBe(null);
+    expect(
+      getAlertPopupAction(
+        entity('alarm_control_panel.home', 'disarmed', { ...coded, code_arm_required: false })
+      )
+    ).toMatchObject({ service: 'alarm_arm_away' });
+  });
+
+  it('turns heating, humidifiers, water heaters, remotes and automations on and off', () => {
+    expect(getAlertPopupAction(entity('climate.living_room', 'heat'))).toMatchObject({
+      service: 'turn_off',
+    });
+    expect(getAlertPopupAction(entity('climate.living_room', 'off'))).toMatchObject({
+      service: 'turn_on',
+    });
+    // An older thermostat that cannot be turned off this way (no TURN_OFF, 128).
+    expect(
+      getAlertPopupAction(entity('climate.living_room', 'heat', { supported_features: 1 }))
+    ).toBe(null);
+    expect(getAlertPopupAction(entity('water_heater.tank', 'eco'))).toMatchObject({
+      service: 'turn_off',
+    });
+    expect(getAlertPopupAction(entity('humidifier.bedroom', 'off'))).toMatchObject({
+      service: 'turn_on',
+    });
+    expect(getAlertPopupAction(entity('remote.tv', 'on'))).toMatchObject({ service: 'turn_off' });
+    expect(getAlertPopupAction(entity('automation.night', 'on'))).toMatchObject({
+      service: 'turn_off',
+    });
+  });
+
+  it('sends a vacuum or a mower home, or starts it', () => {
+    expect(getAlertPopupAction(entity('vacuum.downstairs', 'cleaning'))).toMatchObject({
+      service: 'return_to_base',
+      label: 'Return',
+    });
+    expect(getAlertPopupAction(entity('vacuum.downstairs', 'docked'))).toMatchObject({
+      service: 'start',
+      label: 'Start',
+    });
+    expect(getAlertPopupAction(entity('lawn_mower.garden', 'mowing'))).toMatchObject({
+      service: 'dock',
+    });
+    expect(getAlertPopupAction(entity('lawn_mower.garden', 'docked'))).toMatchObject({
+      service: 'start_mowing',
+    });
+  });
+
+  it('cancels a running timer, and starts or resumes one that is not', () => {
+    expect(getAlertPopupAction(entity('timer.oven', 'active'))).toMatchObject({
+      service: 'cancel',
+      label: 'Cancel',
+    });
+    expect(getAlertPopupAction(entity('timer.oven', 'paused'))).toMatchObject({
+      service: 'start',
+      label: 'Resume',
+    });
+    expect(getAlertPopupAction(entity('timer.oven', 'idle'))).toMatchObject({ label: 'Start' });
+  });
+
+  it('turns off a player that is on but not playing', () => {
+    expect(getAlertPopupAction(entity('media_player.tv', 'idle'))).toMatchObject({
+      service: 'turn_off',
+    });
+  });
+
+  it('offers only services the main process lets a card call', () => {
+    const samples = [
+      ['lock.a', 'locked'],
+      ['cover.a', 'open'],
+      ['valve.a', 'closed'],
+      ['alarm_control_panel.a', 'triggered'],
+      ['vacuum.a', 'cleaning'],
+      ['lawn_mower.a', 'docked'],
+      ['timer.a', 'active'],
+      ['climate.a', 'cool'],
+      ['water_heater.a', 'off'],
+      ['media_player.a', 'on'],
+      ['siren.a', 'on'],
+    ];
+    samples.forEach(([entityId, state]) => {
+      const action = getAlertPopupAction(entity(entityId, state));
+      expect(ALERT_POPUP_SERVICES[action.domain]).toContain(action.service);
+    });
   });
 
   it('offers nothing for an entity that is offline, missing or of another kind', () => {
@@ -169,6 +299,89 @@ describe('the camera a new pop-up starts with', () => {
         'camera.porch_cam': {},
       })
     ).toBe('');
+  });
+});
+
+describe('the camera a new pop-up starts with, when names do not say', () => {
+  it('is the only camera for a doorbell or motion sensor', () => {
+    const states = {
+      'camera.driveway': {},
+      'binary_sensor.hallway_motion': { attributes: { device_class: 'motion' } },
+      'event.doorbell': { attributes: { device_class: 'doorbell' } },
+    };
+    expect(suggestAlertPopupCamera('binary_sensor.hallway_motion', states)).toBe('camera.driveway');
+    expect(suggestAlertPopupCamera('event.doorbell', states)).toBe('camera.driveway');
+  });
+
+  it('is none for a sensor that is not about someone being there, or with several cameras', () => {
+    expect(
+      suggestAlertPopupCamera('sensor.temperature', {
+        'camera.driveway': {},
+        'sensor.temperature': {},
+      })
+    ).toBe('');
+    expect(
+      suggestAlertPopupCamera('binary_sensor.hallway_motion', {
+        'camera.driveway': {},
+        'camera.garden': {},
+      })
+    ).toBe('');
+  });
+});
+
+describe('the buttons a new pop-up starts with', () => {
+  it("is the entity's own, then what is at the same place", () => {
+    const states = {
+      'cover.garage_door': {},
+      'light.garage': {},
+      'lock.front_door': {},
+      'light.front_door': {},
+      'light.porch': {},
+    };
+    expect(suggestAlertPopupActions('cover.garage_door', states)).toEqual([
+      'cover.garage_door',
+      'light.garage',
+    ]);
+    expect(suggestAlertPopupActions('binary_sensor.front_door_ding', states)).toEqual([
+      'lock.front_door',
+      'light.front_door',
+    ]);
+    expect(suggestAlertPopupActions('binary_sensor.garage_door_contact', states)).toEqual([
+      'cover.garage_door',
+      'light.garage',
+    ]);
+  });
+
+  it("is the home's water valve for a leak sensor", () => {
+    expect(
+      suggestAlertPopupActions('binary_sensor.kitchen_sink_leak', {
+        'binary_sensor.kitchen_sink_leak': { attributes: { device_class: 'moisture' } },
+        'valve.main_water': {},
+      })
+    ).toEqual(['valve.main_water']);
+    // Two valves and neither under the sink: no guess.
+    expect(
+      suggestAlertPopupActions('binary_sensor.kitchen_sink_leak', {
+        'valve.main_water': {},
+        'valve.garden': {},
+      })
+    ).toEqual([]);
+  });
+
+  it('is nothing for a sensor with nothing to act on', () => {
+    expect(suggestAlertPopupActions('sensor.outdoor_temperature', { 'light.porch': {} })).toEqual(
+      []
+    );
+    expect(suggestAlertPopupActions('not an entity', {})).toEqual([]);
+  });
+
+  it('never holds more than two', () => {
+    expect(
+      suggestAlertPopupActions('lock.front_door', {
+        'cover.front_door': {},
+        'light.front_door': {},
+      })
+    ).toEqual(['lock.front_door', 'cover.front_door']);
   });
 });
 
@@ -274,6 +487,15 @@ describe('where pop-up cards go', () => {
     });
     expect(placed[0].y + placed[0].height).toBe(placed[1].y - 12);
     expect(placed[0].x).toBe(placed[1].x);
+  });
+
+  it('knows when a stack is taller than the screen', () => {
+    const tall = { width: 340, height: 330 };
+    expect(fitsAlertPopups([tall, tall], { x: 0, y: 0, width: 1366, height: 728 })).toBe(true);
+    expect(fitsAlertPopups([tall, tall, tall], { x: 0, y: 0, width: 1366, height: 728 })).toBe(
+      false
+    );
+    expect(fitsAlertPopups([tall], null)).toBe(true);
   });
 
   it('keeps a card that does not fit on the screen', () => {

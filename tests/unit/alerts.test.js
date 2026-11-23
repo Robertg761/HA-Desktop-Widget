@@ -1043,6 +1043,11 @@ describe('alerts module', () => {
           state: 'unavailable',
           attributes: { friendly_name: 'Porch' },
         },
+        'camera.front_door': {
+          entity_id: 'camera.front_door',
+          state: 'idle',
+          attributes: { friendly_name: 'Front Door Camera' },
+        },
       };
       mockState.CONFIG.entityAlerts = {
         enabled: true,
@@ -1105,6 +1110,29 @@ describe('alerts module', () => {
         camera: '',
         actions: [],
         seconds: 30,
+      });
+    });
+
+    it('leaves out a camera that is offline or gone, rather than show a broken picture', async () => {
+      mockState.STATES['camera.front_door'].state = 'unavailable';
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls[0][0].camera).toBe('');
+
+      delete mockState.STATES['camera.front_door'];
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'off');
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls.at(-1)[0].camera).toBe('');
+    });
+
+    it('still opens, with no buttons, when every button entity is offline', async () => {
+      mockState.STATES['lock.front_door'].state = 'unavailable';
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls[0][0]).toMatchObject({
+        camera: 'camera.front_door',
+        actions: [],
       });
     });
 

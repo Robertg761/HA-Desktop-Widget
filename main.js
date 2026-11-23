@@ -10531,6 +10531,17 @@ const alertPopupManager = createAlertPopupManager({
   log,
 });
 
+// Cards on a screen that went away, or under a taskbar that moved, are put back on the screen in use.
+function watchAlertPopupDisplays() {
+  let timer = null;
+  ['display-added', 'display-removed', 'display-metrics-changed'].forEach((eventName) => {
+    electronScreen.on(eventName, () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => alertPopupManager.refreshWorkArea(), 250);
+    });
+  });
+}
+
 // Pop-up alert cards. The main window opens one when an alert rule asks for it; the card asks for
 // what it shows and tells what was pressed.
 ipcMain.handle('show-alert-popup', (event, request) => {
@@ -14959,6 +14970,7 @@ app
     // config, put up a tray icon, or claim the hotkeys that belong to the instance still running.
     if (!gotSingleInstanceLock) return;
     watchDisplayChanges();
+    watchAlertPopupDisplays();
     void refreshDisplayIdentities();
 
     // Inside a layer-shell child the inherited environment says "already handed off"

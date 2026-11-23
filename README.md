@@ -163,7 +163,19 @@ A state change alert also tells you when the entity goes unavailable or unknown,
 
 ### Pop-up cards
 
-Turn on **Show a pop-up card** on an alert to get a small card instead of a system notification. It names the entity and what happened, can show a camera live (a camera at the same place, such as `camera.front_door` for `binary_sensor.front_door_ding`, is suggested), and offers up to two buttons for entities you choose. A button acts on the entity as it is when the card opens: a locked lock offers **Unlock**, a light that is on offers **Turn off**, a cover **Open** or **Close**, and a button, scene or script **Press**, **Activate** or **Run**. A lock that needs a code gets no button. Cards appear above other windows in the bottom-right corner of the screen with the mouse pointer, at most three at a time, and fade after 15 seconds to 2 minutes, or stay until closed. Pointing at a card holds it. Click the camera to open the full viewer, or the title to open the widget. On Wayland the desktop decides where a card goes.
+Turn on **Show a pop-up card** on an alert to get a small card instead of a system notification. It works with every kind of alert (a state change, an exact state or a numeric threshold, with or without a duration) and every kind of entity, and follows quiet hours and cooldowns like a notification. The card names the entity and what happened, can show a camera live, and offers up to two buttons.
+
+The dialog suggests a start: a camera at the same place (`camera.front_door` for `binary_sensor.front_door_ding`), or the only camera in the home for a doorbell or motion sensor; the entity's own button; what is at the same place (the front door's lock for its doorbell, the garage light for the garage door); and the home's water valve for a leak sensor. Change any of them.
+
+A button acts on its entity as it is when the card opens:
+
+- Locks **Unlock** or **Lock**; alarm panels **Disarm** or **Arm** (away).
+- Lights, switches, fans, sirens, humidifiers, remotes, automations, thermostats and water heaters **Turn on** or **Turn off**.
+- Covers (garage doors, gates, blinds) and water valves **Open** or **Close**.
+- Vacuums and lawn mowers **Start** or **Return**; timers **Start**, **Resume** or **Cancel**.
+- Media players **Pause**, **Play** or **Turn off**; buttons, scenes and scripts **Press**, **Activate** or **Run**.
+
+A lock or alarm panel that needs a code gets no button, and neither does an entity that is offline or says it cannot do that (a thermostat that cannot be turned off). A camera that is offline is left off the card. Cards appear above other windows in the bottom-right corner of the screen with the mouse pointer, at most three at a time (fewer on a short screen, where the oldest make room), and fade after 15 seconds to 2 minutes, or stay until closed. The same alert again updates its card rather than adding one. When a screen is unplugged or the taskbar moves, the cards move to the screen in use. Pointing at a card holds it. Click the camera to open the full viewer, or the title to open the widget. On Wayland the desktop decides where a card goes.
 
 ### Sensor history
 

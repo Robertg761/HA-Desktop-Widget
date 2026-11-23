@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Let an alert open a pop-up card instead of a system notification. Turn on **Show a pop-up card** in an alert's settings, then pick a camera to show live and up to two buttons, such as **Unlock** for the front door or **Turn off** for a light. The card appears in the corner of the screen you are using, above other windows, and fades away after the time you choose, or stays until you close it. Pointing at it holds it on screen. Click the camera for the full viewer, or the title to open the widget.
+- Let an alert open a pop-up card instead of a system notification. Turn on **Show a pop-up card** in an alert's settings, then pick a camera to show live and up to two buttons, such as **Unlock** for the front door or **Turn off** for a light. The card appears in the corner of the screen you are using, above other windows, and fades away after the time you choose, or stays until you close it. Pointing at it holds it on screen. Click the camera for the full viewer, or the title to open the widget. Buttons cover locks, alarm panels, lights and switches, covers and garage doors, water valves, thermostats, water heaters, vacuums, lawn mowers, timers, media players, buttons, scenes and scripts, and the dialog suggests a camera and buttons that fit the alert, such as the front door's lock for its doorbell or the water valve for a leak sensor.
 
 ## [4.2.1] - 2026-11-21
 

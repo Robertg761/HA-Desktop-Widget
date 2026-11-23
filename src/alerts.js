@@ -92,6 +92,14 @@ function getAlertPopupButtons(popup) {
     .filter(Boolean);
 }
 
+// The rule's camera while Home Assistant has it. A camera that was removed or is offline would only
+// show "Preview unavailable", so the card goes without one and stays short.
+function getAlertPopupCamera(popup) {
+  const camera = popup.camera && state.STATES?.[popup.camera];
+  if (!camera || camera.state === 'unavailable') return '';
+  return popup.camera;
+}
+
 /**
  * Opens the rule's pop-up card. A card that cannot open (an older main process, or the window
  * failed) is replaced by the system notification, so the alert is never lost. The toast in the
@@ -120,7 +128,7 @@ function showEntityAlertPopup({ entityId, name, message, detail, popup }) {
               },
             }
           : null,
-        camera: popup.camera,
+        camera: getAlertPopupCamera(popup),
         actions: getAlertPopupButtons(popup),
         seconds: popup.seconds,
         at: Date.now(),

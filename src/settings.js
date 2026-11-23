@@ -8011,6 +8011,7 @@ const {
   DEFAULT_ALERT_POPUP_SECONDS,
   isAlertPopupActionDomain,
   normalizeAlertPopupConfig,
+  suggestAlertPopupActions,
   suggestAlertPopupCamera,
 } = alertPopup;
 
@@ -8075,14 +8076,14 @@ function populateAlertPopupEntitySelect(select, entities, selected, emptyKey) {
 }
 
 // What the dialog shows for a rule's card: its saved settings, or for a rule without a card yet,
-// a start that fits the entity (its own button, and the camera at the same place).
+// a start that fits the entity (its own button, what is at the same place, and its camera).
 function fillAlertPopupFields(modal, entityId, alertConfig) {
   const saved = normalizeAlertPopupConfig(alertConfig?.popup);
   const entities = Object.values(state.STATES || {});
   const popup = saved || {
     enabled: false,
     camera: suggestAlertPopupCamera(entityId, state.STATES),
-    actions: isAlertPopupActionDomain(entityId.split('.')[0]) ? [entityId] : [],
+    actions: suggestAlertPopupActions(entityId, state.STATES),
     seconds: DEFAULT_ALERT_POPUP_SECONDS,
   };
   modal.querySelector('#alert-popup-enabled').checked = popup.enabled;
