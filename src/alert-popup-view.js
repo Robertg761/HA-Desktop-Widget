@@ -204,9 +204,10 @@ function buildCard() {
  */
 function applyTileColor(node, color) {
   const style = color ? getTileColorStyle(color) : null;
-  Array.from(node.style)
-    .filter((name) => name.startsWith('--tile-'))
-    .forEach((name) => node.style.removeProperty(name));
+  // The names getTileColorStyle sets, asked of it (any colour gives them all).
+  Object.keys(getTileColorStyle('#000000')?.properties || {}).forEach((name) =>
+    node.style.removeProperty(name)
+  );
   if (!style) {
     delete node.dataset.tileColor;
     return;
