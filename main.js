@@ -10492,10 +10492,15 @@ function createAlertPopupWindow({ id, bounds }) {
   keepOutOfTaskbarWhenShown(popupWindow);
   hardenRendererNavigation(popupWindow);
   popupWindow.setMenuBarVisibility(false);
-  // Above full-screen video and games too, like the popup hotkey's raise.
+  // Above full-screen video and games too, like the popup hotkey's raise. On macOS another app's
+  // full-screen window is its own Space, which the card must be allowed onto; skipping the
+  // process-type transform keeps that from bringing back the Dock icon app.dock.hide() removed.
   try {
     popupWindow.setAlwaysOnTop(true, 'screen-saver');
-    popupWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true });
+    popupWindow.setVisibleOnAllWorkspaces?.(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true,
+    });
   } catch (error) {
     log.warn('Failed to raise the alert pop-up above other windows:', error.message);
   }
