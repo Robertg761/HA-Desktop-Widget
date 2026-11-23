@@ -10006,6 +10006,8 @@ body.theme-light:not(.high-contrast)
 
 /* The page is in an order of its own making, so a wide player's tile need not leave a hole. */
 #quick-controls.right-now-page {
+  /* Holds the tiles that fade out where they stood while the others slide into their places. */
+  position: relative;
   grid-auto-flow: row dense;
 }
 

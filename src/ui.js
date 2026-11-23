@@ -71,7 +71,15 @@ import {
   renderEntityIcon,
   setLineIconContent,
 } from './entity-icons.js';
-import { animateEnter, prefersReducedMotion, pulse, syncSlidingIndicator } from './motion.js';
+import {
+  animateEnter,
+  animateLayoutChange,
+  captureLayout,
+  isLeaving,
+  prefersReducedMotion,
+  pulse,
+  syncSlidingIndicator,
+} from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { appendHistoryPoint, buildSparklinePoints, compactHistorySeries } from './sparklines.js';
 import {
@@ -2063,7 +2071,9 @@ async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
 function getQuickAccessTiles() {
   const container = document.getElementById('quick-controls');
   if (!container) return [];
-  return Array.from(container.querySelectorAll('.control-item[data-entity-id]'));
+  return Array.from(container.querySelectorAll('.control-item[data-entity-id]')).filter(
+    (tile) => !isLeaving(tile)
+  );
 }
 
 function getQuickAccessGridColumnCount(container) {
@@ -10182,6 +10192,12 @@ function renderQuickControls() {
     renderQuickAccessTabs(config);
 
     const showingRightNow = isRightNowPageShowing(config);
+    // The Right now page changes under the person as things switch on and off, so its tiles come
+    // and go gently: measured before anything moves (the summary above can change height too).
+    const layoutBefore =
+      showingRightNow && lastRenderedQuickAccessPage?.id === RIGHT_NOW_PAGE_ID
+        ? captureLayout(container)
+        : null;
     const favorites = showingRightNow ? getRightNowEntityIds() : getActiveQuickAccessEntityIds();
     syncRightNowSummary(container, showingRightNow);
     // One recorder request for every chart on the page. The per-tile fetches issued while the
@@ -10190,7 +10206,7 @@ function renderQuickControls() {
     const desiredNodes = [];
     const existingNodesById = new Map();
     container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
-      if (!node || !node.dataset?.entityId) return;
+      if (!node || !node.dataset?.entityId || isLeaving(node)) return;
       if (!existingNodesById.has(node.dataset.entityId)) {
         existingNodesById.set(node.dataset.entityId, node);
       }
@@ -10267,14 +10283,17 @@ function renderQuickControls() {
       }
     });
 
-    while (container.children.length > desiredNodes.length) {
-      const removed = container.lastElementChild;
+    const kept = new Set(desiredNodes);
+    Array.from(container.children).forEach((removed) => {
+      // A tile still fading out of the Right now page takes itself away when it is done, unless
+      // the page is left before then.
+      if (kept.has(removed) || (isLeaving(removed) && showingRightNow)) return;
       // Released while it is still on the page: Chromium keeps a loaded <img> that had its source
       // cleared after it was detached, and with it the whole tile (about a hundred nodes) for every
       // page switch.
       camera.disposeCameraPreview(removed);
       container.removeChild(removed);
-    }
+    });
     camera.pruneCameraPreviews();
 
     if (isReorganizeMode) {
@@ -10283,6 +10302,7 @@ function renderQuickControls() {
     }
     // After insertion, so the grid's real column count is known.
     applyComparisonGraphSpans(container);
+    animateLayoutChange(container, layoutBefore);
     playQuickAccessPageMotion(container, config);
     setupQuickAccessGridKeyboardNavigation();
     syncQuickAccessRovingTabIndex();

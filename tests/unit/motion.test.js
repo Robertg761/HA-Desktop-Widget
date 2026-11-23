@@ -2,7 +2,14 @@
  * @jest-environment jsdom
  */
 
-const { animateEnter, pulse, syncSlidingIndicator } = require('../../src/motion.js');
+const {
+  animateEnter,
+  animateLayoutChange,
+  captureLayout,
+  isLeaving,
+  pulse,
+  syncSlidingIndicator,
+} = require('../../src/motion.js');
 
 function setRect(element, rect) {
   element.getBoundingClientRect = () => ({
@@ -213,5 +220,83 @@ describe('motion helpers', () => {
     expect(animate.mock.calls[0][0][1].transform).toBe('scale(1.14)');
     pulse(null);
     expect(animate).toHaveBeenCalledTimes(1);
+  });
+
+  describe('layout changes', () => {
+    function buildList() {
+      const list = document.createElement('div');
+      const [a, b, c] = ['a', 'b', 'c'].map((id) => {
+        const item = document.createElement('div');
+        item.dataset.id = id;
+        return item;
+      });
+      list.append(a, b, c);
+      document.body.appendChild(list);
+      setRect(list, { x: 0, y: 0, width: 300, height: 100 });
+      setRect(a, { x: 0, y: 0, width: 100, height: 100 });
+      setRect(b, { x: 100, y: 0, width: 100, height: 100 });
+      setRect(c, { x: 200, y: 0, width: 100, height: 100 });
+      return { list, a, b, c };
+    }
+
+    beforeEach(() => {
+      animate.mockImplementation(() => ({}));
+    });
+
+    test('fades out what left where it stood, slides what stayed, and grows in what is new', () => {
+      const { list, a, b, c } = buildList();
+      const before = captureLayout(list);
+      const d = document.createElement('div');
+      b.remove();
+      list.append(d);
+      setRect(c, { x: 100, y: 0, width: 100, height: 100 });
+
+      animateLayoutChange(list, before);
+
+      expect(isLeaving(b)).toBe(true);
+      expect(b.parentNode).toBe(list);
+      expect(b.inert).toBe(true);
+      expect(b.style.position).toBe('absolute');
+      expect(b.style.left).toBe('100px');
+      expect(b.style.width).toBe('100px');
+
+      const calls = new Map(animate.mock.instances.map((element, index) => [element, index]));
+      const frames = (element) => animate.mock.calls[calls.get(element)][0];
+      expect(frames(b).at(-1)).toMatchObject({ opacity: 0 });
+      expect(frames(c)[0]).toEqual({ transform: 'translate(100px, 0px)' });
+      expect(frames(d)[0]).toMatchObject({ opacity: 0 });
+      expect(animate.mock.calls[calls.get(d)][1].delay).toBeGreaterThan(0);
+      expect(calls.has(a)).toBe(false);
+    });
+
+    test('takes a faded item away when its fade ends', () => {
+      const animation = {};
+      animate.mockImplementation(() => animation);
+      const { list, b } = buildList();
+      const before = captureLayout(list);
+      b.remove();
+      animateLayoutChange(list, before);
+      expect(b.parentNode).toBe(list);
+      animation.onfinish();
+      expect(b.parentNode).toBeNull();
+    });
+
+    test('leaves fading items out of the next layout', () => {
+      const { list, b } = buildList();
+      const before = captureLayout(list);
+      b.remove();
+      animateLayoutChange(list, before);
+      expect([...captureLayout(list).items.keys()]).not.toContain(b);
+    });
+
+    test('does nothing when motion is reduced', () => {
+      const { list, b } = buildList();
+      setReducedMotion(true);
+      expect(captureLayout(list)).toBeNull();
+      b.remove();
+      animateLayoutChange(list, null);
+      expect(b.parentNode).toBeNull();
+      expect(animate).not.toHaveBeenCalled();
+    });
   });
 });

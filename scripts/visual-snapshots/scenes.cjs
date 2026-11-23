@@ -1745,8 +1745,13 @@ const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark', setup: expectTilesLaidOut },
   // The Right now page, worked out from the fixture home's states: what is on, open, low or offline.
-  { name: 'right-now', setup: showRightNow, teardown: leaveRightNow },
-  { name: 'right-now-light', ui: { theme: 'light' }, setup: showRightNow, teardown: leaveRightNow },
+  { name: 'right-now', ui: { rightNowPage: true }, setup: showRightNow, teardown: leaveRightNow },
+  {
+    name: 'right-now-light',
+    ui: { theme: 'light', rightNowPage: true },
+    setup: showRightNow,
+    teardown: leaveRightNow,
+  },
   {
     name: 'popup-brightness',
     setup: async (ctx) => {
