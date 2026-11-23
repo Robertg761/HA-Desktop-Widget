@@ -6161,6 +6161,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#follow-omarchy', ['ui.followOmarchy']],
   ['#time-format', ['ui.timeFormat', 'ui.use24HourClock']],
   ['#date-format', ['ui.dateFormat']],
+  ['#right-now-page', ['ui.rightNowPage']],
 ];
 
 function markSettingsTouched(...keys) {
@@ -6456,6 +6457,9 @@ async function openSettings(uiHooks) {
         ? savedDateFormat
         : 'weekday-short';
     }
+    const rightNowPage = document.getElementById('right-now-page');
+    // On until someone turns it off.
+    if (rightNowPage) rightNowPage.checked = state.CONFIG?.ui?.rightNowPage !== false;
     setPendingPrimaryCards(state.CONFIG?.primaryCards || PRIMARY_CARD_DEFAULTS, {
       renderList: shouldRenderPrimaryCardsList,
     });
@@ -7166,6 +7170,11 @@ async function persistSettings() {
       ? dateFormat.value
       : 'weekday-short';
     nextConfig.ui.use24HourClock = nextConfig.ui.timeFormat === '24-hour';
+    const rightNowPage = document.getElementById('right-now-page');
+    // Stored once turned off, so an untouched switch keeps following the default (on).
+    if (rightNowPage && (!rightNowPage.checked || Object.hasOwn(nextConfig.ui, 'rightNowPage'))) {
+      nextConfig.ui.rightNowPage = !!rightNowPage.checked;
+    }
 
     // Apply "Start at login" only after the complete config has validated and persisted.
     const startWithWindows = document.getElementById('start-with-windows');

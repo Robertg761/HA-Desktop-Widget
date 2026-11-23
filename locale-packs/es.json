@@ -2,7 +2,7 @@
   "locale": "es",
   "displayName": "Español",
   "englishName": "Spanish",
-  "version": "1.2.84",
+  "version": "1.2.85",
   "minAppVersion": "3.4.1",
   "notes": "Spanish language pack for HA Desktop Widget.",
   "messages": {
@@ -2251,6 +2251,15 @@
     "Support Development": "Apoyar el desarrollo",
     "Updated to version {{version}}": "Actualizado a la versión {{version}}",
     "Enjoying the widget? You can support its development.": "¿Te gusta el widget? Puedes apoyar su desarrollo.",
-    "Support": "Apoyar"
+    "Support": "Apoyar",
+    "Right now": "Ahora mismo",
+    "What is on, open or needs attention right now": "Lo que está encendido, abierto o necesita atención ahora mismo",
+    "Timers": "Temporizadores",
+    "Low battery": "Batería baja",
+    "Turn all off": "Apagar todo",
+    "Nothing needs you right now": "Ahora mismo nada te necesita",
+    "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "Aquí aparecen las luces encendidas, las puertas y ventanas abiertas, los temporizadores en marcha, las baterías bajas y los dispositivos sin conexión.",
+    "Show the Right now page": "Mostrar la página «Ahora mismo»",
+    "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "Una página que se llena sola con las luces encendidas, las puertas y ventanas abiertas, los temporizadores en marcha, las baterías bajas y los dispositivos sin conexión."
   }
 }

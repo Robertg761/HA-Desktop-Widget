@@ -1753,5 +1753,14 @@
   "Support Development": "Entwicklung unterstützen",
   "Updated to version {{version}}": "Auf Version {{version}} aktualisiert",
   "Enjoying the widget? You can support its development.": "Gefällt dir das Widget? Du kannst seine Entwicklung unterstützen.",
-  "Support": "Unterstützen"
+  "Support": "Unterstützen",
+  "Right now": "Gerade jetzt",
+  "What is on, open or needs attention right now": "Was gerade an oder offen ist oder Aufmerksamkeit braucht",
+  "Timers": "Timer",
+  "Low battery": "Akku schwach",
+  "Turn all off": "Alle ausschalten",
+  "Nothing needs you right now": "Gerade braucht dich nichts",
+  "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "Hier erscheinen eingeschaltete Lichter, offene Türen und Fenster, laufende Timer, schwache Akkus und Geräte, die offline sind.",
+  "Show the Right now page": "Seite „Gerade jetzt“ anzeigen",
+  "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "Eine Seite, die sich selbst mit eingeschalteten Lichtern, offenen Türen und Fenstern, laufenden Timern, schwachen Akkus und Geräten füllt, die offline sind."
 }

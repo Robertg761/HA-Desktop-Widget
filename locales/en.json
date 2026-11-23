@@ -1753,5 +1753,14 @@
   "Support Development": "Support Development",
   "Updated to version {{version}}": "Updated to version {{version}}",
   "Enjoying the widget? You can support its development.": "Enjoying the widget? You can support its development.",
-  "Support": "Support"
+  "Support": "Support",
+  "Right now": "Right now",
+  "What is on, open or needs attention right now": "What is on, open or needs attention right now",
+  "Timers": "Timers",
+  "Low battery": "Low battery",
+  "Turn all off": "Turn all off",
+  "Nothing needs you right now": "Nothing needs you right now",
+  "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.",
+  "Show the Right now page": "Show the Right now page",
+  "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices."
 }

@@ -744,6 +744,9 @@ function flushPendingStateChangedEntities() {
   if (!IS_DESKTOP_PIN_MODE) {
     changedEntityIds.forEach((entityId) => handleTrayEntityStateChange(entityId));
   }
+  // The Right now page is made of whatever is on or needs attention, so any change can add a tile
+  // to it or take one away.
+  if (!IS_SPECIAL_PIN_MODE) ui.refreshRightNowPage?.(changedEntityIds);
 
   // A removal only changes what is drawn when the entity is drawn: a burst of removals while Home
   // Assistant reloads an integration would otherwise rebuild the whole page every frame.
@@ -965,6 +968,8 @@ async function openTokenSettings() {
 }
 
 function openQuickAccessModal() {
+  // Tiles are added to the person's own page, so that is the page to look at.
+  ui.leaveRightNowPage?.();
   ui.populateQuickControlsList();
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
@@ -1421,7 +1426,12 @@ function renderMainWidgetState() {
     return;
   }
 
-  if (mainConnectionState === 'connected' && getActiveQuickAccessCount() === 0) {
+  // The Right now page fills itself, and says so itself when there is nothing on it.
+  if (
+    mainConnectionState === 'connected' &&
+    getActiveQuickAccessCount() === 0 &&
+    !ui.isRightNowPageShowing?.()
+  ) {
     // Beside other pages it is this page that is empty, not Quick Access as a whole.
     const { page, pageCount } = getActiveQuickAccessPage();
     const onePageOfMany = pageCount > 1;
@@ -2913,6 +2923,7 @@ websocket.on('message', (msg) => {
       renderCurrentMode();
     } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
       queueEntityRegistryRename(msg.event.data);
+      ui.invalidateRightNowRegistry?.();
     } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
       // Older than the snapshot on its way: queued, it would be drawn over the newer state.
       if (awaitingStatesSnapshot) return;
@@ -3372,6 +3383,12 @@ window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
 
 window.addEventListener('desktop-companion-page-changed', () => {
   void desktopCompanionClient?.reportState();
+});
+
+// Going to or from the Right now page saves nothing, so no config update follows to redraw the
+// empty-page panel: an empty page of the person's own shows it, the Right now page does not.
+window.addEventListener('quick-access-right-now-changed', () => {
+  renderMainWidgetState();
 });
 
 window.electronAPI.onDesktopPinUpdate((payload) => {

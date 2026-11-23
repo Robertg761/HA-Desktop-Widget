@@ -2,7 +2,7 @@
   "locale": "fr",
   "displayName": "Français",
   "englishName": "French",
-  "version": "1.2.84",
+  "version": "1.2.85",
   "minAppVersion": "3.4.1",
   "notes": "French language pack for HA Desktop Widget.",
   "messages": {
@@ -2251,6 +2251,15 @@
     "Support Development": "Soutenir le développement",
     "Updated to version {{version}}": "Mis à jour vers la version {{version}}",
     "Enjoying the widget? You can support its development.": "Vous appréciez le widget ? Vous pouvez soutenir son développement.",
-    "Support": "Soutenir"
+    "Support": "Soutenir",
+    "Right now": "En ce moment",
+    "What is on, open or needs attention right now": "Ce qui est allumé, ouvert ou demande votre attention en ce moment",
+    "Timers": "Minuteurs",
+    "Low battery": "Batterie faible",
+    "Turn all off": "Tout éteindre",
+    "Nothing needs you right now": "Rien ne vous attend en ce moment",
+    "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "Les lumières restées allumées, les portes et fenêtres ouvertes, les minuteurs en cours, les batteries faibles et les appareils hors ligne apparaissent ici.",
+    "Show the Right now page": "Afficher la page « En ce moment »",
+    "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "Une page qui se remplit d'elle-même avec les lumières restées allumées, les portes et fenêtres ouvertes, les minuteurs en cours, les batteries faibles et les appareils hors ligne."
   }
 }

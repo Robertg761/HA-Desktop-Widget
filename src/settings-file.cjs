@@ -81,6 +81,7 @@ const SETTINGS_SCHEMA = {
     density: oneOf('comfortable', 'compact'),
     desktopPinNameAlign: oneOf('left', 'center', 'right'),
     desktopPinSnap: 'boolean',
+    rightNowPage: 'boolean',
     activeTileGlow: 'boolean',
     highContrast: 'boolean',
     opaquePanels: 'boolean',
