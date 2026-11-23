@@ -45,6 +45,7 @@ const {
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
+  buildCameraPictures,
   buildConfig,
   buildHistories,
   buildServiceResponses,
@@ -435,6 +436,7 @@ async function main() {
     serviceResponses: buildServiceResponses(),
     histories: buildHistories(),
     failingEntities: FAILING_ENTITIES,
+    cameraPictures: buildCameraPictures(),
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
@@ -492,6 +494,10 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
 
     const openPins = [];
     const extraTargets = [];
+    // Alert cards a scene opened (their CDP clients), and every card window seen so far, so a
+    // scene waits for its own card rather than one that is closing.
+    const alertPopups = [];
+    const alertPopupTargets = [];
     let offline = false;
     let notificationsPushed = false;
     const NOTIFICATIONS = 'persistent_notification/subscribe';
@@ -527,6 +533,43 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
         if (!desktopKeeper) return;
         const said = await desktopKeeper.sweep(runningAppPid);
         if (said.length) console.log(`Clearing the desktop before ${reason}: ${said.join('; ')}`);
+      },
+      /**
+       * Change what the home holds, as Home Assistant's own changes reach the app. Entities a
+       * scene's extraStates brought are taken away after the scene as usual.
+       */
+      changeStates(changes) {
+        server.changeStates(changes);
+      },
+      /**
+       * Wait for the pop-up alert card of an entity (an alert rule opens it) and return the CDP
+       * client of its window. The runner closes it after the scene.
+       */
+      async waitForAlertPopup(entityId) {
+        const known = new Set(alertPopupTargets);
+        const target = await waitFor(
+          async () =>
+            (await listTargets()).find(
+              (entry) =>
+                entry.type === 'page' &&
+                entry.url.includes('mode=alert-popup') &&
+                !known.has(entry.id)
+            ),
+          { label: `the ${entityId} alert card`, timeoutMs: 15000 }
+        );
+        alertPopupTargets.push(target.id);
+        const card = await connectCdp(target.webSocketDebuggerUrl);
+        extraTargets.push(card);
+        alertPopups.push(card);
+        const features = JSON.parse(applied.media);
+        if (features.length) await card.send('Emulation.setEmulatedMedia', { features });
+        await waitFor(
+          () => card.evaluate(`!!document.querySelector('.alert-popup-title')?.textContent`),
+          { label: `the ${entityId} alert card content` }
+        );
+        // The card slides in, and its camera loads a snapshot.
+        await sleep(1500);
+        return card;
       },
       /** Pin an entity to the desktop and return the CDP client of its window. */
       async openPin(entityId) {
@@ -596,6 +639,9 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
           timeoutMs: 20000,
         });
         await sleep(600);
+      }
+      for (const card of alertPopups.splice(0)) {
+        await card.evaluate(`window.electronAPI.alertPopupAction('dismiss')`).catch(() => {});
       }
       for (const pin of extraTargets.splice(0)) pin.close();
       for (const entityId of openPins.splice(0)) {
