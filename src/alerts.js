@@ -10,6 +10,9 @@ import {
 import { formatStateName } from './format.js';
 import { t } from './i18n.js';
 import { getConnectionIdentity } from './connection.js';
+import alertPopup from './alert-popup.cjs';
+
+const { getAlertPopupAction, normalizeAlertPopupConfig } = alertPopup;
 
 // The attributes that decide how a state reads (its unit, precision and kind). The rest, such as a
 // light's brightness, describe the entity now rather than the state the alert is about.
@@ -42,16 +45,102 @@ const evaluator = createAlertEvaluator({
   getConfig: () => state.CONFIG?.entityAlerts,
   notify: (entityId, previousState, newState, rule) => {
     const name = getEntityDisplayName(state.STATES[entityId]);
+    const states = {
+      previousState: formatAlertState(entityId, previousState),
+      newState: formatAlertState(entityId, newState),
+    };
     const message = rule.onStateChange
-      ? t('{{name}} changed from {{previousState}} to {{newState}}', {
-          name,
-          previousState: formatAlertState(entityId, previousState),
-          newState: formatAlertState(entityId, newState),
-        })
-      : t('{{name}} is now {{newState}}', { name, newState: formatAlertState(entityId, newState) });
+      ? t('{{name}} changed from {{previousState}} to {{newState}}', { name, ...states })
+      : t('{{name}} is now {{newState}}', { name, newState: states.newState });
+    const popup = normalizeAlertPopupConfig(rule.popup);
+    if (popup?.enabled) {
+      // The card names the entity in its title, so its text says only what happened.
+      const detail = rule.onStateChange
+        ? t('Changed from {{previousState}} to {{newState}}', states)
+        : t('Now {{newState}}', { newState: states.newState });
+      showEntityAlertPopup({ entityId, name, message, detail, popup });
+      return;
+    }
     showEntityAlert(message, entityId);
   },
 });
+
+// Some short words need a different translation per context ("Open" the action is not the state).
+function translateInContext(key, fallback) {
+  const label = t(key);
+  return label === key ? fallback : label;
+}
+
+/**
+ * The buttons a card offers, from the entities the rule chose as they are now: a lock that is
+ * already unlocked offers Lock. An entity that is gone or offline offers nothing and is left out.
+ */
+function getAlertPopupButtons(popup) {
+  return popup.actions
+    .map((actionEntityId) => {
+      const entity = state.STATES?.[actionEntityId];
+      const action = getAlertPopupAction(entity);
+      if (!action) return null;
+      return {
+        ...action,
+        label: action.context
+          ? translateInContext(action.context, t(action.label))
+          : t(action.label),
+        name: getEntityDisplayName(entity),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Opens the rule's pop-up card. A card that cannot open (an older main process, or the window
+ * failed) is replaced by the system notification, so the alert is never lost. The toast in the
+ * widget is shown either way, as for every alert.
+ */
+function showEntityAlertPopup({ entityId, name, message, detail, popup }) {
+  const fallBack = () => showDesktopAlert(message, entityId);
+  try {
+    showToast(message, 'info', 4000);
+    if (typeof window.electronAPI?.showAlertPopup !== 'function') {
+      fallBack();
+      return;
+    }
+    const entity = state.STATES?.[entityId];
+    Promise.resolve(
+      window.electronAPI.showAlertPopup({
+        entityId,
+        title: name,
+        message: detail,
+        icon: entity
+          ? {
+              state: entity.state,
+              attributes: {
+                icon: entity.attributes?.icon,
+                device_class: entity.attributes?.device_class,
+              },
+            }
+          : null,
+        camera: popup.camera,
+        actions: getAlertPopupButtons(popup),
+        seconds: popup.seconds,
+        at: Date.now(),
+      })
+    )
+      .then((result) => {
+        if (result?.success === false) {
+          console.error('Alert pop-up was not shown:', result.error);
+          fallBack();
+        }
+      })
+      .catch((error) => {
+        console.error('Error showing alert pop-up:', error);
+        fallBack();
+      });
+  } catch (error) {
+    console.error('Error showing alert pop-up:', error);
+    fallBack();
+  }
+}
 
 let alertConnection = null;
 function initializeEntityAlerts() {
@@ -186,19 +275,26 @@ function showDesktopNotification(message, entityId, glyph) {
   }
 }
 
+// The system notification for an alert, when notifications are allowed.
+function showDesktopAlert(message, entityId) {
+  try {
+    if (Notification.permission !== 'granted') return;
+    // An entity that is gone has no glyph to draw; its notification keeps the app icon.
+    const entity = state.STATES[entityId];
+    const glyph = entity ? getEntityIcon(entity) : '';
+    const show = () => showDesktopNotification(message, entityId, glyph);
+    // Only the notification waits for the icon font, and only the first time; the toast does not.
+    const fontLoad = loadIconFont(glyph);
+    if (fontLoad) fontLoad.then(show, show);
+    else show();
+  } catch (error) {
+    console.error('Error showing entity alert:', error);
+  }
+}
+
 function showEntityAlert(message, entityId) {
   try {
-    if (Notification.permission === 'granted') {
-      // An entity that is gone has no glyph to draw; its notification keeps the app icon.
-      const entity = state.STATES[entityId];
-      const glyph = entity ? getEntityIcon(entity) : '';
-      const show = () => showDesktopNotification(message, entityId, glyph);
-      // Only the notification waits for the icon font, and only the first time; the toast does not.
-      const fontLoad = loadIconFont(glyph);
-      if (fontLoad) fontLoad.then(show, show);
-      else show();
-    }
-
+    showDesktopAlert(message, entityId);
     showToast(message, 'info', 4000);
   } catch (error) {
     console.error('Error showing entity alert:', error);

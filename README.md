@@ -113,7 +113,7 @@ The legacy long-lived access-token form remains under **Settings > General > Leg
 - **Line icons**: Entities are drawn with crisp line icons that take the accent color when on; your own emoji and Home Assistant icons still win
 - **Localization**: English, German, Spanish, French, Arabic, Hindi, and Chinese, with an Auto/system language mode and downloadable offline language packs
 - **Hotkeys**: Global entity hotkeys and popup hotkey to bring the window to front
-- **Alerts**: Desktop notifications for entity state changes
+- **Alerts**: Desktop notifications for entity state changes, or a pop-up card with a live camera and buttons such as Unlock
 - **Primary Cards**: Configure the top two cards (weather/time or any entity)
 - **Comparison Graphs**: Plot several entities on one 24-hour chart to compare them at a glance (e.g. every room temperature against the outside temperature)
 - **Per-Tile Charts**: Give each numeric sensor tile a line chart, a gauge with an automatic or custom range, or no chart at all
@@ -160,6 +160,10 @@ Press **Ctrl+K** or **Cmd+K** to search entities and actions. Choose an explicit
 In **Settings > Alerts**, configure a state change, exact state, or numeric threshold. Optional duration and cooldown fields use seconds. A duration requires the condition to remain true continuously while the app observes it; disconnecting cancels pending alerts, except the wait before an unavailable notification, which starts over when the app reconnects and the entity is still offline. Quiet hours use the computer's local time and can cross midnight. Matching updates do not repeat an alert until the condition clears and is reached again. Alerts suppressed by quiet hours or cooldown are not queued for later delivery. The app must be running and connected.
 
 A state change alert also tells you when the entity goes unavailable or unknown, but only if it stays that way for 30 seconds, and at most once every 15 minutes per entity, so a flapping device does not flood you. An outage that begins inside those 15 minutes is not reported later, even if it lasts. Saving the rule starts a pending wait over, but does not reset the 15 minutes. The rule's own duration, cooldown and quiet hours apply as well. Coming back is not announced unless the entity returns as something other than it was before the outage. Turn off **Notify when unavailable or unknown** on the rule to skip these. To be told about every outage, use an exact-state alert for `unavailable` or `unknown`, which follows only its own duration and cooldown.
+
+### Pop-up cards
+
+Turn on **Show a pop-up card** on an alert to get a small card instead of a system notification. It names the entity and what happened, can show a camera live (a camera at the same place, such as `camera.front_door` for `binary_sensor.front_door_ding`, is suggested), and offers up to two buttons for entities you choose. A button acts on the entity as it is when the card opens: a locked lock offers **Unlock**, a light that is on offers **Turn off**, a cover **Open** or **Close**, and a button, scene or script **Press**, **Activate** or **Run**. A lock that needs a code gets no button. Cards appear above other windows in the bottom-right corner of the screen with the mouse pointer, at most three at a time, and fade after 15 seconds to 2 minutes, or stay until closed. Pointing at a card holds it. Click the camera to open the full viewer, or the title to open the widget. On Wayland the desktop decides where a card goes.
 
 ### Sensor history
 

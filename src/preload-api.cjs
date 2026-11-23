@@ -220,6 +220,10 @@ function createElectronApi(ipcRenderer, platform) {
     setEntityAlert: (entityId, alertConfig) => invoke('set-entity-alert', entityId, alertConfig),
     removeEntityAlert: (entityId) => invoke('remove-entity-alert', entityId),
     toggleAlerts: (enabled) => invoke('toggle-alerts', enabled),
+    showAlertPopup: (request) => invoke('show-alert-popup', request),
+    getAlertPopupBootstrap: () => invoke('get-alert-popup-bootstrap'),
+    // `action` is 'dismiss', 'open' or a button's number; `target` 'camera' opens the camera.
+    alertPopupAction: (action, target) => invoke('alert-popup-action', action, target),
     setPersistentNotificationToasts: (enabled) =>
       invoke('set-persistent-notification-toasts', enabled),
 
@@ -259,6 +263,7 @@ function createElectronApi(ipcRenderer, platform) {
     onConfigUpdated: subscribeConfigUpdated,
     onConfigPersistenceWarning: (callback) => subscribe('config-persistence-warning', callback),
     onDesktopPinUpdate: (callback) => subscribe('desktop-pin-update', callback),
+    onAlertPopupUpdate: (callback) => subscribe('alert-popup-update', callback),
     onDesktopPinSnapshotNeeded: (callback) => subscribe('desktop-pin-snapshot-needed', callback),
     onTrayEntitiesRefreshNeeded: (callback) => subscribe('tray-entities-refresh-needed', callback),
     onDesktopPinActionRequested: (callback) => subscribe('desktop-pin-action-requested', callback),

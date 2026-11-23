@@ -1753,5 +1753,19 @@
   "Support Development": "Support Development",
   "Updated to version {{version}}": "Updated to version {{version}}",
   "Enjoying the widget? You can support its development.": "Enjoying the widget? You can support its development.",
-  "Support": "Support"
+  "Support": "Support",
+  "Changed from {{previousState}} to {{newState}}": "Changed from {{previousState}} to {{newState}}",
+  "Now {{newState}}": "Now {{newState}}",
+  "Show a pop-up card": "Show a pop-up card",
+  "Opens a small card on your screen with a live camera view and buttons, instead of a system notification.": "Opens a small card on your screen with a live camera view and buttons, instead of a system notification.",
+  "First button": "First button",
+  "Second button": "Second button",
+  "Stays on screen for": "Stays on screen for",
+  "15 seconds": "15 seconds",
+  "30 seconds": "30 seconds",
+  "1 minute": "1 minute",
+  "2 minutes": "2 minutes",
+  "Until closed": "Until closed",
+  "No camera": "No camera",
+  "No button": "No button"
 }

@@ -89,6 +89,7 @@ import {
   stripSummaryPrefix,
 } from './src/connection-status.js';
 import oauthAccessToken from './src/oauth-access-token.cjs';
+import { initializeAlertPopup } from './src/alert-popup-view.js';
 
 // Shared renderer modules reach the desktop surface only through this host. The panel preview
 // injects its own before it boots this file; it must not be replaced by one that says Electron.
@@ -109,6 +110,8 @@ const STATE_CHANGED_FRAME_FALLBACK_MS = 250;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
+// A pop-up alert card (src/alert-popup-view.js): like a pin, a window of its own with no websocket.
+const IS_ALERT_POPUP_MODE = WINDOW_MODE === 'alert-popup';
 const {
   DESKTOP_PIN_NUDGE_LIMIT,
   getDesktopPinNudgeKeyDelta,
@@ -116,10 +119,10 @@ const {
   getDesktopPinResizeRequest,
   getPointerScreenFactor,
 } = desktopPinResize;
-const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE;
+const IS_SPECIAL_PIN_MODE = IS_DESKTOP_PIN_MODE || IS_ALERT_POPUP_MODE;
 const DESKTOP_PIN_ENTITY_ID = WINDOW_QUERY.get('entityId') || '';
 // Only the main window renders tray entity icons; pin windows share this script but not the job.
-if (window.electronAPI && !IS_DESKTOP_PIN_MODE && getRendererHost().capabilities.supportsTray) {
+if (window.electronAPI && !IS_SPECIAL_PIN_MODE && getRendererHost().capabilities.supportsTray) {
   initTrayEntityIcons({ electronAPI: window.electronAPI, platform: window.electronAPI.platform });
 }
 let desktopPinEditMode = false;
@@ -2371,7 +2374,7 @@ async function refreshLocaleBootstrap() {
   if (!window?.electronAPI?.getLocaleBootstrap) return null;
   const bootstrap = await window.electronAPI.getLocaleBootstrap();
   setLocaleBootstrap(bootstrap || {});
-  if (!IS_DESKTOP_PIN_MODE) refreshTrayEntityIcons({ force: true });
+  if (!IS_SPECIAL_PIN_MODE) refreshTrayEntityIcons({ force: true });
   applyPlatformKeyNames();
   translateDocument(document);
   const locale = bootstrap?.activeLocale || '';
@@ -3473,6 +3476,16 @@ function applyDesktopPinUnitSystem(unitSystem) {
  *
  * Loads persisted config (or applies a safe default if missing), wires UI event handlers, replaces emoji icons, and handles token-reset notifications that require the user to re-enter their Home Assistant token. Applies theme, accent, background, and UI preferences, starts recurring UI updates (time, timers, media seek bars), initializes hotkeys and entity alerts, hides the loading state, renders the active tab, and initiates the WebSocket connection. Ensures the loading indicator is cleared even if the connection stalls.
  */
+// A pop-up card takes the widget's theme, accent and language, and nothing else from its config.
+function applyAlertPopupAppearance(config) {
+  state.setConfig(config);
+  uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
+  uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
+  uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+  uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+  applyDesktopAppearance(state.CONFIG);
+}
+
 async function initializeDesktopPinMode() {
   try {
     log.info('Initializing desktop pin renderer');
@@ -3543,6 +3556,14 @@ async function init() {
     uiUtils.showLoading(true);
     if (IS_DESKTOP_PIN_MODE) {
       await initializeDesktopPinMode();
+      return;
+    }
+    if (IS_ALERT_POPUP_MODE) {
+      await initializeAlertPopup({
+        electronAPI: window.electronAPI,
+        applyAppearance: applyAlertPopupAppearance,
+      });
+      uiUtils.showLoading(false);
       return;
     }
 
@@ -4375,7 +4396,7 @@ window.addEventListener(
   () => {
     void init()
       .then(async () => {
-        if (IS_DESKTOP_PIN_MODE) return;
+        if (IS_SPECIAL_PIN_MODE) return;
         if (typeof window.electronAPI?.signalRendererReady !== 'function') {
           throw new Error('The preload renderer-ready bridge is unavailable');
         }

@@ -1,5 +1,6 @@
 import { applyDesktopAppearance } from './desktop-appearance.js';
 import { getAlertStateSuggestions, normalizeAlertState } from './alert-rules.js';
+import alertPopup from './alert-popup.cjs';
 import { initializeSettingsSearch } from './settings-search.js';
 import { initializeSettingsFiles } from './settings-files-ui.js';
 import { createWindowDisplaySettings } from './window-display-settings.js';
@@ -8006,6 +8007,126 @@ function populateAlertStateSuggestions(entity) {
   );
 }
 
+const {
+  DEFAULT_ALERT_POPUP_SECONDS,
+  isAlertPopupActionDomain,
+  normalizeAlertPopupConfig,
+  suggestAlertPopupCamera,
+} = alertPopup;
+
+// The pop-up card's part of the alert dialog: a switch, and under it the camera, the two buttons
+// and how long the card stays. Built once with the rest of the advanced options.
+function addAlertPopupFields(group, addField) {
+  const row = document.createElement('div');
+  row.className = 'alert-switch-row alert-popup-switch-row';
+  const text = document.createElement('div');
+  text.className = 'alert-switch-text';
+  const label = document.createElement('label');
+  label.htmlFor = 'alert-popup-enabled';
+  const labelText = document.createElement('span');
+  labelText.dataset.alertLabelKey = 'Show a pop-up card';
+  label.append(labelText);
+  const help = document.createElement('div');
+  help.id = 'alert-popup-enabled-help';
+  help.className = 'form-help';
+  help.dataset.alertLabelKey =
+    'Opens a small card on your screen with a live camera view and buttons, instead of a system notification.';
+  text.append(label, help);
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.id = 'alert-popup-enabled';
+  toggle.setAttribute('aria-describedby', help.id);
+  row.append(text, toggle);
+  group.append(row);
+
+  const options = document.createElement('div');
+  options.id = 'alert-popup-options';
+  options.className = 'alert-popup-options';
+  group.append(options);
+  // addField appends to the group; the card's fields go in their own box under the switch.
+  [
+    addField('alert-popup-camera', 'Camera', 'select'),
+    addField('alert-popup-action-1', 'First button', 'select'),
+    addField('alert-popup-action-2', 'Second button', 'select'),
+    addField('alert-popup-seconds', 'Stays on screen for', 'select', [
+      ['15', '15 seconds'],
+      ['30', '30 seconds'],
+      ['60', '1 minute'],
+      ['120', '2 minutes'],
+      ['0', 'Until closed'],
+    ]),
+  ].forEach((input) => options.append(input.closest('label')));
+}
+
+// Fills a pop-up entity select: nothing first, then each entity by name. A saved choice that Home
+// Assistant does not list now stays as a choice under its id, so opening the dialog does not lose it.
+function populateAlertPopupEntitySelect(select, entities, selected, emptyKey) {
+  const choices = entities
+    .map((entity) => ({ value: entity.entity_id, name: utils.getEntityDisplayName(entity) }))
+    .sort((a, b) => compareNames(a.name, b.name));
+  if (selected && !choices.some((choice) => choice.value === selected)) {
+    choices.push({ value: selected, name: selected });
+  }
+  select.replaceChildren(
+    new Option(t(emptyKey), ''),
+    ...choices.map((choice) => new Option(choice.name, choice.value))
+  );
+  select.value = selected || '';
+}
+
+// What the dialog shows for a rule's card: its saved settings, or for a rule without a card yet,
+// a start that fits the entity (its own button, and the camera at the same place).
+function fillAlertPopupFields(modal, entityId, alertConfig) {
+  const saved = normalizeAlertPopupConfig(alertConfig?.popup);
+  const entities = Object.values(state.STATES || {});
+  const popup = saved || {
+    enabled: false,
+    camera: suggestAlertPopupCamera(entityId, state.STATES),
+    actions: isAlertPopupActionDomain(entityId.split('.')[0]) ? [entityId] : [],
+    seconds: DEFAULT_ALERT_POPUP_SECONDS,
+  };
+  modal.querySelector('#alert-popup-enabled').checked = popup.enabled;
+  populateAlertPopupEntitySelect(
+    modal.querySelector('#alert-popup-camera'),
+    entities.filter((entity) => entity.entity_id.startsWith('camera.')),
+    popup.camera,
+    'No camera'
+  );
+  const actionEntities = entities.filter((entity) =>
+    isAlertPopupActionDomain(entity.entity_id.split('.')[0])
+  );
+  ['#alert-popup-action-1', '#alert-popup-action-2'].forEach((id, index) => {
+    populateAlertPopupEntitySelect(
+      modal.querySelector(id),
+      actionEntities,
+      popup.actions[index] || '',
+      'No button'
+    );
+  });
+  modal.querySelector('#alert-popup-seconds').value = String(popup.seconds);
+  const sync = () => {
+    modal.querySelector('#alert-popup-options').hidden =
+      !modal.querySelector('#alert-popup-enabled').checked;
+  };
+  modal.querySelector('#alert-popup-enabled').onchange = sync;
+  sync();
+}
+
+// The card's settings as the dialog has them, or undefined for a rule that never had a card and
+// still does not: such a rule is saved as it was before cards existed.
+function readAlertPopupFields(modal, previous) {
+  const enabled = modal.querySelector('#alert-popup-enabled').checked;
+  if (!enabled && !previous) return undefined;
+  return normalizeAlertPopupConfig({
+    enabled,
+    camera: modal.querySelector('#alert-popup-camera').value,
+    actions: ['#alert-popup-action-1', '#alert-popup-action-2']
+      .map((id) => modal.querySelector(id).value)
+      .filter(Boolean),
+    seconds: Number(modal.querySelector('#alert-popup-seconds').value),
+  });
+}
+
 const ALERT_TIME_STEP_MINUTES = 15;
 
 // Quiet hours are picked from a list of times written in the Time format setting and the app's
@@ -8130,6 +8251,7 @@ function openAlertConfigModal(entityId) {
       addField('alert-quiet-enabled', 'Enable quiet hours', 'checkbox');
       addField('alert-quiet-start', 'Quiet hours start, local time', 'time');
       addField('alert-quiet-end', 'Quiet hours end, local time', 'time');
+      addAlertPopupFields(group, addField);
       addAlertFieldHelp(group);
       modal.querySelector('.modal-body').append(group);
     }
@@ -8161,6 +8283,7 @@ function openAlertConfigModal(entityId) {
       modal.querySelector('#alert-quiet-end'),
       alertConfig?.quietHours?.end || '07:00'
     );
+    fillAlertPopupFields(modal, entityId, alertConfig);
     const syncCondition = () => {
       stateChangeRadio.checked = condition.value === 'state-change';
       specificStateRadio.checked = condition.value === 'specific-state';
@@ -8283,6 +8406,11 @@ async function saveAlert() {
     ) {
       problems.push([quietEnd, t('Choose different start and end times for quiet hours.')]);
     }
+    const popup = readAlertPopupFields(
+      modal,
+      state.CONFIG.entityAlerts?.alerts?.[currentAlertEntity]?.popup
+    );
+    if (popup) alertConfig.popup = popup;
     if (problems.length) {
       clearFieldErrors(modal);
       problems.forEach(([field, message], index) =>

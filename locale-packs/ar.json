@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.85",
+  "version": "1.2.86",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2251,6 +2251,20 @@
     "Support Development": "دعم التطوير",
     "Updated to version {{version}}": "تم التحديث إلى الإصدار {{version}}",
     "Enjoying the widget? You can support its development.": "هل يعجبك عنصر الواجهة؟ يمكنك دعم تطويره.",
-    "Support": "ادعم"
+    "Support": "ادعم",
+    "Changed from {{previousState}} to {{newState}}": "تغيّر من {{previousState}} إلى {{newState}}",
+    "Now {{newState}}": "الآن {{newState}}",
+    "Show a pop-up card": "إظهار بطاقة منبثقة",
+    "Opens a small card on your screen with a live camera view and buttons, instead of a system notification.": "يفتح بطاقة صغيرة على الشاشة فيها عرض مباشر من الكاميرا وأزرار، بدلًا من إشعار النظام.",
+    "First button": "الزر الأول",
+    "Second button": "الزر الثاني",
+    "Stays on screen for": "يبقى على الشاشة لمدة",
+    "15 seconds": "15 ثانية",
+    "30 seconds": "30 ثانية",
+    "1 minute": "دقيقة واحدة",
+    "2 minutes": "دقيقتان",
+    "Until closed": "حتى يُغلق",
+    "No camera": "بلا كاميرا",
+    "No button": "بلا زر"
   }
 }

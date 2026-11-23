@@ -394,6 +394,7 @@ const {
   normalizeDesktopPinActionRequest,
   normalizeHaUnitSystem,
 } = require('./src/desktop-pin-ipc.cjs');
+const { createAlertPopupManager } = require('./src/alert-popup-windows.cjs');
 const {
   getWindowsStartupRegistryName,
   isWindowsLoginItemEnabled,
@@ -728,6 +729,7 @@ const MAIN_WINDOW_TITLE = 'HA Desktop Widget';
 // The format must never contain MAIN_WINDOW_TITLE: window rules can match on substrings,
 // and a rule aimed at the widget must not catch every pin as well.
 const getDesktopPinWindowTitle = (entityId) => `HA Pin: ${entityId}`;
+const getAlertPopupWindowTitle = (popupId) => `HA Alert: ${popupId}`;
 
 // Try to load uiohook-napi for platforms that support hold/release detection. Linux uses
 // Electron's globalShortcut instead so a native hook failure cannot terminate the main process.
@@ -1592,6 +1594,7 @@ function finishSmokeTest(success, error = '') {
       }
     });
     desktopPinWindows.clear();
+    alertPopupManager.closeAll();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.destroy();
     }
@@ -2278,6 +2281,11 @@ function getAuthorizedIpcSender(event) {
     }
   }
 
+  const alertPopup = alertPopupManager.getBySender(sender);
+  if (alertPopup && alertPopup.window === senderWindow) {
+    return { type: 'alert-popup', popup: alertPopup, window: senderWindow };
+  }
+
   return null;
 }
 
@@ -2292,6 +2300,7 @@ function authorizeIpcSender(event, channel, options = {}) {
   if (!sender) return null;
   if (sender.type === 'main') return sender;
   if (sender.type === 'desktop-pin' && options.allowDesktopPin === true) return sender;
+  if (sender.type === 'alert-popup' && options.allowAlertPopup === true) return sender;
   return null;
 }
 
@@ -9450,7 +9459,10 @@ ipcMain.handle('get-window-displays', (event) => {
 });
 
 ipcMain.handle('get-locale-bootstrap', (event) => {
-  const sender = authorizeIpcSender(event, 'get-locale-bootstrap', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'get-locale-bootstrap', {
+    allowDesktopPin: true,
+    allowAlertPopup: true,
+  });
   if (!sender) return rejectUnauthorizedIpc('get-locale-bootstrap');
   return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto');
 });
@@ -10439,6 +10451,118 @@ ipcMain.handle(
     return unpinEntityFromDesktopInternal(entityId);
   })
 );
+
+/**
+ * A pop-up alert card's window: the page in alert-popup mode, frameless, above other windows and
+ * out of the taskbar. It shows without taking the focus, so a card that appears while the user
+ * types does not take their keystrokes. Where it goes is up to alertPopupManager.
+ */
+function createAlertPopupWindow({ id, bounds }) {
+  const transparencyOptions = getWindowTransparencyOptions(config);
+  const windowOptions = {
+    ...(usesCompositorOwnedPlacement ? {} : { x: bounds.x, y: bounds.y }),
+    width: bounds.width,
+    height: bounds.height,
+    transparent: transparencyOptions.transparent,
+    backgroundColor: transparencyOptions.backgroundColor,
+    frame: false,
+    // Stable and per card, like a pin's, so a compositor window rule can target the cards.
+    title: getAlertPopupWindowTitle(id),
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    movable: false,
+    icon: getAppIconPath(__dirname),
+    show: false,
+    webPreferences: {
+      preload: PRELOAD_SCRIPT_PATH,
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      spellcheck: false,
+    },
+  };
+  if (process.platform === 'linux') windowOptions.roundedCorners = false;
+
+  const popupWindow = new BrowserWindow(windowOptions);
+  keepOutOfTaskbarWhenShown(popupWindow);
+  hardenRendererNavigation(popupWindow);
+  popupWindow.setMenuBarVisibility(false);
+  // Above full-screen video and games too, like the popup hotkey's raise.
+  try {
+    popupWindow.setAlwaysOnTop(true, 'screen-saver');
+    popupWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true });
+  } catch (error) {
+    log.warn('Failed to raise the alert pop-up above other windows:', error.message);
+  }
+  popupWindow.on('page-title-updated', (event) => event.preventDefault());
+  // A card whose page cannot load or has crashed would sit there empty for good.
+  popupWindow.webContents.on('did-fail-load', () => alertPopupManager.close(id));
+  popupWindow.webContents.on('render-process-gone', () => alertPopupManager.close(id));
+  popupWindow.webContents.once('did-finish-load', () => {
+    if (popupWindow.isDestroyed()) return;
+    if (typeof popupWindow.showInactive === 'function') popupWindow.showInactive();
+    else popupWindow.show();
+  });
+  popupWindow.loadFile('index.html', { query: { mode: 'alert-popup', popupId: id } });
+  return popupWindow;
+}
+
+const alertPopupManager = createAlertPopupManager({
+  createWindow: createAlertPopupWindow,
+  // The screen the user is looking at, which is where the mouse is.
+  getWorkArea: () => {
+    try {
+      return electronScreen.getDisplayNearestPoint(electronScreen.getCursorScreenPoint()).workArea;
+    } catch {
+      return electronScreen.getPrimaryDisplay()?.workArea;
+    }
+  },
+  forwardAction: (entityId, action, payload, options) =>
+    forwardDesktopPinActionToMainWindow(entityId, action, payload, options).catch((error) => ({
+      success: false,
+      error: normalizeDesktopPinActionError(error?.message || error),
+    })),
+  focusMain: () => focusMainWindow(),
+  log,
+});
+
+// Pop-up alert cards. The main window opens one when an alert rule asks for it; the card asks for
+// what it shows and tells what was pressed.
+ipcMain.handle('show-alert-popup', (event, request) => {
+  const sender = authorizeIpcSender(event, 'show-alert-popup');
+  if (!sender) return rejectUnauthorizedIpc('show-alert-popup');
+  return alertPopupManager.show(request);
+});
+
+ipcMain.handle('get-alert-popup-bootstrap', (event) => {
+  const sender = authorizeIpcSender(event, 'get-alert-popup-bootstrap', { allowAlertPopup: true });
+  if (!sender || sender.type !== 'alert-popup') {
+    return rejectUnauthorizedIpc('get-alert-popup-bootstrap');
+  }
+  return {
+    id: sender.popup.id,
+    popup: sender.popup.request,
+    config: {
+      ...createDesktopPinRendererConfig(config),
+      desktopAppearance: omarchyThemeWatcher?.get() || null,
+    },
+  };
+});
+
+ipcMain.handle('alert-popup-action', (event, action, target) => {
+  const sender = authorizeIpcSender(event, 'alert-popup-action', { allowAlertPopup: true });
+  if (!sender || sender.type !== 'alert-popup') return rejectUnauthorizedIpc('alert-popup-action');
+  return alertPopupManager.handleAction(
+    sender.popup,
+    typeof action === 'number' ? action : String(action || ''),
+    typeof target === 'string' ? target : ''
+  );
+});
 
 ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
@@ -12778,7 +12902,10 @@ ipcMain.handle('write-clipboard-text', async (event, text) => {
 });
 
 ipcMain.handle('debug-log', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
+  const sender = authorizeIpcSender(event, 'debug-log', {
+    allowDesktopPin: true,
+    allowAlertPopup: true,
+  });
   if (!sender) return rejectUnauthorizedIpc('debug-log');
   try {
     // Renderer text goes on one line of its own, so it cannot forge other log entries.

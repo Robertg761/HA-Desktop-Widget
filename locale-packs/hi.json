@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.85",
+  "version": "1.2.86",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2251,6 +2251,20 @@
     "Support Development": "विकास का समर्थन करें",
     "Updated to version {{version}}": "संस्करण {{version}} में अपडेट किया गया",
     "Enjoying the widget? You can support its development.": "विजेट पसंद आ रहा है? आप इसके विकास का समर्थन कर सकते हैं।",
-    "Support": "समर्थन करें"
+    "Support": "समर्थन करें",
+    "Changed from {{previousState}} to {{newState}}": "{{previousState}} से {{newState}} में बदला",
+    "Now {{newState}}": "अब {{newState}}",
+    "Show a pop-up card": "पॉप-अप कार्ड दिखाएँ",
+    "Opens a small card on your screen with a live camera view and buttons, instead of a system notification.": "सिस्टम सूचना के बजाय स्क्रीन पर एक छोटा कार्ड खोलता है, जिसमें कैमरे का लाइव दृश्य और बटन होते हैं।",
+    "First button": "पहला बटन",
+    "Second button": "दूसरा बटन",
+    "Stays on screen for": "स्क्रीन पर रहने का समय",
+    "15 seconds": "15 सेकंड",
+    "30 seconds": "30 सेकंड",
+    "1 minute": "1 मिनट",
+    "2 minutes": "2 मिनट",
+    "Until closed": "बंद करने तक",
+    "No camera": "कोई कैमरा नहीं",
+    "No button": "कोई बटन नहीं"
   }
 }
