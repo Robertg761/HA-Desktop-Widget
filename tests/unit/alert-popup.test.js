@@ -446,6 +446,21 @@ describe('a request to open a pop-up', () => {
     expect(actions[1].label).toBe('turn_off');
   });
 
+  it('passes on tile colours that are colours, and drops the rest', () => {
+    const sanitized = sanitizeAlertPopupRequest({
+      ...request,
+      color: '#e57373',
+      actions: [
+        { ...request.actions[0], color: 'red; background: url(x)' },
+        { entityId: 'light.porch', domain: 'light', service: 'turn_off', color: '#81C784' },
+      ],
+    });
+    expect(sanitized.color).toBe('#E57373');
+    expect(sanitized.actions[0]).not.toHaveProperty('color');
+    expect(sanitized.actions[1].color).toBe('#81C784');
+    expect(sanitizeAlertPopupRequest(request)).not.toHaveProperty('color');
+  });
+
   it('is refused without an entity, and keeps text to one short line', () => {
     expect(sanitizeAlertPopupRequest({ title: 'x' })).toBe(null);
     expect(sanitizeAlertPopupRequest(null)).toBe(null);

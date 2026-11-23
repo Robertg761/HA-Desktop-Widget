@@ -71,6 +71,12 @@ function translateInContext(key, fallback) {
   return label === key ? fallback : label;
 }
 
+// An entity's own colour from Tile settings, which its card and buttons wear as its tile does.
+function getTileColor(entityId) {
+  const color = state.CONFIG?.quickAccessTileOptions?.[entityId]?.color;
+  return typeof color === 'string' ? color : '';
+}
+
 /**
  * The buttons a card offers, from the entities the rule chose as they are now: a lock that is
  * already unlocked offers Lock. An entity that is gone or offline offers nothing and is left out.
@@ -87,6 +93,7 @@ function getAlertPopupButtons(popup) {
           ? translateInContext(action.context, t(action.label))
           : t(action.label),
         name: getEntityDisplayName(entity),
+        color: getTileColor(actionEntityId),
       };
     })
     .filter(Boolean);
@@ -129,6 +136,7 @@ function showEntityAlertPopup({ entityId, name, message, detail, popup }) {
             }
           : null,
         camera: getAlertPopupCamera(popup),
+        color: getTileColor(entityId),
         actions: getAlertPopupButtons(popup),
         seconds: popup.seconds,
         at: Date.now(),

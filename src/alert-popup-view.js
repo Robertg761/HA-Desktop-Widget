@@ -16,6 +16,7 @@ import { formatClockTime } from './format.js';
 import { createLineIcon, renderEntityIcon } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import { prefersReducedMotion } from './motion.js';
+import { getTileColorStyle } from './ui-utils.js';
 
 // How often a camera that has no live stream gets a new snapshot instead.
 const SNAPSHOT_REFRESH_MS = 3000;
@@ -197,6 +198,24 @@ function buildCard() {
 }
 
 /**
+ * Wears an entity's tile colour, as its tile in the widget does: the colour's accent values for
+ * both themes go on the element and the stylesheet makes them its accent. No colour (the tile
+ * follows the window's accent) takes them off again.
+ */
+function applyTileColor(node, color) {
+  const style = color ? getTileColorStyle(color) : null;
+  Array.from(node.style)
+    .filter((name) => name.startsWith('--tile-'))
+    .forEach((name) => node.style.removeProperty(name));
+  if (!style) {
+    delete node.dataset.tileColor;
+    return;
+  }
+  Object.entries(style.properties).forEach(([name, value]) => node.style.setProperty(name, value));
+  node.dataset.tileColor = style.color;
+}
+
+/**
  * Draws a card into `container` and runs it. `send(action, target)` tells the main process what
  * was pressed: 'dismiss', 'open' (with 'camera' for the camera's viewer) or a button's number.
  * Returns { update(popup), dispose() }.
@@ -305,6 +324,7 @@ function mountAlertPopup(container, popup, { send } = {}) {
     clearTimeout(leaveTimer);
     view.root.classList.remove('is-leaving');
     view.root.dataset.hasCamera = next.camera ? 'true' : 'false';
+    applyTileColor(view.root, next.color);
     renderEntityIcon(view.icon, next.icon || { entity_id: next.entityId, state: '' });
     view.title.textContent = next.title;
     view.message.textContent = next.message;
@@ -340,6 +360,7 @@ function mountAlertPopup(container, popup, { send } = {}) {
         name.hidden = !action.name;
         button.append(label, name);
         if (action.name) button.setAttribute('aria-label', `${action.label}: ${action.name}`);
+        applyTileColor(button, action.color);
         button.addEventListener('click', () => runAction(button, index, action));
         return button;
       })

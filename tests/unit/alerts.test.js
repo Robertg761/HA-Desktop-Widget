@@ -1078,6 +1078,7 @@ describe('alerts module', () => {
         message: 'Now Detected',
         icon: { state: 'off', attributes: { icon: 'mdi:doorbell', device_class: undefined } },
         camera: 'camera.front_door',
+        color: '',
         // The porch light is offline, so it has no button to offer.
         actions: [
           {
@@ -1086,6 +1087,7 @@ describe('alerts module', () => {
             service: 'unlock',
             label: 'Unlock',
             name: 'Front Door',
+            color: '',
           },
         ],
         seconds: 60,
@@ -1124,6 +1126,18 @@ describe('alerts module', () => {
       alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
       await flush();
       expect(mockElectronAPI.showAlertPopup.mock.calls.at(-1)[0].camera).toBe('');
+    });
+
+    it("wears the tile colours of the alerting entity and of each button's entity", async () => {
+      mockState.CONFIG.quickAccessTileOptions = {
+        'binary_sensor.front_door_ding': { color: '#E57373' },
+        'lock.front_door': { color: '#81C784' },
+      };
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      const request = mockElectronAPI.showAlertPopup.mock.calls[0][0];
+      expect(request.color).toBe('#E57373');
+      expect(request.actions[0].color).toBe('#81C784');
     });
 
     it('still opens, with no buttons, when every button entity is offline', async () => {

@@ -12,6 +12,7 @@
  */
 
 const ENTITY_ID_PATTERN = /^[a-z0-9_]+\.[a-z0-9_]+$/;
+const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 
 // How long a card stays before it fades, in seconds. 0 keeps it until it is closed.
 const ALERT_POPUP_DURATIONS = Object.freeze([15, 30, 60, 120, 0]);
@@ -75,6 +76,11 @@ function isEntityId(value) {
 
 function getDomain(entityId) {
   return typeof entityId === 'string' ? entityId.split('.')[0] : '';
+}
+
+// A tile colour from Tile settings, as #RRGGBB, or '' for one that follows the accent.
+function cleanColor(value) {
+  return typeof value === 'string' && HEX_COLOR_PATTERN.test(value) ? value.toUpperCase() : '';
 }
 
 // One line of text, cut at a character boundary.
@@ -393,6 +399,8 @@ function sanitizeAlertPopupRequest(request) {
       service: action.service,
       label: cleanText(action.label, ALERT_POPUP_LABEL_LIMIT) || action.service,
       name: cleanText(action.name, ALERT_POPUP_TITLE_LIMIT),
+      // The button takes its entity's tile colour, as its tile does.
+      ...(cleanColor(action.color) ? { color: cleanColor(action.color) } : {}),
     }));
   return {
     entityId: request.entityId,
@@ -413,6 +421,8 @@ function sanitizeAlertPopupRequest(request) {
     },
     camera:
       isEntityId(request.camera) && getDomain(request.camera) === 'camera' ? request.camera : '',
+    // The alerting entity's tile colour, for the card's icon and its glow.
+    ...(cleanColor(request.color) ? { color: cleanColor(request.color) } : {}),
     actions,
     seconds: ALERT_POPUP_DURATIONS.includes(seconds) ? seconds : DEFAULT_ALERT_POPUP_SECONDS,
     at: Number.isFinite(Number(request.at)) ? Number(request.at) : Date.now(),

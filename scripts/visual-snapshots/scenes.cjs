@@ -944,10 +944,10 @@ const ALERT_POPUP_LAYOUT = `(() => {
   return '';
 })()`;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const alertPopupScene = (name, trigger, { ui, camera = false } = {}) => ({
+const alertPopupScene = (name, trigger, { ui, config, camera = false } = {}) => ({
   name,
   ui,
-  config: { entityAlerts: ALERT_POPUP_ALERTS },
+  config: { entityAlerts: ALERT_POPUP_ALERTS, ...config },
   extraStates: (now) => buildAlertPopupDevices(now),
   setup: async (ctx) => {
     // The alert rules see the new entities' first states before the change that fires one.
@@ -1900,6 +1900,33 @@ const scenes = [
     ui: { language: 'de' },
   }),
   alertPopupScene('alert-popup-leak', 'binary_sensor.utility_room_leak'),
+  // The card follows the window's look as a desktop pin does: solid with frosted glass and full
+  // opacity off, and see-through at the lowest window opacity (the scenes above have the fixture's
+  // frosted glass at 95%). The tile colours scene gives the doorbell, the lock and the light colours
+  // of their own: the card's icon and glow wear the doorbell's, each button its own entity's.
+  alertPopupScene('alert-popup-doorbell-solid', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: { frostedGlass: false, opacity: 1 },
+  }),
+  alertPopupScene('alert-popup-doorbell-see-through', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: { opacity: 0.5 },
+  }),
+  alertPopupScene('alert-popup-doorbell-see-through-light', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    ui: { theme: 'light' },
+    config: { opacity: 0.5 },
+  }),
+  alertPopupScene('alert-popup-tile-colours', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: {
+      quickAccessTileOptions: {
+        'binary_sensor.front_gate_ding': { color: '#E57373' },
+        'lock.front_gate': { color: '#81C784' },
+        'light.front_gate': { color: '#FFB74D' },
+      },
+    },
+  }),
   // The camera viewer's toolbar: Snapshot and Live are a pair, and the one on screen is filled.
   {
     name: 'popup-camera-viewer',

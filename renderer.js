@@ -3482,8 +3482,12 @@ function applyAlertPopupAppearance(config) {
   uiUtils.applyTheme(state.CONFIG.ui?.theme || 'auto');
   uiUtils.setCustomThemes(state.CONFIG.ui?.customColors || []);
   uiUtils.applyAccentTheme(state.CONFIG.ui?.accent || 'original');
+  uiUtils.applyBackgroundTheme(state.CONFIG.ui?.background || 'original');
   uiUtils.applyUiPreferences(state.CONFIG.ui || {});
+  // The palette can change the theme, which the window effects' alphas follow, so it goes first.
   applyDesktopAppearance(state.CONFIG);
+  // Window opacity and frosted glass, as on a desktop pin.
+  uiUtils.applyWindowEffects(state.CONFIG);
 }
 
 async function initializeDesktopPinMode() {

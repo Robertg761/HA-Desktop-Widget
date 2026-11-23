@@ -10566,6 +10566,12 @@ ipcMain.handle('get-alert-popup-bootstrap', (event) => {
     config: {
       ...createDesktopPinRendererConfig(config),
       desktopAppearance: omarchyThemeWatcher?.get() || null,
+      // What the card's window effects need to draw opacity and glass as a desktop pin does.
+      desktopCapabilities: {
+        layerMode: isLayerShellChildProcess,
+        canDrag: false,
+        nativeGlassSupported: NATIVE_GLASS_SUPPORTED,
+      },
     },
   };
 });

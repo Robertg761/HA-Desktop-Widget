@@ -134,6 +134,26 @@ describe('a pop-up alert card', () => {
     expect(button.disabled).toBe(false);
   });
 
+  it("wears the alerting entity's tile colour, and each button its own entity's", () => {
+    const view = mount({
+      ...doorbell,
+      color: '#E57373',
+      actions: [{ ...doorbell.actions[0], color: '#81C784' }],
+    });
+    const card = container.querySelector('.alert-popup');
+    const button = container.querySelector('.alert-popup-action');
+    expect(card.dataset.tileColor).toBe('#E57373');
+    expect(card.style.getPropertyValue('--tile-accent')).toBe('#E57373');
+    expect(button.dataset.tileColor).toBe('#81C784');
+    expect(button.style.getPropertyValue('--tile-accent-rgb')).toBe('129, 199, 132');
+
+    // The same alert again, now following the accent: the colours come off.
+    view.update(doorbell);
+    expect(card.dataset.tileColor).toBeUndefined();
+    expect(card.style.getPropertyValue('--tile-accent')).toBe('');
+    expect(container.querySelector('.alert-popup-action').dataset.tileColor).toBeUndefined();
+  });
+
   it('counts down on its bar and leaves when the time is up', () => {
     mount();
     const bar = container.querySelector('.alert-popup-progress');

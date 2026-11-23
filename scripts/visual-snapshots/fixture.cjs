@@ -15,6 +15,7 @@ const TOKEN = 'visual-snapshot-token';
 // changes any other setting leaves it changed for every scene after it.
 const RESETTABLE_SETTINGS = [
   'frostedGlass',
+  'opacity',
   'customTabs',
   'activeTabId',
   'entityAlerts',
