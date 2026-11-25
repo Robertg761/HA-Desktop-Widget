@@ -113,7 +113,7 @@ describe('dropping a pin on a Hyprland layer surface', () => {
       config: { ui: {} },
     };
     const start = mainSource.indexOf('function snapLayerPinPosition');
-    const end = mainSource.indexOf("ipcMain.handle('begin-layer-drag'");
+    const end = mainSource.indexOf("ipcRoutes.handle('begin-layer-drag'");
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const helper = mainSource.match(/function desktopPinSnapEnabled\(\) \{[^}]*\}/);

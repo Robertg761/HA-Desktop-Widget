@@ -214,7 +214,7 @@ describe('the tray menu', () => {
 describe('keeping the tray menu in step with the settings', () => {
   it('rebuilds it after Always on top changes in Settings or arrives from a sync', () => {
     const setIpc = sliceMain(
-      "ipcMain.handle(\n  'set-always-on-top'",
+      "ipcRoutes.handle('set-always-on-top'",
       'async function updateLayerDrag'
     );
     expect(setIpc.match(/refreshTrayMenu\(\)/g)).toHaveLength(2);

@@ -76,13 +76,11 @@ describe('OAuth pairing commit', () => {
       config,
       configStore: store.configStore,
       replaceConfigContents: store.replaceConfigContents,
-      ipcMain: {
+      ipcRoutes: {
         handle: (name, handler) => {
           handlers[name] = handler;
         },
       },
-      authorizeIpcSender: () => ({ type: 'main' }),
-      rejectUnauthorizedIpc: jest.fn(),
       windowAutoHide: { suspend: () => () => {} },
       getHomeAssistantOAuthClient: () => client,
       runSerializedConfigMutation: mutate,

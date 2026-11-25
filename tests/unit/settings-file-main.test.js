@@ -1,13 +1,9 @@
 /** @jest-environment node */
 const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
 const { createMainConfigStore } = require('../helpers/main-config-store.js');
 const { createProfileSyncHarness } = require('../helpers/profile-sync-devices.js');
-const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const copy = (value) => JSON.parse(JSON.stringify(value));
-const slice = (start, end) =>
-  source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
 describe('settings file main-process application', () => {
   const harness = createProfileSyncHarness();
@@ -148,39 +144,4 @@ describe('config changes that arrive outside the settings form', () => {
     await changeLanguage('auto');
     expect(store.context.createTray).not.toHaveBeenCalled();
   });
-});
-
-describe('settings file IPC authorization', () => {
-  test.each(['export-settings-file', 'preview-settings-import', 'apply-settings-import'])(
-    'rejects unauthorized %s calls',
-    async (channel) => {
-      const handlers = {};
-      const controller = {
-        exportSettings: jest.fn(),
-        previewImport: jest.fn(),
-        applyImport: jest.fn(),
-      };
-      vm.runInNewContext(
-        slice('const settingsFileController =', "ipcMain.handle('get-profile-sync-status'"),
-        {
-          createSettingsFileController: () => controller,
-          fs,
-          dialog: {},
-          ipcMain: {
-            handle: (key, handler) => {
-              handlers[key] = handler;
-            },
-          },
-          authorizeIpcSender: () => null,
-          rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
-          serializeConfigMutationHandler: (handler) => handler,
-        }
-      );
-      await expect(handlers[channel]({}, '/arbitrary/file')).resolves.toEqual({
-        success: false,
-        error: 'Unauthorized',
-      });
-      Object.values(controller).forEach((method) => expect(method).not.toHaveBeenCalled());
-    }
-  );
 });

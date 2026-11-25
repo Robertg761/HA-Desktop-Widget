@@ -34,8 +34,8 @@ const UPDATE_CONFIG_SOURCE = [
   sliceMain('const TOKEN_RESET_RECOVERY_REASONS', 'const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS'),
   sliceMain('function mainTError(', '// Hotkey changes roll back on failure'),
   sliceMain('function ensureUpdateConfigDefaults(', 'const TIME_DISPLAY_FORMATS'),
-  sliceMain('function sanitizeConfigForRenderer(', 'function getAuthorizedIpcSender('),
-  sliceMain("ipcMain.handle(\n  'update-config'", "ipcMain.handle(\n  'clear-token-reset-reason'"),
+  sliceMain('function sanitizeConfigForRenderer(', '// Who may call each IPC channel'),
+  sliceMain("ipcRoutes.handle('update-config'", "ipcRoutes.handle('clear-token-reset-reason'"),
 ].join('\n');
 
 const TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
@@ -75,13 +75,11 @@ function useMainUpdateConfig(device) {
     getSystemColorScheme: () => null,
     rendersInSoftware: () => false,
     hasDeferredSecureConfigWork: () => false,
-    ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-    serializeConfigMutationHandler:
-      (handler) =>
-      (...args) =>
-        configStore.serialize(() => handler(...args)),
-    authorizeIpcSender: () => ({ type: 'main', window: {} }),
-    rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
+    // update-config runs in the config mutation queue, as its route says.
+    ipcRoutes: {
+      handle: (channel, handler) =>
+        (handlers[channel] = (...args) => configStore.serialize(() => handler(...args))),
+    },
   };
   Object.entries(stubs).forEach(([name, value]) => {
     if (!(name in context)) context[name] = value;

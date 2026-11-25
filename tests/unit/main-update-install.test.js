@@ -39,9 +39,7 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
       if (name !== 'electron') throw new Error(`Unexpected require: ${name}`);
       return { autoUpdater: nativeUpdater };
     },
-    ipcMain: { handle: (name, handler) => (handlers[name] = handler) },
-    authorizeIpcSender: () => ({ type: 'main' }),
-    rejectUnauthorizedIpc: () => ({ success: false }),
+    ipcRoutes: { handle: (name, handler) => (handlers[name] = handler) },
     isPortableBuild: () => false,
     supportsAutoUpdater: () => true,
     process: { platform: 'linux', env: { APPIMAGE: '/app.AppImage' } },
@@ -85,7 +83,7 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
   vm.runInContext(
     `${section('const runSerializedConfigMutation =', 'const runBackgroundConfigMutation =')}
      ${section('async function flushConfigForBoundedExit(', 'function shutDownRuntimeAfterConfigFlush(')}
-     ${section("ipcMain.handle('quit-and-install'", '// Handle quit request from renderer')}
+     ${section("ipcRoutes.handle('quit-and-install'", '// Handle quit request from renderer')}
      ${section('let updateCheckScheduler = null;', '// Anonymous install count')}
      setupAutoUpdates();`,
     context

@@ -36,6 +36,7 @@ module.exports = [
       'src/desktop-pin-ipc.cjs',
       'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',
+      'src/ipc-routes.cjs',
       'src/i18n-main.cjs',
       'src/layer-shell.cjs',
       'src/linux-startup.cjs',

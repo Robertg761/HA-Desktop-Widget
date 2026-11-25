@@ -89,7 +89,7 @@ describe('the action a hotkey runs', () => {
 
 describe("a tile menu's edit items", () => {
   const start = mainSource.indexOf('function entityTileEditMenuItems(');
-  const end = mainSource.indexOf("ipcMain.handle('show-entity-tile-menu'", start);
+  const end = mainSource.indexOf("ipcRoutes.handle('show-entity-tile-menu'", start);
 
   const itemsFor = (reorganizing) => {
     const requestTileAction = jest.fn();
@@ -124,7 +124,7 @@ describe("a tile menu's edit items", () => {
 
 describe("a tile menu's hotkey items", () => {
   const start = mainSource.indexOf('function entityTileHotkeyMenuItems(');
-  const end = mainSource.indexOf("ipcMain.handle('show-entity-tile-menu'", start);
+  const end = mainSource.indexOf("ipcRoutes.handle('show-entity-tile-menu'", start);
 
   const itemsFor = (entityId, hasHotkey) => {
     const requestHotkey = jest.fn();

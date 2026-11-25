@@ -201,7 +201,7 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('handles a correlated desktop-pin action response channel', () => {
-    expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
+    expect(mainSource).toContain("ipcRoutes.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');
     expect(mainSource).toContain("awaitResponse: normalizedAction === 'service-call'");
   });
@@ -379,9 +379,9 @@ describe('main-process wiring safeguards', () => {
 
   it('keeps native Wayland minimize and compositor-owned positions recoverable', () => {
     const minimizeStart = mainSource.indexOf('function minimizeMainWindow');
-    const minimizeEnd = mainSource.indexOf("ipcMain.handle('focus-window'", minimizeStart);
+    const minimizeEnd = mainSource.indexOf("ipcRoutes.handle('focus-window'", minimizeStart);
     const minimizeSource = mainSource.slice(minimizeStart, minimizeEnd);
-    expect(mainSource).toContain("ipcMain.handle('minimize-window'");
+    expect(mainSource).toContain("ipcRoutes.handle('minimize-window'");
     expect(minimizeSource).toContain('usesCompositorOwnedPlacement');
     expect(minimizeSource).toContain('hideMainWindowToTray()');
     expect(minimizeSource).toContain('mainWindow.minimize()');
@@ -444,8 +444,11 @@ describe('main-process wiring safeguards', () => {
     const pinUpdateSource = mainSource.slice(pinUpdateStart, pinUpdateEnd);
     expect(pinUpdateSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
 
-    const bootstrapStart = mainSource.indexOf("ipcMain.handle('get-desktop-pin-bootstrap'");
-    const bootstrapEnd = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'", bootstrapStart);
+    const bootstrapStart = mainSource.indexOf("ipcRoutes.handle('get-desktop-pin-bootstrap'");
+    const bootstrapEnd = mainSource.indexOf(
+      "ipcRoutes.handle('publish-ha-snapshot'",
+      bootstrapStart
+    );
     const bootstrapSource = mainSource.slice(bootstrapStart, bootstrapEnd);
     expect(bootstrapSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
   });
@@ -459,9 +462,9 @@ describe('main-process wiring safeguards', () => {
     expect(syncSource).toContain('hasPublishedHaSnapshot = false');
 
     // A publish already in flight when the last pin is removed must not rebuild the cache.
-    const publishStart = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'");
-    const publishBoundary = mainSource.indexOf("ipcMain.handle('publish-ha-entity-update'");
-    const publishEnd = mainSource.indexOf("ipcMain.handle('request-desktop-pin-action'");
+    const publishStart = mainSource.indexOf("ipcRoutes.handle('publish-ha-snapshot'");
+    const publishBoundary = mainSource.indexOf("ipcRoutes.handle('publish-ha-entity-update'");
+    const publishEnd = mainSource.indexOf("ipcRoutes.handle('request-desktop-pin-action'");
     const snapshotSource = mainSource.slice(publishStart, publishBoundary);
     const entityUpdateSource = mainSource.slice(publishBoundary, publishEnd);
     expect(snapshotSource).toContain('if (!hasConfiguredDesktopPins())');
@@ -581,22 +584,8 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
-  it('only lets the main window drive Cloud Sync accounts', () => {
-    for (const channel of [
-      'get-cloud-sync-account',
-      'cloud-sync-sign-in',
-      'cloud-sync-cancel-sign-in',
-      'cloud-sync-sign-out',
-      'cloud-sync-open-billing',
-      'cloud-sync-delete-account',
-    ]) {
-      const start = mainSource.indexOf(`ipcMain.handle('${channel}'`);
-      expect(start).toBeGreaterThan(-1);
-      const handler = mainSource.slice(start, start + 400);
-      expect(handler).toContain(`authorizeIpcSender(event, '${channel}')`);
-      expect(handler).toContain(`rejectUnauthorizedIpc('${channel}')`);
-    }
-    // The session token never reaches the renderer: only status fields do.
+  it('never hands the Cloud Sync session token to the renderer', () => {
+    // Only status fields reach the renderer.
     const status = engineFunction('getCloudSyncStatus');
     expect(status).not.toMatch(/token/i);
   });
@@ -653,7 +642,7 @@ describe('main-process wiring safeguards', () => {
     // The restart sequence lives in restartApplication(), shared by the
     // 'restart-app' IPC handler and the tray's monitor selection.
     const restartStart = mainSource.indexOf('async function restartApplication');
-    const restartEnd = mainSource.indexOf("ipcMain.handle('minimize-window'", restartStart);
+    const restartEnd = mainSource.indexOf("ipcRoutes.handle('minimize-window'", restartStart);
     const restartSource = mainSource.slice(restartStart, restartEnd);
     expect(restartSource).toContain("await flushConfigForBoundedExit('restarting')");
     // Through getRelaunchOptions() so an AppImage restarts from the AppImage, not its dead mount.
@@ -698,7 +687,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('smokeTestRendererLoaded &&');
     expect(mainSource).toContain('smokeTestRendererReady &&');
     expect(mainSource).toContain('smokeTestTrayReady &&');
-    expect(mainSource).toContain("ipcMain.handle('renderer-ready'");
+    expect(mainSource).toContain("ipcRoutes.handle('renderer-ready'");
     expect(mainSource).toContain('smokeTestRendererReady = true');
     expect(mainSource).toContain('HA_WIDGET_SMOKE_TEST_OK');
     expect(mainSource).toContain('app.exit(success ? 0 : 1)');
@@ -715,19 +704,19 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('runSerializedConfigMutation(() =>');
     expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true })');
 
-    const getConfigStart = mainSource.indexOf("ipcMain.handle('get-config'");
+    const getConfigStart = mainSource.indexOf("ipcRoutes.handle('get-config'");
     const getConfigEnd = mainSource.indexOf(
-      "ipcMain.handle('get-locale-bootstrap'",
+      "ipcRoutes.handle('get-locale-bootstrap'",
       getConfigStart
     );
     const getConfigSource = mainSource.slice(getConfigStart, getConfigEnd);
     expect(getConfigSource).not.toContain('resolveDeferredSecureConfig');
 
     const desktopPinBootstrapStart = mainSource.indexOf(
-      "ipcMain.handle('get-desktop-pin-bootstrap'"
+      "ipcRoutes.handle('get-desktop-pin-bootstrap'"
     );
     const desktopPinBootstrapEnd = mainSource.indexOf(
-      "ipcMain.handle('publish-ha-snapshot'",
+      "ipcRoutes.handle('publish-ha-snapshot'",
       desktopPinBootstrapStart
     );
     const desktopPinBootstrapSource = mainSource.slice(
@@ -772,7 +761,7 @@ describe('main-process wiring safeguards', () => {
     const traySource = mainSource.slice(trayStart, trayEnd);
     const updateCheckStart = mainSource.indexOf('async function checkForUpdatesForCurrentPackage');
     const updateCheckEnd = mainSource.indexOf(
-      "ipcMain.handle('quit-and-install'",
+      "ipcRoutes.handle('quit-and-install'",
       updateCheckStart
     );
     const updateCheckSource = mainSource.slice(updateCheckStart, updateCheckEnd);
@@ -798,7 +787,7 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('flushes config and pending window bounds before an update closes windows', () => {
-    const installStart = mainSource.indexOf("ipcMain.handle('quit-and-install'");
+    const installStart = mainSource.indexOf("ipcRoutes.handle('quit-and-install'");
     const installEnd = mainSource.indexOf('// Handle quit request from renderer', installStart);
     const installSource = mainSource.slice(installStart, installEnd);
 
@@ -854,27 +843,10 @@ describe('main-process wiring safeguards', () => {
     );
   });
 
-  it('guards privileged IPC senders and restricts desktop-pin channels', () => {
-    expect(mainSource).toContain('function getAuthorizedIpcSender');
-    expect(mainSource).toContain(
-      "sender.type === 'desktop-pin' && options.allowDesktopPin === true"
-    );
-    expect(mainSource).toContain("authorizeIpcSender(event, 'update-config')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'copy-profile-sync-file')");
-    expect(mainSource).toContain(
-      "authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })"
-    );
+  it('gives desktop pins a narrowed config and connection state of their own', () => {
+    // Which channels a pin may call is the IPC route table's (tests/unit/ipc-routes.test.js).
     expect(mainSource).toContain('...createDesktopPinRendererConfig(config)');
     expect(mainSource).toContain('connection: createDesktopPinConnectionState(config');
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'get-config', { allowDesktopPin: true })"
-    );
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true })"
-    );
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true })"
-    );
   });
 
   it('keeps Windows non-glass opacity on renderer background surfaces', () => {
@@ -1153,11 +1125,6 @@ describe('profile sync runtime safeguards', () => {
 
   it('keeps OAuth and desktop companion authority in the main process', () => {
     expect(mainSource).toContain("require('./src/ha-oauth.cjs')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'start-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'cancel-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'disconnect-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'get-desktop-companion-registration')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'apply-desktop-companion-command')");
     expect(mainSource).toContain("!['show', 'hide', 'toggle'].includes(action)");
     expect(mainSource).toContain('config.desktopCompanion.desktopId = nodeCrypto.randomUUID()');
     expect(mainSource).toContain("capabilities: ['visibility', 'switch_page', 'apply_profile']");

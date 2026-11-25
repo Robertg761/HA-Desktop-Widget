@@ -3,6 +3,7 @@
  */
 
 const { replaceConfigEntityIdReferences } = require('../../src/config-entity-references.cjs');
+const { IPC_ROUTES } = require('../../src/ipc-routes.cjs');
 const fs = require('fs');
 const path = require('path');
 
@@ -107,7 +108,7 @@ describe('replaceConfigEntityIdReferences', () => {
     const handler = mainSource.slice(handlerStart, handlerEnd);
 
     expect(handlerStart).toBeGreaterThan(-1);
-    expect(handler).toContain('serializeConfigMutationHandler(async');
+    expect(IPC_ROUTES['replace-config-entity-id'].queue).toBe('config');
     expect(handler).toContain('replaceConfigEntityIdReferences(config, oldEntityId, newEntityId)');
   });
 });

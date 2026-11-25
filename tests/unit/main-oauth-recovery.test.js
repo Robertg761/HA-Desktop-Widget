@@ -28,7 +28,7 @@ describe('main-process Home Assistant authorization recovery', () => {
       Date: { now: () => now },
       HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS: 5 * 60 * 1000,
       powerMonitor: { on: (event, handler) => (handlers[event] = handler) },
-      ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
+      ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
       profileSyncEngine: { requestSync: jest.fn() },
       invalidateHaConnectionState: jest.fn(),
       scheduleHomeAssistantOAuthRefresh: jest.fn(),
@@ -40,8 +40,6 @@ describe('main-process Home Assistant authorization recovery', () => {
           oauthStatus: 'connected',
         };
       }),
-      authorizeIpcSender: () => ({ type: 'main' }),
-      rejectUnauthorizedIpc: jest.fn(),
       mainWindow: {
         isDestroyed: () => false,
         webContents: { send: (channel, payload) => events.push([channel, payload]) },
@@ -51,7 +49,7 @@ describe('main-process Home Assistant authorization recovery', () => {
     vm.runInNewContext(
       `${staleSource}\n${extractBlock('function setupProfileSyncWakeTriggers')}\n` +
         'setupProfileSyncWakeTriggers();\n' +
-        extractBlock("ipcMain.handle('refresh-home-assistant-oauth'", '\n});\n'),
+        extractBlock("ipcRoutes.handle('refresh-home-assistant-oauth'", '\n});\n'),
       context
     );
     return { context, events, handlers };
@@ -271,9 +269,7 @@ describe('main-process Home Assistant authorization recovery', () => {
     async function pairWithoutKeyring(platform) {
       const handlers = {};
       const context = {
-        ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-        authorizeIpcSender: () => ({ type: 'main' }),
-        rejectUnauthorizedIpc: jest.fn(),
+        ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
         windowAutoHide: { suspend: () => () => {} },
         showMainWindowFromTray: () => {},
         getHomeAssistantOAuthClient: () => ({
@@ -290,7 +286,7 @@ describe('main-process Home Assistant authorization recovery', () => {
         `const process = { platform: ${JSON.stringify(platform)} };\n` +
           extractBlock('function describeLinuxKeyringOAuthError') +
           extractBlock('function describeLinuxKeyringPairingError') +
-          extractBlock("ipcMain.handle('start-home-assistant-oauth'", '\n});\n'),
+          extractBlock("ipcRoutes.handle('start-home-assistant-oauth'", '\n});\n'),
         context
       );
       return handlers['start-home-assistant-oauth']({}, 'http://ha.local:8123');

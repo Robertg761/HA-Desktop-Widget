@@ -25,10 +25,7 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
     Buffer,
     handlers,
     written,
-    ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-    serializeConfigMutationHandler: (handler) => handler,
-    authorizeIpcSender: () => ({}),
-    rejectUnauthorizedIpc: () => ({ success: false }),
+    ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
     mainT: (text) => text,
     sanitizeConfigForRenderer: (value) => JSON.parse(JSON.stringify(value)),
     buildRendererConfigAfterChange: () => context.sanitizeConfigForRenderer(context.config),
@@ -57,7 +54,7 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
       sliceMain('function pruneConfig(', 'function quarantineCorruptConfig('),
       sliceMain('function encodeConfigForSave(', 'function emitConfigPersistenceWarnings('),
       sliceMain(
-        "ipcMain.handle(\n  'clear-token-reset-reason'",
+        "ipcRoutes.handle('clear-token-reset-reason'",
         'function normalizeHomeAssistantBaseUrlForIpc('
       ),
     ]

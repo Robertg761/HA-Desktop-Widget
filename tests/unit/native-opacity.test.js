@@ -28,10 +28,8 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
     applyAlwaysOnTopPreference: jest.fn(),
     applyFrostedGlass: jest.fn(),
     applyDesktopPinWindowEffects: jest.fn(),
-    authorizeIpcSender: () => ({ type: 'main' }),
-    serializeConfigMutationHandler: (handler) => handler,
     configStore: store.configStore,
-    ipcMain: {
+    ipcRoutes: {
       handle: (name, handler) => {
         handlers[name] = handler;
       },
@@ -54,8 +52,8 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
   );
   vm.runInContext(
     source.slice(
-      source.indexOf("ipcMain.handle(\n  'set-opacity'"),
-      source.indexOf("ipcMain.handle(\n  'set-always-on-top'")
+      source.indexOf("ipcRoutes.handle('set-opacity'"),
+      source.indexOf("ipcRoutes.handle('set-always-on-top'")
     ),
     context
   );

@@ -112,7 +112,7 @@ describe('Windows acrylic on the main process', () => {
       ),
       sanitizeConfigForRenderer: passesSupport('function sanitizeConfigForRenderer('),
       sendDesktopPinUpdate: passesSupport('function sendDesktopPinUpdate('),
-      getDesktopPinBootstrap: passesSupport("ipcMain.handle('get-desktop-pin-bootstrap'"),
+      getDesktopPinBootstrap: passesSupport("ipcRoutes.handle('get-desktop-pin-bootstrap'"),
     }).toEqual({
       createWindow: true,
       sanitizeConfigForRenderer: true,
@@ -140,9 +140,7 @@ describe('previewing the frosted glass switch in Settings on Windows', () => {
       context.applyWindowEffectsToWindow(base.targetWindow, context.config, override);
     context.applyWindowOpacityToAll = jest.fn();
     const handlers = {};
-    context.ipcMain = { handle: (name, handler) => (handlers[name] = handler) };
-    context.authorizeIpcSender = () => ({ type: 'main' });
-    context.rejectUnauthorizedIpc = () => ({ success: false });
+    context.ipcRoutes = { handle: (name, handler) => (handlers[name] = handler) };
     // Run timers when they are due rather than at the call.
     context.setTimeout = (callback) => {
       context.__timers.push(callback);
@@ -153,7 +151,7 @@ describe('previewing the frosted glass switch in Settings on Windows', () => {
     vm.runInContext(
       source.slice(
         source.indexOf('let previewFrostedGlassOverride;'),
-        source.indexOf("ipcMain.handle(\n  'set-always-on-top'")
+        source.indexOf("ipcRoutes.handle('set-always-on-top'")
       ),
       context
     );

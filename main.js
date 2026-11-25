@@ -518,6 +518,7 @@ const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const { turnOffSpellChecker } = require('./src/spell-checker.cjs');
+const { createIpcRoutes } = require('./src/ipc-routes.cjs');
 const {
   CONFIG_FILE_NAME,
   CONFIG_STORE_CLOSED,
@@ -1748,54 +1749,18 @@ function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function getAuthorizedIpcSender(event) {
-  const sender = event?.sender || null;
-  if (!sender) return null;
-
-  const senderWindow = BrowserWindow.fromWebContents(sender);
-  if (!senderWindow || senderWindow.isDestroyed()) return null;
-
-  const senderFrame = event?.senderFrame || null;
-  if (senderFrame?.top && senderFrame.top !== senderFrame) {
-    return null;
-  }
-
-  if (
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    sender === mainWindow.webContents &&
-    senderWindow === mainWindow
-  ) {
-    return { type: 'main', window: mainWindow };
-  }
-
-  for (const [entityId, pinWindow] of desktopPinWindows.entries()) {
-    if (
-      pinWindow &&
-      !pinWindow.isDestroyed() &&
-      sender === pinWindow.webContents &&
-      senderWindow === pinWindow
-    ) {
-      return { type: 'desktop-pin', entityId, window: pinWindow };
-    }
-  }
-
-  return null;
-}
-
-function rejectUnauthorizedIpc(channel, response = { success: false, error: 'Unauthorized' }) {
-  log.warn(`Unauthorized IPC sender rejected for ${channel}`);
-  return response;
-}
-
-function authorizeIpcSender(event, channel, options = {}) {
-  void channel;
-  const sender = getAuthorizedIpcSender(event);
-  if (!sender) return null;
-  if (sender.type === 'main') return sender;
-  if (sender.type === 'desktop-pin' && options.allowDesktopPin === true) return sender;
-  return null;
-}
+// Who may call each IPC channel is the route table's to decide (src/ipc-routes.cjs). Its sender
+// roles are the main window and the desktop pin windows.
+const ipcRoutes = createIpcRoutes({
+  ipcMain,
+  BrowserWindow,
+  log,
+  roles: {
+    main: () => [{ window: mainWindow }],
+    'desktop-pin': () => [...desktopPinWindows].map(([entityId, window]) => ({ window, entityId })),
+  },
+  queues: { config: serializeConfigMutationHandler },
+});
 
 function normalizeIpcEntityIdForKey(entityId) {
   return normalizeEntityIdForObjectKey(entityId, normalizeEntityId);
@@ -6113,9 +6078,7 @@ function schedulePostWindowStartupTasks() {
 }
 
 // IPC handlers for configuration
-ipcMain.handle('renderer-ready', (event) => {
-  const sender = authorizeIpcSender(event, 'renderer-ready');
-  if (!sender) return rejectUnauthorizedIpc('renderer-ready');
+ipcRoutes.handle('renderer-ready', () => {
   if (IS_SMOKE_TEST_MODE) {
     smokeTestRendererReady = true;
     maybeFinishSmokeTest();
@@ -6125,27 +6088,19 @@ ipcMain.handle('renderer-ready', (event) => {
   return { success: true };
 });
 
-ipcMain.handle('get-config', (event) => {
-  const sender = authorizeIpcSender(event, 'get-config');
-  if (!sender) return rejectUnauthorizedIpc('get-config');
+ipcRoutes.handle('get-config', () => {
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('get-window-displays', (event) => {
-  const sender = authorizeIpcSender(event, 'get-window-displays');
-  if (!sender) return rejectUnauthorizedIpc('get-window-displays');
+ipcRoutes.handle('get-window-displays', () => {
   return getWindowDisplaySettings();
 });
 
-ipcMain.handle('get-locale-bootstrap', (event) => {
-  const sender = authorizeIpcSender(event, 'get-locale-bootstrap', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('get-locale-bootstrap');
+ipcRoutes.handle('get-locale-bootstrap', () => {
   return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto');
 });
 
-ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
-  const sender = authorizeIpcSender(event, 'get-locale-packs');
-  if (!sender) return rejectUnauthorizedIpc('get-locale-packs');
+ipcRoutes.handle('get-locale-packs', async (_sender, forceRefresh = false) => {
   try {
     return await localizationService.listLocalePacks(!!forceRefresh);
   } catch (error) {
@@ -6159,9 +6114,7 @@ ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
   }
 });
 
-ipcMain.handle('download-locale-pack', async (event, locale) => {
-  const sender = authorizeIpcSender(event, 'download-locale-pack');
-  if (!sender) return rejectUnauthorizedIpc('download-locale-pack');
+ipcRoutes.handle('download-locale-pack', async (_sender, locale) => {
   const pack = await localizationService.downloadLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -6176,9 +6129,7 @@ ipcMain.handle('download-locale-pack', async (event, locale) => {
   };
 });
 
-ipcMain.handle('remove-locale-pack', async (event, locale) => {
-  const sender = authorizeIpcSender(event, 'remove-locale-pack');
-  if (!sender) return rejectUnauthorizedIpc('remove-locale-pack');
+ipcRoutes.handle('remove-locale-pack', async (_sender, locale) => {
   const result = localizationService.removeLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -6193,182 +6144,171 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
   };
 });
 
-ipcMain.handle(
-  'replace-config-entity-id',
-  serializeConfigMutationHandler(async (event, rawOldEntityId, rawNewEntityId) => {
-    const sender = authorizeIpcSender(event, 'replace-config-entity-id');
-    if (!sender) return rejectUnauthorizedIpc('replace-config-entity-id');
-
-    const oldEntityId = normalizeIpcEntityIdForKey(rawOldEntityId);
-    const newEntityId = normalizeIpcEntityIdForKey(rawNewEntityId);
-    if (!oldEntityId || !newEntityId) {
-      return {
-        success: false,
-        error: 'Invalid entity ID replacement',
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
-    if (oldEntityId === newEntityId) {
-      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
-    }
-
-    // This transformation runs inside the same serialized queue as update-config,
-    // so it always starts from the latest authoritative main-process snapshot.
-    const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
-    if (!replacement.changed) {
-      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
-    }
-
-    const persistence = await configStore.apply(
-      () => {
-        const next = {
-          ...replacement.config,
-          profileSync: { ...(replacement.config.profileSync || {}) },
-        };
-        normalizeDesktopPinsConfig(next);
-        normalizeTrayEntitiesConfigInPlace(next);
-        pruneConfig(next);
-        return next;
-      },
-      { origin: 'entity-replacement' }
-    );
-    if (!persistence.success) {
-      return {
-        success: false,
-        error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
+ipcRoutes.handle('replace-config-entity-id', async (_sender, rawOldEntityId, rawNewEntityId) => {
+  const oldEntityId = normalizeIpcEntityIdForKey(rawOldEntityId);
+  const newEntityId = normalizeIpcEntityIdForKey(rawNewEntityId);
+  if (!oldEntityId || !newEntityId) {
     return {
-      success: true,
-      changed: true,
-      config: buildRendererConfigAfterChange(persistence),
+      success: false,
+      error: 'Invalid entity ID replacement',
+      config: sanitizeConfigForRenderer(config),
     };
-  })
-);
+  }
+  if (oldEntityId === newEntityId) {
+    return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+  }
 
-ipcMain.handle(
-  'update-config',
-  serializeConfigMutationHandler(async (event, newConfig) => {
-    const sender = authorizeIpcSender(event, 'update-config');
-    if (!sender) return rejectUnauthorizedIpc('update-config');
-    if (!isPlainObject(newConfig)) {
-      return { success: false, error: 'Invalid config payload' };
-    }
-    log.debug('Updating configuration');
-    let windowDisplayPatch = {};
-    let displayChoiceState;
-    if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
-      try {
-        if (electronScreen.ensureDisplayIdentities) {
-          await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
-        }
-        displayChoiceState = {
-          moveRevision: mainWindow?.__userMoveRevision || 0,
-          recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
-        };
-        windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
-      } catch (error) {
-        return {
-          success: false,
-          error: mainTError(error),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-    }
-    // Geometry belongs to the main process. An old Settings snapshot must not undo a
-    // tray selection or a drag. Only an explicit selector edit requests another display.
-    delete newConfig.windowDisplayChoice;
-    delete newConfig.windowDisplay;
-    delete newConfig.windowPosition;
-    const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
-    const previousDesktopCompanion = { ...(config?.desktopCompanion || {}) };
-    const previousHomeAssistant = { ...(config?.homeAssistant || {}) };
-    // Development demo state is an IPC-only marker. Never let an overlay renderer
-    // write it back into the user's real configuration.
-    delete newConfig.developmentDemo;
-    pruneConfig(newConfig);
-    // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
-    const customTabs = Array.isArray(newConfig.customTabs)
-      ? toStoredPages(newConfig.customTabs)
-      : Array.isArray(config.customTabs)
-        ? config.customTabs
-        : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
-    // The sync settings, and what they set off, are the sync engine's to decide.
-    const syncSettings = profileSyncEngine.receiveSettings(newConfig);
-    if (syncSettings.error) {
-      return {
-        success: false,
-        error: syncSettings.error,
-        config: sanitizeConfigForRenderer(config),
+  // This transformation runs inside the same serialized queue as update-config,
+  // so it always starts from the latest authoritative main-process snapshot.
+  const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
+  if (!replacement.changed) {
+    return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+  }
+
+  const persistence = await configStore.apply(
+    () => {
+      const next = {
+        ...replacement.config,
+        profileSync: { ...(replacement.config.profileSync || {}) },
       };
-    }
-    const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
-    const homeAssistant = {
-      ...(config.homeAssistant || {}),
-      ...(newConfig.homeAssistant || {}),
+      normalizeDesktopPinsConfig(next);
+      normalizeTrayEntitiesConfigInPlace(next);
+      pruneConfig(next);
+      return next;
+    },
+    { origin: 'entity-replacement' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
+      config: sanitizeConfigForRenderer(config),
     };
-    if (previousHomeAssistant.authMethod === 'oauth') {
-      Object.assign(homeAssistant, previousHomeAssistant);
-    } else {
-      // Entering OAuth creates credentials and runtime state through the dedicated
-      // pairing IPC. A renderer config echo cannot opt itself into OAuth.
-      homeAssistant.authMethod = 'token';
-    }
-    const persistence = await configStore.apply(
-      (current) => {
-        // What the update is merged over, for recognising a stale echo of a pull.
-        const prevConfig = JSON.parse(JSON.stringify(current));
-        replaceConfigContents(current, {
-          ...current,
-          ...newConfig,
-          ...windowDisplayPatch,
-          homeAssistant,
-          desktopCompanion: previousDesktopCompanion,
-          customTabs,
-          profileSync: syncSettings.profileSync,
-          updates,
-        });
-        ensureDateTimeFormatConfigDefaults(current);
-        profileSyncEngine.normalizeSettings(current);
-        ensureUpdateConfigDefaults(current);
-        ensureHaProfileConfigDefaults(current);
-        normalizeDesktopPinsConfig(current);
-        normalizeTrayEntitiesConfigInPlace(current);
-        pruneConfig(current);
-        syncSettings.merged(current, prevConfig);
-        if (
-          TOKEN_RESET_RECOVERY_REASONS.has(current?.tokenResetReason) &&
-          !isPlaceholderOrEmptyToken(current.homeAssistant?.token)
-        ) {
-          delete current.tokenResetReason;
-        }
-        if (
-          current.homeAssistant?.token &&
-          current.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
-        ) {
-          preservedEncryptedTokenForRecovery = null;
-        }
-      },
-      {
-        origin: 'settings',
-        requiresInitialPreparation: syncSettings.requiresInitialPreparation,
-        displayChoiceState,
+  }
+  return {
+    success: true,
+    changed: true,
+    config: buildRendererConfigAfterChange(persistence),
+  };
+});
+
+ipcRoutes.handle('update-config', async (_sender, newConfig) => {
+  if (!isPlainObject(newConfig)) {
+    return { success: false, error: 'Invalid config payload' };
+  }
+  log.debug('Updating configuration');
+  let windowDisplayPatch = {};
+  let displayChoiceState;
+  if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
+    try {
+      if (electronScreen.ensureDisplayIdentities) {
+        await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
       }
-    );
-    if (!persistence.success) {
-      syncSettings.notSaved();
-      preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
-      log.error('Configuration update was not persisted:', persistence.error);
+      displayChoiceState = {
+        moveRevision: mainWindow?.__userMoveRevision || 0,
+        recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
+      };
+      windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
+    } catch (error) {
       return {
         success: false,
-        error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
+        error: mainTError(error),
         config: sanitizeConfigForRenderer(config),
       };
     }
-    return buildRendererConfigAfterChange(persistence);
-  })
-);
+  }
+  // Geometry belongs to the main process. An old Settings snapshot must not undo a
+  // tray selection or a drag. Only an explicit selector edit requests another display.
+  delete newConfig.windowDisplayChoice;
+  delete newConfig.windowDisplay;
+  delete newConfig.windowPosition;
+  const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
+  const previousDesktopCompanion = { ...(config?.desktopCompanion || {}) };
+  const previousHomeAssistant = { ...(config?.homeAssistant || {}) };
+  // Development demo state is an IPC-only marker. Never let an overlay renderer
+  // write it back into the user's real configuration.
+  delete newConfig.developmentDemo;
+  pruneConfig(newConfig);
+  // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
+  const customTabs = Array.isArray(newConfig.customTabs)
+    ? toStoredPages(newConfig.customTabs)
+    : Array.isArray(config.customTabs)
+      ? config.customTabs
+      : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+  // The sync settings, and what they set off, are the sync engine's to decide.
+  const syncSettings = profileSyncEngine.receiveSettings(newConfig);
+  if (syncSettings.error) {
+    return {
+      success: false,
+      error: syncSettings.error,
+      config: sanitizeConfigForRenderer(config),
+    };
+  }
+  const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
+  const homeAssistant = {
+    ...(config.homeAssistant || {}),
+    ...(newConfig.homeAssistant || {}),
+  };
+  if (previousHomeAssistant.authMethod === 'oauth') {
+    Object.assign(homeAssistant, previousHomeAssistant);
+  } else {
+    // Entering OAuth creates credentials and runtime state through the dedicated
+    // pairing IPC. A renderer config echo cannot opt itself into OAuth.
+    homeAssistant.authMethod = 'token';
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      // What the update is merged over, for recognising a stale echo of a pull.
+      const prevConfig = JSON.parse(JSON.stringify(current));
+      replaceConfigContents(current, {
+        ...current,
+        ...newConfig,
+        ...windowDisplayPatch,
+        homeAssistant,
+        desktopCompanion: previousDesktopCompanion,
+        customTabs,
+        profileSync: syncSettings.profileSync,
+        updates,
+      });
+      ensureDateTimeFormatConfigDefaults(current);
+      profileSyncEngine.normalizeSettings(current);
+      ensureUpdateConfigDefaults(current);
+      ensureHaProfileConfigDefaults(current);
+      normalizeDesktopPinsConfig(current);
+      normalizeTrayEntitiesConfigInPlace(current);
+      pruneConfig(current);
+      syncSettings.merged(current, prevConfig);
+      if (
+        TOKEN_RESET_RECOVERY_REASONS.has(current?.tokenResetReason) &&
+        !isPlaceholderOrEmptyToken(current.homeAssistant?.token)
+      ) {
+        delete current.tokenResetReason;
+      }
+      if (
+        current.homeAssistant?.token &&
+        current.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
+      ) {
+        preservedEncryptedTokenForRecovery = null;
+      }
+    },
+    {
+      origin: 'settings',
+      requiresInitialPreparation: syncSettings.requiresInitialPreparation,
+      displayChoiceState,
+    }
+  );
+  if (!persistence.success) {
+    syncSettings.notSaved();
+    preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
+    log.error('Configuration update was not persisted:', persistence.error);
+    return {
+      success: false,
+      error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
+      config: sanitizeConfigForRenderer(config),
+    };
+  }
+  return buildRendererConfigAfterChange(persistence);
+});
 
 // The config a handler answers with after a change: the renderer's copy, with the warnings its
 // write and its effects produced.
@@ -6383,32 +6323,27 @@ function buildRendererConfigAfterChange({ persistenceWarnings = [], runtimeWarni
   return rendererConfig;
 }
 
-ipcMain.handle(
-  'clear-token-reset-reason',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
-    if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
-    if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
-      const persistence = await configStore.apply(
-        (current) => {
-          delete current.tokenResetReason;
-        },
-        { origin: 'renderer-setting' }
-      );
-      if (!persistence.success) {
-        return {
-          success: false,
-          error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
-            error: persistence.error,
-          }),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-      return buildRendererConfigAfterChange(persistence);
+ipcRoutes.handle('clear-token-reset-reason', async () => {
+  if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
+    const persistence = await configStore.apply(
+      (current) => {
+        delete current.tokenResetReason;
+      },
+      { origin: 'renderer-setting' }
+    );
+    if (!persistence.success) {
+      return {
+        success: false,
+        error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
+          error: persistence.error,
+        }),
+        config: sanitizeConfigForRenderer(config),
+      };
     }
-    return sanitizeConfigForRenderer(config);
-  })
-);
+    return buildRendererConfigAfterChange(persistence);
+  }
+  return sanitizeConfigForRenderer(config);
+});
 
 function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
   return normalizeHomeAssistantBaseUrl(rawUrl);
@@ -6607,9 +6542,7 @@ async function restoreHomeAssistantOAuthSession() {
   return refreshHomeAssistantOAuthSession();
 }
 
-ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
-  const sender = authorizeIpcSender(event, 'start-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('start-home-assistant-oauth');
+ipcRoutes.handle('start-home-assistant-oauth', async (_sender, rawUrl) => {
   // The authorization happens in the browser, which takes focus from the widget. With "hide when focus
   // is lost" on, the widget would be gone by the time the person comes back to it.
   const resumeAutoHide = windowAutoHide.suspend();
@@ -6647,9 +6580,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
 // Home Assistant rejected the current access token (revoked authorization, or a token that
 // expired while the machine slept). Refresh now instead of waiting for the scheduled refresh; an
 // invalid grant turns into reauth_required, which the renderer explains to the user.
-ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'refresh-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('refresh-home-assistant-oauth');
+ipcRoutes.handle('refresh-home-assistant-oauth', async () => {
   if (config?.homeAssistant?.authMethod !== 'oauth') {
     return { success: false, error: 'Home Assistant authorization is not in use' };
   }
@@ -6659,18 +6590,14 @@ ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
   return { success: true, oauthStatus: config?.homeAssistant?.oauthStatus || null };
 });
 
-ipcMain.handle('cancel-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'cancel-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('cancel-home-assistant-oauth');
+ipcRoutes.handle('cancel-home-assistant-oauth', async () => {
   // Never constructs a client just to cancel: with no pairing in flight there is
   // nothing to abort.
   if (!homeAssistantOAuthClient) return { success: true, canceled: false };
   return { success: true, canceled: homeAssistantOAuthClient.cancelPairing() };
 });
 
-ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'disconnect-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('disconnect-home-assistant-oauth');
+ipcRoutes.handle('disconnect-home-assistant-oauth', async () => {
   const updateResult = await runSerializedConfigMutation(async () => {
     clearHomeAssistantOAuthRefreshTimer();
     const persistence = await configStore.apply(
@@ -6705,9 +6632,7 @@ ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
   return { ...updateResult, ...revocation };
 });
 
-ipcMain.handle('get-desktop-companion-registration', async (event) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-companion-registration');
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-registration');
+ipcRoutes.handle('get-desktop-companion-registration', async () => {
   if (!config?.desktopCompanion?.desktopId) {
     const result = await configStore.apply(
       () => {
@@ -6720,15 +6645,11 @@ ipcMain.handle('get-desktop-companion-registration', async (event) => {
   return { success: true, registration: getDesktopCompanionRegistration() };
 });
 
-ipcMain.handle('get-desktop-companion-state', (event) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-companion-state');
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-state');
+ipcRoutes.handle('get-desktop-companion-state', () => {
   return getDesktopCompanionState();
 });
 
-ipcMain.handle('apply-desktop-companion-command', (event, action) => {
-  const sender = authorizeIpcSender(event, 'apply-desktop-companion-command');
-  if (!sender) return rejectUnauthorizedIpc('apply-desktop-companion-command');
+ipcRoutes.handle('apply-desktop-companion-command', (_sender, action) => {
   if (!['show', 'hide', 'toggle'].includes(action)) {
     return { success: false, error: 'Unsupported main-process desktop command' };
   }
@@ -6803,81 +6724,49 @@ function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
   });
 }
 
-ipcMain.handle('test-ha-connection', async (event, url, token) => {
-  const sender = authorizeIpcSender(event, 'test-ha-connection');
-  if (!sender) return rejectUnauthorizedIpc('test-ha-connection');
+ipcRoutes.handle('test-ha-connection', async (_sender, url, token) => {
   return testHomeAssistantApiRoot(url, token);
 });
 
-ipcMain.handle(
-  'pin-entity-to-desktop',
-  serializeConfigMutationHandler(async (event, entityId, supportInfo = null) => {
-    const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
-    if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
-    return pinEntityToDesktopInternal(entityId, supportInfo);
-  })
-);
+ipcRoutes.handle('pin-entity-to-desktop', async (_sender, entityId, supportInfo = null) => {
+  return pinEntityToDesktopInternal(entityId, supportInfo);
+});
 
-ipcMain.handle('set-desktop-pin-edit-mode', (event, enabled) => {
-  const sender = authorizeIpcSender(event, 'set-desktop-pin-edit-mode');
-  if (!sender) return rejectUnauthorizedIpc('set-desktop-pin-edit-mode');
+ipcRoutes.handle('set-desktop-pin-edit-mode', (_sender, enabled) => {
   return setDesktopPinEditMode(enabled);
 });
 
-ipcMain.handle(
-  'update-desktop-pin-bounds',
-  serializeConfigMutationHandler(async (event, entityId, nextBounds = {}) => {
-    const sender = authorizeIpcSender(event, 'update-desktop-pin-bounds', {
-      allowDesktopPin: true,
-    });
-    if (!sender) return rejectUnauthorizedIpc('update-desktop-pin-bounds');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    return updateDesktopPinBounds(entityId, nextBounds);
-  })
-);
+ipcRoutes.handle('update-desktop-pin-bounds', async (sender, entityId, nextBounds = {}) => {
+  if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  return updateDesktopPinBounds(entityId, nextBounds);
+});
 
-ipcMain.handle(
-  'nudge-desktop-pin',
-  serializeConfigMutationHandler(async (event, entityId, delta = {}) => {
-    const sender = authorizeIpcSender(event, 'nudge-desktop-pin', { allowDesktopPin: true });
-    if (!sender) return rejectUnauthorizedIpc('nudge-desktop-pin');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    return nudgeDesktopPin(entityId, delta);
-  })
-);
+ipcRoutes.handle('nudge-desktop-pin', async (sender, entityId, delta = {}) => {
+  if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  return nudgeDesktopPin(entityId, delta);
+});
 
-ipcMain.handle(
+ipcRoutes.handle(
   'sync-desktop-pin-content-min-bounds',
-  serializeConfigMutationHandler(async (event, entityId, minBounds = {}) => {
-    const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
-      allowDesktopPin: true,
-    });
-    if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+  async (sender, entityId, minBounds = {}) => {
+    if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
       return { success: false, error: 'Unauthorized' };
     }
     return syncDesktopPinContentMinBounds(entityId, minBounds);
-  })
+  }
 );
 
-ipcMain.handle(
-  'unpin-entity-from-desktop',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'unpin-entity-from-desktop');
-    if (!sender) return rejectUnauthorizedIpc('unpin-entity-from-desktop');
-    return unpinEntityFromDesktopInternal(entityId);
-  })
-);
+ipcRoutes.handle('unpin-entity-from-desktop', async (_sender, entityId) => {
+  return unpinEntityFromDesktopInternal(entityId);
+});
 
-ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-pin-bootstrap');
+ipcRoutes.handle('get-desktop-pin-bootstrap', (sender, entityId) => {
   const normalizedEntityId = normalizeEntityId(entityId);
-  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
   // The cache can be empty here even though pins exist: an unpin-then-repin pair whose
@@ -6919,9 +6808,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   };
 });
 
-ipcMain.handle('publish-ha-connection-state', (event, status) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-connection-state');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-connection-state');
+ipcRoutes.handle('publish-ha-connection-state', (_sender, status) => {
   if (!['connecting', 'connected', 'disconnected', 'auth-failed'].includes(status)) {
     return { success: false, error: 'Invalid connection state' };
   }
@@ -6936,9 +6823,7 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
 
 // The renderer describes exactly the tiles the Omarchy bar asked for (config.omarchyBarEntities),
 // as a full set each time, with the line icons they use.
-ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-tiles');
-  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-tiles');
+ipcRoutes.handle('publish-omarchy-bar-tiles', (_sender, payload) => {
   if (!omarchyBarPublisher) return { success: true, discarded: true };
   const wanted = new Set(getOmarchyBarEntities().all);
   omarchyBarTiles.clear();
@@ -6962,9 +6847,7 @@ ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
   return { success: true, count: omarchyBarTiles.size };
 });
 
-ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-unit-system');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-unit-system');
+ipcRoutes.handle('publish-ha-unit-system', (_sender, unitSystem) => {
   const normalized = normalizeHaUnitSystem(unitSystem);
   if (!normalized) return { success: false, error: 'Invalid unit system' };
   if (JSON.stringify(normalized) === JSON.stringify(latestHaUnitSystem)) return { success: true };
@@ -6975,9 +6858,7 @@ ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
   return { success: true };
 });
 
-ipcMain.handle('publish-ha-snapshot', (event, states) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-snapshot');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-snapshot');
+ipcRoutes.handle('publish-ha-snapshot', (_sender, states) => {
   // A publish can already be in flight while the last pin is removed; caching it would
   // recreate the state map syncDesktopPinWindowsWithConfig just dropped. `discarded`
   // tells the renderer's coalescing that joining this publish did not deliver a
@@ -7003,9 +6884,7 @@ ipcMain.handle('publish-ha-snapshot', (event, states) => {
   return { success: true, count: latestEntityStates.size };
 });
 
-ipcMain.handle('publish-ha-entity-update', (event, entity) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-entity-update');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-entity-update');
+ipcRoutes.handle('publish-ha-entity-update', (_sender, entity) => {
   const normalizedEntityId = normalizeEntityId(entity?.entity_id);
   if (!normalizedEntityId || !isPlainObject(entity)) {
     return { success: false, error: 'Invalid entity payload' };
@@ -7019,19 +6898,17 @@ ipcMain.handle('publish-ha-entity-update', (event, entity) => {
   return { success: true };
 });
 
-ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload = {}) => {
-  const sender = authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('request-desktop-pin-action');
+ipcRoutes.handle('request-desktop-pin-action', (sender, entityId, action, payload = {}) => {
   let normalizedEntityId = normalizeEntityId(entityId);
   let normalizedAction = typeof action === 'string' ? action.trim() : '';
   let normalizedPayload = payload;
   if (!normalizedEntityId || !normalizedAction) {
     return { success: false, error: 'Invalid desktop pin action' };
   }
-  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
-  if (sender.type === 'desktop-pin') {
+  if (sender.role === 'desktop-pin') {
     const normalizedRequest = normalizeDesktopPinActionRequest(
       normalizedEntityId,
       normalizedAction,
@@ -7065,15 +6942,13 @@ ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload =
   );
 });
 
-ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) => {
-  const sender = authorizeIpcSender(event, 'desktop-pin-action-response');
-  if (!sender) return rejectUnauthorizedIpc('desktop-pin-action-response');
+ipcRoutes.handle('desktop-pin-action-response', (sender, requestId, response = {}) => {
   const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
   if (!normalizedRequestId) {
     return { success: false, error: 'Invalid desktop pin action request ID' };
   }
 
-  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+  if (!mainWindow || mainWindow.isDestroyed() || sender.webContents !== mainWindow.webContents) {
     return { success: false, error: 'Desktop pin action responses must come from the main window' };
   }
 
@@ -7090,9 +6965,7 @@ ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) 
   return { success: true };
 });
 
-ipcMain.handle('update-tray-entity-icon', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'update-tray-entity-icon');
-  if (!sender) return rejectUnauthorizedIpc('update-tray-entity-icon');
+ipcRoutes.handle('update-tray-entity-icon', (_sender, payload) => {
   if (!LIVE_TRAY_VALUES_ENABLED) {
     return { success: false, error: 'Live tray values are available only in beta builds.' };
   }
@@ -7147,18 +7020,13 @@ function entityTileEditMenuItems(reorganizing, requestTileAction) {
   ];
 }
 
-ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
-  const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
-  if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
+ipcRoutes.handle('show-entity-tile-menu', (sender, entityId, supportInfo = null) => {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
   }
 
-  const senderWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!senderWindow) {
-    return { success: false, error: 'Unable to resolve sender window' };
-  }
+  const senderWindow = sender.window;
 
   const isPinned = !!config?.desktopPins?.[normalizedEntityId];
   const isInTray = !!config?.trayEntities?.[normalizedEntityId];
@@ -7247,39 +7115,34 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   return { success: true, pinned: isPinned, supportProfile };
 });
 
-ipcMain.handle(
-  'set-opacity',
-  serializeConfigMutationHandler(async (event, opacity) => {
-    const sender = authorizeIpcSender(event, 'set-opacity');
-    if (!sender) return rejectUnauthorizedIpc('set-opacity');
-    const previousOpacity = config.opacity;
-    // Ensure opacity is within safe range (50% to 100%)
-    const requestedOpacity = Number(opacity);
-    let safeOpacity = Number.isFinite(requestedOpacity)
-      ? Math.max(0.5, Math.min(1, requestedOpacity))
-      : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
+ipcRoutes.handle('set-opacity', async (_sender, opacity) => {
+  const previousOpacity = config.opacity;
+  // Ensure opacity is within safe range (50% to 100%)
+  const requestedOpacity = Number(opacity);
+  let safeOpacity = Number.isFinite(requestedOpacity)
+    ? Math.max(0.5, Math.min(1, requestedOpacity))
+    : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
+  try {
+    safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
+  } catch (error) {
+    log.warn('Failed to set main window opacity:', error.message);
+  }
+  config.opacity = safeOpacity;
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.opacity = previousOpacity;
     try {
-      safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
+      applyWindowOpacityToAll(previousOpacity, config);
     } catch (error) {
-      log.warn('Failed to set main window opacity:', error.message);
+      log.warn('Failed to restore main window opacity:', error.message);
     }
-    config.opacity = safeOpacity;
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      config.opacity = previousOpacity;
-      try {
-        applyWindowOpacityToAll(previousOpacity, config);
-      } catch (error) {
-        log.warn('Failed to restore main window opacity:', error.message);
-      }
-      return {
-        success: false,
-        error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
-      };
-    }
-    return { success: true, opacity: safeOpacity };
-  })
-);
+    return {
+      success: false,
+      error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
+    };
+  }
+  return { success: true, opacity: safeOpacity };
+});
 
 // The frosted glass value Settings is previewing, while it differs from the saved one. Settings
 // puts the saved value back through the same IPC when it is cancelled or closed, and a save makes
@@ -7293,9 +7156,7 @@ function getPreviewFrostedGlassOverride() {
   return previewFrostedGlassOverride;
 }
 
-ipcMain.handle('preview-window-effects', (event, effects = {}) => {
-  const sender = authorizeIpcSender(event, 'preview-window-effects');
-  if (!sender) return rejectUnauthorizedIpc('preview-window-effects');
+ipcRoutes.handle('preview-window-effects', (_sender, effects = {}) => {
   if (!mainWindow) return;
   if (typeof effects.frostedGlass === 'boolean') {
     previewFrostedGlassOverride = effects.frostedGlass;
@@ -7316,51 +7177,46 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   }
 });
 
-ipcMain.handle(
-  'set-always-on-top',
-  serializeConfigMutationHandler(async (event, value) => {
-    const sender = authorizeIpcSender(event, 'set-always-on-top');
-    if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
-    if (isLayerShellChildProcess) return { success: true, applied: false, supported: false };
-    const flag = !!value;
-    const previousFlag = !!config.alwaysOnTop;
-    config.alwaysOnTop = flag;
-    let applied = false;
+ipcRoutes.handle('set-always-on-top', async (_sender, value) => {
+  if (isLayerShellChildProcess) return { success: true, applied: false, supported: false };
+  const flag = !!value;
+  const previousFlag = !!config.alwaysOnTop;
+  config.alwaysOnTop = flag;
+  let applied = false;
+  try {
+    if (popupWindowPresenter.isElevated()) {
+      // A popup raise keeps the window above full-screen content until it hides; the new
+      // preference is what the presenter falls back to when that raise ends.
+      applied = !!mainWindow && !mainWindow.isDestroyed();
+    } else {
+      applyAlwaysOnTopPreference();
+      applied = mainWindow?.isAlwaysOnTop?.() === flag;
+    }
+  } catch (error) {
+    log.warn('Failed to set always on top:', error.message);
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.alwaysOnTop = previousFlag;
     try {
-      if (popupWindowPresenter.isElevated()) {
-        // A popup raise keeps the window above full-screen content until it hides; the new
-        // preference is what the presenter falls back to when that raise ends.
-        applied = !!mainWindow && !mainWindow.isDestroyed();
-      } else {
+      if (!popupWindowPresenter.isElevated()) {
         applyAlwaysOnTopPreference();
-        applied = mainWindow?.isAlwaysOnTop?.() === flag;
       }
     } catch (error) {
-      log.warn('Failed to set always on top:', error.message);
-    }
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      config.alwaysOnTop = previousFlag;
-      try {
-        if (!popupWindowPresenter.isElevated()) {
-          applyAlwaysOnTopPreference();
-        }
-      } catch (error) {
-        log.warn('Failed to restore always on top:', error.message);
-      }
-      refreshTrayMenu();
-      return {
-        success: false,
-        error: mainT('Failed to save always-on-top setting: {{error}}', {
-          error: persistence.error,
-        }),
-        applied: false,
-      };
+      log.warn('Failed to restore always on top:', error.message);
     }
     refreshTrayMenu();
-    return { success: true, applied };
-  })
-);
+    return {
+      success: false,
+      error: mainT('Failed to save always-on-top setting: {{error}}', {
+        error: persistence.error,
+      }),
+      applied: false,
+    };
+  }
+  refreshTrayMenu();
+  return { success: true, applied };
+});
 
 async function updateLayerDrag(drag) {
   const cursor = await readHyprlandCursor();
@@ -7395,13 +7251,11 @@ function snapLayerPinPosition(drag) {
   layerPositions.set(drag.id, snapped);
   layerShellRaiser.place(drag.window.getTitle(), snapped);
 }
-ipcMain.handle('begin-layer-drag', async (event) => {
-  const sender = authorizeIpcSender(event, 'begin-layer-drag', { allowDesktopPin: true });
+ipcRoutes.handle('begin-layer-drag', async (sender) => {
   if (
-    !sender ||
     !isLayerShellChildProcess ||
     !isHyprland() ||
-    (sender.type === 'desktop-pin' && !desktopPinEditMode)
+    (sender.role === 'desktop-pin' && !desktopPinEditMode)
   )
     return { success: false };
   if (layerDrag) return { success: false };
@@ -7425,37 +7279,29 @@ ipcMain.handle('begin-layer-drag', async (event) => {
   }, 32);
   return { success: true };
 });
-ipcMain.handle(
-  'end-layer-drag',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'end-layer-drag', { allowDesktopPin: true });
-    const drag = layerDrag;
-    if (!sender || !drag || drag.window !== sender.window) return { success: false };
-    clearInterval(drag.timer);
-    await drag.inFlight;
-    await updateLayerDrag(drag);
-    layerDrag = null;
-    if (drag.id !== 'main' && !drag.window.isDestroyed()) snapLayerPinPosition(drag);
-    const output = layerActualMonitor?.name;
-    if (output) {
-      config.layerPositions ||= {};
-      config.layerPositions[drag.id] ||= {};
-      config.layerPositions[drag.id][output] = layerPositions.get(drag.id);
-    }
-    return configStore.apply(null, { origin: 'local' });
-  })
-);
+ipcRoutes.handle('end-layer-drag', async (sender) => {
+  const drag = layerDrag;
+  if (!drag || drag.window !== sender.window) return { success: false };
+  clearInterval(drag.timer);
+  await drag.inFlight;
+  await updateLayerDrag(drag);
+  layerDrag = null;
+  if (drag.id !== 'main' && !drag.window.isDestroyed()) snapLayerPinPosition(drag);
+  const output = layerActualMonitor?.name;
+  if (output) {
+    config.layerPositions ||= {};
+    config.layerPositions[drag.id] ||= {};
+    config.layerPositions[drag.id][output] = layerPositions.get(drag.id);
+  }
+  return configStore.apply(null, { origin: 'local' });
+});
 
-ipcMain.handle('get-desktop-blur-status', async (event) => {
-  if (!authorizeIpcSender(event, 'get-desktop-blur-status'))
-    return rejectUnauthorizedIpc('get-desktop-blur-status');
+ipcRoutes.handle('get-desktop-blur-status', async () => {
   if (process.platform !== 'linux' || !isHyprland()) return { supported: false };
   return hyprlandBlur.getDesktopBlurStatus();
 });
 
-ipcMain.handle('set-desktop-blur', async (event, enabled) => {
-  if (!authorizeIpcSender(event, 'set-desktop-blur'))
-    return rejectUnauthorizedIpc('set-desktop-blur');
+ipcRoutes.handle('set-desktop-blur', async (_sender, enabled) => {
   if (process.platform !== 'linux' || !isHyprland() || typeof enabled !== 'boolean')
     return { success: false, error: 'unsupported' };
   const result = await hyprlandBlur.setDesktopBlur(enabled);
@@ -7465,9 +7311,7 @@ ipcMain.handle('set-desktop-blur', async (event, enabled) => {
   return { ...result, status: await hyprlandBlur.getDesktopBlurStatus() };
 });
 
-ipcMain.handle('get-desktop-integration', (event) => {
-  if (!authorizeIpcSender(event, 'get-desktop-integration'))
-    return rejectUnauthorizedIpc('get-desktop-integration');
+ipcRoutes.handle('get-desktop-integration', () => {
   return {
     appId: APP_ID,
     version: app.getVersion(),
@@ -7505,9 +7349,7 @@ ipcMain.handle('get-desktop-integration', (event) => {
   };
 });
 
-ipcMain.handle('get-window-state', (event) => {
-  const sender = authorizeIpcSender(event, 'get-window-state');
-  if (!sender) return rejectUnauthorizedIpc('get-window-state');
+ipcRoutes.handle('get-window-state', () => {
   if (isLayerShellChildProcess) return { alwaysOnTop: false, supported: false, layerMode: true };
   // The temporary popup raise is not the user's preference, so report the stored value
   // while it is in effect.
@@ -7517,21 +7359,11 @@ ipcMain.handle('get-window-state', (event) => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFolder = '') => {
-  const sender = authorizeIpcSender(event, 'choose-profile-sync-folder');
-  if (!sender) return rejectUnauthorizedIpc('choose-profile-sync-folder');
+ipcRoutes.handle('choose-profile-sync-folder', async (sender, provider, currentFolder = '') => {
   return profileSyncEngine.chooseFolder(provider, currentFolder, sender.window);
 });
 
-ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath) => {
-  const sender = authorizeIpcSender(event, 'copy-profile-sync-file');
-  if (!sender) {
-    return rejectUnauthorizedIpc('copy-profile-sync-file', {
-      ok: false,
-      status: 'error',
-      error: 'Unauthorized',
-    });
-  }
+ipcRoutes.handle('copy-profile-sync-file', async (_sender, fromPath, toPath) => {
   return profileSyncEngine.copySyncFile(fromPath, toPath);
 });
 
@@ -7547,9 +7379,7 @@ const settingsFileController = createSettingsFileController({
   },
 });
 
-ipcMain.handle('export-settings-file', async (event) => {
-  const sender = authorizeIpcSender(event, 'export-settings-file');
-  if (!sender) return rejectUnauthorizedIpc('export-settings-file');
+ipcRoutes.handle('export-settings-file', async (sender) => {
   try {
     return { success: true, ...(await settingsFileController.exportSettings(sender.window)) };
   } catch (error) {
@@ -7557,124 +7387,83 @@ ipcMain.handle('export-settings-file', async (event) => {
   }
 });
 
-ipcMain.handle('preview-settings-import', async (event) => {
-  const sender = authorizeIpcSender(event, 'preview-settings-import');
-  if (!sender) return rejectUnauthorizedIpc('preview-settings-import');
+ipcRoutes.handle('preview-settings-import', async (sender) => {
   try {
     return {
       success: true,
-      ...(await settingsFileController.previewImport(sender.window, event.sender.id)),
+      ...(await settingsFileController.previewImport(sender.window, sender.webContents.id)),
     };
   } catch (error) {
     return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
   }
 });
 
-ipcMain.handle(
-  'apply-settings-import',
-  serializeConfigMutationHandler(async (event, id) => {
-    const sender = authorizeIpcSender(event, 'apply-settings-import');
-    if (!sender) return rejectUnauthorizedIpc('apply-settings-import');
-    try {
-      return { success: true, ...(await settingsFileController.applyImport(event.sender.id, id)) };
-    } catch (error) {
-      return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
-    }
-  })
-);
+ipcRoutes.handle('apply-settings-import', async (sender, id) => {
+  try {
+    return {
+      success: true,
+      ...(await settingsFileController.applyImport(sender.webContents.id, id)),
+    };
+  } catch (error) {
+    return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
+  }
+});
 
-ipcMain.handle('get-profile-sync-status', (event) => {
-  const sender = authorizeIpcSender(event, 'get-profile-sync-status');
-  if (!sender) return rejectUnauthorizedIpc('get-profile-sync-status');
+ipcRoutes.handle('get-profile-sync-status', () => {
   return profileSyncEngine.status();
 });
 
-ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
-  const sender = authorizeIpcSender(event, 'run-profile-sync');
-  if (!sender) return rejectUnauthorizedIpc('run-profile-sync');
+ipcRoutes.handle('run-profile-sync', async (_sender, direction = 'auto') => {
   return profileSyncEngine.syncNow(direction);
 });
 
-ipcMain.handle('get-cloud-sync-account', async (event) => {
-  const sender = authorizeIpcSender(event, 'get-cloud-sync-account');
-  if (!sender) return rejectUnauthorizedIpc('get-cloud-sync-account');
+ipcRoutes.handle('get-cloud-sync-account', async () => {
   return profileSyncEngine.cloudAccount();
 });
 
-ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
+ipcRoutes.handle('cloud-sync-sign-in', async (_sender, provider) => {
   return profileSyncEngine.cloudSignIn(provider);
 });
 
-ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-cancel-sign-in');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-cancel-sign-in');
+ipcRoutes.handle('cloud-sync-cancel-sign-in', () => {
   getCloudSyncClient().cancelSignIn();
   return { success: true };
 });
 
-ipcMain.handle('cloud-sync-sign-out', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
+ipcRoutes.handle('cloud-sync-sign-out', async () => {
   return profileSyncEngine.cloudSignOut();
 });
 
-ipcMain.handle('cloud-sync-open-billing', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-open-billing');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-open-billing');
+ipcRoutes.handle('cloud-sync-open-billing', async () => {
   return profileSyncEngine.cloudOpenBilling();
 });
 
-ipcMain.handle('cloud-sync-delete-account', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-delete-account');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-delete-account');
+ipcRoutes.handle('cloud-sync-delete-account', async () => {
   return profileSyncEngine.cloudDeleteAccount();
 });
 
-ipcMain.handle('list-profile-sync-backups', async (event) => {
-  const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
-  if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
+ipcRoutes.handle('list-profile-sync-backups', async () => {
   return profileSyncEngine.listBackups();
 });
 
-ipcMain.handle(
-  'restore-profile-sync-backup',
-  serializeConfigMutationHandler(async (event, id) => {
-    const sender = authorizeIpcSender(event, 'restore-profile-sync-backup');
-    if (!sender) return rejectUnauthorizedIpc('restore-profile-sync-backup');
-    return profileSyncEngine.restoreBackup(id);
-  })
-);
+ipcRoutes.handle('restore-profile-sync-backup', async (_sender, id) => {
+  return profileSyncEngine.restoreBackup(id);
+});
 
-ipcMain.handle(
+ipcRoutes.handle(
   'set-profile-sync-passphrase',
-  serializeConfigMutationHandler(
-    async (event, passphrase, remember = false, desiredEncryptionEnabled = null) => {
-      const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
-      if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
-      return profileSyncEngine.setPassphrase(passphrase, remember, desiredEncryptionEnabled);
-    }
-  )
+  async (_sender, passphrase, remember = false, desiredEncryptionEnabled = null) => {
+    return profileSyncEngine.setPassphrase(passphrase, remember, desiredEncryptionEnabled);
+  }
 );
 
-ipcMain.handle(
-  'clear-profile-sync-passphrase',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'clear-profile-sync-passphrase');
-    if (!sender) return rejectUnauthorizedIpc('clear-profile-sync-passphrase');
-    return profileSyncEngine.clearPassphrase();
-  })
-);
+ipcRoutes.handle('clear-profile-sync-passphrase', async () => {
+  return profileSyncEngine.clearPassphrase();
+});
 
-ipcMain.handle(
-  'resolve-profile-sync-first-enable',
-  serializeConfigMutationHandler(async (event, choice) => {
-    const sender = authorizeIpcSender(event, 'resolve-profile-sync-first-enable');
-    if (!sender) return rejectUnauthorizedIpc('resolve-profile-sync-first-enable');
-    return profileSyncEngine.resolveFirstEnable(choice);
-  })
-);
+ipcRoutes.handle('resolve-profile-sync-first-enable', async (_sender, choice) => {
+  return profileSyncEngine.resolveFirstEnable(choice);
+});
 
 // Start at login IPC handlers
 const loginItem = createLoginItem({
@@ -7688,15 +7477,11 @@ const loginItem = createLoginItem({
   isolated: IS_ISOLATED_PROFILE,
 });
 
-ipcMain.handle('get-login-item-settings', (event) => {
-  const sender = authorizeIpcSender(event, 'get-login-item-settings');
-  if (!sender) return rejectUnauthorizedIpc('get-login-item-settings');
+ipcRoutes.handle('get-login-item-settings', () => {
   return loginItem.getSettings();
 });
 
-ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
-  const sender = authorizeIpcSender(event, 'set-login-item-settings');
-  if (!sender) return rejectUnauthorizedIpc('set-login-item-settings');
+ipcRoutes.handle('set-login-item-settings', (_sender, openAtLogin) => {
   return loginItem.setOpenAtLogin(openAtLogin);
 });
 
@@ -7733,9 +7518,7 @@ async function restartApplication() {
   app.exit(0);
 }
 
-ipcMain.handle('restart-app', async (event) => {
-  const sender = authorizeIpcSender(event, 'restart-app');
-  if (!sender) return rejectUnauthorizedIpc('restart-app');
+ipcRoutes.handle('restart-app', async () => {
   try {
     await restartApplication();
     return { success: true };
@@ -7790,45 +7573,33 @@ function minimizeMainWindow() {
   }
 }
 
-ipcMain.handle('minimize-window', (event) => {
-  const sender = authorizeIpcSender(event, 'minimize-window');
-  if (!sender) return rejectUnauthorizedIpc('minimize-window');
+ipcRoutes.handle('minimize-window', () => {
   minimizeMainWindow();
 });
 
 // The title bar's X. It closes the window exactly as Alt+F4 and Cmd+W do, so the window's own close
 // handler decides what that means (hide to the tray, or whatever that handler does on this
 // platform) and the app keeps running. Quitting stays with the tray menu and the app menu.
-ipcMain.handle('close-window', (event) => {
-  const sender = authorizeIpcSender(event, 'close-window');
-  if (!sender) return rejectUnauthorizedIpc('close-window');
+ipcRoutes.handle('close-window', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 // A click on one of the widget's desktop notifications. Shows it the way the tray does, which
 // also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
-ipcMain.handle('show-window', (event) => {
-  const sender = authorizeIpcSender(event, 'show-window');
-  if (!sender) return rejectUnauthorizedIpc('show-window');
+ipcRoutes.handle('show-window', () => {
   return showMainWindowFromTray();
 });
 
-ipcMain.handle('focus-window', (event) => {
-  const sender = authorizeIpcSender(event, 'focus-window');
-  if (!sender) return rejectUnauthorizedIpc('focus-window');
+ipcRoutes.handle('focus-window', () => {
   return focusMainWindow();
 });
 
-ipcMain.handle('focus-desktop-pin', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'focus-desktop-pin');
-  if (!sender) return rejectUnauthorizedIpc('focus-desktop-pin');
+ipcRoutes.handle('focus-desktop-pin', (_sender, entityId) => {
   return focusDesktopPinWindow(normalizeEntityId(entityId));
 });
 
 // Updates IPC
-ipcMain.handle('check-for-updates', async (event, options) => {
-  const sender = authorizeIpcSender(event, 'check-for-updates');
-  if (!sender) return rejectUnauthorizedIpc('check-for-updates');
+ipcRoutes.handle('check-for-updates', async (_sender, options) => {
   // The window asks about the channel as its switch shows it, which Save may not have stored yet.
   const allowPrerelease =
     typeof options?.allowPrerelease === 'boolean' ? options.allowPrerelease : undefined;
@@ -7913,9 +7684,7 @@ async function runTrayUpdateCheck() {
   }
 }
 
-ipcMain.handle('quit-and-install', async (event) => {
-  const sender = authorizeIpcSender(event, 'quit-and-install');
-  if (!sender) return rejectUnauthorizedIpc('quit-and-install');
+ipcRoutes.handle('quit-and-install', async () => {
   if (!app.isPackaged) {
     return { success: false, error: 'Update install is only available in packaged builds' };
   }
@@ -7972,16 +7741,12 @@ ipcMain.handle('quit-and-install', async (event) => {
 });
 
 // Handle quit request from renderer
-ipcMain.handle('quit-app', (event) => {
-  const sender = authorizeIpcSender(event, 'quit-app');
-  if (!sender) return rejectUnauthorizedIpc('quit-app');
+ipcRoutes.handle('quit-app', () => {
   isQuitting = true;
   app.quit();
 });
 
-ipcMain.handle('get-app-version', (event) => {
-  const sender = authorizeIpcSender(event, 'get-app-version');
-  if (!sender) return rejectUnauthorizedIpc('get-app-version');
+ipcRoutes.handle('get-app-version', () => {
   return app.getVersion();
 });
 
@@ -8012,16 +7777,12 @@ function describeOperatingSystem() {
   return info;
 }
 
-ipcMain.handle('get-os-info', (event) => {
-  const sender = authorizeIpcSender(event, 'get-os-info');
-  if (!sender) return rejectUnauthorizedIpc('get-os-info');
+ipcRoutes.handle('get-os-info', () => {
   return describeOperatingSystem();
 });
 
 // Log file viewer functionality
-ipcMain.handle('open-logs', async (event) => {
-  const sender = authorizeIpcSender(event, 'open-logs');
-  if (!sender) return rejectUnauthorizedIpc('open-logs');
+ipcRoutes.handle('open-logs', async () => {
   try {
     let logFilePath = null;
     try {
@@ -8059,9 +7820,7 @@ ipcMain.handle('open-logs', async (event) => {
   }
 });
 
-ipcMain.handle('open-external', async (event, url) => {
-  const sender = authorizeIpcSender(event, 'open-external');
-  if (!sender) return rejectUnauthorizedIpc('open-external');
+ipcRoutes.handle('open-external', async (_sender, url) => {
   try {
     if (!url || typeof url !== 'string') {
       return { success: false, error: 'Invalid URL' };
@@ -8091,9 +7850,7 @@ function getCardDonationFlow() {
 
 // Card donations for people without a GitHub account: Stripe's checkout opens in a window of the
 // app's own (see src/card-donation.cjs) and this resolves once it is paid, cancelled or closed.
-ipcMain.handle('start-card-donation', async (event, request) => {
-  const sender = authorizeIpcSender(event, 'start-card-donation');
-  if (!sender) return rejectUnauthorizedIpc('start-card-donation', { status: 'failed' });
+ipcRoutes.handle('start-card-donation', async (_sender, request) => {
   const flow = getCardDonationFlow();
   if (flow.isBusy()) {
     flow.focus();
@@ -8128,9 +7885,7 @@ ipcMain.handle('start-card-donation', async (event, request) => {
 // The renderer's own clipboard permission stays denied (see session-permissions.cjs); copy
 // buttons go through this narrow, main-window-only channel instead.
 const MAX_CLIPBOARD_TEXT_LENGTH = 256 * 1024;
-ipcMain.handle('write-clipboard-text', async (event, text) => {
-  const sender = authorizeIpcSender(event, 'write-clipboard-text');
-  if (!sender) return rejectUnauthorizedIpc('write-clipboard-text');
+ipcRoutes.handle('write-clipboard-text', async (_sender, text) => {
   if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
     return { success: false, error: 'Invalid clipboard text' };
   }
@@ -8143,9 +7898,7 @@ ipcMain.handle('write-clipboard-text', async (event, text) => {
   }
 });
 
-ipcMain.handle('debug-log', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('debug-log');
+ipcRoutes.handle('debug-log', (_sender, payload) => {
   try {
     // Renderer text goes on one line of its own, so it cannot forge other log entries.
     const singleLine = (value, maxLength) =>
@@ -8189,106 +7942,76 @@ ipcMain.handle('debug-log', (event, payload) => {
 });
 
 // Global Hotkey IPC Handlers
-ipcMain.handle(
-  'register-hotkey',
-  serializeConfigMutationHandler(async (event, entityId, hotkey, action) => {
-    const sender = authorizeIpcSender(event, 'register-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('register-hotkey');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
+ipcRoutes.handle('register-hotkey', async (_sender, entityId, hotkey, action) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  // A hotkey on any other domain would be a shortcut that does nothing.
+  if (!supportsEntityHotkey(normalizedEntityId)) {
+    return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
+  }
+
+  if (!validateHotkey(hotkey)) {
+    return {
+      success: false,
+      error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
+    };
+  }
+
+  if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
+    return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
+  }
+
+  // Check for conflicts with existing hotkeys first
+  // Handle both string (legacy) and object (new) formats
+  const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
+
+  if (existingEntity) {
+    return hotkeyConflictResult(existingEntity[0]);
+  }
+
+  if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+
+  const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+  config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
+  // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
+  // copies into their Hyprland config, so the renderer must not say the hotkey is set.
+  let requiresCompositorBinding = false;
+
+  // Only register if hotkeys are enabled
+  if (config.globalHotkeys.enabled) {
+    const registrationResult = portalShortcutsActive
+      ? await syncPortalShortcuts({ immediate: true })
+      : registerGlobalHotkeys();
+    const portalBinding = registrationResult?.bound?.find(
+      (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
+    );
+    requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
+    let registered = portalShortcutsActive
+      ? registrationResult.success && isPortalBindingRegistered(portalBinding)
+      : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
+
+    // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
+    // approval) must not hard-fail where X grabs would work: engage the session
+    // fallback, which re-registers every configured hotkey including the
+    // candidate this handler already wrote into config.
+    if (
+      !registered &&
+      portalShortcutsActive &&
+      deactivatePortalShortcutsForLegacyFallback(
+        `The desktop portal did not assign a trigger for hotkey ${hotkey}.`
+      )
+    ) {
+      registered = globalShortcut.isRegistered(hotkey);
     }
-    // A hotkey on any other domain would be a shortcut that does nothing.
-    if (!supportsEntityHotkey(normalizedEntityId)) {
-      return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
-    }
 
-    if (!validateHotkey(hotkey)) {
-      return {
-        success: false,
-        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
-      };
-    }
-
-    if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
-      return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
-    }
-
-    // Check for conflicts with existing hotkeys first
-    // Handle both string (legacy) and object (new) formats
-    const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
-
-    if (existingEntity) {
-      return hotkeyConflictResult(existingEntity[0]);
-    }
-
-    if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-
-    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
-    config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
-    // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
-    // copies into their Hyprland config, so the renderer must not say the hotkey is set.
-    let requiresCompositorBinding = false;
-
-    // Only register if hotkeys are enabled
-    if (config.globalHotkeys.enabled) {
-      const registrationResult = portalShortcutsActive
-        ? await syncPortalShortcuts({ immediate: true })
-        : registerGlobalHotkeys();
-      const portalBinding = registrationResult?.bound?.find(
-        (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
+    if (!registered) {
+      log.warn(
+        `Failed to register hotkey: ${hotkey}. It might be in use or unapproved by the desktop.`
       );
-      requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
-      let registered = portalShortcutsActive
-        ? registrationResult.success && isPortalBindingRegistered(portalBinding)
-        : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
-
-      // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
-      // approval) must not hard-fail where X grabs would work: engage the session
-      // fallback, which re-registers every configured hotkey including the
-      // candidate this handler already wrote into config.
-      if (
-        !registered &&
-        portalShortcutsActive &&
-        deactivatePortalShortcutsForLegacyFallback(
-          `The desktop portal did not assign a trigger for hotkey ${hotkey}.`
-        )
-      ) {
-        registered = globalShortcut.isRegistered(hotkey);
-      }
-
-      if (!registered) {
-        log.warn(
-          `Failed to register hotkey: ${hotkey}. It might be in use or unapproved by the desktop.`
-        );
-        if (previousHotkey === undefined) {
-          delete config.globalHotkeys.hotkeys[normalizedEntityId];
-        } else {
-          config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
-        }
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-        );
-        const rollbackWarning =
-          rollbackResult?.success === false
-            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-            : '';
-        return {
-          success: false,
-          error: withRollbackWarning(
-            registrationResult?.error ||
-              mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
-            rollbackWarning
-          ),
-          rollbackWarning,
-        };
-      }
-    }
-
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
       if (previousHotkey === undefined) {
         delete config.globalHotkeys.hotkeys[normalizedEntityId];
       } else {
@@ -8304,80 +8027,98 @@ ipcMain.handle(
       return {
         success: false,
         error: withRollbackWarning(
-          mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+          registrationResult?.error ||
+            mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
           rollbackWarning
         ),
         rollbackWarning,
       };
     }
+  }
 
-    return {
-      success: true,
-      backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
-      requiresCompositorBinding,
-    };
-  })
-);
-
-ipcMain.handle(
-  'unregister-hotkey',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'unregister-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('unregister-hotkey');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
-    delete config.globalHotkeys.hotkeys[normalizedEntityId];
-    let registrationResult;
-    if (portalShortcutsActive && portalShortcutsController) {
-      // Close the prior portal session first so this target is removed even if an
-      // unrelated remaining accelerator cannot be rebound afterwards.
-      await portalShortcutsController.syncShortcuts([]);
-      registrationResult = await syncPortalShortcuts({ immediate: true });
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    if (previousHotkey === undefined) {
+      delete config.globalHotkeys.hotkeys[normalizedEntityId];
     } else {
-      registrationResult = await Promise.resolve(registerGlobalHotkeys());
+      config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
     }
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      if (previousHotkey !== undefined) {
-        config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-        );
-        const rollbackWarning =
-          rollbackResult?.success === false
-            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-            : '';
-        return {
-          success: false,
-          error: withRollbackWarning(
-            mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
-            rollbackWarning
-          ),
-          rollbackWarning,
-        };
-      }
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+
+  return {
+    success: true,
+    backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
+    requiresCompositorBinding,
+  };
+});
+
+ipcRoutes.handle('unregister-hotkey', async (_sender, entityId) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+  delete config.globalHotkeys.hotkeys[normalizedEntityId];
+  let registrationResult;
+  if (portalShortcutsActive && portalShortcutsController) {
+    // Close the prior portal session first so this target is removed even if an
+    // unrelated remaining accelerator cannot be rebound afterwards.
+    await portalShortcutsController.syncShortcuts([]);
+    registrationResult = await syncPortalShortcuts({ immediate: true });
+  } else {
+    registrationResult = await Promise.resolve(registerGlobalHotkeys());
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    if (previousHotkey !== undefined) {
+      config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+          : '';
       return {
         success: false,
-        error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
+        rollbackWarning,
       };
     }
     return {
-      success: true,
-      warning:
-        registrationResult?.success === false
-          ? registrationResult.error ||
-            mainT('The hotkey was removed, but another shortcut could not be activated')
-          : '',
+      success: false,
+      error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
     };
-  })
-);
+  }
+  return {
+    success: true,
+    warning:
+      registrationResult?.success === false
+        ? registrationResult.error ||
+          mainT('The hotkey was removed, but another shortcut could not be activated')
+        : '',
+  };
+});
 
-ipcMain.handle('register-hotkeys', async (event) => {
-  const sender = authorizeIpcSender(event, 'register-hotkeys');
-  if (!sender) return rejectUnauthorizedIpc('register-hotkeys');
+ipcRoutes.handle('register-hotkeys', async () => {
   if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
   }
@@ -8391,9 +8132,7 @@ ipcMain.handle('register-hotkeys', async (event) => {
 // DEPRECATED: Use 'update-config' instead for safer config merging
 // Whole-config replacement cannot preserve main-owned sync gates or encrypted
 // secrets from a sanitized renderer snapshot, so it is intentionally rejected.
-ipcMain.handle('save-config', (event) => {
-  const sender = authorizeIpcSender(event, 'save-config');
-  if (!sender) return rejectUnauthorizedIpc('save-config');
+ipcRoutes.handle('save-config', () => {
   return {
     success: false,
     error: 'save-config is no longer supported; use update-config',
@@ -8401,369 +8140,326 @@ ipcMain.handle('save-config', (event) => {
   };
 });
 
-ipcMain.handle(
-  'toggle-hotkeys',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'toggle-hotkeys');
-    if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
-    if (enabled && usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-    const previousEnabled = !!config.globalHotkeys.enabled;
-    config.globalHotkeys.enabled = !!enabled;
+ipcRoutes.handle('toggle-hotkeys', async (_sender, enabled) => {
+  if (enabled && usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+  const previousEnabled = !!config.globalHotkeys.enabled;
+  config.globalHotkeys.enabled = !!enabled;
 
-    let registrationResult;
-    if (config.globalHotkeys.enabled) {
-      registrationResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
+  let registrationResult;
+  if (config.globalHotkeys.enabled) {
+    registrationResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+  } else {
+    unregisterGlobalHotkeys();
+    if (portalShortcutsActive && portalShortcutsController) {
+      await portalShortcutsController.syncShortcuts([]);
+      registrationResult = await syncPortalShortcuts({ immediate: true });
     } else {
-      unregisterGlobalHotkeys();
-      if (portalShortcutsActive && portalShortcutsController) {
-        await portalShortcutsController.syncShortcuts([]);
-        registrationResult = await syncPortalShortcuts({ immediate: true });
-      } else {
-        registrationResult = { success: true };
-      }
+      registrationResult = { success: true };
     }
+  }
 
-    if (registrationResult?.success === false && config.globalHotkeys.enabled) {
-      config.globalHotkeys.enabled = previousEnabled;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-          : '';
-      return {
-        ...registrationResult,
-        error: withRollbackWarning(
-          registrationResult.error || mainT('Failed to activate global hotkeys'),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      config.globalHotkeys.enabled = previousEnabled;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
+  if (registrationResult?.success === false && config.globalHotkeys.enabled) {
+    config.globalHotkeys.enabled = previousEnabled;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
     return {
-      success: true,
-      warning:
-        registrationResult?.success === false
-          ? registrationResult.error ||
-            mainT('Global hotkeys were disabled, but another shortcut could not be activated')
-          : '',
+      ...registrationResult,
+      error: withRollbackWarning(
+        registrationResult.error || mainT('Failed to activate global hotkeys'),
+        rollbackWarning
+      ),
+      rollbackWarning,
     };
-  })
-);
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.globalHotkeys.enabled = previousEnabled;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return {
+    success: true,
+    warning:
+      registrationResult?.success === false
+        ? registrationResult.error ||
+          mainT('Global hotkeys were disabled, but another shortcut could not be activated')
+        : '',
+  };
+});
 
-ipcMain.handle('validate-hotkey', (event, hotkey) => {
-  const sender = authorizeIpcSender(event, 'validate-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('validate-hotkey');
+ipcRoutes.handle('validate-hotkey', (_sender, hotkey) => {
   return { valid: validateHotkey(hotkey) };
 });
 
 // Entity Alert IPC Handlers
-ipcMain.handle(
-  'set-entity-alert',
-  serializeConfigMutationHandler(async (event, entityId, alertConfig) => {
-    const sender = authorizeIpcSender(event, 'set-entity-alert');
-    if (!sender) return rejectUnauthorizedIpc('set-entity-alert');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const persistence = await configStore.apply(
-      (current) => {
-        current.entityAlerts.alerts[normalizedEntityId] = alertConfig;
-      },
-      { origin: 'local' }
-    );
-    if (!persistence.success) {
-      return {
-        success: false,
-        error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('set-entity-alert', async (_sender, entityId, alertConfig) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.alerts[normalizedEntityId] = alertConfig;
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
-ipcMain.handle(
-  'remove-entity-alert',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'remove-entity-alert');
-    if (!sender) return rejectUnauthorizedIpc('remove-entity-alert');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const persistence = await configStore.apply(
-      (current) => {
-        delete current.entityAlerts.alerts[normalizedEntityId];
-      },
-      { origin: 'local' }
-    );
-    if (!persistence.success) {
-      return {
-        success: false,
-        error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('remove-entity-alert', async (_sender, entityId) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      delete current.entityAlerts.alerts[normalizedEntityId];
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
-ipcMain.handle(
-  'toggle-alerts',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'toggle-alerts');
-    if (!sender) return rejectUnauthorizedIpc('toggle-alerts');
-    const persistence = await configStore.apply(
-      (current) => {
-        current.entityAlerts.enabled = !!enabled;
-      },
-      { origin: 'local' }
-    );
-    if (!persistence.success) {
-      return {
-        success: false,
-        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('toggle-alerts', async (_sender, enabled) => {
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.enabled = !!enabled;
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
 // Whether Home Assistant's own notifications also show as desktop notifications. They are not entity
 // alerts, so this has its own switch, which works with entity alerts off.
-ipcMain.handle(
-  'set-persistent-notification-toasts',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'set-persistent-notification-toasts');
-    if (!sender) return rejectUnauthorizedIpc('set-persistent-notification-toasts');
-    const persistence = await configStore.apply(
-      (current) => {
-        current.entityAlerts.persistentNotifications = !!enabled;
-      },
-      { origin: 'renderer-setting' }
-    );
-    if (!persistence.success) {
-      return {
-        success: false,
-        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
-      };
-    }
-    return { success: true };
-  })
-);
+ipcRoutes.handle('set-persistent-notification-toasts', async (_sender, enabled) => {
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.persistentNotifications = !!enabled;
+    },
+    { origin: 'renderer-setting' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+    };
+  }
+  return { success: true };
+});
 
 // Popup Hotkey IPC Handlers
-ipcMain.handle(
-  'register-popup-hotkey',
-  serializeConfigMutationHandler(async (event, hotkey) => {
-    const sender = authorizeIpcSender(event, 'register-popup-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
-    if (usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-    if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
-      return {
-        success: false,
-        error: mainT(
-          'The desktop does not provide the Global Shortcuts portal required on Wayland'
-        ),
-      };
-    }
-    if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
-      return {
-        success: false,
-        error: mainT('Popup hotkey feature is not available on this platform'),
-      };
-    }
+ipcRoutes.handle('register-popup-hotkey', async (_sender, hotkey) => {
+  if (usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+  if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
+    return {
+      success: false,
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
+    };
+  }
+  if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
+    return {
+      success: false,
+      error: mainT('Popup hotkey feature is not available on this platform'),
+    };
+  }
 
-    // Validate the hotkey
-    if (!validateHotkey(hotkey)) {
-      return {
-        success: false,
-        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
-      };
-    }
+  // Validate the hotkey
+  if (!validateHotkey(hotkey)) {
+    return {
+      success: false,
+      error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
+    };
+  }
 
-    const conflictingEntity = findConfiguredEntityHotkey(hotkey);
-    if (conflictingEntity) {
-      return hotkeyConflictResult(conflictingEntity[0]);
-    }
+  const conflictingEntity = findConfiguredEntityHotkey(hotkey);
+  if (conflictingEntity) {
+    return hotkeyConflictResult(conflictingEntity[0]);
+  }
 
-    // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
-    // launch only checks, so a denied app is not asked again every time it starts.
-    if (!usesLinuxPopupHotkeyBackend) {
-      isAccessibilityGranted({ systemPreferences, prompt: true });
-    }
+  // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
+  // launch only checks, so a denied app is not asked again every time it starts.
+  if (!usesLinuxPopupHotkeyBackend) {
+    isAccessibilityGranted({ systemPreferences, prompt: true });
+  }
 
-    const previousHotkey = config.popupHotkey || '';
+  const previousHotkey = config.popupHotkey || '';
+  if (!portalShortcutsActive) {
+    unregisterPopupHotkey();
+  }
+  config.popupHotkey = hotkey;
+  let registrationResult = await Promise.resolve(
+    portalShortcutsActive
+      ? syncPortalShortcuts({ immediate: true }).then((result) => {
+          if (!result.success) return result;
+          const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
+          return isPortalBindingRegistered(binding)
+            ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
+            : {
+                success: false,
+                backend: PORTAL_SHORTCUTS_BACKEND,
+                error: mainT(
+                  "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
+                ),
+              };
+        })
+      : registerPopupHotkey()
+  );
+
+  // Same runtime fallback as entity hotkeys: a portal that will not assign a popup
+  // trigger must not hard-fail while X grabs can serve it.
+  if (
+    !registrationResult.success &&
+    registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
+    deactivatePortalShortcutsForLegacyFallback(
+      'The desktop portal did not assign the popup hotkey.'
+    )
+  ) {
+    registrationResult = await Promise.resolve(registerPopupHotkey());
+  }
+
+  if (!registrationResult.success) {
     if (!portalShortcutsActive) {
-      unregisterPopupHotkey();
+      // A native backend can fail after partially attaching listeners. Always
+      // tear down the candidate before restoring (or clearing) the preference.
+      await Promise.resolve(unregisterPopupHotkey());
     }
-    config.popupHotkey = hotkey;
-    let registrationResult = await Promise.resolve(
-      portalShortcutsActive
-        ? syncPortalShortcuts({ immediate: true }).then((result) => {
-            if (!result.success) return result;
-            const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
-            return isPortalBindingRegistered(binding)
-              ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
-              : {
-                  success: false,
-                  backend: PORTAL_SHORTCUTS_BACKEND,
-                  error: mainT(
-                    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
-                  ),
-                };
-          })
-        : registerPopupHotkey()
-    );
-
-    // Same runtime fallback as entity hotkeys: a portal that will not assign a popup
-    // trigger must not hard-fail while X grabs can serve it.
-    if (
-      !registrationResult.success &&
-      registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
-      deactivatePortalShortcutsForLegacyFallback(
-        'The desktop portal did not assign the popup hotkey.'
-      )
-    ) {
-      registrationResult = await Promise.resolve(registerPopupHotkey());
-    }
-
-    if (!registrationResult.success) {
-      if (!portalShortcutsActive) {
-        // A native backend can fail after partially attaching listeners. Always
-        // tear down the candidate before restoring (or clearing) the preference.
-        await Promise.resolve(unregisterPopupHotkey());
-      }
-      config.popupHotkey = previousHotkey;
-      let rollbackWarning = '';
-      if (previousHotkey) {
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
-        );
-        if (!rollbackResult.success) {
-          log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
-          rollbackWarning =
-            rollbackResult.error || mainT('The previous popup hotkey could not be restored');
-        }
-      }
-      return {
-        ...registrationResult,
-        error: withRollbackWarning(
-          registrationResult.error || mainT('Failed to register popup hotkey'),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      config.popupHotkey = previousHotkey;
+    config.popupHotkey = previousHotkey;
+    let rollbackWarning = '';
+    if (previousHotkey) {
       const rollbackResult = await Promise.resolve(
         portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
       );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-    return registrationResult;
-  })
-);
-
-ipcMain.handle(
-  'unregister-popup-hotkey',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
-    const previousHotkey = config.popupHotkey || '';
-    config.popupHotkey = '';
-    let unregisterResult;
-    if (portalShortcutsActive && portalShortcutsController) {
-      // Close the old session first so the removed popup target cannot survive an
-      // unrelated failure while rebinding entity shortcuts.
-      await portalShortcutsController.syncShortcuts([]);
-      unregisterResult = await syncPortalShortcuts({ immediate: true });
-    } else {
-      unregisterResult = await Promise.resolve(unregisterPopupHotkey());
-    }
-    const persistence = await configStore.apply(null, { origin: 'local' });
-    if (!persistence.success) {
-      config.popupHotkey = previousHotkey;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
+      if (!rollbackResult.success) {
+        log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
+        rollbackWarning =
+          rollbackResult.error || mainT('The previous popup hotkey could not be restored');
+      }
     }
     return {
-      success: true,
-      backend: unregisterResult?.backend,
-      warning:
-        unregisterResult?.success === false
-          ? unregisterResult.error ||
-            mainT('The popup hotkey was removed, but another shortcut could not be activated')
-          : '',
+      ...registrationResult,
+      error: withRollbackWarning(
+        registrationResult.error || mainT('Failed to register popup hotkey'),
+        rollbackWarning
+      ),
+      rollbackWarning,
     };
-  })
-);
+  }
 
-ipcMain.handle('get-popup-hotkey', (event) => {
-  const sender = authorizeIpcSender(event, 'get-popup-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('get-popup-hotkey');
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.popupHotkey = previousHotkey;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return registrationResult;
+});
+
+ipcRoutes.handle('unregister-popup-hotkey', async () => {
+  const previousHotkey = config.popupHotkey || '';
+  config.popupHotkey = '';
+  let unregisterResult;
+  if (portalShortcutsActive && portalShortcutsController) {
+    // Close the old session first so the removed popup target cannot survive an
+    // unrelated failure while rebinding entity shortcuts.
+    await portalShortcutsController.syncShortcuts([]);
+    unregisterResult = await syncPortalShortcuts({ immediate: true });
+  } else {
+    unregisterResult = await Promise.resolve(unregisterPopupHotkey());
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.popupHotkey = previousHotkey;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return {
+    success: true,
+    backend: unregisterResult?.backend,
+    warning:
+      unregisterResult?.success === false
+        ? unregisterResult.error ||
+          mainT('The popup hotkey was removed, but another shortcut could not be activated')
+        : '',
+  };
+});
+
+ipcRoutes.handle('get-popup-hotkey', () => {
   return { hotkey: config.popupHotkey || '' };
 });
 
-ipcMain.handle('is-popup-hotkey-available', async (event) => {
-  const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
-  if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
+ipcRoutes.handle('is-popup-hotkey-available', async () => {
   if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
     if (portalShortcutsActive) return true;

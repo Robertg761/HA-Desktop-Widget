@@ -5,35 +5,24 @@ const vm = require('vm');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
-function registerHandler({ authorized = true, writeText = jest.fn() } = {}) {
+function registerHandler({ writeText = jest.fn() } = {}) {
   let handler;
   const start = mainSource.indexOf('const MAX_CLIPBOARD_TEXT_LENGTH');
-  const end = mainSource.indexOf("ipcMain.handle('debug-log'", start);
+  const end = mainSource.indexOf("ipcRoutes.handle('debug-log'", start);
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
-  const authorizeIpcSender = jest.fn(() => (authorized ? { type: 'main' } : null));
   vm.runInNewContext(mainSource.slice(start, end), {
-    ipcMain: { handle: (_channel, callback) => (handler = callback) },
-    authorizeIpcSender,
-    rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
+    ipcRoutes: { handle: (_channel, callback) => (handler = callback) },
     clipboard: { writeText },
   });
-  return { handler, writeText, authorizeIpcSender };
+  return { handler, writeText };
 }
 
 describe('write-clipboard-text IPC', () => {
   test('writes text from the main window to the system clipboard', async () => {
-    const { handler, writeText, authorizeIpcSender } = registerHandler();
+    const { handler, writeText } = registerHandler();
     await expect(handler({}, 'report')).resolves.toEqual({ success: true });
     expect(writeText).toHaveBeenCalledWith('report');
-    // Desktop pins are not allowed to write the clipboard.
-    expect(authorizeIpcSender).toHaveBeenCalledWith({}, 'write-clipboard-text');
-  });
-
-  test('rejects unauthorized senders without touching the clipboard', async () => {
-    const { handler, writeText } = registerHandler({ authorized: false });
-    await expect(handler({}, 'report')).resolves.toEqual({ success: false, error: 'Unauthorized' });
-    expect(writeText).not.toHaveBeenCalled();
   });
 
   test.each([[null], [42], [{ toString: () => 'x' }], ['x'.repeat(256 * 1024 + 1)]])(

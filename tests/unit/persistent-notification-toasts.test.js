@@ -6,19 +6,15 @@ const { createMainConfigStore } = require('../helpers/main-config-store');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
-function registerHandler({ config, persistence = { success: true }, authorized = true }) {
+function registerHandler({ config, persistence = { success: true } }) {
   let handler;
-  const start = mainSource.indexOf("ipcMain.handle(\n  'set-persistent-notification-toasts'");
+  const start = mainSource.indexOf("ipcRoutes.handle('set-persistent-notification-toasts'");
   const end = mainSource.indexOf('// Popup Hotkey IPC Handlers', start);
   const pushConfigToRenderer = jest.fn();
   const store = createMainConfigStore(config, { pushConfigToRenderer });
   if (!persistence.success) store.failNextWrite(persistence.error);
   const context = {
-    ipcMain: { handle: (_channel, callback) => (handler = callback) },
-    // The real wrapper runs the handler after earlier mutations; the order does not matter here.
-    serializeConfigMutationHandler: (callback) => callback,
-    authorizeIpcSender: () => authorized,
-    rejectUnauthorizedIpc: () => ({ success: false, error: 'unauthorized' }),
+    ipcRoutes: { handle: (_channel, callback) => (handler = callback) },
     config,
     configStore: store.configStore,
     writeCount: store.writeCount,
@@ -55,14 +51,6 @@ describe('the Home Assistant notifications switch in the main process', () => {
     expect(result).toEqual({ success: false, error: 'Failed to save alert setting: disk full' });
     expect(config.entityAlerts.persistentNotifications).toBe(true);
     expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
-  });
-
-  test('is refused for a sender that is not the app', async () => {
-    const config = { entityAlerts: { enabled: false, alerts: {} } };
-    const { handler } = registerHandler({ config, authorized: false });
-
-    await expect(handler({}, false)).resolves.toEqual({ success: false, error: 'unauthorized' });
-    expect(config.entityAlerts.persistentNotifications).toBeUndefined();
   });
 
   test('is carried by an exported settings file, and absent (meaning on) until somebody turns it off', () => {
