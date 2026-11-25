@@ -7,8 +7,7 @@ const path = require('path');
 const vm = require('vm');
 
 const {
-  ENTITY_HOTKEY_ACTIONS,
-  ENTITY_HOTKEY_DOMAINS,
+  getEntityHotkeyActions,
   liveEntityHotkeys,
   resolveEntityHotkeyAction,
   supportsEntityHotkey,
@@ -50,23 +49,6 @@ describe('the entities a hotkey can act on', () => {
     expect(supportsEntityHotkey(entityId)).toBe(false);
   });
 
-  it('takes no domain whose toggle a tile click would ignore', () => {
-    const uiSource = fs.readFileSync(path.resolve(__dirname, '../../src/ui.js'), 'utf8');
-    const start = uiSource.indexOf('function toggleEntity(');
-    const toggle = uiSource.slice(start, uiSource.indexOf('default:', start));
-    for (const domain of ENTITY_HOTKEY_DOMAINS) {
-      expect(toggle).toContain(`case '${domain}':`);
-    }
-  });
-
-  it('takes the domains that have actions, and only those', () => {
-    expect(ENTITY_HOTKEY_DOMAINS).toEqual(Object.keys(ENTITY_HOTKEY_ACTIONS));
-    for (const actions of Object.values(ENTITY_HOTKEY_ACTIONS)) {
-      expect(actions.length).toBeGreaterThan(0);
-      expect(Object.isFrozen(actions)).toBe(true);
-    }
-  });
-
   it('refuses anything that is not an entity id', () => {
     for (const value of ['', 'light', '.light', undefined, null, 42, { entity_id: 'light.a' }]) {
       expect(supportsEntityHotkey(value)).toBe(false);
@@ -78,7 +60,9 @@ describe('the entities a hotkey can act on', () => {
     expect(hotkeysSource).toContain('entityHotkeys.supportsEntityHotkey(e.entity_id)');
     expect(hotkeysSource).not.toMatch(/HOTKEY_SUPPORTED_DOMAINS/);
     expect(mainSource).toContain("require('./src/entity-hotkeys.cjs')");
-    expect(Object.isFrozen(ENTITY_HOTKEY_DOMAINS)).toBe(true);
+    // Each a list of actions Entity Actions runs (entity-actions.test.js holds it to that).
+    expect(getEntityHotkeyActions('light.desk')).toContain('brightness_up');
+    expect(getEntityHotkeyActions(undefined)).toEqual([]);
   });
 });
 

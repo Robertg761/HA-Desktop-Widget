@@ -5,6 +5,7 @@ import { setIconContent } from './icons.js';
 import { setLineIconContent } from './entity-icons.js';
 import { prefersReducedMotion } from './motion.js';
 import windowGlass from './window-glass.cjs';
+import entityActions from './entity-actions.cjs';
 
 const focusTrapHandlers = new WeakMap();
 // Where focus returns when a trapped modal is released: the control that opened it, as found
@@ -143,12 +144,8 @@ function miredsToKelvin(mireds) {
   return Math.round(1000000 / value);
 }
 
-function hasSupportedFeature(supportedFeatures, featureFlag) {
-  const features = Number(supportedFeatures);
-  const flag = Number(featureFlag);
-  if (!Number.isFinite(features) || !Number.isFinite(flag) || flag <= 0) return false;
-  return (features & flag) === flag;
-}
+// Feature flags are Entity Actions' to read; see entity-actions.cjs.
+const hasSupportedFeature = entityActions.hasFeature;
 
 /**
  * Interpolate two RGB colors by a given fraction.

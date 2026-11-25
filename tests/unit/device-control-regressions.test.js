@@ -557,7 +557,7 @@ describe('device control and live data regressions', () => {
     expect(document.activeElement).toBe(opener);
   });
   test('unknown state blocks stale climate readings but not a never-pressed button', () => {
-    const { getClimateTileTemperature } = require('../../src/entity-control-policy.js');
+    const { getClimateTemperature: getClimateTileTemperature } = require('../../src/format.js');
     const thermostat = entity('climate.audit', 'heat', { current_temperature: 21 });
     expect(getClimateTileTemperature(thermostat)).toBe(21);
     expect(getClimateTileTemperature({ ...thermostat, state: 'unknown' })).toBeNull();

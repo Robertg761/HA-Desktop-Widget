@@ -1812,13 +1812,29 @@ describe('hotkeys module', () => {
   });
 
   it('offers every domain a hotkey can act on exactly the actions the hotkey can run', () => {
-    const { ENTITY_HOTKEY_ACTIONS } = require('../../src/entity-hotkeys.cjs');
+    const { getEntityHotkeyActions } = require('../../src/entity-hotkeys.cjs');
+    const domains = [
+      'light',
+      'switch',
+      'scene',
+      'script',
+      'automation',
+      'button',
+      'input_button',
+      'input_boolean',
+      'fan',
+      'cover',
+      'valve',
+      'lock',
+      'humidifier',
+      'siren',
+    ];
     const config = getMockConfig();
     config.globalHotkeys = { enabled: true, hotkeys: {} };
     state.setConfig(config);
     state.setStates(
       Object.fromEntries(
-        Object.keys(ENTITY_HOTKEY_ACTIONS).map((domain) => [
+        domains.map((domain) => [
           `${domain}.one`,
           { entity_id: `${domain}.one`, state: 'off', attributes: {} },
         ])
@@ -1834,7 +1850,9 @@ describe('hotkeys module', () => {
         [...select.options].map((option) => option.value),
       ])
     );
-    expect(offered).toEqual(ENTITY_HOTKEY_ACTIONS);
+    expect(offered).toEqual(
+      Object.fromEntries(domains.map((domain) => [domain, getEntityHotkeyActions(`${domain}.one`)]))
+    );
     for (const option of document.querySelectorAll('#hotkeys-list option')) {
       expect(option.textContent.trim()).not.toBe('');
     }

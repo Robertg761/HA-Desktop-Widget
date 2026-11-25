@@ -87,7 +87,8 @@ function initializeHotkeys() {
 }
 
 // Labels are translated here because the options are rebuilt on every render.
-function getActionOptionsForDomain(domain) {
+function getActionOptionsForEntity(entityId) {
+  const domain = entityId.split('.')[0];
   const labels = {
     toggle: t('Toggle'),
     turn_on: t('Turn on'),
@@ -111,9 +112,9 @@ function getActionOptionsForDomain(domain) {
     script: { turn_on: t('Run') },
     automation: { turn_on: t('Enable'), turn_off: t('Disable') },
   };
-  const actions =
-    entityHotkeys.ENTITY_HOTKEY_ACTIONS[domain] || entityHotkeys.ENTITY_HOTKEY_ACTIONS.switch;
-  return actions.map((value) => ({ value, label: domainLabels[domain]?.[value] || labels[value] }));
+  return entityHotkeys
+    .getEntityHotkeyActions(entityId)
+    .map((value) => ({ value, label: domainLabels[domain]?.[value] || labels[value] }));
 }
 
 // The action is a native select, like every other choice in Settings: it brings the keyboard model
@@ -230,10 +231,8 @@ function renderHotkeysTab() {
             ? hotkeyConfig.action
             : pendingActions.get(entity.entity_id) || 'toggle'
         );
-        const domain = entity.entity_id.split('.')[0];
-
         // Get action options based on entity type
-        const actionOptions = getActionOptionsForDomain(domain);
+        const actionOptions = getActionOptionsForEntity(entity.entity_id);
         const actionSelectHTML = createActionSelectHTML(
           actionOptions,
           action,
