@@ -20,9 +20,7 @@ describe('desktop pin unit system relay in main', () => {
     const send = jest.fn();
     const context = vm.createContext({
       normalizeHaUnitSystem,
-      authorizeIpcSender: jest.fn(() => ({ type: 'main' })),
-      rejectUnauthorizedIpc: jest.fn(() => ({ success: false })),
-      ipcMain: { handle: jest.fn() },
+      ipcRoutes: { handle: jest.fn() },
       config: { desktopPins: Object.fromEntries(pins.map((id) => [id, {}])) },
       desktopPinWindows: new Map(
         pins.map((id) => [id, { isDestroyed: () => false, webContents: { send } }])
@@ -41,8 +39,8 @@ describe('desktop pin unit system relay in main', () => {
       desktopPinEditMode: false,
     });
     const handlerSource = sliceBetween(
-      "ipcMain.handle('publish-ha-unit-system'",
-      "ipcMain.handle('publish-ha-snapshot'"
+      "ipcRoutes.handle('publish-ha-unit-system'",
+      "ipcRoutes.handle('publish-ha-snapshot'"
     );
     vm.runInContext(
       `let latestHaUnitSystem = null;\n${sliceBetween(
@@ -51,7 +49,7 @@ describe('desktop pin unit system relay in main', () => {
       )}\n${handlerSource}`,
       context
     );
-    const handler = context.ipcMain.handle.mock.calls.find(
+    const handler = context.ipcRoutes.handle.mock.calls.find(
       ([channel]) => channel === 'publish-ha-unit-system'
     )[1];
     return {
@@ -111,8 +109,8 @@ describe('desktop pin unit system relay in main', () => {
 
   it('includes the unit system in the bootstrap a new pin window asks for', () => {
     const bootstrapSource = sliceBetween(
-      "ipcMain.handle('get-desktop-pin-bootstrap'",
-      "ipcMain.handle('publish-ha-connection-state'"
+      "ipcRoutes.handle('get-desktop-pin-bootstrap'",
+      "ipcRoutes.handle('publish-ha-connection-state'"
     );
 
     expect(bootstrapSource).toContain('unitSystem: latestHaUnitSystem');

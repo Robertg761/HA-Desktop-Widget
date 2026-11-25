@@ -2,22 +2,23 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
-function registerHandler({ config, persistence = { success: true }, authorized = true }) {
+function registerHandler({ config, persistence = { success: true } }) {
   let handler;
-  const start = mainSource.indexOf("ipcMain.handle(\n  'set-persistent-notification-toasts'");
+  const start = mainSource.indexOf("ipcRoutes.handle('set-persistent-notification-toasts'");
   const end = mainSource.indexOf('// Popup Hotkey IPC Handlers', start);
+  const pushConfigToRenderer = jest.fn();
+  const store = createMainConfigStore(config, { pushConfigToRenderer });
+  if (!persistence.success) store.failNextWrite(persistence.error);
   const context = {
-    ipcMain: { handle: (_channel, callback) => (handler = callback) },
-    // The real wrapper runs the handler after earlier mutations; the order does not matter here.
-    serializeConfigMutationHandler: (callback) => callback,
-    authorizeIpcSender: () => authorized,
-    rejectUnauthorizedIpc: () => ({ success: false, error: 'unauthorized' }),
+    ipcRoutes: { handle: (_channel, callback) => (handler = callback) },
     config,
-    saveConfigDurably: jest.fn(async () => persistence),
-    pushConfigToRenderer: jest.fn(),
+    configStore: store.configStore,
+    writeCount: store.writeCount,
+    pushConfigToRenderer,
     mainT: (key, vars = {}) => key.replace('{{error}}', vars.error ?? ''),
   };
   vm.runInNewContext(mainSource.slice(start, end), context);
@@ -32,7 +33,7 @@ describe('the Home Assistant notifications switch in the main process', () => {
     await expect(handler({}, false)).resolves.toEqual({ success: true });
 
     expect(config.entityAlerts.persistentNotifications).toBe(false);
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(context.writeCount()).toBe(1);
     expect(context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
     // Alerts for entities are a different thing and keep their own setting.
     expect(config.entityAlerts.enabled).toBe(false);
@@ -52,28 +53,17 @@ describe('the Home Assistant notifications switch in the main process', () => {
     expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
   });
 
-  test('is refused for a sender that is not the app', async () => {
-    const config = { entityAlerts: { enabled: false, alerts: {} } };
-    const { handler } = registerHandler({ config, authorized: false });
-
-    await expect(handler({}, false)).resolves.toEqual({ success: false, error: 'unauthorized' });
-    expect(config.entityAlerts.persistentNotifications).toBeUndefined();
-  });
-
   test('is carried by an exported settings file, and absent (meaning on) until somebody turns it off', () => {
-    const start = mainSource.indexOf('function ensureEntityAlertsConfigDefaults');
-    const source = mainSource.slice(start, mainSource.indexOf('\n}\n', start) + 3);
-    const context = { isPlainObject: (v) => !!v && typeof v === 'object' && !Array.isArray(v) };
-    vm.runInNewContext(source, context);
+    const { ensureEntityAlertsConfigDefaults } = require('../../src/profile-sync-engine.cjs');
 
     // The shape a sync pull fills in does not grow a key of its own: devices that never touched
     // the switch keep hashing the same.
-    expect(context.ensureEntityAlertsConfigDefaults({}).entityAlerts).toEqual({
+    expect(ensureEntityAlertsConfigDefaults({}).entityAlerts).toEqual({
       enabled: false,
       alerts: {},
     });
     expect(
-      context.ensureEntityAlertsConfigDefaults({ entityAlerts: { persistentNotifications: false } })
+      ensureEntityAlertsConfigDefaults({ entityAlerts: { persistentNotifications: false } })
         .entityAlerts.persistentNotifications
     ).toBe(false);
 

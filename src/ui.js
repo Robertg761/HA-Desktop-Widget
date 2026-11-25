@@ -1,14 +1,10 @@
 import state from './state.js';
 import { getHelperActions, getHelperServiceData } from './helper-controls.js';
-import {
-  isEntityAvailable,
-  canPerformMediaAction,
-  getTodoCapabilities,
-  getClimateTileTemperature,
-} from './entity-control-policy.js';
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
-import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
+import { dashboardSnapshot } from './dashboard-history.js';
+import configStore from './config-store.js';
 import {
+  PAGE_DEVICE_DOMAINS,
   defaultPageEntityIds,
   entitiesForArea,
   loadRoomRegistry,
@@ -26,6 +22,8 @@ import {
   subscribeToUpdateState,
 } from './update-status.js';
 import * as uiUtils from './ui-utils.js';
+import * as dialogs from './dialogs.js';
+import { getTileColorStyle, hexToRgb, miredsToKelvin } from './color-math.js';
 import {
   formatDate,
   formatNumber,
@@ -48,6 +46,7 @@ import {
   formatReadingNumber,
   formatStateName,
   formatTemperature,
+  getClimateTemperature,
   getClockDateOptions,
   getClockFaceTimeOptions,
   getSensorReading,
@@ -93,6 +92,7 @@ import {
 } from './sensor-gauge.js';
 import trayEntitySupport from './tray-entities.cjs';
 import desktopPinSupport from './desktop-pin-support.cjs';
+import entityActionsModule from './entity-actions.cjs';
 import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
@@ -173,31 +173,11 @@ let isReorganizeMode = false;
 let quickAccessOrderChanged = false;
 // Track all active long-press timers to cancel them when mode changes
 const activePressTimers = new Set();
-const ON_OFF_TOGGLE_DOMAINS = new Set([
-  'light',
-  'switch',
-  'fan',
-  'input_boolean',
-  'humidifier',
-  'siren',
-]);
-const desiredStateByEntity = new Map();
-const inFlightByEntity = new Map();
-const lastRequestedStateByEntity = new Map();
-const optimisticStateByEntity = new Map();
-const onOffToggleConfirmationTimers = new Map();
-const lastKnownLightBrightnessByEntity = new Map();
 const failedMediaArtworkRetryAtByUrl = new Map();
-const desktopPinLightBrightnessTimers = new Map();
 const desktopPinLightInteractionState = new Map();
-const desktopPinControlTimers = new Map();
 const desktopPinControlInteractionState = new Map();
 const desktopPinSceneMinSyncState = new Map();
 const MEDIA_ARTWORK_RETRY_DELAY_MS = 30000;
-const ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS = 8000;
-const MEDIA_PLAYER_SUPPORT_SEEK = 2;
-const MEDIA_PLAYER_SUPPORT_VOLUME_SET = 4;
-const MEDIA_PLAYER_SUPPORT_VOLUME_MUTE = 8;
 const LIGHT_COLOR_MODES = new Set(['rgb', 'rgbw', 'rgbww', 'hs', 'xy']);
 // The colours the light dialog offers, each with the name a screen reader and a tooltip use; a hex
 // code is not something anyone can hear. The names are translated where they are read.
@@ -209,9 +189,6 @@ const LIGHT_COLOR_PRESETS = [
   { hex: '#7C83FF', name: 'Indigo' },
   { hex: '#FF6B9D', name: 'Pink' },
 ];
-// The kinds of entity a first page is made of; the starter dialog lists these first and suggests up
-// to eight of them.
-const CONTROLLABLE_ENTITY_PATTERN = /^(light|switch|climate|fan|cover|media_player)\./;
 const DESKTOP_PIN_SCENE_BASE_MIN_BOUNDS = { width: 97, height: 83 };
 const DESKTOP_PIN_SCENE_DEFAULT_BOUNDS = { width: 168, height: 148 };
 const QUICK_ACCESS_TILE_VALUE_SIZE_OPTIONS = new Set([
@@ -299,9 +276,8 @@ const DESKTOP_PIN_FAN_PRESETS_TIGHT = [
   { value: 66, label: 'Mid' },
   { value: 100, label: 'High' },
 ];
-const { getDesktopPinCapabilities, getDesktopPinVacuumServices, resolveDesktopPinProfile } =
-  desktopPinSupport;
-const PRESS_ACTION_DOMAINS = new Set(['button', 'input_button']);
+const { resolveDesktopPinProfile } = desktopPinSupport;
+const { describeEntity, getEntityDomain } = entityActionsModule;
 const sensorHistoryCache = new Map();
 
 function pruneExpiredArtworkRetryEntries(now = Date.now()) {
@@ -338,106 +314,72 @@ function emitUiDebug(event, details = {}) {
   }
 }
 
-function isOnOffToggleDomain(domain) {
-  return ON_OFF_TOGGLE_DOMAINS.has(domain);
+// Tile, Quick Access, pin and hotkey actions on an entity go through this runner
+// (entity-actions.cjs), which knows what each kind of entity takes. What is drawn and said about
+// it stays here. Not every call does yet: the light, fan, cover and climate dialogs send theirs
+// through callServiceWithUiRollback, and helper, to-do and other one-off controls call
+// websocket.callService directly.
+const entityActions = entityActionsModule.createEntityActions({
+  callService: (domain, service, data) => websocket.callService(domain, service, data),
+  getEntity: (entityId) => state.STATES?.[entityId],
+  getServices: () => state.SERVICES,
+  onChange: (entity) => {
+    // A press of the power button wins over a pin's brightness drag that has not been sent.
+    if (getEntityDomain(entity) === 'light') clearDesktopPinLightInteraction(entity.entity_id);
+    updateEntityInUI(entity, { skipQueueReconcile: true });
+  },
+  onError: (error, entity) =>
+    handleDesktopPinServiceError(error, entity?.entity_id, entityName(entity)),
+  debug: emitUiDebug,
+});
+
+function entityName(entity) {
+  return entity && entity.attributes ? utils.getEntityDisplayName(entity) : entity?.entity_id;
 }
 
-function isPressActionDomain(domain) {
-  return PRESS_ACTION_DOMAINS.has(domain);
+/**
+ * Act on an entity: see run in entity-actions.cjs for the actions and what the promise says.
+ * @returns {Promise<{ok: boolean, sent: boolean, result?: *, error?: Error, superseded?: boolean}>}
+ */
+function runEntityAction(entity, action, value, options) {
+  ensureEntityCacheScope();
+  return entityActions.run(entity, action, value, options);
 }
 
-function getEntityDomain(entityId) {
-  if (typeof entityId !== 'string' || !entityId.includes('.')) return '';
-  return entityId.split('.')[0];
+function isEntityAvailable(entity) {
+  return describeEntity(entity).available;
 }
 
-function isOnOffStateValue(value) {
-  return value === 'on' || value === 'off';
+function getEntityCapabilities(entity) {
+  return describeEntity(entity).capabilities;
 }
 
-function getEffectiveOnOffState(entityId, fallbackState = 'off') {
-  const optimisticState = optimisticStateByEntity.get(entityId);
-  if (isOnOffStateValue(optimisticState)) return optimisticState;
-
-  const liveState = state.STATES?.[entityId]?.state;
-  if (isOnOffStateValue(liveState)) return liveState;
-
-  return isOnOffStateValue(fallbackState) ? fallbackState : 'off';
+// The media dialog's and tile's buttons are named after the runner's actions.
+function canPerformMediaAction(entity, action) {
+  const { available, capabilities } = describeEntity(entity);
+  const allowed = {
+    play: capabilities.canPlay,
+    pause: capabilities.canPause,
+    previous_track: capabilities.canPreviousTrack,
+    next_track: capabilities.canNextTrack,
+    seek_relative: capabilities.canSeek,
+    volume_set: capabilities.canSetVolume,
+    volume_mute: capabilities.canMute,
+  };
+  return available && !!allowed[action];
 }
 
-function clearOnOffToggleConfirmationTimer(entityId) {
-  const timer = onOffToggleConfirmationTimers.get(entityId);
-  if (timer != null) {
-    clearTimeout(timer);
-    onOffToggleConfirmationTimers.delete(entityId);
-  }
-}
-
-function clearPendingOnOffToggle(entityId) {
-  clearOnOffToggleConfirmationTimer(entityId);
-  desiredStateByEntity.delete(entityId);
-  optimisticStateByEntity.delete(entityId);
-  lastRequestedStateByEntity.delete(entityId);
-}
-
-function rememberLightBrightness(entity) {
-  if (getEntityDomain(entity?.entity_id) !== 'light') return;
-  const brightness = Number(entity?.attributes?.brightness);
-  if (Number.isFinite(brightness) && brightness > 0) {
-    lastKnownLightBrightnessByEntity.set(entity.entity_id, brightness);
-  }
-}
-
-function getEntityForDisplay(entity) {
-  if (!entity || typeof entity !== 'object' || !entity.entity_id) return entity;
-  const domain = getEntityDomain(entity.entity_id);
-  if (domain === 'light') rememberLightBrightness(entity);
-  if (!isOnOffToggleDomain(domain)) return entity;
-
-  const optimisticState = optimisticStateByEntity.get(entity.entity_id);
-  if (!isOnOffStateValue(optimisticState)) return entity;
-
-  const cachedBrightness = lastKnownLightBrightnessByEntity.get(entity.entity_id);
-  const needsCachedBrightness =
-    domain === 'light' &&
-    optimisticState === 'on' &&
-    Number.isFinite(cachedBrightness) &&
-    !(Number(entity.attributes?.brightness) > 0);
-
-  if (entity.state === optimisticState && !needsCachedBrightness) return entity;
+function getTodoCapabilities(entity) {
+  const { available, capabilities } = describeEntity(entity);
   return {
-    ...entity,
-    state: optimisticState,
-    ...(needsCachedBrightness
-      ? { attributes: { ...(entity.attributes || {}), brightness: cachedBrightness } }
-      : {}),
+    canAdd: available && !!capabilities.canAdd,
+    canUpdate: available && !!capabilities.canUpdate,
   };
 }
 
-function scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState) {
-  clearOnOffToggleConfirmationTimer(entityId);
-  const timer = setTimeout(() => {
-    if (onOffToggleConfirmationTimers.get(entityId) !== timer) return;
-    onOffToggleConfirmationTimers.delete(entityId);
-    if (desiredStateByEntity.get(entityId) !== desiredState) return;
-
-    desiredStateByEntity.delete(entityId);
-    optimisticStateByEntity.delete(entityId);
-    lastRequestedStateByEntity.delete(entityId);
-
-    const serverEntity = state.STATES?.[entityId];
-    if (serverEntity) {
-      updateEntityInUI(serverEntity, { skipQueueReconcile: true });
-    }
-    emitUiDebug('entity.toggle_confirmation_timeout', {
-      entityId,
-      domain,
-      desiredState,
-      receivedState: serverEntity?.state || null,
-    });
-  }, ON_OFF_TOGGLE_CONFIRMATION_TIMEOUT_MS);
-  timer?.unref?.();
-  onOffToggleConfirmationTimers.set(entityId, timer);
+// The entity as it should be drawn: with an on/off change that Home Assistant has not confirmed yet.
+function getEntityForDisplay(entity) {
+  return entityActions.view(entity);
 }
 
 // Socket-level failures reach here as transport jargon ("WebSocket not connected"); say what they
@@ -486,7 +428,7 @@ function handleServiceError(error, entityName = null) {
     code: error?.code || null,
     details: error?.details || null,
   });
-  uiUtils.showToast(displayMessage, 'error', 4000);
+  dialogs.showToast(displayMessage, 'error', 4000);
 }
 
 function callServiceWithUiRollback(entity, domain, service, serviceData, rollback = null) {
@@ -552,10 +494,6 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 let quickAccessViewIdCounter = 0;
 let quickAccessRovingIndex = 0;
 let dialogModalIdCounter = 0;
-let quickAccessPersistenceRevision = 0;
-let quickAccessPendingWriteCount = 0;
-let quickAccessAuthoritativeFallback = null;
-let quickAccessAuthoritativeFallbackRevision = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -591,17 +529,7 @@ function ensureEntityCacheScope({ force = false } = {}) {
   sensorHistoryCache.clear();
   todoItemsCacheByEntity.clear();
   todoItemsPendingByEntity.clear();
-  lastKnownLightBrightnessByEntity.clear();
-  desiredStateByEntity.clear();
-  optimisticStateByEntity.clear();
-  inFlightByEntity.clear();
-  lastRequestedStateByEntity.clear();
-  onOffToggleConfirmationTimers.forEach(clearTimeout);
-  onOffToggleConfirmationTimers.clear();
-  desktopPinControlTimers.forEach(clearTimeout);
-  desktopPinControlTimers.clear();
-  desktopPinLightBrightnessTimers.forEach(clearTimeout);
-  desktopPinLightBrightnessTimers.clear();
+  entityActions.reset();
   [...desktopPinControlInteractionState.keys()].forEach(clearDesktopPinControlInteraction);
   [...desktopPinLightInteractionState.keys()].forEach(clearDesktopPinLightInteraction);
   closeAllEntityDetailDialogs();
@@ -625,37 +553,10 @@ function cloneConfigSnapshot(config = state.CONFIG) {
   return JSON.parse(JSON.stringify(config || {}));
 }
 
-function requireAuthoritativeConfig(response) {
-  if (!response || response.success === false || !response.homeAssistant) {
-    const error = new Error(response?.error || t('The main process rejected the settings update'));
-    if (response && typeof response === 'object') {
-      error.result = response;
-    }
-    throw error;
-  }
-  return response;
-}
-
 // `restorePoint` says how the layout this replaces is kept for Restore dashboard (see
 // rememberDashboard); an ordinary edit leaves it out.
-async function persistAuthoritativeConfig(nextConfig, restorePoint) {
-  const host = getRendererHost();
-  if (!host.canPersistConfig) {
-    throw new Error(t('Configuration updates are unavailable on this build.'));
-  }
-  try {
-    const previousConfig = cloneConfigSnapshot(state.CONFIG);
-    const authoritativeConfig = requireAuthoritativeConfig(await host.updateConfig(nextConfig));
-    rememberDashboard(previousConfig, authoritativeConfig, restorePoint);
-    state.setConfig(authoritativeConfig);
-    return state.CONFIG;
-  } catch (error) {
-    const recoveredConfig = error?.result?.config;
-    if (recoveredConfig?.homeAssistant) {
-      state.setConfig(recoveredConfig);
-    }
-    throw error;
-  }
+function persistAuthoritativeConfig(nextConfig, restorePoint) {
+  return configStore.update(nextConfig, { history: restorePoint || true });
 }
 
 async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId) {
@@ -665,14 +566,11 @@ async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId)
   }
   try {
     const result = await host.replaceConfigEntityId(oldEntityId, newEntityId);
-    const authoritativeConfig = requireAuthoritativeConfig(result?.config);
-    state.setConfig(authoritativeConfig);
-    return { changed: result?.changed === true, config: state.CONFIG };
+    const config = configStore.adopt(result?.config);
+    return { changed: result?.changed === true, config };
   } catch (error) {
     const recoveredConfig = error?.result?.config;
-    if (recoveredConfig?.homeAssistant) {
-      state.setConfig(recoveredConfig);
-    }
+    if (recoveredConfig?.homeAssistant) configStore.adopt(recoveredConfig);
     throw error;
   }
 }
@@ -681,7 +579,7 @@ function showConfigPersistenceError(error) {
   const message = t('Error: {{error}}', {
     error: error?.message || t('Unknown error'),
   });
-  uiUtils.showToast(message, 'error', 4000);
+  dialogs.showToast(message, 'error', 4000);
 }
 
 function isQuickAccessManageModalOpen() {
@@ -713,73 +611,49 @@ function getStoredQuickAccessLayout(config) {
   return JSON.stringify({ ...patch, customTabs: pageNameRules.toStoredPages(patch.customTabs) });
 }
 
-async function persistQuickAccessConfigSnapshot(
-  nextConfig,
-  previousConfig,
-  { rollbackOnFailure = true } = {}
-) {
-  const revision = ++quickAccessPersistenceRevision;
-  const host = getRendererHost();
-  if (!host.canPersistConfig) {
-    return { success: true, config: nextConfig, revision, isCurrent: true };
-  }
+// Quick Access saves waiting for main. Duplicate page and Undo/Restore dashboard wait for these,
+// which they would build on, but not for other config writes (a collapsed section, a colour).
+let pendingQuickAccessWrites = 0;
 
-  if (quickAccessPendingWriteCount === 0) {
-    quickAccessAuthoritativeFallback = cloneConfigSnapshot(previousConfig);
-    quickAccessAuthoritativeFallbackRevision = revision - 1;
-  }
-  quickAccessPendingWriteCount += 1;
-
-  try {
-    const authoritativeConfig = requireAuthoritativeConfig(
-      await host.updateConfig(buildQuickAccessConfigPatch(nextConfig))
-    );
-    rememberDashboard(previousConfig, authoritativeConfig);
-    const isCurrent = revision === quickAccessPersistenceRevision;
-    if (revision >= quickAccessAuthoritativeFallbackRevision) {
-      quickAccessAuthoritativeFallback = cloneConfigSnapshot(authoritativeConfig);
-      quickAccessAuthoritativeFallbackRevision = revision;
-    }
-    if (isCurrent) {
+// Holds a Quick Access layout at once and saves it. Main is sent only the Quick Access keys, so an
+// older snapshot of the rest of the config cannot undo a change made elsewhere meanwhile.
+function persistQuickAccessConfig(nextConfig, { rollbackOnFailure = true } = {}) {
+  const pending = configStore.update(buildQuickAccessConfigPatch(nextConfig), {
+    optimistic: true,
+    rollbackOnFailure,
+    history: true,
+  });
+  pendingQuickAccessWrites += 1;
+  const settled = () => {
+    pendingQuickAccessWrites -= 1;
+  };
+  pending.then(settled, settled);
+  const rendered = getStoredQuickAccessLayout(state.CONFIG);
+  return pending.then(
+    (config) => {
+      const isCurrent = config === state.CONFIG;
       // The optimistic render already drew this layout; only redraw when the host changed it.
-      const rendered = getStoredQuickAccessLayout(state.CONFIG);
-      state.setConfig(authoritativeConfig);
-      if (getStoredQuickAccessLayout(state.CONFIG) !== rendered) {
+      if (isCurrent && getStoredQuickAccessLayout(config) !== rendered) {
         renderQuickAccessConfigState();
       }
-    }
-    return { success: true, config: authoritativeConfig, revision, isCurrent };
-  } catch (error) {
-    console.error('Failed to persist Quick Access configuration:', error);
-    const isCurrent = revision === quickAccessPersistenceRevision;
-    if (isCurrent) {
-      if (rollbackOnFailure) {
-        const recoveredConfig = error?.result?.config;
-        state.setConfig(
-          recoveredConfig?.homeAssistant
-            ? recoveredConfig
-            : cloneConfigSnapshot(quickAccessAuthoritativeFallback || previousConfig)
-        );
-        renderQuickAccessConfigState();
+      return { success: true, config, isCurrent };
+    },
+    (error) => {
+      console.error('Failed to persist Quick Access configuration:', error);
+      const isCurrent = error?.superseded !== true;
+      if (isCurrent) {
+        if (rollbackOnFailure) renderQuickAccessConfigState();
+        showConfigPersistenceError(error);
       }
-      showConfigPersistenceError(error);
+      return { success: false, error, isCurrent };
     }
-    return { success: false, error, revision, isCurrent };
-  } finally {
-    quickAccessPendingWriteCount = Math.max(0, quickAccessPendingWriteCount - 1);
-    if (quickAccessPendingWriteCount === 0) {
-      quickAccessAuthoritativeFallback = null;
-      quickAccessAuthoritativeFallbackRevision = 0;
-    }
-  }
+  );
 }
 
 function ensureQuickAccessConfig() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {}, { withChanged: true });
   if (!state.CONFIG || normalized.changed) {
-    const previousConfig = cloneConfigSnapshot(state.CONFIG);
-    state.setConfig(normalized.config);
-    void persistQuickAccessConfigSnapshot(normalized.config, previousConfig, {
+    void persistQuickAccessConfig(normalized.config, {
       // Keep the valid in-memory normalization if an automatic migration cannot
       // be written; the app can retry it later without restoring malformed state.
       rollbackOnFailure: false,
@@ -789,12 +663,10 @@ function ensureQuickAccessConfig() {
 }
 
 function setQuickAccessConfig(nextConfig, options = {}) {
-  const previousConfig = cloneConfigSnapshot(state.CONFIG);
   const normalized = normalizeQuickAccessConfig(nextConfig || {});
   // A change that picks another page (adding one, deleting the one chosen) shows that page.
-  if (normalized.activeTabId !== previousConfig?.activeTabId) rightNowSelected = false;
-  state.setConfig(normalized);
-  const persistence = persistQuickAccessConfigSnapshot(normalized, previousConfig);
+  if (normalized.activeTabId !== state.CONFIG?.activeTabId) rightNowSelected = false;
+  const persistence = persistQuickAccessConfig(normalized);
   if (options.render !== false) {
     renderQuickAccessConfigState();
   }
@@ -936,22 +808,15 @@ function leaveRightNowPage({ render = true } = {}) {
 
 // Lights and fans that are on, by domain, for the one button that switches them all off.
 async function turnOffRightNowDevices(button) {
-  const ids = (rightNowPage?.groups?.on || []).filter((id) => state.STATES?.[id]?.state === 'on');
-  if (!ids.length) return;
-  const byDomain = new Map();
-  ids.forEach((id) => {
-    const domain = getEntityDomain(id);
-    byDomain.set(domain, [...(byDomain.get(domain) || []), id]);
-  });
+  const entities = (rightNowPage?.groups?.on || [])
+    .map((id) => state.STATES?.[id])
+    .filter((entity) => entity?.state === 'on');
+  if (!entities.length) return;
   if (button) button.disabled = true;
   try {
-    await Promise.all(
-      [...byDomain].map(([domain, entityIds]) =>
-        websocket.callService(domain, 'turn_off', { entity_id: entityIds })
-      )
-    );
-  } catch (error) {
-    handleServiceError(error);
+    // Each through the action runner, as a tile click is: the tiles show off at once, and a
+    // failure is reported there.
+    await Promise.all(entities.map((entity) => runEntityAction(entity, 'turn_off')));
   } finally {
     if (button?.isConnected) button.disabled = false;
   }
@@ -1464,7 +1329,7 @@ function beginInlineTabRename(tabId, buttonEl) {
       const nextConfig = renameQuickAccessView(state.CONFIG, tabId, value);
       void setQuickAccessConfig(nextConfig).then((result) => {
         if (result.success) {
-          uiUtils.showToast(t('Page renamed'), 'success', 1600);
+          dialogs.showToast(t('Page renamed'), 'success', 1600);
         }
       });
     } else {
@@ -1497,8 +1362,8 @@ function beginInlineTabRename(tabId, buttonEl) {
 }
 
 async function duplicateQuickAccessPage(tabId) {
-  if (quickAccessPendingWriteCount) {
-    uiUtils.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
+  if (pendingQuickAccessWrites) {
+    dialogs.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
     return;
   }
   const config = ensureQuickAccessConfig();
@@ -1507,7 +1372,7 @@ async function duplicateQuickAccessPage(tabId) {
   focusActiveQuickAccessPage();
   const result = await pending;
   if (result.success) {
-    uiUtils.showToast(t('Page duplicated'), 'success', 1600);
+    dialogs.showToast(t('Page duplicated'), 'success', 1600);
     window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
   }
   // Keep focus on the authoritative page after saving or rolling back a failed save.
@@ -1521,7 +1386,7 @@ async function deleteQuickAccessPage(tabId) {
   const tab = config.customTabs.find((view) => view.id === tabId);
   if (!tab) return;
 
-  const confirmed = await uiUtils.showConfirm(
+  const confirmed = await dialogs.showConfirm(
     t('Delete page'),
     // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
     // page that shows them.
@@ -1539,7 +1404,7 @@ async function deleteQuickAccessPage(tabId) {
   focusActiveQuickAccessPage();
   const result = await pending;
   if (result.success) {
-    uiUtils.showToast(t('Page deleted'), 'info', 1600);
+    dialogs.showToast(t('Page deleted'), 'info', 1600);
     if (state.CONFIG?.activeTabId !== previousActiveTabId) {
       window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
     }
@@ -1573,7 +1438,7 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
-      uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
+      dialogs.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
       // Adding a page switches to it; filling the empty active page keeps the same page.
       if (!fillsActivePage) {
         window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
@@ -1605,7 +1470,7 @@ function filterEntityRows(rows, query, getName, getEntityId) {
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
   const modal = document.getElementById('add-page-modal');
-  if (modal) void uiUtils.closeDialog(modal, { remove: true, animate: false });
+  if (modal) void dialogs.closeDialog(modal, { remove: true, animate: false });
 }
 
 function showAddPageModal({ starter = false } = {}) {
@@ -1813,7 +1678,7 @@ function showAddPageModal({ starter = false } = {}) {
     // Pressed from the keyboard, the button is about to be disabled, which drops focus to <body>.
     // It gets focus back if it is still there (as Retry), and the room picker it filled if not.
     const pressedWithFocus = document.activeElement === loadRooms;
-    const enableControls = uiUtils.disableControlsKeepingFocus([
+    const enableControls = dialogs.disableControlsKeepingFocus([
       loadRooms,
       starter ? saveBtn : null,
     ]);
@@ -1917,7 +1782,8 @@ function showAddPageModal({ starter = false } = {}) {
       ? selectableEntityIds(availableStates, registry.entities)
       : entitiesForArea(roomSelect.value, registry.entities, registry.devices, availableStates);
     // Only the controllable kinds, unless asked for more or there is nothing else to show.
-    const controllableIds = ids.filter((id) => CONTROLLABLE_ENTITY_PATTERN.test(id));
+    // The kinds of entity a first page is made of (room-dashboard.js) are listed first.
+    const controllableIds = ids.filter((id) => PAGE_DEVICE_DOMAINS.includes(getEntityDomain(id)));
     showAllLabel.hidden = !unscoped || controllableIds.length === ids.length;
     if (unscoped && !showAll.checked && controllableIds.length) ids = controllableIds;
     roomStatus.textContent = ids.length
@@ -1981,7 +1847,7 @@ function showAddPageModal({ starter = false } = {}) {
     },
   };
   const close = () => {
-    if (!submissionInFlight) void uiUtils.closeDialog(modal, closeOptions);
+    if (!submissionInFlight) void dialogs.closeDialog(modal, closeOptions);
   };
   const submit = async () => {
     if (submissionInFlight || saveBtn.disabled) return;
@@ -1997,7 +1863,7 @@ function showAddPageModal({ starter = false } = {}) {
     setSubmissionInFlight(true);
     const result = await createQuickAccessPage(name, selectedIds(), { fillEmptyPage: starter });
     if (result.success) {
-      void uiUtils.closeDialog(modal, closeOptions);
+      void dialogs.closeDialog(modal, closeOptions);
       return;
     }
     if (modal.isConnected) {
@@ -2036,7 +1902,7 @@ function showAddPageModal({ starter = false } = {}) {
   if (input) input.addEventListener('input', clearNameError);
 
   // The page name is where typing starts; Enter in it (or in the device search) adds the page.
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     initialFocus: input,
     dismiss: close,
@@ -2049,7 +1915,7 @@ function showAddPageModal({ starter = false } = {}) {
 
 // Puts a saved layout back: one picked in Restore dashboard, or the step Undo goes back to (`undo`).
 async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
-  if (quickAccessPendingWriteCount)
+  if (pendingQuickAccessWrites)
     throw new Error(t('Wait for the current dashboard save to finish.'));
   const current = normalizeQuickAccessConfig(state.CONFIG);
   const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
@@ -2584,7 +2450,7 @@ function toggleReorganizeMode() {
       });
       // A notice, not a question: passive, so it cannot swallow the first drag it sits over. The
       // Alt key is named as this keyboard prints it: Option on a Mac.
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.', {
           modifier: accelerators.formatAccelerator('Alt', window.electronAPI?.platform),
         }),
@@ -2615,7 +2481,7 @@ function toggleReorganizeMode() {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
       if (quickAccessOrderChanged) {
-        uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+        dialogs.showToast(t('Quick Access order saved'), 'success', 2000);
       }
       quickAccessOrderChanged = false;
     }
@@ -2763,11 +2629,11 @@ function addButtonsToElement(item) {
           // editor's own Delete. Any other tile is named as the tile shows itself: its custom
           // name, or the name a missing entity's placeholder carries, never a bare id.
           const confirmed = await (isComparisonGraphId(entityId)
-            ? uiUtils.showConfirm(t('Delete graph'), t('This removes the graph and its tile.'), {
+            ? dialogs.showConfirm(t('Delete graph'), t('This removes the graph and its tile.'), {
                 confirmText: t('Delete'),
                 confirmClass: 'btn-danger',
               })
-            : uiUtils.showConfirm(
+            : dialogs.showConfirm(
                 // The question below names the page; the title does not claim a wider scope.
                 t('Remove tile'),
                 // Removing a tile takes it off the page it is on; the same entity on another page stays.
@@ -2878,7 +2744,7 @@ function showRenameModal(entityId) {
     // The tile keeps the hex colour itself, so a custom colour deleted later stays on the tile.
     const tileColorChoices = [];
     (uiUtils.getAccentThemes?.() || []).forEach((theme) => {
-      const color = uiUtils.getTileColorStyle(theme.color)?.color;
+      const color = getTileColorStyle(theme.color)?.color;
       if (color && !tileColorChoices.some((choice) => choice.color === color)) {
         tileColorChoices.push({ color, name: theme.name });
       }
@@ -3019,7 +2885,7 @@ function showRenameModal(entityId) {
       });
     });
     tileColorCustomInput?.addEventListener('input', () => {
-      const color = uiUtils.getTileColorStyle(tileColorCustomInput.value)?.color;
+      const color = getTileColorStyle(tileColorCustomInput.value)?.color;
       if (color) showSelectedTileColor(color);
     });
     const syncTrayOptionsVisibility = () => {
@@ -3060,7 +2926,7 @@ function showRenameModal(entityId) {
     const closeTileSettingsModal = () => {
       if (tileSettingsModalClosing) return;
       tileSettingsModalClosing = true;
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     let reenableTileSettings = null;
     const setTileSettingsMutationInFlight = (inFlight) => {
@@ -3071,7 +2937,7 @@ function showRenameModal(entityId) {
         return;
       }
       // A save that fails puts the form back for another try, with the keyboard where it was.
-      reenableTileSettings = uiUtils.disableControlsKeepingFocus([
+      reenableTileSettings = dialogs.disableControlsKeepingFocus([
         input,
         ...tileColorRadios,
         tileColorCustomInput,
@@ -3208,7 +3074,7 @@ function showRenameModal(entityId) {
           nextGaugeRange.max !== null &&
           nextGaugeRange.min >= nextGaugeRange.max
         ) {
-          uiUtils.showToast(t('Gauge minimum must be less than the maximum.'), 'error', 3000);
+          dialogs.showToast(t('Gauge minimum must be less than the maximum.'), 'error', 3000);
           return;
         }
         if (hasChartControl && !gaugeRangesEqual(nextGaugeRange, currentGaugeRange)) {
@@ -3248,7 +3114,7 @@ function showRenameModal(entityId) {
           const toastMessage = renamed
             ? t('Renamed to “{{name}}”', { name: newName })
             : t('Tile settings saved');
-          uiUtils.showToast(toastMessage, 'success', 2000);
+          dialogs.showToast(toastMessage, 'success', 2000);
           closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to save Quick Access tile settings:', error);
@@ -3322,7 +3188,7 @@ function showRenameModal(entityId) {
 
         // The reset drops every saved setting of the tile at once, and discards what was typed
         // here and not yet saved, so it asks first.
-        const confirmed = await uiUtils.showConfirm(
+        const confirmed = await dialogs.showConfirm(
           t('Reset tile settings to defaults'),
           t('Are you sure?'),
           { confirmText: t('Reset'), confirmClass: 'btn-danger' }
@@ -3343,7 +3209,7 @@ function showRenameModal(entityId) {
             ...(resetTrayOptions ? { trayEntities: nextConfig.trayEntities } : {}),
           });
           refreshQuickAccessAfterTileSettingsChange();
-          uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
+          dialogs.showToast(t('Reset tile settings to defaults'), 'info', 2000);
           closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to reset Quick Access tile settings:', error);
@@ -3370,7 +3236,7 @@ function showRenameModal(entityId) {
     }
 
     // The name is what people come here to change, so typing starts there with it selected.
-    uiUtils.openDialog(modal, {
+    dialogs.openDialog(modal, {
       display: null,
       initialFocus: input,
       dismiss: () => {
@@ -3409,7 +3275,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast(t('Removed from “{{page}}”', { page: pageName }), 'success', 2000);
+    dialogs.showToast(t('Removed from “{{page}}”', { page: pageName }), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -3486,36 +3352,10 @@ function updateEntityInUI(entity, options = {}) {
   try {
     ensureEntityCacheScope();
     if (!entity) return;
-    const entityId = entity.entity_id;
-    const domain = getEntityDomain(entityId);
-    const skipQueueReconcile = options.skipQueueReconcile === true;
-    let renderEntity = entity;
-
-    if (!skipQueueReconcile && isOnOffToggleDomain(domain)) {
-      if (!isEntityAvailable(entity)) clearPendingOnOffToggle(entityId);
-      const desiredState = desiredStateByEntity.get(entityId);
-      if (isOnOffStateValue(desiredState)) {
-        if (entity.state === desiredState) {
-          clearPendingOnOffToggle(entityId);
-          emitUiDebug('entity.toggle_finalized', {
-            entityId,
-            domain,
-            state: entity.state,
-          });
-        } else {
-          optimisticStateByEntity.set(entityId, desiredState);
-          renderEntity = getEntityForDisplay(entity);
-          emitUiDebug('entity.toggle_reconcile_pending', {
-            entityId,
-            domain,
-            receivedState: entity.state,
-            desiredState,
-          });
-        }
-      } else if (optimisticStateByEntity.has(entityId)) {
-        optimisticStateByEntity.delete(entityId);
-      }
-    }
+    // An update from Home Assistant settles an on/off change it confirms; one the runner sent
+    // itself (skipQueueReconcile) is drawn as it is.
+    const renderEntity =
+      options.skipQueueReconcile === true ? entity : entityActions.observe(entity);
 
     // Keep timer tick eligibility current as visible entity attributes change live.
     refreshVisibleTimerEntityFlag();
@@ -3694,7 +3534,7 @@ function getQuickAccessTileStateText(entity) {
   if (entityState === 'unavailable') return t('Unavailable');
   // Home Assistant reports a scene or button as `unknown` until its first use; that is not a fault.
   if (entityState === 'unknown')
-    return QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ? '' : t('Unknown');
+    return describeEntity(entity).click === 'activate' ? '' : t('Unknown');
 
   switch (domain) {
     case 'scene':
@@ -3708,51 +3548,9 @@ function getQuickAccessTileStateText(entity) {
   }
 }
 
-// What a Quick Access tile's click does, for surfaces outside the widget (the Omarchy bar):
-// change the entity, run it, or open one of the widget's dialogs. Mirrors
-// executeEntityPrimaryAction and toggleEntity; domains missing here do nothing on click.
-const QUICK_ACCESS_TOGGLE_DOMAINS = new Set([
-  'cover',
-  'fan',
-  'humidifier',
-  'input_boolean',
-  'light',
-  'lock',
-  'media_player',
-  'siren',
-  'switch',
-  'timer',
-  'valve',
-]);
-const QUICK_ACCESS_ACTIVATE_DOMAINS = new Set(['button', 'input_button', 'scene', 'script']);
-const QUICK_ACCESS_HELPER_DOMAINS = new Set([
-  'number',
-  'input_number',
-  'select',
-  'input_select',
-  'vacuum',
-]);
-const QUICK_ACCESS_DIALOG_DOMAINS = new Set([
-  'calendar',
-  'camera',
-  'climate',
-  'sensor',
-  'todo',
-  ...QUICK_ACCESS_HELPER_DOMAINS,
-]);
-// An alarm panel is armed and disarmed from the command palette, where the code prompt lives; its
-// tile answers a click with a pointer to it instead of staying silent.
-const QUICK_ACCESS_HINT_DOMAINS = new Set(['alarm_control_panel']);
-
-function isQuickAccessTileReadOnly(domain, div = null) {
-  return (
-    !QUICK_ACCESS_DIALOG_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_HINT_DOMAINS.has(domain) &&
-    domain !== 'automation' &&
-    !div?.classList.contains('unavailable-entity')
-  );
+// A tile whose click does nothing, and which has no repair to offer, reads as plain status.
+function isQuickAccessTileReadOnly(entity, div = null) {
+  return describeEntity(entity).click === 'none' && !div?.classList.contains('unavailable-entity');
 }
 
 function getAlarmPanelHint(entity) {
@@ -3760,9 +3558,6 @@ function getAlarmPanelHint(entity) {
     name: utils.getEntityDisplayName(entity),
   });
 }
-
-// Tiles that carry the adjust button (openEntityControls).
-const QUICK_ACCESS_CONTROLS_DOMAINS = new Set(['climate', 'cover', 'fan', 'light', 'media_player']);
 
 // What a media player says in place of a title it does not have. The player's state decides:
 // "Ready" for an offline speaker or a TV playing an input with no metadata was wrong twice over.
@@ -3886,16 +3681,16 @@ function describeQuickAccessTile(entityId) {
       controls: false,
     };
   }
-  const domain = getEntityDomain(entity.entity_id);
-  const unavailable = entity.state === 'unavailable';
+  const description = describeEntity(entity);
+  const unavailable = !description.available;
   const countdown = getQuickAccessTileCountdown(entity);
   let action = 'none';
   if (!unavailable) {
-    if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain)) action = 'dialog';
     // Unlocking asks first, so the click brings the widget up for the question.
-    else if (domain === 'lock' && entity.state === 'locked') action = 'dialog';
-    else if (QUICK_ACCESS_TOGGLE_DOMAINS.has(domain)) action = 'toggle';
-    else if (QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)) action = 'activate';
+    if (description.click === 'dialog' || description.confirm) action = 'dialog';
+    else if (description.click === 'toggle' || description.click === 'activate') {
+      action = description.click;
+    }
   }
   return {
     id: entityId,
@@ -3905,12 +3700,11 @@ function describeQuickAccessTile(entityId) {
     ...(countdown ? { countdown } : {}),
     icon: describeTileIconForBar(entity),
     // A scene or button nobody has pressed yet is `unknown` and works fine.
-    available:
-      !unavailable && (entity.state !== 'unknown' || QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)),
+    available: !unavailable && (entity.state !== 'unknown' || description.click === 'activate'),
     missing: false,
     active: isQuickAccessTileActive(entity),
     action,
-    controls: !unavailable && QUICK_ACCESS_CONTROLS_DOMAINS.has(domain),
+    controls: !unavailable && description.controls,
     controlState: unavailable ? null : getQuickAccessTileControls(entity),
   };
 }
@@ -3929,7 +3723,7 @@ function finiteOrNull(value) {
 function getQuickAccessTileControls(entity) {
   const domain = getEntityDomain(entity?.entity_id);
   const attributes = entity?.attributes || {};
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const on = entity?.state === 'on';
   switch (domain) {
     case 'light': {
@@ -3987,7 +3781,6 @@ function getQuickAccessTileControls(entity) {
     }
     case 'media_player': {
       const volume = finiteOrNull(attributes.volume_level);
-      const features = attributes.supported_features;
       return {
         kind: 'media',
         playing: entity.state === 'playing',
@@ -3998,9 +3791,9 @@ function getQuickAccessTileControls(entity) {
         canPrevious: !!capabilities.canPreviousTrack,
         canNext: !!capabilities.canNextTrack,
         volume: volume === null ? null : Math.round(clampRange(volume, 0, 1) * 100),
-        canSetVolume: uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_SET),
+        canSetVolume: !!capabilities.canSetVolume,
         muted: attributes.is_volume_muted === true,
-        canMute: uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE),
+        canMute: !!capabilities.canMute,
       };
     }
     default:
@@ -4026,58 +3819,49 @@ function executeQuickAccessControl(entity, command, value) {
   switch (`${controls.kind}:${command}`) {
     case 'light:power':
     case 'fan:power':
-      if (!!value !== (liveEntity.state === 'on')) toggleEntity(liveEntity);
+      if (!!value !== (liveEntity.state === 'on')) {
+        runEntityAction(liveEntity, value ? 'turn_on' : 'turn_off');
+      }
       return true;
     case 'light:brightness':
       if (!controls.canSetBrightness || !Number.isFinite(number)) return false;
-      queueDesktopPinLightBrightness(liveEntity, number);
+      runEntityAction(liveEntity, 'brightness', number);
       return true;
     case 'light:color_temp': {
       if (!controls.colorTemp || !Number.isFinite(number)) return false;
       const kelvin = clampRange(Math.round(number), controls.colorTemp.min, controls.colorTemp.max);
-      queueDesktopPinServiceCall(
-        `light:${entityId}:color_temp`,
-        () => callEntityDomainService(liveEntity, 'turn_on', { color_temp_kelvin: kelvin }),
-        150
-      );
+      runEntityAction(liveEntity, 'color_temp', kelvin);
       return true;
     }
     case 'light:color': {
-      const rgb = controls.colors.length ? uiUtils.hexToRgb(String(value)) : null;
+      const rgb = controls.colors.length ? hexToRgb(String(value)) : null;
       if (!rgb) return false;
-      callEntityDomainService(liveEntity, 'turn_on', { rgb_color: [rgb.r, rgb.g, rgb.b] });
+      runEntityAction(liveEntity, 'color', [rgb.r, rgb.g, rgb.b]);
       return true;
     }
     case 'fan:percentage':
       if (!controls.canSetPercentage || !Number.isFinite(number)) return false;
-      queueDesktopPinFanPercentage(liveEntity, clampRange(Math.round(number), 0, 100));
+      runEntityAction(liveEntity, 'percentage', clampRange(Math.round(number), 0, 100));
       return true;
     case 'cover:position':
       if (!controls.canSetPosition || !Number.isFinite(number)) return false;
-      queueDesktopPinCoverPosition(liveEntity, clampRange(Math.round(number), 0, 100));
+      runEntityAction(liveEntity, 'position', clampRange(Math.round(number), 0, 100));
       return true;
     case 'cover:open':
     case 'cover:close':
     case 'cover:stop': {
       const allowed = { open: controls.canOpen, close: controls.canClose, stop: controls.canStop };
       if (!allowed[command]) return false;
-      cancelDesktopPinServiceCall(`cover:${entityId}:position`);
-      callEntityDomainService(liveEntity, `${command}_cover`);
+      runEntityAction(liveEntity, command);
       return true;
     }
-    case 'climate:temperature': {
+    case 'climate:temperature':
       if (!controls.canSetTemperature || !Number.isFinite(number)) return false;
-      const temperature = clampRange(number, controls.min, controls.max);
-      queueDesktopPinServiceCall(
-        `climate:${entityId}:temperature`,
-        () => callEntityDomainService(liveEntity, 'set_temperature', { temperature }),
-        300
-      );
+      runEntityAction(liveEntity, 'temperature', clampRange(number, controls.min, controls.max));
       return true;
-    }
     case 'climate:mode':
       if (!controls.modes.includes(value)) return false;
-      callEntityDomainService(liveEntity, 'set_hvac_mode', { hvac_mode: value });
+      runEntityAction(liveEntity, 'hvac_mode', value);
       return true;
     case 'media:play_pause':
       executeEntityPrimaryAction(liveEntity, { source: 'quick-access-controls' });
@@ -4085,22 +3869,15 @@ function executeQuickAccessControl(entity, command, value) {
     case 'media:next':
     case 'media:previous':
       if (!(command === 'next' ? controls.canNext : controls.canPrevious)) return false;
-      callMediaPlayerService(entityId, command === 'next' ? 'next_track' : 'previous_track');
+      runEntityAction(liveEntity, command === 'next' ? 'next_track' : 'previous_track');
       return true;
     case 'media:volume':
       if (!controls.canSetVolume || !Number.isFinite(number)) return false;
-      queueDesktopPinServiceCall(
-        `media:${entityId}:volume`,
-        () =>
-          callMediaPlayerService(entityId, 'volume_set', {
-            volumeLevel: clampRange(number, 0, 100) / 100,
-          }),
-        150
-      );
+      runEntityAction(liveEntity, 'volume', clampRange(number, 0, 100) / 100);
       return true;
     case 'media:mute':
       if (!controls.canMute) return false;
-      callMediaPlayerService(entityId, 'volume_mute', { isVolumeMuted: !!value });
+      runEntityAction(liveEntity, 'mute', !!value);
       return true;
     default:
       return false;
@@ -4173,7 +3950,7 @@ function getControlRenderSignature(entity) {
           ? 'light-off'
           : 'light-empty';
   } else if (domain === 'climate') {
-    contentKind = getClimateTileTemperature(entity) !== null ? 'climate-temp' : 'climate-empty';
+    contentKind = getClimateTemperature(entity) !== null ? 'climate-temp' : 'climate-empty';
   } else if (domain === 'camera') {
     contentKind = `camera-${getQuickAccessCameraPreviewRefresh(entity.entity_id)}`;
   }
@@ -4393,7 +4170,7 @@ function isQuickAccessTileValueSizeApplicable(entity) {
   }
 
   if (displayEntity.entity_id.startsWith('climate.')) {
-    return getClimateTileTemperature(displayEntity) !== null;
+    return getClimateTemperature(displayEntity) !== null;
   }
 
   return false;
@@ -5939,7 +5716,7 @@ function showComparisonGraphModal(graphId) {
     // keyboard follows it, or goes to the search field when that sensor is no longer listed, and
     // the list stays scrolled where it was.
     const scrollTop = list.scrollTop;
-    uiUtils.renderKeepingFocus(
+    dialogs.renderKeepingFocus(
       list,
       () => {
         list.textContent = '';
@@ -6036,7 +5813,7 @@ function showComparisonGraphModal(graphId) {
             current.entityIds.map((id) => getGraphSeriesUnitFor(state.STATES?.[id])).filter(Boolean)
           );
           if (unit && units.size && !units.has(unit)) {
-            uiUtils.showToast(
+            dialogs.showToast(
               t('{{unit}} does not match the other sensors — it will be scaled on its own.', {
                 unit,
               }),
@@ -6067,7 +5844,7 @@ function showComparisonGraphModal(graphId) {
 
   deleteBtn.addEventListener('click', async () => {
     if (graphMutationInFlight) return;
-    const confirmed = await uiUtils.showConfirm(
+    const confirmed = await dialogs.showConfirm(
       t('Delete graph'),
       t('This removes the graph and its tile.'),
       { confirmText: t('Delete'), confirmClass: 'btn-danger' }
@@ -6163,11 +5940,11 @@ function setQuickAccessCameraPreviewRefresh(entityId, refreshValue, targetConfig
 function getQuickAccessTileColor(entityId) {
   const color = getQuickAccessTileOptions(entityId).color;
   if (!color) return '';
-  return uiUtils.getTileColorStyle(color)?.color || '';
+  return getTileColorStyle(color)?.color || '';
 }
 
 function setQuickAccessTileColor(entityId, color, targetConfig = state.CONFIG) {
-  const normalized = color ? uiUtils.getTileColorStyle(color)?.color || '' : '';
+  const normalized = color ? getTileColorStyle(color)?.color || '' : '';
   const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
   if (!normalized) {
     if (tileOptions[entityId]) {
@@ -6188,9 +5965,9 @@ function setQuickAccessTileColor(entityId, color, targetConfig = state.CONFIG) {
  */
 function applyQuickAccessTileColor(div, entityId, enabled = true) {
   const color = enabled ? getQuickAccessTileOptions(entityId).color : '';
-  const style = color ? uiUtils.getTileColorStyle(color) : null;
+  const style = color ? getTileColorStyle(color) : null;
   if (div.dataset.tileColor) {
-    const previous = uiUtils.getTileColorStyle(div.dataset.tileColor);
+    const previous = getTileColorStyle(div.dataset.tileColor);
     Object.keys(previous?.properties || {}).forEach((name) => div.style.removeProperty(name));
   }
   if (!style) {
@@ -6287,7 +6064,7 @@ function getDesktopPinSupportProfile(entityOrEntityId = null) {
 }
 
 function getDesktopPinCapabilitySignature(entity) {
-  return JSON.stringify(getDesktopPinCapabilities(entity));
+  return JSON.stringify(getEntityCapabilities(entity));
 }
 
 function getDesktopPinSupportInfo(entityOrEntityId = null) {
@@ -6327,29 +6104,17 @@ function hasEntityService(entity, serviceName) {
   // Only the main window asks Home Assistant for its services. A pin window has none, so a
   // vacuum's Start, Pause and Return come from the features it advertises instead.
   if (domain === 'vacuum' && !state.SERVICES?.vacuum) {
-    return !!getDesktopPinVacuumServices(entity)[serviceName];
+    const capabilities = getEntityCapabilities(entity);
+    return !!{
+      start: capabilities.canStart,
+      turn_on: capabilities.canTurnOn,
+      pause: capabilities.canPause,
+      return_to_base: capabilities.canReturnHome,
+      stop: capabilities.canStop,
+      turn_off: capabilities.canTurnOff,
+    }[serviceName];
   }
   return !!state.SERVICES?.[domain]?.[serviceName];
-}
-
-function callEntityDomainService(entity, serviceName, serviceData = {}) {
-  const entityId = entity?.entity_id;
-  const domain = getEntityDomain(entityId);
-  if (!entityId || !domain || !serviceName) return Promise.resolve();
-  const currentEntity = state.STATES?.[entityId] || entity;
-  if (!isEntityAvailable(currentEntity)) return Promise.resolve();
-  return websocket
-    .callService(domain, serviceName, {
-      entity_id: entityId,
-      ...(serviceData || {}),
-    })
-    .catch((error) =>
-      handleDesktopPinServiceError(
-        error,
-        entityId,
-        utils.getEntityDisplayName(currentEntity || entity)
-      )
-    );
 }
 
 // A pin applies the value it is about to send straight to the DOM. The interaction that holds it
@@ -6698,26 +6463,6 @@ function scheduleDesktopPinControlInteractionRelease(entityId, delayMs = 300) {
   });
 }
 
-function cancelDesktopPinServiceCall(key) {
-  clearTimeout(desktopPinControlTimers.get(key));
-  desktopPinControlTimers.delete(key);
-}
-
-function queueDesktopPinServiceCall(key, callback, delayMs = 160) {
-  if (!key || typeof callback !== 'function') return;
-  const existingTimer = desktopPinControlTimers.get(key);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-  }
-
-  const timer = setTimeout(() => {
-    desktopPinControlTimers.delete(key);
-    callback();
-  }, delayMs);
-
-  desktopPinControlTimers.set(key, timer);
-}
-
 function stopDesktopPinEvent(event, preventDefault = true) {
   if (!event) return;
   if (preventDefault && typeof event.preventDefault === 'function') {
@@ -6950,36 +6695,9 @@ function updateExistingDesktopPinLightControl(root, entity) {
   return true;
 }
 
-function queueDesktopPinLightBrightness(entity, brightnessPct) {
-  const entityId = entity?.entity_id;
-  if (!entityId) return;
-
-  const safePct = Math.max(0, Math.min(100, Math.round(Number(brightnessPct) || 0)));
-  const existingTimer = desktopPinLightBrightnessTimers.get(entityId);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-  }
-
-  const timer = setTimeout(() => {
-    desktopPinLightBrightnessTimers.delete(entityId);
-
-    const currentEntity = state.STATES?.[entityId] || entity;
-    const entityName = utils.getEntityDisplayName(currentEntity || entity);
-    const serviceData =
-      safePct <= 0 ? { entity_id: entityId } : { entity_id: entityId, brightness_pct: safePct };
-    const serviceName = safePct <= 0 ? 'turn_off' : 'turn_on';
-
-    websocket
-      .callService('light', serviceName, serviceData)
-      .catch((error) => handleDesktopPinServiceError(error, entityId, entityName));
-  }, 110);
-
-  desktopPinLightBrightnessTimers.set(entityId, timer);
-}
-
 function createDesktopPinLightControlElement(entity) {
   const div = document.createElement('div');
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const layout = getDesktopPinLightLayout();
   const interaction = getDesktopPinLightInteraction(entity?.entity_id);
   const interactionBrightness = Number(interaction?.brightnessPct);
@@ -7076,7 +6794,7 @@ function createDesktopPinLightControlElement(entity) {
         brightnessPct: nextPct,
       });
       applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
-      queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+      runEntityAction(entity, 'brightness', nextPct);
     });
 
     ['change', 'pointerup', 'pointercancel'].forEach((eventName) => {
@@ -7105,7 +6823,7 @@ function createDesktopPinLightControlElement(entity) {
         });
         scheduleDesktopPinLightInteractionRelease(entity.entity_id);
         applyDesktopPinLightVisualState(div, { isOn: nextPct > 0, brightnessPct: nextPct });
-        queueDesktopPinLightBrightness(state.STATES?.[entity.entity_id] || entity, nextPct);
+        runEntityAction(entity, 'brightness', nextPct);
       },
       true
     );
@@ -7254,7 +6972,7 @@ function getOptionalFiniteControlNumber(rawValue) {
 }
 
 function getDesktopPinClimateValue(entity) {
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const currentTemp = getOptionalFiniteControlNumber(entity?.attributes?.current_temperature);
   const targetTemp = getOptionalFiniteControlNumber(entity?.attributes?.temperature);
   const interaction = getDesktopPinControlInteraction(entity?.entity_id);
@@ -7485,25 +7203,7 @@ function createDesktopPinClimateControlElement(entity) {
       });
     },
     queueValue: (nextValue) => {
-      queueDesktopPinServiceCall(
-        `climate:${entity.entity_id}:temperature`,
-        () => {
-          const currentEntity = liveEntity();
-          websocket
-            .callService('climate', 'set_temperature', {
-              entity_id: entity.entity_id,
-              temperature: nextValue,
-            })
-            .catch((error) =>
-              handleDesktopPinServiceError(
-                error,
-                entity.entity_id,
-                utils.getEntityDisplayName(currentEntity)
-              )
-            );
-        },
-        180
-      );
+      runEntityAction(entity, 'temperature', nextValue);
     },
   });
 
@@ -7515,18 +7215,7 @@ function createDesktopPinClimateControlElement(entity) {
       setDesktopPinControlInteraction(entity.entity_id, { mode, active: false });
       applyDesktopPinClimateVisualState(root, { ...getDesktopPinClimateValue(liveEntity()), mode });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 700);
-      websocket
-        .callService('climate', 'set_hvac_mode', {
-          entity_id: entity.entity_id,
-          hvac_mode: mode,
-        })
-        .catch((error) =>
-          handleDesktopPinServiceError(
-            error,
-            entity.entity_id,
-            utils.getEntityDisplayName(liveEntity())
-          )
-        );
+      runEntityAction(entity, 'hvac_mode', mode);
     });
   });
 
@@ -7618,7 +7307,7 @@ function updateExistingDesktopPinClimateControl(root, entity) {
 }
 
 function getDesktopPinFanValue(entity) {
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const interaction = getDesktopPinControlInteraction(entity?.entity_id);
   const interactionValue = Number(interaction?.value);
   const rawPercent = Number(entity?.attributes?.percentage);
@@ -7684,36 +7373,9 @@ function applyDesktopPinFanVisualState(root, fanValue) {
   markPresetButtons(presets, copy.level ?? NaN, 'speed', { pin: true });
 }
 
-function queueDesktopPinFanPercentage(entity, percentage) {
-  if (!getDesktopPinCapabilities(entity).canSetPercentage) return;
-  queueDesktopPinServiceCall(
-    `fan:${entity.entity_id}:percentage`,
-    () => {
-      const currentEntity = state.STATES?.[entity.entity_id] || entity;
-      const entityName = utils.getEntityDisplayName(currentEntity);
-      const safePercent = Math.max(0, Math.min(100, Math.round(Number(percentage) || 0)));
-      if (safePercent <= 0) {
-        websocket
-          .callService('fan', 'turn_off', {
-            entity_id: entity.entity_id,
-          })
-          .catch((error) => handleDesktopPinServiceError(error, entity.entity_id, entityName));
-        return;
-      }
-      websocket
-        .callService('fan', 'set_percentage', {
-          entity_id: entity.entity_id,
-          percentage: safePercent,
-        })
-        .catch((error) => handleDesktopPinServiceError(error, entity.entity_id, entityName));
-    },
-    140
-  );
-}
-
 function createDesktopPinFanControlElement(entity) {
   const fanValue = getDesktopPinFanValue(entity);
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const renderProfile = getDesktopPinFanRenderProfile();
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-fan-control'], {
     domain: 'fan',
@@ -7769,7 +7431,7 @@ function createDesktopPinFanControlElement(entity) {
   applyDesktopPinFanVisualState(root, fanValue);
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-fan-power'), () => {
-    queueOnOffToggle(state.STATES?.[entity.entity_id] || entity);
+    runEntityAction(entity, 'toggle');
   });
 
   bindDesktopPinSlider(root.querySelector('.desktop-pin-fan-slider'), {
@@ -7779,7 +7441,7 @@ function createDesktopPinFanControlElement(entity) {
       applyDesktopPinFanVisualState(root, { percentage: nextValue, isOn: nextValue > 0 });
     },
     queueValue: (nextValue) => {
-      queueDesktopPinFanPercentage(state.STATES?.[entity.entity_id] || entity, nextValue);
+      runEntityAction(entity, 'percentage', nextValue);
     },
   });
 
@@ -7789,7 +7451,7 @@ function createDesktopPinFanControlElement(entity) {
       setDesktopPinControlInteraction(entity.entity_id, { value: nextValue, active: false });
       applyDesktopPinFanVisualState(root, { percentage: nextValue, isOn: nextValue > 0 });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 280);
-      queueDesktopPinFanPercentage(state.STATES?.[entity.entity_id] || entity, nextValue);
+      runEntityAction(entity, 'percentage', nextValue);
     });
   });
 
@@ -7863,32 +7525,9 @@ function getDesktopPinCoverStatusText(coverValue) {
   return getLocalizedEntityStateLabel(coverValue.state || 'closed');
 }
 
-function queueDesktopPinCoverPosition(entity, position) {
-  if (!getDesktopPinCapabilities(entity).canSetPosition) return;
-  queueDesktopPinServiceCall(
-    `cover:${entity.entity_id}:position`,
-    () => {
-      const currentEntity = state.STATES?.[entity.entity_id] || entity;
-      websocket
-        .callService('cover', 'set_cover_position', {
-          entity_id: entity.entity_id,
-          position: Math.max(0, Math.min(100, Math.round(Number(position) || 0))),
-        })
-        .catch((error) =>
-          handleDesktopPinServiceError(
-            error,
-            entity.entity_id,
-            utils.getEntityDisplayName(currentEntity)
-          )
-        );
-    },
-    180
-  );
-}
-
 function createDesktopPinCoverControlElement(entity) {
   const coverValue = getDesktopPinCoverValue(entity);
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const availableActions = [
     capabilities.canClose ? { action: 'close_cover', label: t('Close') } : null,
     capabilities.canStop ? { action: 'stop_cover', label: t('Stop') } : null,
@@ -7975,14 +7614,13 @@ function createDesktopPinCoverControlElement(entity) {
       });
     },
     queueValue: (nextValue) => {
-      queueDesktopPinCoverPosition(state.STATES?.[entity.entity_id] || entity, nextValue);
+      runEntityAction(entity, 'position', nextValue);
     },
   });
 
   root.querySelectorAll('.desktop-pin-cover-action').forEach((button) => {
     bindDesktopPinButton(button, () => {
       const action = button.dataset.action;
-      cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
       const optimisticPosition =
         action === 'open_cover'
           ? 100
@@ -7999,17 +7637,8 @@ function createDesktopPinCoverControlElement(entity) {
         state: action === 'stop_cover' ? 'stopped' : optimisticPosition > 0 ? 'open' : 'closed',
       });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 700);
-      websocket
-        .callService('cover', action, {
-          entity_id: entity.entity_id,
-        })
-        .catch((error) =>
-          handleDesktopPinServiceError(
-            error,
-            entity.entity_id,
-            utils.getEntityDisplayName(state.STATES?.[entity.entity_id] || entity)
-          )
-        );
+      // The buttons carry Home Assistant's names (open_cover); the runner's are open, close, stop.
+      runEntityAction(entity, action.replace(/_cover$/, ''));
     });
   });
 
@@ -8108,7 +7737,7 @@ function applyDesktopPinMediaVisualState(root, mediaValue) {
 
 function createDesktopPinMediaControlElement(entity) {
   const mediaValue = getDesktopPinMediaValue(entity);
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const canTogglePlayback = mediaValue.playing ? capabilities.canPause : capabilities.canPlay;
   const mediaActions = [
     capabilities.canPreviousTrack
@@ -8179,7 +7808,7 @@ function updateExistingDesktopPinMediaControl(root, entity) {
     return false;
   }
   const renderProfile = getDesktopPinMediaRenderProfile();
-  const capabilities = getDesktopPinCapabilities(entity);
+  const capabilities = getEntityCapabilities(entity);
   const canTogglePlayback =
     entity.state === 'playing' ? capabilities.canPause : capabilities.canPlay;
   if (
@@ -9020,7 +8649,7 @@ function updateExistingDesktopPinTimerControl(root, entity) {
 function getDesktopPinActionCtaLabel(entity) {
   const domain = getEntityDomain(entity?.entity_id);
   if (domain === 'automation') return t('Trigger');
-  if (isPressActionDomain(domain)) return t('Press');
+  if (describeEntity(entity).service === 'press') return t('Press');
   return t('Run');
 }
 
@@ -9028,7 +8657,7 @@ function getDesktopPinActionAriaLabel(entity) {
   const domain = getEntityDomain(entity?.entity_id);
   const name = utils.getEntityDisplayName(entity);
   if (domain === 'automation') return t('Trigger {{name}}', { name });
-  if (isPressActionDomain(domain)) return t('Press {{name}}', { name });
+  if (describeEntity(entity).service === 'press') return t('Press {{name}}', { name });
   return t('Run {{name}}', { name });
 }
 
@@ -9065,10 +8694,7 @@ function createDesktopPinActionControlElement(entity) {
 
   bindDesktopPinButton(root.querySelector('.desktop-pin-action-primary'), () => {
     triggerActivationFeedback(entity.entity_id);
-    const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id))
-      ? 'press'
-      : 'trigger';
-    callEntityDomainService(state.STATES?.[entity.entity_id] || entity, serviceName);
+    runEntityAction(entity, 'trigger');
   });
 
   return root;
@@ -9142,24 +8768,6 @@ function formatDesktopPinNumericValue(value, entity, options = {}) {
   return formatNumberEntityValue(safeValue, entity, { step: spec.step });
 }
 
-function queueDesktopPinNumericValue(entity, nextValue) {
-  const entityId = entity?.entity_id;
-  if (!entityId) return;
-  const spec = getDesktopPinNumericSpec(entity);
-  const safeValue = spec.hasBounds
-    ? Math.max(spec.min, Math.min(spec.max, Number(nextValue)))
-    : Number(nextValue);
-  queueDesktopPinServiceCall(
-    `${entityId}:numeric`,
-    () => {
-      callEntityDomainService(state.STATES?.[entityId] || entity, 'set_value', {
-        value: safeValue,
-      });
-    },
-    120
-  );
-}
-
 function createDesktopPinNumericControlElement(entity) {
   const spec = getDesktopPinNumericSpec(entity);
   const root = createDesktopPinPanelRoot(entity, ['desktop-pin-numeric-control'], {
@@ -9225,7 +8833,7 @@ function createDesktopPinNumericControlElement(entity) {
         if (value) value.textContent = formatted;
         slider.setAttribute('aria-valuetext', formatted);
       },
-      queueValue: (nextValue) => queueDesktopPinNumericValue(entity, nextValue),
+      queueValue: (nextValue) => runEntityAction(entity, 'set_value', nextValue),
       releaseDelayMs: 360,
     });
   }
@@ -9240,7 +8848,7 @@ function createDesktopPinNumericControlElement(entity) {
       const nextValue = liveSpec.value + delta;
       setDesktopPinControlInteraction(entity.entity_id, { value: nextValue, active: false });
       scheduleDesktopPinControlInteractionRelease(entity.entity_id, 360);
-      queueDesktopPinNumericValue(liveEntity, nextValue);
+      runEntityAction(liveEntity, 'set_value', nextValue);
       updateExistingDesktopPinNumericControl(root, {
         ...liveEntity,
         state: String(nextValue),
@@ -9327,22 +8935,7 @@ function queueDesktopPinEnumSelection(entity, direction) {
   setDesktopPinControlInteraction(entityId, { option: nextOption, active: false });
   scheduleDesktopPinControlInteractionRelease(entityId, 520);
 
-  queueDesktopPinServiceCall(
-    `${entityId}:enum`,
-    () => {
-      const liveEntity = state.STATES?.[entityId] || entity;
-      if (direction === 'previous' && hasEntityService(liveEntity, 'select_previous')) {
-        callEntityDomainService(liveEntity, 'select_previous');
-        return;
-      }
-      if (direction === 'next' && hasEntityService(liveEntity, 'select_next')) {
-        callEntityDomainService(liveEntity, 'select_next');
-        return;
-      }
-      callEntityDomainService(liveEntity, 'select_option', { option: nextOption });
-    },
-    100
-  );
+  runEntityAction(entity, direction === 'previous' ? 'previous_option' : 'next_option', nextOption);
 }
 
 function createDesktopPinEnumControlElement(entity) {
@@ -9699,7 +9292,7 @@ function runDesktopPinVacuumAction(entity, actionConfig) {
     requestDesktopPinFocusMain(entity.entity_id);
     return;
   }
-  callEntityDomainService(state.STATES?.[entity.entity_id] || entity, actionConfig.serviceName);
+  runEntityAction(entity, actionConfig.serviceName);
 }
 
 function createDesktopPinVacuumControlElement(entity) {
@@ -9931,7 +9524,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     document.activeElement?.dataset?.desktopPinQuickToggle === entityId &&
     !!document.activeElement.closest('#quick-controls');
   if (!isPinned && !supportInfo.supported) {
-    uiUtils.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
+    dialogs.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
     return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
   }
   try {
@@ -9954,7 +9547,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
         addRemoveButtons();
       }
       if (hadFocus) focusQuickAccessPinToggle(entityId);
-      uiUtils.showToast(t('Removed desktop pin'), 'info', 1800);
+      dialogs.showToast(t('Removed desktop pin'), 'info', 1800);
       return { success: true, pinned: false, result };
     }
 
@@ -9977,11 +9570,11 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     }
     if (hadFocus) focusQuickAccessPinToggle(entityId);
 
-    uiUtils.showToast(t('Pinned to desktop'), 'success', 1800);
+    dialogs.showToast(t('Pinned to desktop'), 'success', 1800);
     return { success: true, pinned: true, result };
   } catch (error) {
     console.error('Error toggling desktop pin from quick access:', error);
-    uiUtils.showToast(
+    dialogs.showToast(
       isPinned ? t('Could not remove desktop pin') : t('Could not pin tile to desktop'),
       'error',
       2600
@@ -10731,19 +10324,11 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
         toggleEntity(entity);
         break;
       case 'trigger':
-        if (supportProfile.family === 'action') {
-          const serviceName = isPressActionDomain(getEntityDomain(entity.entity_id))
-            ? 'press'
-            : 'trigger';
-          callEntityDomainService(entity, serviceName);
-        }
+        if (supportProfile.family === 'action') runEntityAction(entity, 'trigger');
         break;
       case 'set-value':
         if (supportProfile.family === 'numeric') {
-          const nextValue = Number(payload?.value);
-          if (Number.isFinite(nextValue)) {
-            callEntityDomainService(entity, 'set_value', { value: nextValue });
-          }
+          runEntityAction(entity, 'set_value', Number(payload?.value));
         }
         break;
       case 'previous-option':
@@ -10873,6 +10458,7 @@ function createControlElement(entity, options = {}) {
     const isTimerSensor = isTimerLikeSensorEntity(entity);
     const isTimer = entity.entity_id.startsWith('timer.') || isTimerSensor;
     const domain = getEntityDomain(entity.entity_id);
+    const { click } = describeEntity(entity);
     const cameraPreviewRefresh =
       isQuickAccessContext && domain === 'camera'
         ? getQuickAccessCameraPreviewRefresh(entity.entity_id)
@@ -10945,26 +10531,22 @@ function createControlElement(entity, options = {}) {
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
       };
       div.title = t('Click to press {{name}}', { name: utils.getEntityDisplayName(entity) });
-    } else if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
+    } else if (click === 'dialog') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div)) openEntityControls(entity);
       };
       div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(entity) });
-    } else if (QUICK_ACCESS_HINT_DOMAINS.has(domain)) {
+    } else if (click === 'hint') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
-          uiUtils.showToast(
+          dialogs.showToast(
             getAlarmPanelHint(state.STATES?.[entity.entity_id] || entity),
             'info',
             4000
           );
       };
       div.title = getAlarmPanelHint(entity);
-    } else if (
-      QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) ||
-      QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ||
-      domain === 'automation'
-    ) {
+    } else if (click === 'toggle' || click === 'activate') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
           executeEntityPrimaryAction(entity, { source: 'quick-access-click' });
@@ -11199,8 +10781,7 @@ function getControlTileTitle(entity, hint) {
 function applyQuickAccessTileAccessibility(div, entity) {
   if (!div || !entity?.entity_id) return;
   const primary = div.querySelector('.tile-primary-button');
-  const domain = getEntityDomain(entity.entity_id);
-  const readOnly = isQuickAccessTileReadOnly(domain, div);
+  const readOnly = isQuickAccessTileReadOnly(entity, div);
   // The stylesheet keeps a tile that does nothing from looking pressable (no pointer, no hover
   // lift, no press shrink).
   if (readOnly) div.dataset.readonly = 'true';
@@ -11392,19 +10973,19 @@ function openEntityRepairModal(staleEntityId) {
   let repairInFlight = false;
   const close = () => {
     if (repairInFlight) return;
-    void uiUtils.closeDialog(modal, { remove: true });
+    void dialogs.closeDialog(modal, { remove: true });
   };
 
   const persistReplacement = async (replacementEntityId) => {
     repairInFlight = true;
-    const reenable = uiUtils.disableControlsKeepingFocus(modal.querySelectorAll('button, input'));
+    const reenable = dialogs.disableControlsKeepingFocus(modal.querySelectorAll('button, input'));
     try {
       await persistAuthoritativeEntityIdReplacement(staleEntityId, replacementEntityId);
       renderActiveTab();
       renderPrimaryCards();
       updateWeatherFromHA();
       updateMediaTile();
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Replaced {{oldEntityId}} with {{newEntityId}}', {
           oldEntityId: staleEntityId,
           newEntityId: replacementEntityId,
@@ -11510,7 +11091,7 @@ function openEntityRepairModal(staleEntityId) {
   });
   renderCandidates();
   // The search is the first thing to do here; without it focus would start on the close button.
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     initialFocus: search,
     describedBy: explanation,
@@ -11694,26 +11275,23 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
 
   setQuickAccessTileStateLine(div, getQuickAccessTileStateText(displayEntity));
   const liveEntity = () => state.STATES?.[displayEntity.entity_id] || displayEntity;
-  if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
+  const { click } = describeEntity(displayEntity);
+  if (click === 'dialog') {
     div.onclick = () => {
       if (!shouldBlockInteraction(div)) openEntityControls(liveEntity());
     };
     div.title = t('Click to view {{name}}', { name: utils.getEntityDisplayName(displayEntity) });
     return true;
   }
-  if (QUICK_ACCESS_HINT_DOMAINS.has(domain)) {
+  if (click === 'hint') {
     div.onclick = () => {
       if (!shouldBlockInteraction(div))
-        uiUtils.showToast(getAlarmPanelHint(liveEntity()), 'info', 4000);
+        dialogs.showToast(getAlarmPanelHint(liveEntity()), 'info', 4000);
     };
     div.title = getAlarmPanelHint(displayEntity);
     return true;
   }
-  if (
-    !QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) &&
-    !QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) &&
-    domain !== 'automation'
-  ) {
+  if (click !== 'toggle' && click !== 'activate') {
     div.onclick = null;
     div.title = t('{{name}}: {{state}}', {
       name: utils.getEntityDisplayName(displayEntity),
@@ -11848,7 +11426,7 @@ function showSensorDetails(entity) {
       return;
     }
 
-    uiUtils.showToast(
+    dialogs.showToast(
       t('{{name}}: {{state}}', {
         name: utils.getEntityDisplayName(entity),
         state: utils.getEntityDisplayState(entity),
@@ -11891,7 +11469,7 @@ function activateAccessibleDialogModal(
   if (titleElement && !titleElement.id) {
     titleElement.id = `${titleIdPrefix}-${dialogModalIdCounter}`;
   }
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     labelledBy: titleElement || undefined,
     initialFocus,
@@ -12028,7 +11606,7 @@ function createEntityDetailModal({ className, title, onClose = null, beforeClose
     closing = true;
     entityDetailClosers.delete(closeModal);
     onClose?.();
-    void uiUtils.closeDialog(modal, { remove: true });
+    void dialogs.closeDialog(modal, { remove: true });
   };
   entityDetailClosers.add(closeModal);
   entityDetailModalClosers.set(modal, closeModal);
@@ -12193,7 +11771,7 @@ function showHelperControls(entity) {
       // The field says why (too high, not a step it allows), where a toast could only say no.
       input?.focus();
       if (input && !input.checkValidity()) input.reportValidity();
-      else uiUtils.showToast(t('Invalid value'), 'error');
+      else dialogs.showToast(t('Invalid value'), 'error');
       return;
     }
     busy = true;
@@ -12204,7 +11782,7 @@ function showHelperControls(entity) {
     refresh();
     try {
       await websocket.callService(domain, service, data);
-      if (!closed) uiUtils.showToast(t('Command sent'), 'success');
+      if (!closed) dialogs.showToast(t('Command sent'), 'success');
     } catch (error) {
       // Names the cause Home Assistant gave, where there is one, and stays up long enough to read.
       if (!closed) handleServiceError(error, utils.getEntityDisplayName(entity));
@@ -13092,8 +12670,7 @@ function canSeekMedia(entity) {
   if (!isEntityAvailable(entity)) return false;
   if (!entity?.entity_id?.startsWith('media_player.')) return false;
   if (!hasEntityService(entity, 'media_seek')) return false;
-  const features = entity.attributes?.supported_features;
-  if (!uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_SEEK)) return false;
+  if (!getEntityCapabilities(entity).canSeek) return false;
   return hasMediaSeekData(entity);
 }
 
@@ -13142,8 +12719,8 @@ function getLightColorTempRange(attributes = {}) {
     };
   }
 
-  const minFromMireds = uiUtils.miredsToKelvin(attributes.max_mireds);
-  const maxFromMireds = uiUtils.miredsToKelvin(attributes.min_mireds);
+  const minFromMireds = miredsToKelvin(attributes.max_mireds);
+  const maxFromMireds = miredsToKelvin(attributes.min_mireds);
   if (minFromMireds && maxFromMireds) {
     return {
       min: Math.min(minFromMireds, maxFromMireds),
@@ -13162,7 +12739,7 @@ function getInitialLightColorTempKelvin(attributes = {}, range) {
     return clampRange(Math.round(kelvinValue), range.min, range.max);
   }
 
-  const kelvinFromMireds = uiUtils.miredsToKelvin(attributes.color_temp);
+  const kelvinFromMireds = miredsToKelvin(attributes.color_temp);
   if (kelvinFromMireds) {
     return clampRange(kelvinFromMireds, range.min, range.max);
   }
@@ -13187,15 +12764,14 @@ function supportsLightColorTemp(attributes = {}) {
 // Which controls the media dialog renders. Lost capabilities only disable a rendered control;
 // gained ones need the dialog rebuilt.
 function getMediaDetailControls(entity) {
-  const capabilities = getDesktopPinCapabilities(entity);
-  const features = entity?.attributes?.supported_features;
+  const capabilities = getEntityCapabilities(entity);
   return [
     capabilities.canPreviousTrack,
     capabilities.canNextTrack,
     capabilities.canPlay || capabilities.canPause,
     canSeekMedia(entity),
-    uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_SET),
-    uiUtils.hasSupportedFeature(features, MEDIA_PLAYER_SUPPORT_VOLUME_MUTE),
+    capabilities.canSetVolume,
+    capabilities.canMute,
   ];
 }
 
@@ -13226,18 +12802,12 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     const mediaTitle = utils.escapeHtml(rawMediaTitle);
     const mediaArtist = utils.escapeHtml(rawMediaArtist);
     const initialTimeline = getMediaTimeline(entity);
-    const mediaCapabilities = getDesktopPinCapabilities(entity);
+    const mediaCapabilities = getEntityCapabilities(entity);
     const supportsSeek = canSeekMedia(entity);
     const supportsAnyPlaybackToggle = mediaCapabilities.canPlay || mediaCapabilities.canPause;
     const mediaAttributes = entity.attributes || {};
-    const supportsVolumeSet = uiUtils.hasSupportedFeature(
-      mediaAttributes.supported_features,
-      MEDIA_PLAYER_SUPPORT_VOLUME_SET
-    );
-    const supportsVolumeMute = uiUtils.hasSupportedFeature(
-      mediaAttributes.supported_features,
-      MEDIA_PLAYER_SUPPORT_VOLUME_MUTE
-    );
+    const supportsVolumeSet = !!mediaCapabilities.canSetVolume;
+    const supportsVolumeMute = !!mediaCapabilities.canMute;
     const initialVolume = clampRange(
       Math.round(Number(mediaAttributes.volume_level ?? 0) * 100),
       0,
@@ -13392,13 +12962,11 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
     // volume the player settled on would never show.
     const isVolumeHeld = trackSliderGrip(volumeSlider, () => updateVolumeControls());
     // A volume edit is under way from the first input until the player has answered the command it
-    // sent: the arrow keys never hold the slider, and a drag lets go 150 ms before the command goes
-    // out. A live update in that time would put the old volume back under the user's hand.
-    let volumeDebounceTimer = null;
-    let volumeCommandsInFlight = 0;
+    // sent: the arrow keys never hold the slider, and a drag lets go before the runner sends the
+    // last value. A live update in that time would put the old volume back under the user's hand.
+    let volumeCommandsPending = 0;
     let missedVolumeUpdate = false;
-    const isVolumeBeingSet = () =>
-      isVolumeHeld() || volumeDebounceTimer !== null || volumeCommandsInFlight > 0;
+    const isVolumeBeingSet = () => isVolumeHeld() || volumeCommandsPending > 0;
     const updateVolumeControls = () => {
       const currentEntity = liveMedia();
       const attrs = currentEntity.attributes || {};
@@ -13493,24 +13061,18 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         const volumeText = formatPercent(value);
         if (volumeValue) volumeValue.textContent = volumeText;
         volumeSlider.setAttribute('aria-valuetext', volumeText);
-        clearTimeout(volumeDebounceTimer);
-        volumeDebounceTimer = setTimeout(() => {
-          volumeDebounceTimer = null;
-          volumeCommandsInFlight += 1;
-          Promise.resolve(
-            callMediaPlayerService(entity.entity_id, 'volume_set', {
-              volumeLevel: value / 100,
-            })
-          ).then((response) => {
-            volumeCommandsInFlight -= 1;
-            // What the player reported meanwhile is shown now. A command that failed (null) or
-            // was never sent, because the player stopped accepting it (nothing), leaves the slider
-            // where the user put it, so it goes back to the volume the player still has.
-            if (modal.isConnected && (missedVolumeUpdate || response == null)) {
-              updateVolumeControls();
-            }
-          });
-        }, 150);
+        volumeCommandsPending += 1;
+        runEntityAction(liveMedia(), 'volume', value / 100).then((outcome) => {
+          volumeCommandsPending -= 1;
+          // A later value of the same drag took this one's place and will answer for it.
+          if (outcome.superseded) return;
+          // What the player reported meanwhile is shown now. A command that failed or was never
+          // sent, because the player stopped accepting it, leaves the slider where the user put
+          // it, so it goes back to the volume the player still has.
+          if (modal.isConnected && (missedVolumeUpdate || !outcome.ok || !outcome.sent)) {
+            updateVolumeControls();
+          }
+        });
       });
     }
 
@@ -13627,7 +13189,6 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
         isClosing = true;
         entityDetailClosers.delete(closeModal);
         stopUpdates();
-        clearTimeout(volumeDebounceTimer);
         showMediaDetail(currentEntity, { replaces: modal, focusSelector });
         modal.remove();
         return;
@@ -13649,8 +13210,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       isClosing = true;
       entityDetailClosers.delete(closeModal);
       stopUpdates();
-      if (volumeDebounceTimer) clearTimeout(volumeDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     entityDetailClosers.add(closeModal);
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
@@ -13686,227 +13246,61 @@ function updateMediaEntityPosition(entityId, seekPosition) {
   }
 }
 
+// The media controls' actions, as the runner names them.
+const MEDIA_PLAYER_ACTIONS = {
+  play: 'play',
+  pause: 'pause',
+  next_track: 'next_track',
+  previous_track: 'previous_track',
+  volume_set: 'volume',
+  volume_mute: 'mute',
+};
+
+// Resolves to Home Assistant's response, null when the command failed, or undefined when none was
+// sent because the player does not take it.
 function callMediaPlayerService(entityId, action, options = {}) {
   try {
     const generation = ensureEntityCacheScope();
-    // websocket already imported at top
     const entity = state.STATES[entityId];
     if (!canPerformMediaAction(entity, action)) return;
-    const entityName = entity ? utils.getEntityDisplayName(entity) : entityId;
-
-    let serviceCall;
-    switch (action) {
-      case 'play':
-        serviceCall = websocket.callService('media_player', 'media_play', { entity_id: entityId });
-        break;
-      case 'pause':
-        serviceCall = websocket.callService('media_player', 'media_pause', { entity_id: entityId });
-        break;
-      case 'next_track':
-        serviceCall = websocket.callService('media_player', 'media_next_track', {
-          entity_id: entityId,
-        });
-        break;
-      case 'previous_track':
-        serviceCall = websocket.callService('media_player', 'media_previous_track', {
-          entity_id: entityId,
-        });
-        break;
-      case 'seek_relative': {
-        const seekPosition = getMediaSeekTarget(entity, options.deltaSeconds);
-        if (seekPosition == null) return;
-        serviceCall = websocket
-          .callService('media_player', 'media_seek', {
-            entity_id: entityId,
-            seek_position: seekPosition,
-          })
-          .then((response) => {
-            if (generation === ensureEntityCacheScope())
-              updateMediaEntityPosition(entityId, seekPosition);
-            return response;
-          });
-        break;
-      }
-      case 'volume_set': {
-        const volumeLevel = clampRange(Number(options.volumeLevel), 0, 1);
-        serviceCall = websocket.callService('media_player', 'volume_set', {
-          entity_id: entityId,
-          volume_level: volumeLevel,
-        });
-        break;
-      }
-      case 'volume_mute':
-        serviceCall = websocket.callService('media_player', 'volume_mute', {
-          entity_id: entityId,
-          is_volume_muted: !!options.isVolumeMuted,
-        });
-        break;
-      default:
-        console.warn('Unknown media player action:', action);
-        return;
-    }
-
-    if (serviceCall) {
-      return serviceCall.catch((error) => {
-        handleServiceError(error, entityName);
-        return null;
+    let command;
+    if (action === 'seek_relative') {
+      const seekPosition = getMediaSeekTarget(entity, options.deltaSeconds);
+      if (seekPosition == null) return;
+      command = runEntityAction(entity, 'seek', seekPosition).then((outcome) => {
+        if (outcome.ok && outcome.sent && generation === ensureEntityCacheScope()) {
+          updateMediaEntityPosition(entityId, seekPosition);
+        }
+        return outcome;
       });
-    }
-    return undefined;
-  } catch (error) {
-    console.error('Error calling media player service:', error);
-    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
-    return undefined;
-  }
-}
-
-function getEntityNameFromId(entityId) {
-  const entity = state.STATES?.[entityId];
-  if (entity) return utils.getEntityDisplayName(entity);
-  return entityId || 'entity';
-}
-
-async function processPendingOnOffToggle(entityId, domain) {
-  const generation = ensureEntityCacheScope();
-  if (!entityId || !isOnOffToggleDomain(domain)) return;
-  if (inFlightByEntity.get(entityId)) return;
-  if (state.STATES?.[entityId]?.state === 'unavailable') {
-    clearPendingOnOffToggle(entityId);
-    return;
-  }
-
-  const desiredState = desiredStateByEntity.get(entityId);
-  if (!isOnOffStateValue(desiredState)) return;
-
-  const service = desiredState === 'on' ? 'turn_on' : 'turn_off';
-  const serviceData = { entity_id: entityId };
-  inFlightByEntity.set(entityId, true);
-  lastRequestedStateByEntity.set(entityId, desiredState);
-
-  emitUiDebug('entity.toggle_attempt', {
-    entityId,
-    domain,
-    service,
-    desiredState,
-    serviceData,
-  });
-
-  try {
-    const response = await websocket.callService(domain, service, serviceData);
-    if (generation !== ensureEntityCacheScope()) return response;
-
-    emitUiDebug('entity.toggle_success', {
-      entityId,
-      domain,
-      service,
-      desiredState,
-      responseSuccess: response?.success !== false,
-      responseId: response?.id || null,
-    });
-
-    const latestDesiredState = desiredStateByEntity.get(entityId);
-    if (latestDesiredState === desiredState) {
-      const currentEntity = state.STATES?.[entityId];
-      if (!currentEntity) {
-        clearPendingOnOffToggle(entityId);
-      } else {
-        // A successful service response only confirms that Home Assistant accepted the call.
-        // Keep the requested visual state until the matching state_changed event arrives so an
-        // older entity update cannot briefly repaint the tile with stale data.
-        scheduleOnOffToggleConfirmationTimeout(entityId, domain, desiredState);
-      }
-    }
-
-    return response;
-  } catch (error) {
-    if (generation !== ensureEntityCacheScope()) return;
-    const requestedState = lastRequestedStateByEntity.get(entityId);
-    const latestDesiredState = desiredStateByEntity.get(entityId);
-
-    emitUiDebug('entity.toggle_primary_error', {
-      entityId,
-      domain,
-      service,
-      requestedState: requestedState || null,
-      latestDesiredState: latestDesiredState || null,
-      error: error?.message || String(error),
-      code: error?.code || null,
-    });
-
-    if (latestDesiredState && latestDesiredState !== requestedState) {
-      emitUiDebug('entity.toggle_error_ignored_stale_request', {
-        entityId,
-        domain,
-        requestedState: requestedState || null,
-        latestDesiredState,
-      });
+    } else if (MEDIA_PLAYER_ACTIONS[action]) {
+      const value =
+        action === 'volume_set'
+          ? clampRange(Number(options.volumeLevel), 0, 1)
+          : action === 'volume_mute'
+            ? !!options.isVolumeMuted
+            : undefined;
+      command = runEntityAction(entity, MEDIA_PLAYER_ACTIONS[action], value);
+    } else {
+      console.warn('Unknown media player action:', action);
       return;
     }
-
-    clearPendingOnOffToggle(entityId);
-
-    const serverEntity = state.STATES?.[entityId];
-    if (serverEntity) {
-      updateEntityInUI(serverEntity, { skipQueueReconcile: true });
-    }
-
-    handleServiceError(error, getEntityNameFromId(entityId));
-  } finally {
-    if (generation === ensureEntityCacheScope()) {
-      inFlightByEntity.delete(entityId);
-      const requestedState = lastRequestedStateByEntity.get(entityId);
-      const latestDesiredState = desiredStateByEntity.get(entityId);
-
-      if (!latestDesiredState) {
-        lastRequestedStateByEntity.delete(entityId);
-      } else if (latestDesiredState !== requestedState) {
-        processPendingOnOffToggle(entityId, domain);
-      }
-    }
+    return command.then((outcome) => {
+      if (!outcome.sent) return undefined;
+      return outcome.ok ? outcome.result : null;
+    });
+  } catch (error) {
+    console.error('Error calling media player service:', error);
+    dialogs.showToast(t('Failed to control media player'), 'error', 3000);
+    return undefined;
   }
-}
-
-function queueOnOffToggle(entity) {
-  ensureEntityCacheScope();
-  if (!isEntityAvailable(state.STATES?.[entity?.entity_id] || entity)) return;
-  if (!entity || !entity.entity_id) return;
-  const entityId = entity.entity_id;
-  const domain = getEntityDomain(entityId);
-  if (!isOnOffToggleDomain(domain)) return;
-  if (domain === 'light') {
-    clearTimeout(desktopPinLightBrightnessTimers.get(entityId));
-    desktopPinLightBrightnessTimers.delete(entityId);
-    clearDesktopPinLightInteraction(entityId);
-  }
-
-  const effectiveState = getEffectiveOnOffState(entityId, entity.state);
-  const desiredState = effectiveState === 'on' ? 'off' : 'on';
-  clearOnOffToggleConfirmationTimer(entityId);
-  rememberLightBrightness(state.STATES?.[entityId] || entity);
-  desiredStateByEntity.set(entityId, desiredState);
-  optimisticStateByEntity.set(entityId, desiredState);
-
-  const sourceEntity = state.STATES?.[entityId] || entity;
-  if (sourceEntity) {
-    updateEntityInUI({ ...sourceEntity, state: desiredState }, { skipQueueReconcile: true });
-  }
-
-  emitUiDebug('entity.toggle_queued', {
-    entityId,
-    domain,
-    previousState: effectiveState,
-    desiredState,
-    inFlight: !!inFlightByEntity.get(entityId),
-  });
-
-  processPendingOnOffToggle(entityId, domain);
 }
 
 // Unlocking a door is the one toggle that cannot be taken back by pressing it again, so a click on
 // a tile asks first, and so does an Unlock hotkey (executeHotkeyAction). Locking stays one click.
 async function confirmThenUnlock(entity) {
   const name = utils.getEntityDisplayName(entity);
-  const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
+  const confirmed = await dialogs.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
     confirmText: t('Unlock'),
     confirmClass: 'btn-primary',
   });
@@ -13916,124 +13310,37 @@ async function confirmThenUnlock(entity) {
   if (live?.state === 'locked') toggleEntity(live);
 }
 
-// The service that opens or closes a cover or a valve (by default the other way from where it is,
-// as a click on its tile does), or null when it cannot go that way. Home Assistant's
-// ValveEntityFeature: OPEN is 1 and CLOSE is 2. A valve that reports no features is tried anyway,
-// like a cover; one that cannot go the asked way is left alone.
-function getOpenCloseService(
-  entity,
-  close = entity.state === 'open' || entity.state === 'opening'
-) {
-  if (getEntityDomain(entity.entity_id) === 'valve') {
-    const features = Number(entity.attributes?.supported_features);
-    const flag = close ? 2 : 1;
-    if (Number.isFinite(features) && (features & flag) !== flag) return null;
-    return close ? 'close_valve' : 'open_valve';
-  }
-  const capabilities = getDesktopPinCapabilities(entity);
-  if (close ? !capabilities.canClose : !capabilities.canOpen) return null;
-  return close ? 'close_cover' : 'open_cover';
-}
-
+// What a click on the entity's tile runs, when it runs something rather than open a dialog.
 function toggleEntity(entity, { confirmUnlock = false } = {}) {
   try {
     entity = state.STATES?.[entity?.entity_id] || entity;
-    if (!isEntityAvailable(entity)) return;
-    const domain = entity.entity_id.split('.')[0];
-    let service;
-    const service_data = { entity_id: entity.entity_id };
-
-    switch (domain) {
-      case 'light':
-      case 'switch':
-      case 'fan':
-      case 'input_boolean':
-      case 'humidifier':
-      case 'siren':
-        queueOnOffToggle(entity);
-        return;
-      case 'automation':
-        service = 'toggle';
-        break;
-      case 'valve':
-        service = getOpenCloseService(entity);
-        if (!service) return;
-        break;
-      case 'lock':
-        if (entity.state === 'locked' && confirmUnlock) {
-          void confirmThenUnlock(entity);
-          return;
-        }
-        service = entity.state === 'locked' ? 'unlock' : 'lock';
-        break;
-      case 'cover':
-        cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
-        service = getOpenCloseService(entity);
-        if (!service) return;
-        break;
-      case 'scene':
-      case 'script':
-        service = 'turn_on';
-        // Add activation animation for scenes and scripts
-        triggerActivationFeedback(entity.entity_id);
-        break;
-      case 'button':
-      case 'input_button':
-        service = 'press';
-        triggerActivationFeedback(entity.entity_id);
-        break;
-      default:
-        // No toggle action for this domain
-        emitUiDebug('entity.toggle_ignored_domain', {
-          entityId: entity.entity_id,
-          domain,
-          state: entity.state,
-        });
-        return;
+    const description = describeEntity(entity);
+    if (!description.available) return;
+    if (description.confirm && confirmUnlock) {
+      void confirmThenUnlock(entity);
+      return;
     }
-    emitUiDebug('entity.toggle_attempt', {
-      entityId: entity.entity_id,
-      domain,
-      service,
-      state: entity.state,
-      serviceData: service_data,
+    const activates = description.click === 'activate';
+    // Add activation animation for scenes, scripts and buttons
+    if (activates) triggerActivationFeedback(entity.entity_id);
+    return runEntityAction(entity, 'toggle').then((outcome) => {
+      // A scene, script or button changes nothing a tile shows, and its pulse is motion that
+      // reduced-motion settings drop, so a screen reader is told it ran.
+      if (activates && outcome.ok && outcome.sent && outcome.result?.success !== false) {
+        announceQuickAccessChange(
+          t('Activated {{name}}', { name: utils.getEntityDisplayName(entity) })
+        );
+      }
+      return outcome;
     });
-    websocket
-      .callService(domain, service, service_data)
-      .then((response) => {
-        emitUiDebug('entity.toggle_success', {
-          entityId: entity.entity_id,
-          domain,
-          service,
-          responseSuccess: response?.success !== false,
-          responseId: response?.id || null,
-        });
-        // A scene, script or button changes nothing a tile shows, and its pulse is motion that
-        // reduced-motion settings drop, so a screen reader is told it ran.
-        if (response?.success !== false && QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain)) {
-          announceQuickAccessChange(
-            t('Activated {{name}}', { name: utils.getEntityDisplayName(entity) })
-          );
-        }
-        return response;
-      })
-      .catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
   } catch (error) {
     console.error('Error toggling entity:', error);
     emitUiDebug('entity.toggle_exception', {
       entityId: entity?.entity_id || null,
       error: error?.message || String(error),
     });
-    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+    dialogs.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
-}
-
-function toggleTimerEntity(entity) {
-  if (!isEntityAvailable(entity) || !entity.entity_id.startsWith('timer.')) return;
-  const service = entity.state === 'active' ? 'pause' : 'start';
-  websocket
-    .callService('timer', service, { entity_id: entity.entity_id })
-    .catch((error) => handleServiceError(error, utils.getEntityDisplayName(entity)));
 }
 
 function executeEntityPrimaryAction(entity, options = {}) {
@@ -14050,57 +13357,22 @@ function executeEntityPrimaryAction(entity, options = {}) {
       state: liveEntity.state,
     });
 
-    if (domain === 'camera') {
-      camera.openCamera(liveEntity.entity_id, { sourceTile: options.sourceElement });
-      return;
-    }
-
-    if (domain === 'media_player') {
-      const capabilities = getDesktopPinCapabilities(liveEntity);
-      const action = liveEntity.state === 'playing' ? 'pause' : 'play';
-      if (
-        (action === 'pause' && capabilities.canPause) ||
-        (action === 'play' && capabilities.canPlay)
-      ) {
-        callMediaPlayerService(liveEntity.entity_id, action);
+    if (describeEntity(liveEntity).click === 'dialog') {
+      if (domain === 'camera') {
+        camera.openCamera(liveEntity.entity_id, { sourceTile: options.sourceElement });
+      } else if (domain === 'sensor') {
+        // A timer-like sensor opens its details too; its controls dialog would not.
+        showSensorDetails(liveEntity);
+      } else {
+        openEntityControlsDialog(liveEntity);
       }
-      return;
-    }
-
-    if (domain === 'climate') {
-      showClimateControls(liveEntity);
-      return;
-    }
-
-    if (domain === 'sensor') {
-      showSensorDetails(liveEntity);
-      return;
-    }
-
-    if (domain === 'timer') {
-      toggleTimerEntity(liveEntity);
-      return;
-    }
-
-    if (domain === 'todo') {
-      showTodoDetails(liveEntity);
-      return;
-    }
-
-    if (domain === 'calendar') {
-      showCalendarDetails(liveEntity);
-      return;
-    }
-
-    if (QUICK_ACCESS_HELPER_DOMAINS.has(domain)) {
-      showHelperControls(liveEntity);
       return;
     }
 
     toggleEntity(liveEntity, { confirmUnlock: true });
   } catch (error) {
     console.error('Error executing entity primary action:', error);
-    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+    dialogs.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
 }
 
@@ -14199,31 +13471,6 @@ function openEntityControlsDialog(liveEntity) {
   }
 }
 
-/**
- * Whether the palette's Enter has anything to do for this entity: its controls open, or its primary
- * action runs. Sun, a person, weather, a device tracker, an update, a zone or a binary sensor have
- * neither, and locks and alarm panels are never run from a plain row (the palette offers named
- * commands for them). Built from the same domain sets as a Quick Access tile's click.
- * @param {Object} entity - Home Assistant entity state object.
- * @returns {boolean}
- */
-function hasEntityAction(entity) {
-  const liveEntity = state.STATES?.[entity?.entity_id] || entity;
-  if (!liveEntity?.entity_id) return false;
-  const domain = getEntityDomain(liveEntity.entity_id);
-  if (domain === 'lock' || domain === 'alarm_control_panel') return false;
-  // A dialog opens whatever the state; a toggle, a scene or a button does nothing while unavailable.
-  if (QUICK_ACCESS_DIALOG_DOMAINS.has(domain) || QUICK_ACCESS_CONTROLS_DOMAINS.has(domain)) {
-    return true;
-  }
-  return (
-    (QUICK_ACCESS_TOGGLE_DOMAINS.has(domain) ||
-      QUICK_ACCESS_ACTIVATE_DOMAINS.has(domain) ||
-      domain === 'automation') &&
-    isEntityAvailable(liveEntity)
-  );
-}
-
 // The command palette opens an entity's controls when it has any. A result with none, for a kind of
 // device the palette has explicit commands for (turn on, run, lock), says what the entity is now
 // and changes nothing: the command acts, so a stray Enter never switches a machine unseen. The
@@ -14233,7 +13480,7 @@ function hasEntityAction(entity) {
 // the palette offers named commands for those. A device the palette has no command for (a button,
 // a timer) still runs its own action, as it always has: the result is the only way to reach it
 // from there. The palette itself has already kept out of here the rows with nothing to open or
-// run (hasEntityAction).
+// run (command-palette.js hasEntityAction).
 function openEntityDetailModal(entity, options = {}) {
   try {
     if (openEntityControls(entity)) return;
@@ -14241,7 +13488,7 @@ function openEntityDetailModal(entity, options = {}) {
     if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
     if (!liveEntity?.entity_id) return;
     if (options.source === 'command-palette' && options.hasCommand) {
-      uiUtils.showToast(
+      dialogs.showToast(
         t('{{name}}: {{state}}', {
           name: utils.getEntityDisplayName(liveEntity),
           state: utils.getEntityDisplayState(liveEntity),
@@ -14275,138 +13522,29 @@ function executeHotkeyAction(entity, action) {
   try {
     entity = state.STATES?.[entity?.entity_id] || entity;
     if (!isEntityAvailable(entity)) return;
-    const domain = entity.entity_id.split('.')[0];
     // An action the domain does not offer (a toggle saved on a lock by an older version) runs as
     // the domain's first, which Settings shows for it.
     action = entityHotkeys.resolveEntityHotkeyAction(entity.entity_id, action);
-
-    // Validate numeric attributes to prevent NaN
-    const brightnessValue = Number(entity.attributes?.brightness);
-    const currentBrightness = !isNaN(brightnessValue) && brightnessValue >= 0 ? brightnessValue : 0;
-
-    const entityName = utils.getEntityDisplayName(entity);
-
-    switch (action) {
-      case 'toggle':
-        toggleEntity(entity);
-        break;
-      case 'turn_on':
-        websocket
-          .callService(domain, 'turn_on', { entity_id: entity.entity_id })
-          .catch((error) => handleServiceError(error, entityName));
-        break;
-      case 'turn_off':
-        websocket
-          .callService(domain, 'turn_off', { entity_id: entity.entity_id })
-          .catch((error) => handleServiceError(error, entityName));
-        break;
-      case 'brightness_up':
-        // Increase brightness by 20% (51 units out of 255)
-        if (domain === 'light') {
-          const newBrightness = Math.min(255, currentBrightness + 51);
-          websocket
-            .callService('light', 'turn_on', {
-              entity_id: entity.entity_id,
-              brightness: newBrightness,
-            })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'brightness_down':
-        // Decrease brightness by 20% (51 units out of 255)
-        if (domain === 'light') {
-          const newBrightness = Math.max(0, currentBrightness - 51);
-          websocket
-            .callService('light', 'turn_on', {
-              entity_id: entity.entity_id,
-              brightness: newBrightness,
-            })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'lock':
-        if (domain === 'lock') {
-          websocket
-            .callService('lock', 'lock', { entity_id: entity.entity_id })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'unlock':
-        // It asks first, as a click on the tile does. The chord can be pressed while the widget is
-        // hidden, where nobody would see the question, so the widget comes up to ask it.
-        if (domain === 'lock' && entity.state === 'locked') {
-          window.electronAPI?.showWindow?.()?.catch?.((error) => {
-            console.warn('Could not bring the widget up to ask about unlocking:', error);
-          });
-          void confirmThenUnlock(entity);
-        }
-        break;
-      case 'open':
-      case 'close': {
-        if (domain === 'cover') cancelDesktopPinServiceCall(`cover:${entity.entity_id}:position`);
-        const service = getOpenCloseService(entity, action === 'close');
-        if (service) {
-          websocket
-            .callService(domain, service, { entity_id: entity.entity_id })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
+    if (action === 'toggle') {
+      toggleEntity(entity);
+    } else if (action === 'unlock') {
+      // It asks first, as a click on the tile does. The chord can be pressed while the widget is
+      // hidden, where nobody would see the question, so the widget comes up to ask it.
+      if (describeEntity(entity).confirm) {
+        window.electronAPI?.showWindow?.()?.catch?.((error) => {
+          console.warn('Could not bring the widget up to ask about unlocking:', error);
+        });
+        void confirmThenUnlock(entity);
       }
-      case 'trigger':
-        // For automations
-        if (domain === 'automation') {
-          websocket
-            .callService('automation', 'trigger', { entity_id: entity.entity_id })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'press':
-        if (isPressActionDomain(domain)) {
-          websocket
-            .callService(domain, 'press', { entity_id: entity.entity_id })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'increase_speed':
-        // For fans - increase percentage by 33%
-        if (domain === 'fan') {
-          const percentageValue = Number(entity.attributes?.percentage);
-          const currentPercentage =
-            !isNaN(percentageValue) && percentageValue >= 0 ? percentageValue : 0;
-          const newPercentage = Math.min(100, currentPercentage + 33);
-          websocket
-            .callService('fan', 'set_percentage', {
-              entity_id: entity.entity_id,
-              percentage: newPercentage,
-            })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      case 'decrease_speed':
-        // For fans - decrease percentage by 33%
-        if (domain === 'fan') {
-          const percentageValue = Number(entity.attributes?.percentage);
-          const currentPercentage =
-            !isNaN(percentageValue) && percentageValue >= 0 ? percentageValue : 0;
-          const newPercentage = Math.max(0, currentPercentage - 33);
-          websocket
-            .callService('fan', 'set_percentage', {
-              entity_id: entity.entity_id,
-              percentage: newPercentage,
-            })
-            .catch((error) => handleServiceError(error, entityName));
-        }
-        break;
-      default:
-        // Default to toggle for backward compatibility
-        toggleEntity(entity);
+    } else {
+      runEntityAction(entity, action);
     }
   } catch (error) {
     console.error(
       `Error executing hotkey action '${action}' for entity ${entity.entity_id}:`,
       error
     );
-    uiUtils.showToast(t('Failed to execute hotkey action'), 'error', 3000);
+    dialogs.showToast(t('Failed to execute hotkey action'), 'error', 3000);
   }
 }
 
@@ -14718,7 +13856,7 @@ async function selectWeatherEntity(entityId) {
     // Show success toast
     const entity = state.STATES[entityId];
     if (entity) {
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Weather entity set to {{name}}', { name: utils.getEntityDisplayName(entity) }),
         'success',
         2000
@@ -14731,7 +13869,7 @@ async function selectWeatherEntity(entityId) {
       updateWeatherFromHA();
       populateWeatherEntitiesList();
     }
-    uiUtils.showToast(t('Failed to save weather entity selection'), 'error', 3000);
+    dialogs.showToast(t('Failed to save weather entity selection'), 'error', 3000);
   }
 }
 
@@ -14975,7 +14113,7 @@ function callMediaTileService(action) {
     if (mapped[action]) return callMediaPlayerService(primaryPlayer, mapped[action]);
   } catch (error) {
     console.error('Error calling media tile service:', error);
-    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
+    dialogs.showToast(t('Failed to control media player'), 'error', 3000);
   }
 }
 
@@ -15196,12 +14334,12 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     const name = utils.escapeHtml(utils.getEntityDisplayName(light));
     const currentBrightness =
       light.state === 'on' ? utils.brightnessToPercent(light.attributes.brightness) : 0;
-    const canSetBrightness = getDesktopPinCapabilities(light).canSetBrightness;
+    const canSetBrightness = getEntityCapabilities(light).canSetBrightness;
     // What the controls were built from; a different set (the light came back from unavailable,
     // an integration reported its colour modes late) rebuilds the dialog.
     const getLightSignature = (entity) =>
       JSON.stringify([
-        getDesktopPinCapabilities(entity).canSetBrightness,
+        getEntityCapabilities(entity).canSetBrightness,
         supportsLightColorTemp(entity.attributes || {}),
         supportsLightColor(entity.attributes || {}),
       ]);
@@ -15420,7 +14558,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -15532,7 +14670,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     }
 
     const applyColor = (hexColor) => {
-      const rgb = uiUtils.hexToRgb(hexColor);
+      const rgb = hexToRgb(hexColor);
       if (!rgb) return;
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
@@ -16123,7 +15261,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       unsubscribe();
       if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
       rangeController?.cancel();
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -16320,7 +15458,7 @@ function getFanSpeedSteps(attributes = {}) {
 
 function showFanControls(fanEntity, { replaces = null, focusSelector = null } = {}) {
   try {
-    const capabilities = getDesktopPinCapabilities(fanEntity);
+    const capabilities = getEntityCapabilities(fanEntity);
     const name = utils.escapeHtml(utils.getEntityDisplayName(fanEntity));
     const speedSteps = getFanSpeedSteps(fanEntity.attributes);
     // The slider's own unit: the fan's speeds, or percent. Everything else speaks percent.
@@ -16356,7 +15494,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
     // integration reported its speeds late) rebuilds the dialog.
     const getFanSignature = (entity) =>
       JSON.stringify([
-        getDesktopPinCapabilities(entity).canSetPercentage,
+        getEntityCapabilities(entity).canSetPercentage,
         getFanSpeedSteps(entity.attributes)?.count ?? null,
       ]);
     const openedSignature = getFanSignature(fanEntity);
@@ -16469,7 +15607,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -16609,7 +15747,7 @@ function coverVisualPercent(entity) {
 
 function showCoverControls(coverEntity, { replaces = null, focusSelector = null } = {}) {
   try {
-    const capabilities = getDesktopPinCapabilities(coverEntity);
+    const capabilities = getEntityCapabilities(coverEntity);
     // Close here moves the cover, so the footer's way out of the dialog says Done: a second Close
     // under it could not be told from the one that lowers the garage door.
     const availableActions = [
@@ -16636,7 +15774,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
     // What the controls were built from; a different set (the cover came back from unavailable, an
     // integration gained a position) rebuilds the dialog.
     const getCoverSignature = (entity) => {
-      const next = getDesktopPinCapabilities(entity);
+      const next = getEntityCapabilities(entity);
       return JSON.stringify([next.canSetPosition, next.canOpen, next.canClose, next.canStop]);
     };
     const openedSignature = getCoverSignature(coverEntity);
@@ -16759,7 +15897,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -17137,7 +16275,7 @@ function renderUpdateStatus() {
       if (checkUpdatesFocusGuard?.button !== checkBtn) {
         checkUpdatesFocusGuard = {
           button: checkBtn,
-          reenable: uiUtils.disableControlsKeepingFocus([checkBtn]),
+          reenable: dialogs.disableControlsKeepingFocus([checkBtn]),
         };
       }
     } else {
@@ -17245,7 +16383,7 @@ function handleEscapeKey(e) {
   // Escape belongs to whatever is on top of the dashboard: a key a control or dialog already used,
   // an open dialog (the dialog helper closes it and stops the key, but a dialog opened any other
   // way would still reach here), or an inline rename in the page tabs.
-  if (e.defaultPrevented || uiUtils.hasOpenDialog()) return;
+  if (e.defaultPrevented || dialogs.hasOpenDialog()) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
   if (pickedUpTile?.isConnected) {
     e.preventDefault();
@@ -17307,10 +16445,9 @@ export {
   getQuickAccessTileControls,
   executeQuickAccessControl,
   openEntityDetailModal,
-  hasEntityAction,
+  runEntityAction,
   describeServiceErrorMessage,
   isConnectionServiceError,
-  getEntityDomain,
   getWeatherEffectForState,
   handleDesktopPinActionRequest,
   renderDesktopPinnedTile,

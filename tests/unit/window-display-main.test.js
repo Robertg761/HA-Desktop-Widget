@@ -3,6 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 const { EventEmitter } = require('events');
 const displayHelpers = require('../../src/window-display.cjs');
+const { createMainConfigStore } = require('../helpers/main-config-store.js');
 const source = fs.readFileSync(require.resolve('../../main.js'), 'utf8');
 const primary = { id: 1, label: 'Laptop', workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
 const secondary = { id: 2, label: 'Desk', workArea: { x: 1920, y: 0, width: 1920, height: 1080 } };
@@ -25,11 +26,6 @@ function load({ supported = true, saved = true } = {}) {
       setPosition: jest.fn(),
     }),
     runSerializedConfigMutation: (fn) => Promise.resolve().then(fn),
-    saveConfigDurably: jest.fn(async () => ({
-      success: saved,
-      error: saved ? undefined : 'disk full',
-    })),
-    saveConfig: jest.fn(),
     refreshTrayMenu: jest.fn(),
     pushConfigToRenderer: jest.fn(),
     windowStateSaveTimer: null,
@@ -37,24 +33,49 @@ function load({ supported = true, saved = true } = {}) {
     clearTimeout,
     log: { warn: jest.fn() },
   };
+  const store = createMainConfigStore(context.config, {
+    pushConfigToRenderer: context.pushConfigToRenderer,
+  });
+  if (!saved) store.failWrites('disk full');
+  context.configStore = store.configStore;
+  // The bounds watcher's debounced save is only asked for here.
+  jest.spyOn(context.configStore, 'save').mockImplementation(() => {});
   const start = source.indexOf('function moveMainWindowToPosition(');
   const end = source.indexOf('// Save the monitor choice', start);
   if (start >= 0) vm.runInNewContext(source.slice(start, end), context);
   return {
     context,
+    store,
     setDisplays: (value) => {
       displays = value;
     },
   };
 }
 
+// Holds the next config write until the test finishes it; `started` settles once it has begun.
+function holdNextWrite(store) {
+  let finish;
+  const started = new Promise((resolve) => {
+    store.interceptNextWrite(
+      () =>
+        new Promise((done) => {
+          finish = done;
+          resolve();
+        })
+    );
+  });
+  return { started, finish: () => finish() };
+}
+
 test('tray selection saves before moving, and broadcasts the saved preference', async () => {
-  const { context } = load();
+  const { context, store } = load();
+  const written = jest.fn();
+  store.interceptNextWrite(written);
   expect(typeof context.applyWindowDisplayChoice).toBe('function');
   await context.applyWindowDisplayChoice('2');
   expect(context.config.windowDisplay).toMatchObject({ id: '2', offset: { x: 100, y: 100 } });
   expect(context.config.windowPosition).toEqual({ x: 2020, y: 100 });
-  expect(context.saveConfigDurably.mock.invocationCallOrder[0]).toBeLessThan(
+  expect(written.mock.invocationCallOrder[0]).toBeLessThan(
     context.mainWindow.setPosition.mock.invocationCallOrder[0]
   );
   expect(context.mainWindow.setPosition).toHaveBeenCalledWith(2020, 100);
@@ -72,11 +93,11 @@ test('a failed save leaves both the window and preference unchanged', async () =
 
 test('an unplugged selection and compositor-owned placement cannot be applied', async () => {
   for (const options of [{ supported: false }, {}]) {
-    const { context, setDisplays } = load(options);
+    const { context, store, setDisplays } = load(options);
     if (options.supported !== false) setDisplays([primary]);
     expect(typeof context.applyWindowDisplayChoice).toBe('function');
     await context.applyWindowDisplayChoice('2');
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
     expect(context.mainWindow.setPosition).not.toHaveBeenCalled();
   }
 });
@@ -154,7 +175,7 @@ test('Automatic durably keeps a drag that has not reached the bounds save timer 
 test('a bounds save queued during a slow monitor save cannot undo the monitor choice', async () => {
   jest.useFakeTimers();
   try {
-    const { context } = load();
+    const { context, store } = load();
     const queued = [];
     let moved;
     Object.assign(context, {
@@ -168,7 +189,6 @@ test('a bounds save queued during a slow monitor save cannot undo the monitor ch
         moved = handlers.onMove;
       },
       runBackgroundConfigMutation: (callback) => queued.push(callback),
-      saveConfig: jest.fn(),
     });
     const start = source.indexOf('function watchMainWindowBounds(');
     vm.runInNewContext(
@@ -177,18 +197,12 @@ test('a bounds save queued during a slow monitor save cannot undo the monitor ch
     );
     context.watchMainWindowBounds(context.mainWindow);
     moved();
-    let finishSave;
-    context.saveConfigDurably.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishSave = resolve;
-        })
-    );
+    const save = holdNextWrite(store);
     const selection = context.applyWindowDisplayChoice('2');
-    await Promise.resolve();
+    await save.started;
     jest.advanceTimersByTime(400);
     expect(queued).toHaveLength(1);
-    finishSave({ success: true });
+    save.finish();
     await selection;
     queued[0]();
     expect(context.config.windowDisplay.id).toBe('2');
@@ -216,7 +230,6 @@ test('a queued one-DIP user resize survives a monitor choice ahead of its save',
         resized = handlers.onResize;
       },
       runBackgroundConfigMutation: (callback) => queued.push(callback),
-      saveConfig: jest.fn(),
     });
     context.mainWindow.getBounds = () => ({ ...bounds });
     context.mainWindow.setPosition.mockImplementation((x, y) => {
@@ -346,9 +359,9 @@ test.each([
   }) => {
     jest.useFakeTimers();
     try {
-      const { context } = load();
+      const { context, store } = load();
       let bounds = { x: 100, y: 100, width: 500, height: 600 };
-      let resized, finishSave, persisted;
+      let resized, persisted;
       const queued = [];
       Object.assign(context, {
         process: { platform },
@@ -361,9 +374,9 @@ test.each([
           resized = handlers.onResize;
         },
         runBackgroundConfigMutation: (fn) => queued.push(fn),
-        saveConfig: jest.fn(() => {
-          persisted = JSON.parse(JSON.stringify(context.config));
-        }),
+      });
+      context.configStore.save.mockImplementation(() => {
+        persisted = JSON.parse(JSON.stringify(context.config));
       });
       context.mainWindow.getBounds = () => ({ ...bounds });
       context.mainWindow.setPosition.mockImplementation((x, y) => {
@@ -388,19 +401,14 @@ test.each([
         await context.applyWindowDisplayChoice('2');
         expect(bounds.width).toBe(501);
       }
-      context.saveConfigDurably.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            finishSave = resolve;
-          })
-      );
+      const save = holdNextWrite(store);
       const selection = context.applyWindowDisplayChoice(choice);
-      await Promise.resolve();
+      await save.started;
       if (manualMove) context.mainWindow.emit('will-move', {}, { ...bounds, ...edit });
       Object.assign(bounds, edit);
       if (settled) resized();
       if (queuedSave) jest.advanceTimersByTime(400);
-      finishSave({ success: true });
+      save.finish();
       await selection;
       for (const fn of queued) fn();
       jest.advanceTimersByTime(400);
@@ -432,7 +440,6 @@ test('dragging to another monitor refreshes the tray with the new preference', (
         moved = handlers.onMove;
       },
       runBackgroundConfigMutation: (callback) => callback(),
-      saveConfig: jest.fn(),
     });
     let menuSelection;
     context.refreshTrayMenu.mockImplementation(() => {

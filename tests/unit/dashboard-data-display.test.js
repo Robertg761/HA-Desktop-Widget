@@ -38,43 +38,18 @@ jest.mock('../../src/camera.js', () => ({
 
 jest.mock('../../src/ui-utils.js', () => {
   return {
-    showToast: jest.fn(),
-    showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
-    hexToRgb: jest.fn((hex) => {
-      if (!hex || typeof hex !== 'string') return null;
-      const normalized = hex.replace('#', '').trim();
-      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-      const value =
-        normalized.length === 3
-          ? normalized
-              .split('')
-              .map((ch) => ch + ch)
-              .join('')
-          : normalized;
-      return {
-        r: Number.parseInt(value.slice(0, 2), 16),
-        g: Number.parseInt(value.slice(2, 4), 16),
-        b: Number.parseInt(value.slice(4, 6), 16),
-      };
-    }),
-    miredsToKelvin: jest.fn((mireds) => {
-      const value = Number(mireds);
-      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-    }),
-    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-      const features = Number(supportedFeatures);
-      const flag = Number(featureFlag);
-      return (
-        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-      );
-    }),
   };
 });
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
@@ -116,7 +91,7 @@ jest.mock('../../src/websocket.js', () => ({
 // Import modules after mocks
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
-const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
 
@@ -173,7 +148,7 @@ describe('dashboard data display', () => {
     state.setServices({});
     state.setUnitSystem({ temperature: '°C' });
     mockCallService.mockReset().mockResolvedValue({ success: true });
-    uiUtils.showConfirm.mockReset().mockResolvedValue(false);
+    dialogs.showConfirm.mockReset().mockResolvedValue(false);
   });
   afterEach(() => {
     ui.exitReorganizeMode();
@@ -229,7 +204,7 @@ describe('dashboard data display', () => {
       expect(panel.getAttribute('role')).toBe('button');
       expect(panel.title).toBe('Use the command palette to control Home alarm');
       panel.click();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         'Use the command palette to control Home alarm',
         'info',
         4000
@@ -338,10 +313,10 @@ describe('dashboard data display', () => {
 
       it('asks before it unlocks, and unlocks when told to', async () => {
         renderTiles([lock('locked')]);
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         tile('lock.door').click();
         await flush();
-        expect(uiUtils.showConfirm).toHaveBeenCalledWith('Unlock Back door', 'Are you sure?', {
+        expect(dialogs.showConfirm).toHaveBeenCalledWith('Unlock Back door', 'Are you sure?', {
           confirmText: 'Unlock',
           confirmClass: 'btn-primary',
         });
@@ -352,13 +327,13 @@ describe('dashboard data display', () => {
         renderTiles([lock('locked')]);
         tile('lock.door').click();
         await flush();
-        expect(uiUtils.showConfirm).toHaveBeenCalled();
+        expect(dialogs.showConfirm).toHaveBeenCalled();
         expect(mockCallService).not.toHaveBeenCalled();
       });
 
       it('does not unlock for an answer that comes after the lock changed on its own', async () => {
         renderTiles([lock('locked')]);
-        uiUtils.showConfirm.mockImplementationOnce(async () => {
+        dialogs.showConfirm.mockImplementationOnce(async () => {
           liveUpdate(lock('unlocked'));
           return true;
         });
@@ -371,7 +346,7 @@ describe('dashboard data display', () => {
         renderTiles([lock('unlocked')]);
         tile('lock.door').click();
         await flush();
-        expect(uiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(dialogs.showConfirm).not.toHaveBeenCalled();
         expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.door' });
       });
 
@@ -379,18 +354,18 @@ describe('dashboard data display', () => {
         renderTiles([lock('unlocked')]);
         ui.executeHotkeyAction(lock('unlocked'), 'lock');
         await flush();
-        expect(uiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(dialogs.showConfirm).not.toHaveBeenCalled();
         expect(mockCallService).toHaveBeenCalledWith('lock', 'lock', { entity_id: 'lock.door' });
       });
 
       // The chord can be pressed while the widget is hidden, so the widget comes up to ask.
       it('asks of an Unlock hotkey as it asks of a click, with the widget brought up', async () => {
         renderTiles([lock('locked')]);
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         ui.executeHotkeyAction(lock('locked'), 'unlock');
         await flush();
         expect(mockElectronAPI.showWindow).toHaveBeenCalled();
-        expect(uiUtils.showConfirm).toHaveBeenCalledWith('Unlock Back door', 'Are you sure?', {
+        expect(dialogs.showConfirm).toHaveBeenCalledWith('Unlock Back door', 'Are you sure?', {
           confirmText: 'Unlock',
           confirmClass: 'btn-primary',
         });
@@ -401,7 +376,7 @@ describe('dashboard data display', () => {
         renderTiles([lock('locked')]);
         ui.executeHotkeyAction(lock('locked'), 'unlock');
         await flush();
-        expect(uiUtils.showConfirm).toHaveBeenCalled();
+        expect(dialogs.showConfirm).toHaveBeenCalled();
         expect(mockCallService).not.toHaveBeenCalled();
       });
 
@@ -412,7 +387,7 @@ describe('dashboard data display', () => {
         ui.executeHotkeyAction(lock('locked'), 'toggle');
         ui.executeHotkeyAction(lock('locked'), undefined);
         await flush();
-        expect(uiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(dialogs.showConfirm).not.toHaveBeenCalled();
         expect(mockCallService.mock.calls).toEqual([
           ['lock', 'lock', { entity_id: 'lock.door' }],
           ['lock', 'lock', { entity_id: 'lock.door' }],
@@ -862,7 +837,7 @@ describe('dashboard data display', () => {
       state.setStates({ 'sensor.a': entity('sensor.a', '1', { unit_of_measurement: '°C' }) });
       ui.renderActiveTab();
       await removeFirstTile();
-      expect(uiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(dialogs.showConfirm).toHaveBeenCalledWith(
         'Delete graph',
         'This removes the graph and its tile.',
         { confirmText: 'Delete', confirmClass: 'btn-danger' }
@@ -876,7 +851,7 @@ describe('dashboard data display', () => {
       });
       renderTiles([entity('light.lamp', 'on', { friendly_name: 'Hue lamp 3' })]);
       await removeFirstTile();
-      expect(uiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(dialogs.showConfirm).toHaveBeenCalledWith(
         // Not 'Remove from Quick Access' above a question about one page.
         'Remove tile',
         // The page it is taken off, since the same entity on another page stays.
@@ -897,7 +872,7 @@ describe('dashboard data display', () => {
       state.setStates({ 'light.other': entity('light.other', 'off') });
       ui.renderActiveTab();
       await removeFirstTile();
-      expect(uiUtils.showConfirm.mock.calls[0][1]).toBe('Remove “Porch light” from “All”?');
+      expect(dialogs.showConfirm.mock.calls[0][1]).toBe('Remove “Porch light” from “All”?');
     });
   });
 
@@ -1374,7 +1349,7 @@ describe('dashboard data display', () => {
       state.setStates({ 'sensor.phase': text });
       ui.openEntityControls(text);
       expect(document.querySelector('.sensor-detail-modal')).toBeNull();
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Moon phase: Unknown', 'info', 3000);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Moon phase: Unknown', 'info', 3000);
     });
 
     it('does not read every reading out: its value is spoken at most once in a few seconds', async () => {
@@ -1465,7 +1440,7 @@ describe('dashboard data display', () => {
       ).toEqual(['reset-rename-btn', 'cancel-rename-btn', 'save-rename-btn']);
       modal.querySelector('#reset-rename-btn').click();
       await flush();
-      expect(uiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(dialogs.showConfirm).toHaveBeenCalledWith(
         'Reset tile settings to defaults',
         'Are you sure?',
         { confirmText: 'Reset', confirmClass: 'btn-danger' }
@@ -1540,7 +1515,7 @@ describe('dashboard data display', () => {
       const report = jest.spyOn(input, 'reportValidity').mockReturnValue(false);
       modal.querySelector('.modal-footer button').click();
       expect(report).toHaveBeenCalled();
-      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Invalid value', 'error');
+      expect(dialogs.showToast).not.toHaveBeenCalledWith('Invalid value', 'error');
       expect(mockCallService).not.toHaveBeenCalled();
     });
 
@@ -1553,7 +1528,7 @@ describe('dashboard data display', () => {
       modal.querySelector('input').value = '3';
       modal.querySelector('.modal-footer button').click();
       await flush();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Value out of range'),
         'error',
         4000

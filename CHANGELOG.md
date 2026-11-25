@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - See what needs you at a glance on the new **Right now** page. It sits after your pages and fills itself with lights and fans that are on, players that are playing, running timers, open doors, windows and garage doors, unlocked locks, low batteries and offline devices. Click a tile to switch it off, or use **Turn all off** for every light and fan on the page. A tile you just switched off stays a few seconds before it leaves. Hidden entities and a device's own settings are left out, and an offline device shows once. Turn the page off in **Settings > Dashboard > Right now**.
 
+### Changed
+
+- Turn humidifiers and sirens on and off from the command palette, as their tiles already could. Palette on/off commands now update the tile at once, like a tile click.
+- Toggle automations from the Omarchy bar, as the widget already did.
+
+### Fixed
+
+- Keep the last volume change when the media dialog is closed right after moving the slider.
+- Report a Start at login change on Linux that did not stick, as Windows already did, instead of showing it as saved.
+- Keep tray entities when an entity id is repaired after Home Assistant loads.
+- Stop one failing part of the widget from holding up the others when entity states change. An error while drawing tiles no longer stops alerts, the tray and desktop pins from updating.
+- Stop the popup hotkey mode settings from replacing your settings with an error after a failed save.
+- Show an error instead of a success message when clearing the weather override is not saved.
+- Stop an entity rename from saying it updated references to an entity you never used.
+
 ## [4.2.1] - 2026-11-21
 
 ### Added

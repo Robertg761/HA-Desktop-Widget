@@ -3,7 +3,6 @@ jest.mock('../../src/ui.js', () => ({
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
   isRightNowPageShowing: jest.fn(() => false),
   requestAlarmCode: jest.fn(async () => null),
-  getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
 }));
 jest.mock('../../src/websocket.js', () => ({
   __esModule: true,

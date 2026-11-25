@@ -7,8 +7,8 @@
 
 const { createMockElectronAPI, getMockConfig } = require('../mocks/electron.js');
 
-jest.mock('../../src/ui-utils.js', () => ({
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 

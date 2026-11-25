@@ -10,8 +10,8 @@ const {
 const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
-jest.mock('../../src/ui-utils.js', () => ({
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 
@@ -65,54 +65,7 @@ beforeEach(() => {
 describe('hotkeys module', () => {
   // Require modules once
   const hotkeys = require('../../src/hotkeys.js');
-  const showToast = require('../../src/ui-utils.js').showToast;
-
-  describe('initializeHotkeys', () => {
-    it('should load hotkey configuration from state.CONFIG', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-        },
-      };
-      state.setConfig(config);
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should handle missing globalHotkeys config gracefully', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = undefined;
-      state.setConfig(config);
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should handle null config gracefully', () => {
-      mockState.CONFIG = null;
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should catch and log errors during initialization', () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation();
-
-      // Force an error by making CONFIG a getter that throws
-      const configSpy = jest.spyOn(state, 'CONFIG', 'get').mockImplementation(() => {
-        throw new Error('Test error');
-      });
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith('Error initializing hotkeys:', expect.any(Error));
-
-      consoleError.mockRestore();
-      configSpy.mockRestore();
-
-      // Restore normal state
-      state.setConfig(null);
-    });
-  });
+  const showToast = require('../../src/dialogs.js').showToast;
 
   describe('toggleHotkeys', () => {
     beforeEach(() => {
@@ -122,6 +75,21 @@ describe('hotkeys module', () => {
         hotkeys: {},
       };
       state.setConfig(config);
+    });
+
+    it('switches hotkeys on in the config the store holds', async () => {
+      // The store holds a new config for every change, and freezes it under test: anything that
+      // kept the old one and edits it would throw here.
+      const configStore = require('../../src/config-store.js').default;
+      configStore.adopt({
+        ...getMockConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'token' },
+        globalHotkeys: { enabled: false, hotkeys: {} },
+      });
+
+      await expect(hotkeys.toggleHotkeys(true)).resolves.toBe(true);
+      expect(state.CONFIG.globalHotkeys.enabled).toBe(true);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys enabled', 'success', 2000);
     });
 
     it('should call IPC to enable hotkeys', async () => {
@@ -571,13 +539,13 @@ describe('hotkeys module', () => {
     });
 
     it('cancels itself, not the Settings dialog under it, on Escape with focus on the page', async () => {
-      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const dialogs = jest.requireActual('../../src/dialogs.js');
       const settings = document.createElement('div');
       settings.className = 'modal';
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
+      dialogs.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const capture = hotkeys.captureHotkey();
       // A click on the overlay's text leaves focus on <body>.
@@ -595,7 +563,7 @@ describe('hotkeys module', () => {
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
       );
       expect(settingsEscape).toHaveBeenCalledTimes(1);
-      uiUtils.releaseFocusTrap(settings);
+      dialogs.releaseFocusTrap(settings);
       settings.remove();
     });
 
@@ -861,7 +829,7 @@ describe('hotkeys module', () => {
     });
 
     it('says it waits for a hotkey, where a saved row says it was updated', async () => {
-      const showToast = require('../../src/ui-utils.js').showToast;
+      const showToast = require('../../src/dialogs.js').showToast;
       showToast.mockClear();
 
       choose('light.desk', 'turn_off');
@@ -1812,13 +1780,29 @@ describe('hotkeys module', () => {
   });
 
   it('offers every domain a hotkey can act on exactly the actions the hotkey can run', () => {
-    const { ENTITY_HOTKEY_ACTIONS } = require('../../src/entity-hotkeys.cjs');
+    const { getEntityHotkeyActions } = require('../../src/entity-hotkeys.cjs');
+    const domains = [
+      'light',
+      'switch',
+      'scene',
+      'script',
+      'automation',
+      'button',
+      'input_button',
+      'input_boolean',
+      'fan',
+      'cover',
+      'valve',
+      'lock',
+      'humidifier',
+      'siren',
+    ];
     const config = getMockConfig();
     config.globalHotkeys = { enabled: true, hotkeys: {} };
     state.setConfig(config);
     state.setStates(
       Object.fromEntries(
-        Object.keys(ENTITY_HOTKEY_ACTIONS).map((domain) => [
+        domains.map((domain) => [
           `${domain}.one`,
           { entity_id: `${domain}.one`, state: 'off', attributes: {} },
         ])
@@ -1834,7 +1818,9 @@ describe('hotkeys module', () => {
         [...select.options].map((option) => option.value),
       ])
     );
-    expect(offered).toEqual(ENTITY_HOTKEY_ACTIONS);
+    expect(offered).toEqual(
+      Object.fromEntries(domains.map((domain) => [domain, getEntityHotkeyActions(`${domain}.one`)]))
+    );
     for (const option of document.querySelectorAll('#hotkeys-list option')) {
       expect(option.textContent.trim()).not.toBe('');
     }
@@ -1951,7 +1937,6 @@ describe('hotkeys module', () => {
 
   describe('module exports', () => {
     it('should export all required functions', () => {
-      expect(typeof hotkeys.initializeHotkeys).toBe('function');
       expect(typeof hotkeys.renderHotkeysTab).toBe('function');
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');

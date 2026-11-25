@@ -21,16 +21,16 @@ jest.mock('../../src/icons.js', () => ({
 }));
 jest.mock('sortablejs', () => ({ create: jest.fn(() => ({ destroy: jest.fn() })) }));
 jest.mock('../../src/ui-utils.js', () => ({
-  showToast: jest.fn(),
-  showConfirm: jest.fn().mockResolvedValue(false),
   showLoading: jest.fn(),
   setStatus: jest.fn(),
   applyTheme: jest.fn(),
   applyUiPreferences: jest.fn(),
-  hexToRgb: jest.fn(() => null),
-  miredsToKelvin: jest.fn(() => null),
-  hasSupportedFeature: jest.fn(() => false),
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+}));
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
 }));
 jest.mock('../../src/websocket.js', () => ({
   isConnected: jest.fn(() => true),

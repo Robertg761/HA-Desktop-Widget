@@ -3,6 +3,7 @@
  */
 
 const { replaceConfigEntityIdReferences } = require('../../src/config-entity-references.cjs');
+const { IPC_ROUTES } = require('../../src/ipc-routes.cjs');
 const fs = require('fs');
 const path = require('path');
 
@@ -100,6 +101,21 @@ describe('replaceConfigEntityIdReferences', () => {
     });
   });
 
+  it('does not count tidying duplicate entries as a change when the id is not referenced', () => {
+    const config = { favoriteEntities: ['switch.c', 'switch.c'] };
+    const result = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
+    expect(result.changed).toBe(false);
+    expect(result.config).toBe(config);
+  });
+
+  it('still keeps one copy of each id when the renamed id is referenced', () => {
+    const config = { favoriteEntities: ['switch.c', oldEntityId, 'switch.c', newEntityId] };
+    expect(replaceConfigEntityIdReferences(config, oldEntityId, newEntityId)).toEqual({
+      config: { favoriteEntities: ['switch.c', newEntityId] },
+      changed: true,
+    });
+  });
+
   it('wires replacement through the main-process serialized config mutation queue', () => {
     const mainSource = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
     const handlerStart = mainSource.indexOf("'replace-config-entity-id'");
@@ -107,7 +123,7 @@ describe('replaceConfigEntityIdReferences', () => {
     const handler = mainSource.slice(handlerStart, handlerEnd);
 
     expect(handlerStart).toBeGreaterThan(-1);
-    expect(handler).toContain('serializeConfigMutationHandler(async');
+    expect(IPC_ROUTES['replace-config-entity-id'].queue).toBe('config');
     expect(handler).toContain('replaceConfigEntityIdReferences(config, oldEntityId, newEntityId)');
   });
 });

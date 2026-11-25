@@ -1,11 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { defaultSettings } = require('../../packages/widget-renderer/src/settings-fields.cjs');
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
 function loadEnsure() {
   const start = mainSource.indexOf('function ensureFollowOmarchyDefault');
-  const end = mainSource.indexOf('function getProfileSyncConfig', start);
+  const end = mainSource.indexOf('function hasDeferredSecureConfigWork', start);
   const context = {};
   vm.runInNewContext(mainSource.slice(start, end), context);
   return context.ensureFollowOmarchyDefault;
@@ -42,9 +43,8 @@ describe('Follow Omarchy theme default', () => {
   });
 
   it('is part of the shipped defaults and every config load path', () => {
-    expect(mainSource).toMatch(
-      /enableInteractionDebugLogs: false,\n[^\n]*\n\s+followOmarchy: true,/
-    );
+    expect(defaultSettings().ui.followOmarchy).toBe(true);
+    expect(mainSource).toMatch(/\.\.\.settingsFields\.defaultSettings\(\),/);
     // Normal load, first run or legacy migration, corrupt-config recovery, and the outer fallback.
     expect(mainSource.match(/ensureFollowOmarchyDefault\(config\);/g)).toHaveLength(4);
   });

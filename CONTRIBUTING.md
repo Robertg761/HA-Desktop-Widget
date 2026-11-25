@@ -86,7 +86,7 @@ Thank you for your interest in contributing to HA Desktop Widget! This document 
 
 ### Dialogs, Focus and Toasts
 
-- **Dialogs**: Open every dialog with `openDialog()` and close it with `closeDialog()` from `src/ui-utils.js`. They give you the role, focus trap, Escape and Enter handling, backdrop dismissal, stacking over other dialogs and focus return to whatever opened it. Do not add your own keydown or backdrop listener to a dialog.
+- **Dialogs**: Open every dialog with `openDialog()` and close it with `closeDialog()` from `src/dialogs.js`. They give you the role, focus trap, Escape and Enter handling, backdrop dismissal, stacking over other dialogs and focus return to whatever opened it. Do not add your own keydown or backdrop listener to a dialog.
 - **Initial focus**: A dialog starts on its first control, not on the header's Close button. Use `initialFocus` (or `data-initial-focus`) for a different start, and `focusFallback` when the opener may be gone by the time the dialog closes.
 - **Rebuilding the UI**: Wrap a re-render in `renderKeepingFocus()` and give controls a `data-focus-key` so focus survives it. Use `disableControlsKeepingFocus()` instead of setting `disabled` on a control that has focus.
 - **Toasts**: Use `showToast()`. Errors stay until dismissed, repeats are folded into one toast, and a toast raised by a surface can be cleared with its `source` option and `dismissToasts()`.

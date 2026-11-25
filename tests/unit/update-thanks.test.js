@@ -14,7 +14,7 @@ Object.defineProperty(window, 'matchMedia', {
   value: jest.fn().mockImplementation((query) => ({ matches: false, media: query })),
 });
 
-const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const {
   LAST_RUN_VERSION_KEY,
   UPDATE_NOTICE_MS,
@@ -97,7 +97,7 @@ describe('the after-update notice', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="toast-container" role="status"></div>';
     jest.useFakeTimers();
-    uiUtils.__forceAnimatedModalTransitions(false);
+    dialogs.__forceAnimatedModalTransitions(false);
   });
 
   afterEach(() => {

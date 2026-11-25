@@ -10,6 +10,8 @@ const {
 const { clampLayerPosition } = require('../../src/layer-placement.cjs');
 const { DESKTOP_PIN_NUDGE_LIMIT } = require('../../src/desktop-pin-resize.cjs');
 const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
+const settingsFields = require('../../packages/widget-renderer/src/settings-fields.cjs');
+const { createMainConfigStore } = require('../helpers/main-config-store.js');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -55,6 +57,7 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
     layerDrag: null,
     DESKTOP_PIN_NUDGE_LIMIT,
     snapDesktopPinPosition,
+    settingsFields,
     clampLayerPosition,
     desktopPinEditMode: true,
     desktopPinContentMinBounds: new Map(),
@@ -68,8 +71,6 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
     getDesktopPinWindowBoundsInWorkArea: getDesktopPinWindowBounds,
     applyDesktopPinWindowShape: jest.fn(),
     sendDesktopPinUpdate: jest.fn(),
-    saveConfigDurably: jest.fn().mockResolvedValue({ success: true }),
-    saveConfig: jest.fn(),
     pushConfigToRenderer: jest.fn(),
     runBackgroundConfigMutation: jest.fn((task) => task()),
     runPostSaveSideEffect: async (_warnings, _label, task) => task(),
@@ -80,6 +81,10 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
     setTimeout,
     clearTimeout,
   };
+  const store = createMainConfigStore(context.config, {
+    pushConfigToRenderer: context.pushConfigToRenderer,
+  });
+  context.configStore = store.configStore;
   vm.runInNewContext(
     [
       sliceMain(
@@ -101,7 +106,7 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
   );
   // The window was placed when it opened, which is what a resize starts from.
   if (layer) context.placeLayerWindow(pinWindow);
-  return { context, pinWindow, getDisplayMatching, place };
+  return { context, pinWindow, getDisplayMatching, place, store };
 }
 
 describe('resizing a desktop pin in the main process', () => {
@@ -110,7 +115,7 @@ describe('resizing a desktop pin in the main process', () => {
   });
 
   it('applies each drag step to the window without writing config or redrawing every window', async () => {
-    const { context, pinWindow } = loadResizeRuntime({
+    const { context, pinWindow, store } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
 
@@ -129,7 +134,7 @@ describe('resizing a desktop pin in the main process', () => {
       width: 220,
       height: 160,
     });
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
     expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
     expect(context.config.desktopPins['light.office']).toEqual({
       x: 100,
@@ -169,7 +174,7 @@ describe('resizing a desktop pin in the main process', () => {
   });
 
   it('writes the size once, when the drag is reported finished', async () => {
-    const { context } = loadResizeRuntime({
+    const { context, store } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
     await context.updateDesktopPinBounds('light.office', {
@@ -184,7 +189,7 @@ describe('resizing a desktop pin in the main process', () => {
     });
 
     expect(result).toMatchObject({ success: true, pinBounds: { width: 210, height: 190 } });
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
     expect(context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
     expect(context.desktopPinResizeSessions.size).toBe(0);
   });
@@ -214,7 +219,7 @@ describe('resizing a desktop pin in the main process', () => {
 
   it('writes the size itself if the renderer never finishes the drag', async () => {
     jest.useFakeTimers();
-    const { context } = loadResizeRuntime({
+    const { context, store } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
     await context.updateDesktopPinBounds('light.office', {
@@ -222,12 +227,12 @@ describe('resizing a desktop pin in the main process', () => {
       height: 180,
       resize: { corner: 'bottom-right', final: false },
     });
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
 
     await jest.advanceTimersByTimeAsync(1600);
 
     // Durably, and the session is not given up until the write has succeeded.
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
     expect(context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
     expect(context.desktopPinResizeSessions.size).toBe(0);
     expect(context.config.desktopPins['light.office']).toMatchObject({ width: 200, height: 180 });
@@ -235,7 +240,7 @@ describe('resizing a desktop pin in the main process', () => {
 
   it('keeps the drag when a step reached the config queue before the idle write did', async () => {
     jest.useFakeTimers();
-    const { context } = loadResizeRuntime({
+    const { context, store } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
     const queued = [];
@@ -254,8 +259,7 @@ describe('resizing a desktop pin in the main process', () => {
     await step(210);
     await queued[0]();
 
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
     expect(context.pushConfigToRenderer).not.toHaveBeenCalled();
     expect(context.desktopPinResizeSessions.size).toBe(1);
     context.endDesktopPinResizeSession('light.office');
@@ -295,12 +299,12 @@ describe('resizing a desktop pin in the main process', () => {
       });
 
     it('puts the pin back to what was saved before the drag, not to the last step', async () => {
-      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      const { context, pinWindow, store } = loadResizeRuntime({ bounds: start });
       await frame(context, 200);
       await frame(context, 220);
       expect(context.config.desktopPins['light.office']).toMatchObject({ x: 48, width: 220 });
       context.sendDesktopPinUpdate.mockClear();
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       const result = await frame(context, 240, 'top-left', true);
 
@@ -316,14 +320,14 @@ describe('resizing a desktop pin in the main process', () => {
 
     it('goes back to the size an earlier idle save wrote', async () => {
       jest.useFakeTimers();
-      const { context } = loadResizeRuntime({ bounds: start });
+      const { context, store } = loadResizeRuntime({ bounds: start });
       await frame(context, 200);
       // The renderer went quiet for a moment, so main wrote the size it had reached.
       await jest.advanceTimersByTimeAsync(1600);
-      expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+      expect(store.writeCount()).toBe(1);
       const written = { ...context.config.desktopPins['light.office'] };
       await frame(context, 220);
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       const result = await frame(context, 240, 'top-left', true);
 
@@ -333,9 +337,9 @@ describe('resizing a desktop pin in the main process', () => {
 
     it('puts the pin back when the write after a quiet moment fails, and a drag that resumes goes back to the saved size', async () => {
       jest.useFakeTimers();
-      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      const { context, pinWindow, store } = loadResizeRuntime({ bounds: start });
       await frame(context, 200);
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       await jest.advanceTimersByTimeAsync(1600);
 
@@ -352,7 +356,7 @@ describe('resizing a desktop pin in the main process', () => {
       // The drag carries on and its own final save fails too: it goes back to the file's size,
       // not to the intermediate one the failed write never stored.
       await frame(context, 230);
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
       const result = await frame(context, 240, 'top-left', true);
       expect(result.pinBounds).toEqual(start);
       expect(context.config.desktopPins['light.office']).toEqual(start);
@@ -360,13 +364,13 @@ describe('resizing a desktop pin in the main process', () => {
 
     it('does not bring back a pin that was unpinned before the failed write ran', async () => {
       jest.useFakeTimers();
-      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
+      const { context, pinWindow, store } = loadResizeRuntime({ bounds: start });
       await frame(context, 200);
       // Unpinning removes the pin from the config but leaves the drag's session to run out.
       delete context.config.desktopPins['light.office'];
       pinWindow.setBounds.mockClear();
       context.sendDesktopPinUpdate.mockClear();
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       await jest.advanceTimersByTimeAsync(1600);
 
@@ -377,8 +381,8 @@ describe('resizing a desktop pin in the main process', () => {
     });
 
     it('restores a single keyboard step that cannot be saved', async () => {
-      const { context, pinWindow } = loadResizeRuntime({ bounds: start });
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      const { context, pinWindow, store } = loadResizeRuntime({ bounds: start });
+      store.failNextWrite('disk full');
 
       const result = await frame(context, 200, 'bottom-right', true);
 
@@ -468,28 +472,23 @@ describe('resizing a desktop pin in the main process', () => {
     });
 
     it('writes the new position with the size when the drag ends', async () => {
-      const { context } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      const { context, store } = loadResizeRuntime({ bounds: start, layer: { monitor } });
       await drag(context, { corner: 'top-left', width: 200, height: 180 });
-      let saved = null;
-      context.saveConfigDurably.mockImplementationOnce(async () => {
-        saved = JSON.parse(JSON.stringify(context.config));
-        return { success: true };
-      });
-
       await drag(context, { corner: 'top-left', width: 210, height: 190 }, true);
+      const saved = store.written();
 
       expect(saved.layerPositions['light.office']['DP-2']).toEqual({ x: 138, y: 158 });
       expect(saved.desktopPins['light.office']).toMatchObject({ width: 210, height: 190 });
     });
 
     it('puts the layer position back with the size when the final save fails', async () => {
-      const { context, pinWindow, place } = loadResizeRuntime({
+      const { context, pinWindow, place, store } = loadResizeRuntime({
         bounds: start,
         layer: { monitor },
       });
       await drag(context, { corner: 'top-left', width: 200, height: 180 });
       expect(layerPositionOf(context)).toEqual({ x: 148, y: 168 });
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       const result = await drag(context, { corner: 'top-left', width: 220, height: 200 }, true);
 
@@ -516,11 +515,11 @@ describe('resizing a desktop pin in the main process', () => {
     });
 
     it('puts a surface the app placed itself back where it was drawn when the save fails', async () => {
-      const { context, place } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      const { context, place, store } = loadResizeRuntime({ bounds: start, layer: { monitor } });
       context.layerPositions.set('light.office', { x: 124, y: 154 });
       await drag(context, { corner: 'top-left', width: 200, height: 180 });
       expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 92, y: 122 });
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       const result = await drag(context, { corner: 'top-left', width: 220, height: 200 }, true);
 
@@ -534,10 +533,10 @@ describe('resizing a desktop pin in the main process', () => {
 
     it('does the same when a write after a quiet moment fails', async () => {
       jest.useFakeTimers();
-      const { context, place } = loadResizeRuntime({ bounds: start, layer: { monitor } });
+      const { context, place, store } = loadResizeRuntime({ bounds: start, layer: { monitor } });
       context.layerPositions.set('light.office', { x: 124, y: 154 });
       await drag(context, { corner: 'top-left', width: 200, height: 180 });
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       await jest.advanceTimersByTimeAsync(1600);
 
@@ -586,12 +585,12 @@ describe('resizing a desktop pin in the main process', () => {
 
     it('restores a position saved before the drag when the final save fails', async () => {
       const saved = { 'light.office': { 'DP-2': { x: 50, y: 60 }, 'DP-1': { x: 5, y: 5 } } };
-      const { context, place } = loadResizeRuntime({
+      const { context, place, store } = loadResizeRuntime({
         bounds: start,
         layer: { monitor, layerPositions: saved },
       });
       await drag(context, { corner: 'top-left', width: 200, height: 180 });
-      context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+      store.failNextWrite('disk full');
 
       await drag(context, { corner: 'top-left', width: 220, height: 200 }, true);
 
@@ -623,12 +622,12 @@ describe('resizing a desktop pin in the main process', () => {
   });
 
   it('still moves a pin with a plain position update', async () => {
-    const { context } = loadResizeRuntime({
+    const { context, store } = loadResizeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
     const result = await context.updateDesktopPinBounds('light.office', { x: 300, y: 200 });
     expect(result.pinBounds).toEqual({ x: 300, y: 200, width: 168, height: 148 });
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
   });
 });
 
@@ -663,14 +662,14 @@ describe('nudging a desktop pin from the arrow keys', () => {
 
   it('saves nothing for a step that would not show above 100% text size', async () => {
     // At 150% the window is 252 wide, so it is drawn at 1668 against the right edge.
-    const { context, pinWindow } = loadNudgeRuntime({
+    const { context, pinWindow, store } = loadNudgeRuntime({
       scale: 1.5,
       bounds: { x: 1668, y: 100, width: 168, height: 148 },
     });
     expect(pinWindow.getBounds()).toMatchObject({ x: 1668 });
 
     await context.nudgeDesktopPin('light.office', { dx: 1, dy: 0 });
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
 
     const left = await context.nudgeDesktopPin('light.office', { dx: -1, dy: 0 });
     expect(left.pinBounds).toMatchObject({ x: 1667 });
@@ -678,7 +677,7 @@ describe('nudging a desktop pin from the arrow keys', () => {
   });
 
   it('moves a pin window by the step, saves it and does not snap', async () => {
-    const { context, pinWindow } = loadNudgeRuntime({
+    const { context, pinWindow, store } = loadNudgeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
 
@@ -697,7 +696,7 @@ describe('nudging a desktop pin from the arrow keys', () => {
       width: 168,
       height: 148,
     });
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
   });
 
   it('takes over from a drop that is still waiting to be saved', async () => {
@@ -721,10 +720,10 @@ describe('nudging a desktop pin from the arrow keys', () => {
 
   it('keeps a drop the nudge after it could not save', async () => {
     jest.useFakeTimers();
-    const { context, pinWindow } = loadNudgeRuntime({
+    const { context, pinWindow, store } = loadNudgeRuntime({
       bounds: { x: 100, y: 100, width: 168, height: 148 },
     });
-    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'disk full' });
+    store.failWrites('disk full');
     pinWindow.__desktopPinSaveTimer = setTimeout(jest.fn(), 180);
     pinWindow.__desktopPinPendingBounds = { x: 407, y: 300, width: 168, height: 148 };
 
@@ -739,15 +738,17 @@ describe('nudging a desktop pin from the arrow keys', () => {
   });
 
   it('keeps a nudged pin on the work area, and saves nothing when it cannot move', async () => {
-    const { context } = loadNudgeRuntime({ bounds: { x: 0, y: 0, width: 168, height: 148 } });
+    const { context, store } = loadNudgeRuntime({
+      bounds: { x: 0, y: 0, width: 168, height: 148 },
+    });
     const result = await context.nudgeDesktopPin('light.office', { dx: -1, dy: -10 });
     expect(result).toMatchObject({ success: true, pinBounds: { x: 0, y: 0 } });
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(store.writeCount()).toBe(0);
 
     // Along the edge it still moves.
     const along = await context.nudgeDesktopPin('light.office', { dx: -1, dy: 10 });
     expect(along.pinBounds).toMatchObject({ x: 0, y: 10 });
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
   });
 
   it('snaps a drop still waiting to be saved before the arrow keys move it on', async () => {
@@ -786,7 +787,7 @@ describe('nudging a desktop pin from the arrow keys', () => {
       height: 1080,
       workArea: { x: 0, y: 30, width: 1920, height: 1050 },
     };
-    const { context, place } = loadNudgeRuntime({
+    const { context, place, store } = loadNudgeRuntime({
       bounds: { x: 2100, y: 200, width: 168, height: 148 },
       layer: { monitor },
     });
@@ -796,7 +797,7 @@ describe('nudging a desktop pin from the arrow keys', () => {
     expect(result.success).toBe(true);
     expect(place).toHaveBeenLastCalledWith('HA Pin: light.office', { x: 190, y: 201 });
     expect(context.config.layerPositions['light.office']['DP-2']).toEqual({ x: 190, y: 201 });
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(store.writeCount()).toBe(1);
   });
 
   it('puts a layer surface back, and only its own saved spot, when the nudge cannot be saved', async () => {
@@ -809,11 +810,11 @@ describe('nudging a desktop pin from the arrow keys', () => {
       workArea: { x: 0, y: 30, width: 1920, height: 1050 },
     };
     const other = { 'DP-2': { x: 600, y: 600 } };
-    const { context, place } = loadNudgeRuntime({
+    const { context, place, store } = loadNudgeRuntime({
       bounds: { x: 2100, y: 200, width: 168, height: 148 },
       layer: { monitor, layerPositions: { 'light.other': other } },
     });
-    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'disk full' });
+    store.failWrites('disk full');
 
     const result = await context.nudgeDesktopPin('light.office', { dx: 10, dy: 0 });
 
@@ -825,12 +826,12 @@ describe('nudging a desktop pin from the arrow keys', () => {
 
   it('refuses outside Reorganize, where the desktop places pins, and odd steps', async () => {
     const bounds = { x: 100, y: 100, width: 168, height: 148 };
-    const notEditing = loadNudgeRuntime({ bounds }).context;
-    notEditing.desktopPinEditMode = false;
-    const compositor = loadNudgeRuntime({ bounds, compositorPlacement: true }).context;
-    const odd = loadNudgeRuntime({ bounds }).context;
+    const notEditing = loadNudgeRuntime({ bounds });
+    notEditing.context.desktopPinEditMode = false;
+    const compositor = loadNudgeRuntime({ bounds, compositorPlacement: true });
+    const odd = loadNudgeRuntime({ bounds });
 
-    for (const [context, delta] of [
+    for (const [{ context, store }, delta] of [
       [notEditing, { dx: 1, dy: 0 }],
       [compositor, { dx: 1, dy: 0 }],
       [odd, { dx: 0.5, dy: 0 }],
@@ -843,7 +844,7 @@ describe('nudging a desktop pin from the arrow keys', () => {
       expect(await context.nudgeDesktopPin('light.office', delta)).toMatchObject({
         success: false,
       });
-      expect(context.saveConfigDurably).not.toHaveBeenCalled();
+      expect(store.writeCount()).toBe(0);
       expect(context.config.desktopPins['light.office']).toEqual(bounds);
     }
   });

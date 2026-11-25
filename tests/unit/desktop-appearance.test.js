@@ -1,10 +1,6 @@
 /** @jest-environment jsdom */
+// The apply* calls are what the tests watch. The colour maths is pure and stays real.
 jest.mock('../../src/ui-utils.js', () => ({
-  // The colour helpers are pure; the apply* calls are what the tests watch.
-  ...(() => {
-    const { contrastBetween, hexToRgb, mixRgb } = jest.requireActual('../../src/ui-utils.js');
-    return { contrastBetween, hexToRgb, mixRgb };
-  })(),
   applyTheme: jest.fn(),
   applyAccentTheme: jest.fn(),
   applyBackgroundTheme: jest.fn(),
@@ -195,7 +191,7 @@ test('leaves the window effects alone when the theme is not following the system
 });
 
 describe('the quiet text tones of an Omarchy palette', () => {
-  const { contrastBetween, hexToRgb, mixRgb } = jest.requireActual('../../src/ui-utils.js');
+  const { contrastBetween, hexToRgb, mixRgb } = require('../../src/color-math.js');
   // A mid-tone foreground is what the old flat tokens failed on: Tokyo Night, One Dark and the
   // light Catppuccin and Rose Pine themes, plus a plain dark and a plain light one.
   const palettes = {

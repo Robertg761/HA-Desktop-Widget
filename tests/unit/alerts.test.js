@@ -13,7 +13,8 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 let mockElectronAPI;
 
 // Mock dependencies
-jest.mock('../../src/ui-utils.js', () => ({
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 
@@ -45,6 +46,9 @@ jest.mock('../../src/state.js', () => ({
   },
   get STATES() {
     return mockState.STATES;
+  },
+  setConfig: (config) => {
+    mockState.CONFIG = config;
   },
 }));
 
@@ -114,7 +118,7 @@ describe('the Specific State field in the alert dialog', () => {
 describe('alerts module', () => {
   // Require modules once
   const alerts = require('../../src/alerts.js');
-  const showToast = require('../../src/ui-utils.js').showToast;
+  const showToast = require('../../src/dialogs.js').showToast;
 
   beforeEach(() => alerts.resetEntityAlerts());
 
@@ -1029,6 +1033,7 @@ describe('alerts module', () => {
 
       expect(result).toBe(true);
       expect(mockElectronAPI.toggleAlerts).toHaveBeenCalledWith(true);
+      expect(mockState.CONFIG.entityAlerts.enabled).toBe(true);
       expect(showToast).toHaveBeenCalledWith('Entity alerts enabled', 'success', 2000);
     });
 

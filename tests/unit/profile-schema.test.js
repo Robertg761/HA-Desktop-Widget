@@ -2,11 +2,9 @@
  * @jest-environment jsdom
  */
 
-const { LOCAL_ONLY_UI_KEYS: SYNC_LOCAL_ONLY_UI_KEYS } = require('../../profile-sync-core.js');
 const {
   PROFILE_SCHEMA_VERSION,
   PROFILE_SECTION_KEYS,
-  LOCAL_ONLY_UI_KEYS,
   buildConfigPatchFromApplyPayload,
   normalizeProfileDocument,
   buildProfileDocumentFromConfig,
@@ -139,13 +137,6 @@ describe('normalizeProfileDocument', () => {
       expect(PROFILE_SECTION_KEYS).toContain(key);
     }
     expect('unknownSection' in normalized).toBe(false);
-  });
-});
-
-describe('machine-local ui keys', () => {
-  test('are the same for Home Assistant profiles and for profile sync', () => {
-    // Each side keeps its own list, so a key added to one would sync from one path only.
-    expect([...LOCAL_ONLY_UI_KEYS].sort()).toEqual([...SYNC_LOCAL_ONLY_UI_KEYS].sort());
   });
 });
 

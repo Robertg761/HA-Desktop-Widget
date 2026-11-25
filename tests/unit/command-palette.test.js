@@ -3,9 +3,16 @@ jest.mock('../../src/ui.js', () => ({
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
   isRightNowPageShowing: jest.fn(() => false),
   requestAlarmCode: jest.fn(async () => null),
-  getEntityDomain: (entityId) => String(entityId || '').split('.')[0],
-  // Whether an entity has anything to open or run is ui.js's rule, tested there.
-  hasEntityAction: jest.fn(() => true),
+  // ui.js's runner is Entity Actions over the websocket; a fresh one per command keeps no on/off
+  // change pending from one test to the next.
+  runEntityAction: (...args) =>
+    jest
+      .requireActual('../../src/entity-actions.cjs')
+      .createEntityActions({
+        callService: (...call) => require('../../src/websocket.js').default.callService(...call),
+        getEntity: (entityId) => require('../../src/state.js').default.STATES?.[entityId],
+      })
+      .run(...args),
   describeServiceErrorMessage: jest.fn((error) => error?.message || 'Unknown error'),
   isConnectionServiceError: jest.fn((error) => /^WebSocket/.test(error?.message || '')),
 }));
@@ -31,6 +38,12 @@ describe('command palette fuzzy scoring', () => {
         { entity_id: 'light.hall', state: 'off', attributes: { friendly_name: 'Hall lights' } },
         { entity_id: 'fan.attic', state: 'auto', attributes: { friendly_name: 'Attic fan' } },
         { entity_id: 'scene.bedtime', state: 'ready', attributes: { friendly_name: 'Bedtime' } },
+        // Switched like a light, as its tile and hotkey do.
+        {
+          entity_id: 'humidifier.bedroom',
+          state: 'on',
+          attributes: { friendly_name: 'Humidifier' },
+        },
         { entity_id: 'light.offline', state: 'unavailable', attributes: {} },
         { entity_id: 'switch.unsupported', state: 'off', attributes: {} },
       ],
@@ -45,6 +58,7 @@ describe('command palette fuzzy scoring', () => {
         light: { turn_on: {}, turn_off: {} },
         fan: { turn_on: {}, turn_off: {} },
         scene: { turn_on: {} },
+        humidifier: { turn_on: {}, turn_off: {} },
       }
     );
     // Devices only get the action that changes their state; unknown states get both. The page
@@ -55,6 +69,7 @@ describe('command palette fuzzy scoring', () => {
       ['fan.attic', 'turn_on'],
       ['fan.attic', 'turn_off'],
       ['scene.bedtime', 'turn_on'],
+      ['humidifier.bedroom', 'turn_off'],
       ['page:office', null],
       // The Right now page is a page to go to as well.
       ['page:right-now', null],
@@ -62,6 +77,7 @@ describe('command palette fuzzy scoring', () => {
     expect(commands[0].displayName).toBe('Turn off Office lights');
     expect(commands[1].displayName).toBe('Turn on Hall lights');
     expect(commands[4].displayName).toBe('Run Bedtime');
+    expect(commands[5].displayName).toBe('Turn off Humidifier');
   });
   it('offers only the lock command that changes a lock, and nothing for jammed locks', () => {
     const commands = buildPaletteCommands(
@@ -315,10 +331,10 @@ describe('command palette over another dialog', () => {
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     global.requestAnimationFrame = (callback) => callback();
     let palette;
-    let uiUtils;
+    let dialogs;
     jest.isolateModules(() => {
       palette = require('../../src/command-palette.js');
-      uiUtils = require('../../src/ui-utils.js');
+      dialogs = require('../../src/dialogs.js');
     });
     const settings = document.createElement('div');
     settings.className = 'modal';
@@ -328,7 +344,7 @@ describe('command palette over another dialog', () => {
 
     try {
       document.activeElement?.blur();
-      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
+      dialogs.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
       palette.openCommandPalette();
       const overlay = document.querySelector('.command-palette-overlay:not(.hidden)');
       expect(overlay).toBeTruthy();
@@ -347,7 +363,7 @@ describe('command palette over another dialog', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
     } finally {
       global.requestAnimationFrame = originalRequestAnimationFrame;
-      uiUtils.closeDialog(settings, { remove: true });
+      dialogs.closeDialog(settings, { remove: true });
       document.querySelectorAll('.command-palette-overlay').forEach((node) => node.remove());
       settings.remove();
     }
@@ -889,8 +905,6 @@ describe('command palette recents', () => {
     it('keeps the palette open and says so, instead of closing as if the click failed', () => {
       const { palette, paletteState } = load();
       const { openEntityDetailModal } = require('../../src/ui.js');
-      const { hasEntityAction } = require('../../src/ui.js');
-      hasEntityAction.mockReturnValue(false);
       paletteState.setStates({ 'sun.sun': sun });
       palette.openCommandPalette();
       const input = searchFor('sun');
@@ -911,26 +925,61 @@ describe('command palette recents', () => {
       );
       // And not remembered as something that was run.
       expect(Object.values(localStorage)).toEqual([]);
-      hasEntityAction.mockReturnValue(true);
+    });
+
+    // A switch, scene or button does nothing while unavailable; a dialog opens whatever the state.
+    it.each([
+      ['switch.plug', 'unavailable', false],
+      ['scene.movie', 'unavailable', false],
+      ['sensor.outdoor', 'unavailable', true],
+      ['sensor.outdoor', '21', true],
+    ])('on %s while %s, opens it: %s', (entityId, entityState, opens) => {
+      const { palette, paletteState } = load();
+      const { openEntityDetailModal } = require('../../src/ui.js');
+      paletteState.setStates({
+        [entityId]: {
+          entity_id: entityId,
+          state: entityState,
+          attributes: { friendly_name: 'Probe' },
+        },
+      });
+      palette.openCommandPalette();
+      const input = searchFor('probe');
+
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      );
+
+      expect(openEntityDetailModal).toHaveBeenCalledTimes(opens ? 1 : 0);
+      if (!opens) {
+        expect(document.querySelector('.command-palette-hint').textContent).toBe(
+          'No command is available for Probe.'
+        );
+      }
     });
 
     it('opens an entity that has controls, and remembers it', () => {
       const { palette, paletteState } = load();
       const { openEntityDetailModal } = require('../../src/ui.js');
-      paletteState.setStates({ 'sun.sun': sun });
+      const outdoor = {
+        entity_id: 'sensor.outdoor',
+        state: '21',
+        attributes: { friendly_name: 'Outdoor' },
+      };
+      paletteState.setStates({ 'sensor.outdoor': outdoor });
       palette.openCommandPalette();
-      const input = searchFor('sun');
+      const input = searchFor('outdoor');
 
       input.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
       );
 
       expect(openEntityDetailModal).toHaveBeenCalledWith(
-        expect.objectContaining({ entity_id: 'sun.sun' }),
+        expect.objectContaining({ entity_id: 'sensor.outdoor' }),
         // The palette lists no command for it, so the dialog may run its own action.
         { source: 'command-palette', hasCommand: false }
       );
-      expect(JSON.parse(Object.values(localStorage)[0])).toEqual(['entity:sun.sun']);
+      expect(JSON.parse(Object.values(localStorage)[0])).toEqual(['entity:sensor.outdoor']);
     });
   });
 
@@ -942,9 +991,9 @@ describe('command palette recents', () => {
     });
     const toastsFor = async (error) => {
       const { palette, paletteState } = load();
-      const uiUtils = require('../../src/ui-utils.js');
+      const dialogs = require('../../src/dialogs.js');
       const websocket = require('../../src/websocket.js').default;
-      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      const toast = jest.spyOn(dialogs, 'showToast').mockImplementation(() => {});
       paletteState.setStates({ 'light.desk': lamp() });
       palette.openCommandPalette();
       const input = document.querySelector('.command-palette-input');
@@ -985,8 +1034,8 @@ describe('command palette recents', () => {
 
     it('says an entity that went unavailable is unavailable', async () => {
       const { palette, paletteState } = load();
-      const uiUtils = require('../../src/ui-utils.js');
-      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      const dialogs = require('../../src/dialogs.js');
+      const toast = jest.spyOn(dialogs, 'showToast').mockImplementation(() => {});
       paletteState.setStates({ 'light.desk': lamp() });
       palette.openCommandPalette();
       const input = document.querySelector('.command-palette-input');

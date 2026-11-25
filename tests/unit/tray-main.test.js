@@ -259,9 +259,12 @@ describe('owner connection lifecycle', () => {
     runtime.config.desktopPins = { 'light.office': {} };
     const handlers = new Map();
     runtime.powerMonitor = { on: (event, callback) => handlers.set(event, callback) };
-    runtime.requestOpportunisticProfileSync = jest.fn();
+    runtime.profileSyncEngine = { requestSync: jest.fn() };
     const start = mainSource.indexOf('function setupProfileSyncWakeTriggers()');
-    const end = mainSource.indexOf('async function initializeProfileSyncOnStartupInternal', start);
+    const end = mainSource.indexOf(
+      '/**\n * Apply or remove platform-appropriate frosted glass',
+      start
+    );
     vm.runInNewContext(mainSource.slice(start, end), runtime);
     runtime.setupProfileSyncWakeTriggers();
     handlers.get('suspend')();

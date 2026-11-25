@@ -1,5 +1,6 @@
 const nodeCrypto = require('crypto');
 const { promisify } = require('util');
+const settingsFields = require('./packages/widget-renderer/src/settings-fields.cjs');
 
 const scryptAsync = promisify(nodeCrypto.scrypt);
 
@@ -10,166 +11,19 @@ const scryptAsync = promisify(nodeCrypto.scrypt);
 const SYNC_SCHEMA_VERSION = 3;
 const SYNC_MIN_READER_VERSION = 3;
 const PROFILE_SYNC_SCOPE_PRESETS = new Set(['all', 'visual', 'quick_access', 'custom']);
-// Desktop pins, hotkeys and the open Quick Access page describe one machine, so
-// they never sync (matching Home Assistant profiles in profile-schema.js). Always on
-// top, hide on focus loss and the tray values do sync, as the scope descriptions in
-// Settings say; Home Assistant profiles and settings files leave them out.
-const SYNC_SCOPE_SECTION_FIELDS = {
-  quickAccessLayout: [
-    'favoriteEntities',
-    'trayEntities',
-    'customEntityNames',
-    'customEntityIcons',
-    'tileSpans',
-    'quickAccessTileOptions',
-    'primaryCards',
-    'customTabs',
-    'comparisonGraphs',
-  ],
-  visualPersonalization: ['alwaysOnTop', 'hideOnBlur', 'opacity', 'frostedGlass', 'ui'],
-  automationAlerts: ['entityAlerts'],
-  connectionMediaPreferences: ['selectedWeatherEntity', 'primaryMediaPlayer'],
-};
+// The fields each section carries, which ui keys are shared and which stay on this machine, and
+// the shape each synced field must have all come from the settings field registry.
+const SYNC_SCOPE_SECTION_FIELDS = settingsFields.SYNC_SECTION_FIELDS;
 const SYNC_SCOPE_SECTION_KEYS = Object.keys(SYNC_SCOPE_SECTION_FIELDS);
-// The JSON type each synced field must have. A section holding anything else in
-// one of these is damaged, not applied: the rest of the app relies on these
-// shapes. null is always allowed, since it clears the field.
-const SYNC_FIELD_TYPES = {
-  favoriteEntities: 'array',
-  trayEntities: 'object',
-  customEntityNames: 'object',
-  customEntityIcons: 'object',
-  tileSpans: 'object',
-  quickAccessTileOptions: 'object',
-  primaryCards: 'array',
-  customTabs: 'array',
-  comparisonGraphs: 'array',
-  alwaysOnTop: 'boolean',
-  hideOnBlur: 'boolean',
-  opacity: 'number',
-  frostedGlass: 'boolean',
-  ui: 'object',
-  entityAlerts: 'object',
-  selectedWeatherEntity: 'string',
-  primaryMediaPlayer: 'string',
-};
-// The JSON type of every item in a list, or every value in a map, that the app
-// reads without guarding. Tray entries and the insides of tabs and graphs are
-// normalized after a pull, and tile spans are read defensively.
-const SYNC_FIELD_ITEM_TYPES = {
-  favoriteEntities: 'string',
-  customEntityNames: 'string',
-  customEntityIcons: 'string',
-  quickAccessTileOptions: 'object',
-  primaryCards: 'string',
-  customTabs: 'object',
-  comparisonGraphs: 'object',
-};
-// Fields inside an object field that the app reads directly. Each may be left
-// out (the receiving device fills in its default) but not hold another type;
-// `items` is the type of every value in that nested map.
-const SYNC_NESTED_FIELD_TYPES = {
-  entityAlerts: {
-    enabled: { type: 'boolean' },
-    persistentNotifications: { type: 'boolean' },
-    alerts: { type: 'object', items: 'object' },
-  },
-};
-
-function hasItemsOfType(container, type) {
-  return Object.values(container).every((item) => getJsonType(item) === type);
-}
-
-// What each item of a list holds, for the fields the app reads without checking. A field may be
-// left out (the receiving device fills in its default) but not hold another type. `string[]` is
-// a list of strings.
-const SYNC_ITEM_FIELD_TYPES = {
-  customTabs: { id: 'string', name: 'string', entityIds: 'string[]' },
-  comparisonGraphs: { id: 'string', name: 'string', entityIds: 'string[]', span: 'number' },
-};
-// The types of the shared ui keys this version knows. Only types are checked, never values: a
-// later version may add a theme or a density, and its file must not read as damaged here.
-const SYNC_UI_FIELD_TYPES = {
-  theme: 'string',
-  accent: 'string',
-  background: 'string',
-  language: 'string',
-  customColors: 'array',
-  density: 'string',
-  desktopPinNameAlign: 'string',
-  desktopPinSnap: 'boolean',
-  rightNowPage: 'boolean',
-  activeTileGlow: 'boolean',
-  highContrast: 'boolean',
-  opaquePanels: 'boolean',
-  use24HourClock: 'boolean',
-  timeFormat: 'string',
-  dateFormat: 'string',
-  weatherEffectsEnabled: 'boolean',
-  weatherOverride: 'string',
-  seasonal: 'object',
-};
-
-function matchesNestedType(value, type) {
-  if (type === 'string[]') {
-    return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-  }
-  return getJsonType(value) === type;
-}
-
-/** Whether every present field of an object has its declared type (null clears it). */
-function hasFieldsOfType(object, fieldTypes) {
-  return Object.entries(fieldTypes).every(([key, type]) => {
-    if (!Object.prototype.hasOwnProperty.call(object, key) || object[key] === null) return true;
-    return matchesNestedType(object[key], type);
-  });
-}
 
 // A tile spans one to four grid columns.
 const isTileSpan = (value) => Number.isInteger(value) && value >= 1 && value <= 4;
-
-/** The checks below the top-level type and item type of a field. */
-function hasValidNestedShape(field, value) {
-  if (field === 'tileSpans') return Object.values(value).every(isTileSpan);
-  if (SYNC_ITEM_FIELD_TYPES[field]) {
-    return value.every((item) => hasFieldsOfType(item, SYNC_ITEM_FIELD_TYPES[field]));
-  }
-  if (field === 'ui') return hasFieldsOfType(value, SYNC_UI_FIELD_TYPES);
-  return true;
-}
 // ui keys that describe this machine or session rather than the shared look.
-// Keep in step with LOCAL_ONLY_UI_KEYS in packages/widget-renderer/src/profile-schema.js.
-// Text size and Omarchy theme following depend on this machine's display and desktop.
-const LOCAL_ONLY_UI_KEYS = new Set([
-  'personalizationSectionsCollapsed',
-  'enableInteractionDebugLogs',
-  'scale',
-  'followOmarchy',
-]);
+const LOCAL_ONLY_UI_KEYS = new Set(settingsFields.LOCAL_ONLY_UI_KEYS);
 
 // ui keys this version reads and writes. Any other ui key came from a newer
 // version, so the file's value is authoritative for it.
-const KNOWN_UI_KEYS = new Set([
-  'theme',
-  'accent',
-  'background',
-  'language',
-  'customColors',
-  'density',
-  'desktopPinNameAlign',
-  'desktopPinSnap',
-  'rightNowPage',
-  'activeTileGlow',
-  'highContrast',
-  'opaquePanels',
-  'use24HourClock',
-  'timeFormat',
-  'dateFormat',
-  'weatherEffectsEnabled',
-  'weatherOverride',
-  'seasonal',
-  ...LOCAL_ONLY_UI_KEYS,
-]);
+const KNOWN_UI_KEYS = new Set([...settingsFields.SHARED_UI_KEYS, ...LOCAL_ONLY_UI_KEYS]);
 
 // Failures a person can act on carry a code, so the app can word them for the user
 // instead of showing the technical message.
@@ -959,36 +813,20 @@ function serializeSyncEnvelope(envelope) {
   return `${JSON.stringify(envelope, null, 2)}\n`;
 }
 
-function getJsonType(value) {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
-  if (typeof value === 'number') return Number.isFinite(value) ? 'number' : 'invalid';
-  return typeof value;
-}
-
 /**
  * Whether a known section's data has the shape this version applies: an object
- * whose synced fields each hold their expected JSON type (or null).
+ * whose synced fields each hold their expected shape (or null). A section holding
+ * anything else in one of them is damaged, not applied: the rest of the app relies
+ * on these shapes.
  */
 function hasValidSectionFields(sectionKey, data) {
   if (!isObject(data) || !SYNC_SCOPE_SECTION_FIELDS[sectionKey]) return false;
   return SYNC_SCOPE_SECTION_FIELDS[sectionKey].every((field) => {
     if (!Object.prototype.hasOwnProperty.call(data, field)) return true;
-    const value = data[field];
-    const type = getJsonType(value);
     // null clears a field, except ui: that is never cleared as a whole, so a
     // null one could not be applied and would be pushed straight back.
-    if (type === 'null') return field !== 'ui';
-    if (type !== SYNC_FIELD_TYPES[field]) return false;
-    if (SYNC_FIELD_ITEM_TYPES[field] && !hasItemsOfType(value, SYNC_FIELD_ITEM_TYPES[field])) {
-      return false;
-    }
-    if (!hasValidNestedShape(field, value)) return false;
-    return Object.entries(SYNC_NESTED_FIELD_TYPES[field] || {}).every(([key, expected]) => {
-      if (!Object.prototype.hasOwnProperty.call(value, key)) return true;
-      if (getJsonType(value[key]) !== expected.type) return false;
-      return !expected.items || hasItemsOfType(value[key], expected.items);
-    });
+    if (data[field] === null) return field !== 'ui';
+    return settingsFields.hasSyncShape(field, data[field]);
   });
 }
 
@@ -1110,8 +948,6 @@ module.exports = {
   SYNC_MIN_READER_VERSION,
   SYNC_SCOPE_SECTION_FIELDS,
   SYNC_SCOPE_SECTION_KEYS,
-  LOCAL_ONLY_UI_KEYS,
-  KNOWN_UI_KEYS,
   getDefaultSyncScope,
   normalizeSyncScope,
   getScopeSectionKeys,

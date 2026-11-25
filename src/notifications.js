@@ -6,7 +6,7 @@ import {
   notificationMarkdownToPlainText,
   renderNotificationMarkdown,
 } from './notification-markdown.js';
-import { closeDialog, openDialog, renderKeepingFocus, showConfirm, showToast } from './ui-utils.js';
+import { closeDialog, openDialog, renderKeepingFocus, showConfirm, showToast } from './dialogs.js';
 
 const DEFAULT_NOTIFICATION_TITLE = 'Home Assistant';
 const MAX_BELL_COUNT = 99;

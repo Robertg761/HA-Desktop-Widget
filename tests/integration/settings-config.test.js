@@ -105,12 +105,15 @@ const mockUiUtils = {
   ]),
   // The window a Background choice gives: the untinted base for null, a tinted one otherwise.
   getBackgroundWindowColor: jest.fn((color = null) => (color === null ? '#12161e' : '#222c3c')),
-  // The real dialog layer: class-based visibility plus the inline display, the focus trap and
-  // Escape, so these tests see what a person opening and closing Settings gets.
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+  copyTextToClipboard: jest.fn().mockResolvedValue(true),
+};
+
+// The real dialog layer: class-based visibility plus the inline display, the focus trap and
+// Escape, so these tests see what a person opening and closing Settings gets.
+const mockDialogs = {
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
   showConfirm: jest.fn().mockResolvedValue(true),
-  copyTextToClipboard: jest.fn().mockResolvedValue(true),
 };
 
 // The recorder helpers are the real ones (both recorders share them); only the cleanup is observed.
@@ -129,6 +132,7 @@ const mockUI = {
 // Mock all dependencies before requiring settings.js
 jest.mock('../../src/websocket.js', () => mockWebsocket);
 jest.mock('../../src/ui-utils.js', () => mockUiUtils);
+jest.mock('../../src/dialogs.js', () => mockDialogs);
 jest.mock('../../src/hotkeys.js', () => mockHotkeys);
 jest.mock('../../src/ui.js', () => mockUI, { virtual: true });
 // The check measures text on a canvas, which jsdom does not have. This one says the nazar amulet
@@ -149,7 +153,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Every dialog but the restart prompt agrees by default; "Later" is the answer that leaves the
   // run going, so a save that changes Always on top does not restart the test.
-  mockUiUtils.showConfirm.mockImplementation(async (title) => title !== 'Restart required');
+  mockDialogs.showConfirm.mockImplementation(async (title) => title !== 'Restart required');
   resetMockElectronAPI();
   mockElectronAPI.platform = 'test';
   mockCustomThemes = [];
@@ -728,7 +732,7 @@ describe('Settings + Config Integration', () => {
         success: true,
         config: { ...state.CONFIG, opacity: 0.6, frostedGlass: false },
       });
-      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+      mockDialogs.showConfirm.mockResolvedValueOnce(true);
       document
         .getElementById('settings-modal')
         .insertAdjacentHTML(
@@ -1180,7 +1184,7 @@ describe('Settings + Config Integration', () => {
       document.getElementById('disconnect-ha-oauth-btn').click();
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Disconnected. Home Assistant did not confirm that it revoked the authorization, so you can remove it from your Home Assistant profile.',
         'warning',
         5000
@@ -1366,7 +1370,7 @@ describe('Settings + Config Integration', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Failed to save popup hotkey removal: disk full',
         'error'
       );
@@ -1792,7 +1796,7 @@ describe('Settings + Config Integration', () => {
 
     describe('high contrast theme override', () => {
       const realUi = jest.requireActual('../../src/ui-utils.js');
-      const paletteHelpers = ['getSeasonalColors', 'hexToRgb', 'mixRgb', 'contrastBetween'];
+      const paletteHelpers = ['getSeasonalColors'];
       const togglePreset = (checked) => {
         const preset = document.getElementById('readable-preset');
         preset.checked = checked;
@@ -2915,7 +2919,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         'Failed to update Start at login setting',
         expect.anything(),
         expect.anything()
@@ -2995,7 +2999,7 @@ describe('Settings + Config Integration', () => {
 
       // The message is under the field, not in a toast that is gone in seconds
       expect(fieldError('ha-url')).toBe('URL must start with http:// or https://');
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(document.activeElement).toBe(document.getElementById('ha-url'));
 
       // Verify config NOT updated
@@ -3098,7 +3102,7 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG).toEqual(originalConfig);
       expect(window.electronAPI.setLoginItemSettings).not.toHaveBeenCalled();
       expect(window.electronAPI.setOpacity).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Settings could not be saved. No configuration changes were applied.',
         'error',
         4000
@@ -3172,7 +3176,7 @@ describe('Settings + Config Integration', () => {
       expect(weatherEffects.checked).toBe(true);
       expect(weatherEffects.disabled).toBe(true);
       // The toast says the effects are paused, not to turn on the glass that was just turned off
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Subtle weather effects need Frosted glass, so they are paused.',
         'warning',
         expect.any(Number)
@@ -3314,7 +3318,7 @@ describe('Settings + Config Integration', () => {
       const actionBadge = row.querySelector('.custom-entity-icon-action-badge');
       expect(preview.textContent).toBe('🔥');
       expect(actionBadge.textContent).toContain('Applied (unsaved)');
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Icon applied'),
         'success',
         expect.any(Number)
@@ -3880,7 +3884,7 @@ describe('Settings + Config Integration', () => {
       applyBtn.click();
 
       // Assert
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('a single emoji'),
         'error',
         expect.any(Number)
@@ -3978,7 +3982,7 @@ describe('Settings + Config Integration', () => {
       await flushMicrotasks();
 
       // Assert
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
         'Reset all custom icons',
         expect.stringContaining('Remove every custom icon'),
         expect.objectContaining({ confirmText: 'Reset', confirmClass: 'btn-danger' })
@@ -4232,12 +4236,12 @@ describe('Settings + Config Integration', () => {
       const input = rowInput();
       input.focus();
       input.value = 'timer';
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       const event = press(input, 'Enter');
 
       expect(event.defaultPrevented).toBe(true);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(document.querySelector('[data-custom-icon-picker="light.living_room"]')).toBeTruthy();
       // Straight into the matches, so the arrow keys and Enter choose one
       expect(document.activeElement.classList.contains('custom-entity-icon-choice')).toBe(true);
@@ -4248,22 +4252,22 @@ describe('Settings + Config Integration', () => {
       await openSettingsWithCustomIconsExpanded();
       const input = rowInput();
       input.value = '🔥';
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       press(input, 'Enter', { isComposing: true });
 
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
     });
 
     test('Enter or Apply on a row with no icon says nothing and marks nothing edited', async () => {
       await openSettingsWithCustomIconsExpanded();
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       press(rowInput(), 'Enter');
       document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
 
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(document.querySelector('.custom-entity-icon-action-badge')).toBeNull();
       // Saving now does not count the icons as edited either
       await settings.saveSettings();
@@ -4281,7 +4285,7 @@ describe('Settings + Config Integration', () => {
       typeInto(rowInput(), '');
       document.querySelector('[data-custom-icon-apply="light.living_room"]').click();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Custom icon cleared'),
         'info',
         expect.any(Number)
@@ -4298,8 +4302,8 @@ describe('Settings + Config Integration', () => {
 
       resetAll.click();
       await flushMicrotasks();
-      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         expect.stringContaining('All custom icons cleared'),
         expect.anything(),
         expect.anything()
@@ -4313,12 +4317,12 @@ describe('Settings + Config Integration', () => {
     test('Reset all asks first, and declining keeps every icon', async () => {
       state.CONFIG.customEntityIcons = { 'light.living_room': '🔥', 'switch.bedroom': '⚡' };
       await openSettingsWithCustomIconsExpanded();
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
       document.getElementById('custom-entity-icons-reset-all').click();
       await flushMicrotasks();
 
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledTimes(1);
+      expect(mockDialogs.showConfirm).toHaveBeenCalledTimes(1);
       expect(document.getElementById('custom-entity-icons-summary').textContent).toContain(
         '2 custom icons'
       );
@@ -4526,9 +4530,9 @@ describe('Settings + Config Integration', () => {
         expect(document.getElementById('custom-color-name-input').value).toBe(
           '\u2066#AB34CD\u2069 مخصص'
         );
-        mockUiUtils.showConfirm.mockClear();
+        mockDialogs.showConfirm.mockClear();
         await settings.saveSettings();
-        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
       });
 
       test('leaves a name the person typed alone', async () => {
@@ -4582,10 +4586,10 @@ describe('Settings + Config Integration', () => {
       };
 
       const expectSaveToAskAboutIt = async () => {
-        mockUiUtils.showConfirm.mockClear();
-        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        mockDialogs.showConfirm.mockClear();
+        mockDialogs.showConfirm.mockResolvedValueOnce(true);
         await settings.saveSettings();
-        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
           expect.stringContaining('Unsaved custom color changes'),
           expect.any(String),
           expect.any(Object)
@@ -4629,9 +4633,9 @@ describe('Settings + Config Integration', () => {
         await Promise.resolve();
 
         expect(field.value).toBe('Eigene Farbe #AB34CD');
-        mockUiUtils.showConfirm.mockClear();
+        mockDialogs.showConfirm.mockClear();
         await settings.saveSettings();
-        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
         expect(state.CONFIG.ui.customColors[0].name).toBe('');
       });
 
@@ -4653,9 +4657,9 @@ describe('Settings + Config Integration', () => {
         await Promise.resolve();
 
         expect(field.value).toBe('Eigene Farbe #AB34CD');
-        mockUiUtils.showConfirm.mockClear();
+        mockDialogs.showConfirm.mockClear();
         await settings.saveSettings();
-        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
       });
     });
 
@@ -4799,7 +4803,7 @@ describe('Settings + Config Integration', () => {
       const hexInput = document.getElementById('custom-color-hex');
       const hexError = document.getElementById('custom-color-hex-error');
       const saveCustomBtn = document.getElementById('save-custom-color-btn');
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       // Act: clicking Save moves focus off the hex field first, then clicks.
       hexInput.focus();
@@ -4816,12 +4820,12 @@ describe('Settings + Config Integration', () => {
       expect(
         document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
       ).toHaveLength(0);
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('valid color'),
         'warning',
         expect.any(Number)
       );
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         expect.stringContaining('Custom color saved'),
         expect.anything(),
         expect.anything()
@@ -5005,7 +5009,7 @@ describe('Settings + Config Integration', () => {
 
     test('should prompt for unsaved custom color draft and save when confirmed', async () => {
       // Arrange
-      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+      mockDialogs.showConfirm.mockResolvedValueOnce(true);
       await settings.openSettings();
       const hexInput = document.getElementById('custom-color-hex');
 
@@ -5015,7 +5019,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       // Assert: three ways out, and the safe one (save the colour) is where focus starts
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
         expect.stringContaining('Unsaved custom color changes'),
         expect.stringContaining('unsaved custom color edits'),
         expect.objectContaining({
@@ -5032,7 +5036,7 @@ describe('Settings + Config Integration', () => {
 
     test('should drop the unsaved custom color draft and save the rest when it is discarded', async () => {
       // Arrange
-      mockUiUtils.showConfirm.mockResolvedValueOnce('alternate');
+      mockDialogs.showConfirm.mockResolvedValueOnce('alternate');
       await settings.openSettings();
       const hexInput = document.getElementById('custom-color-hex');
 
@@ -5042,14 +5046,14 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       // Assert
-      expect(mockUiUtils.showConfirm).toHaveBeenCalled();
+      expect(mockDialogs.showConfirm).toHaveBeenCalled();
       expect(state.CONFIG.ui.customColors).toHaveLength(0);
       expect(mockElectronAPI.updateConfig).toHaveBeenCalled();
     });
 
     test('should keep Settings open with the draft when the prompt is dismissed or cancelled', async () => {
       // Arrange: Escape, a click outside and Cancel all resolve false
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
       await settings.openSettings();
       const hexInput = document.getElementById('custom-color-hex');
       hexInput.value = '#2468AC';
@@ -5060,7 +5064,7 @@ describe('Settings + Config Integration', () => {
       await settings.saveSettings();
 
       // Assert: nothing was saved, the form is still open and the draft is still in the field
-      expect(mockUiUtils.showConfirm).toHaveBeenCalled();
+      expect(mockDialogs.showConfirm).toHaveBeenCalled();
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
       expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(false);
       expect(hexInput.value).toBe('#2468AC');
@@ -5084,7 +5088,7 @@ describe('Settings + Config Integration', () => {
         '.color-theme-option[data-custom-theme="true"]'
       );
       expect(customOptions).toHaveLength(1);
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('already saved'),
         'info',
         expect.any(Number)
@@ -5118,7 +5122,7 @@ describe('Settings + Config Integration', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Assert
-      expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenLastCalledWith(
         'Remove custom color',
         'Remove “My Slate” from your custom colors?',
         expect.objectContaining({ confirmClass: 'btn-danger' })
@@ -5141,14 +5145,14 @@ describe('Settings + Config Integration', () => {
       hexInput.dispatchEvent(new Event('input', { bubbles: true }));
       document.getElementById('save-custom-color-btn').click();
 
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
       document.getElementById('remove-custom-color-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(
         document.querySelectorAll('.color-theme-option[data-custom-theme="true"]')
       ).toHaveLength(1);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         'Custom color removed.',
         'success',
         expect.any(Number)
@@ -5851,10 +5855,10 @@ describe('Settings + Config Integration', () => {
       const copy = document.getElementById('desktop-bindings-copy');
       const output = document.getElementById('desktop-bindings');
 
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
       await copy.onclick();
       expect(mockUiUtils.copyTextToClipboard).toHaveBeenCalledWith('lua binding');
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith('Bindings copied', 'success');
+      expect(mockDialogs.showToast).toHaveBeenCalledWith('Bindings copied', 'success');
       expect(document.activeElement).not.toBe(output);
 
       mockUiUtils.copyTextToClipboard.mockResolvedValueOnce(false);
@@ -5862,7 +5866,7 @@ describe('Settings + Config Integration', () => {
       expect(document.activeElement).toBe(output);
       expect(output.selectionStart).toBe(0);
       expect(output.selectionEnd).toBe('lua binding'.length);
-      expect(mockUiUtils.showToast).toHaveBeenLastCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenLastCalledWith(
         'Select and copy the bindings manually.',
         'info'
       );
@@ -6033,12 +6037,12 @@ describe('Settings + Config Integration', () => {
         await settings.openSettings();
         await flush();
 
-        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+        mockDialogs.showConfirm.mockResolvedValueOnce(false);
         document.getElementById('profile-sync-cloud-delete').click();
         await flush();
         expect(mockElectronAPI.deleteCloudSyncAccount).not.toHaveBeenCalled();
 
-        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        mockDialogs.showConfirm.mockResolvedValueOnce(true);
         document.getElementById('profile-sync-cloud-sign-out').click();
         await flush();
         await flush();
@@ -6286,7 +6290,7 @@ describe('Settings + Config Integration', () => {
 
       // The old secret must never be overwritten when the settings did not persist.
       expect(mockElectronAPI.setProfileSyncPassphrase).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Settings could not be saved. No configuration changes were applied.',
         'error',
         4000
@@ -6321,7 +6325,7 @@ describe('Settings + Config Integration', () => {
           cloudFilePath: '/tmp/shared-folder/ha-widget-profile-sync.json',
         })
       );
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Passphrase persistence failed',
         'warning',
         5000
@@ -6505,12 +6509,12 @@ describe('Settings + Config Integration', () => {
       enableSavedProfileSync();
       await settings.openSettings();
       mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
       document.getElementById('profile-sync-push-now').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
         'Sync up',
         expect.stringContaining('Replace the sync file'),
         expect.objectContaining({ confirmText: 'Sync up' })
@@ -6650,12 +6654,12 @@ describe('Settings + Config Integration', () => {
       mockElectronAPI.restoreProfileSyncBackup = jest.fn().mockResolvedValue({ success: true });
       await settings.openSettings();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      mockUiUtils.showConfirm.mockClear();
+      mockDialogs.showConfirm.mockClear();
 
       document.getElementById('profile-sync-restore-backup').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(mockUiUtils.showConfirm.mock.calls[0][0]).toMatch(/^Restore the backup from .*2026/);
+      expect(mockDialogs.showConfirm.mock.calls[0][0]).toMatch(/^Restore the backup from .*2026/);
     });
 
     test('shows the whole folder as a tooltip and opens the chooser from the field', async () => {
@@ -6700,10 +6704,10 @@ describe('Settings + Config Integration', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       const confirmText = async (profileSync) => {
         state.CONFIG.profileSync = { ...state.CONFIG.profileSync, ...profileSync };
-        mockUiUtils.showConfirm.mockClear();
+        mockDialogs.showConfirm.mockClear();
         document.getElementById('profile-sync-restore-backup').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
-        return mockUiUtils.showConfirm.mock.calls[0][1];
+        return mockDialogs.showConfirm.mock.calls[0][1];
       };
       const all = { preset: 'all' };
       const partial = { preset: 'visual' };
@@ -6820,7 +6824,7 @@ describe('Settings + Config Integration', () => {
         encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
       await settings.openSettings();
       document.getElementById('profile-sync-enabled').checked = true;
@@ -6844,7 +6848,7 @@ describe('Settings + Config Integration', () => {
         encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+      mockDialogs.showConfirm.mockResolvedValueOnce(true);
       mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
         ok: true,
         status: 'copied',
@@ -6876,7 +6880,7 @@ describe('Settings + Config Integration', () => {
         encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      mockDialogs.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
       mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
         ok: false,
         status: 'destination_exists',
@@ -6890,7 +6894,7 @@ describe('Settings + Config Integration', () => {
 
       // The file in the new folder is never replaced, so the copy is not retried.
       expect(mockElectronAPI.copyProfileSyncFile).toHaveBeenCalledTimes(1);
-      expect(mockUiUtils.showConfirm).toHaveBeenLastCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenLastCalledWith(
         'Sync file already exists',
         expect.stringContaining('/tmp/new-sync already has a sync file'),
         expect.objectContaining({ confirmText: 'Use that file', cancelText: 'Keep current' })
@@ -6898,7 +6902,7 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
       );
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         expect.anything(),
         'error',
         expect.anything()
@@ -6915,7 +6919,7 @@ describe('Settings + Config Integration', () => {
         encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
       mockElectronAPI.copyProfileSyncFile.mockResolvedValueOnce({
         ok: false,
         status: 'destination_exists',
@@ -6930,7 +6934,7 @@ describe('Settings + Config Integration', () => {
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/old-sync/ha-widget-profile-sync.json'
       );
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Kept the current sync folder: /tmp/old-sync',
         'info',
         expect.any(Number)
@@ -6947,7 +6951,7 @@ describe('Settings + Config Integration', () => {
         encryptionEnabled: false,
       });
       state.setConfig(config);
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
       await settings.openSettings();
       document.getElementById('profile-sync-enabled').checked = true;
@@ -6955,17 +6959,17 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
         'Sync folder changed',
         'Copy the existing sync data file from /tmp/old-sync into /tmp/new-sync and switch sync there?',
         expect.objectContaining({ confirmText: 'Copy & switch', cancelText: 'Keep current' })
       );
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Kept the current sync folder: /tmp/old-sync',
         'info',
         expect.any(Number)
       );
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         expect.stringContaining('Kept the current'),
         'warning',
         expect.anything()
@@ -6987,7 +6991,7 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
       expect(mockElectronAPI.copyProfileSyncFile).not.toHaveBeenCalled();
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/shared-folder/ha-widget-profile-sync.json'
@@ -7006,7 +7010,7 @@ describe('Settings + Config Integration', () => {
       document.getElementById('profile-sync-encryption-enabled').checked = false;
       await settings.saveSettings();
 
-      expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+      expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
       expect(state.CONFIG.profileSync.cloudFilePath).toBe(
         '/tmp/new-sync/ha-widget-profile-sync.json'
       );
@@ -7024,7 +7028,7 @@ describe('Settings + Config Integration', () => {
       expect(document.getElementById('profile-sync-folder-path').value).toBe('');
       await settings.saveSettings();
 
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         'Choose a sync folder before enabling profile sync.',
         'error',
         expect.any(Number)
@@ -7067,11 +7071,11 @@ describe('Settings + Config Integration', () => {
 
     test('says what each first-sync choice did', async () => {
       const toastFor = async (choice) => {
-        mockUiUtils.showToast.mockClear();
+        mockDialogs.showToast.mockClear();
         await settings.openSettings();
         document.getElementById(`profile-sync-resolve-${choice}`).click();
         await new Promise((resolve) => setTimeout(resolve, 0));
-        return mockUiUtils.showToast.mock.calls.at(-1);
+        return mockDialogs.showToast.mock.calls.at(-1);
       };
 
       expect(await toastFor('cancel')).toEqual([
@@ -7094,7 +7098,7 @@ describe('Settings + Config Integration', () => {
 
   describe('Profile sync state in Settings', () => {
     const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-    const lastToast = () => mockUiUtils.showToast.mock.calls.at(-1);
+    const lastToast = () => mockDialogs.showToast.mock.calls.at(-1);
     const openWithRunningSync = async (statusOverrides = {}, savedOverrides = {}) => {
       enableSavedProfileSync(savedOverrides);
       mockElectronAPI.getProfileSyncStatus.mockReset();
@@ -7123,7 +7127,7 @@ describe('Settings + Config Integration', () => {
         document.getElementById('profile-sync-folder-path').value = '/tmp/shared-folder';
 
         for (const id of ['profile-sync-now', 'profile-sync-push-now', 'profile-sync-pull-now']) {
-          mockUiUtils.showToast.mockClear();
+          mockDialogs.showToast.mockClear();
           document.getElementById(id).click();
           await flush();
           expect(lastToast()).toEqual([
@@ -7132,7 +7136,7 @@ describe('Settings + Config Integration', () => {
             expect.any(Number),
           ]);
         }
-        expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+        expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
         expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
       });
 
@@ -7155,7 +7159,7 @@ describe('Settings + Config Integration', () => {
         const expectEveryButtonAskedToSave = async () => {
           mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({ ok: true });
           for (const id of syncButtons) {
-            mockUiUtils.showToast.mockClear();
+            mockDialogs.showToast.mockClear();
             document.getElementById(id).click();
             await flush();
             expect(lastToast()).toEqual([
@@ -7164,7 +7168,7 @@ describe('Settings + Config Integration', () => {
               expect.any(Number),
             ]);
           }
-          expect(mockUiUtils.showConfirm).not.toHaveBeenCalled();
+          expect(mockDialogs.showConfirm).not.toHaveBeenCalled();
           expect(mockElectronAPI.runProfileSync).not.toHaveBeenCalled();
         };
 
@@ -7285,7 +7289,7 @@ describe('Settings + Config Integration', () => {
 
       test('Sync down says so when nothing was downloaded', async () => {
         await openWithRunningSync();
-        mockUiUtils.showConfirm.mockResolvedValue(true);
+        mockDialogs.showConfirm.mockResolvedValue(true);
 
         mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
           ok: true,
@@ -7333,7 +7337,7 @@ describe('Settings + Config Integration', () => {
 
       test('Sync down rebuilds the form, so Save does not write the old values back', async () => {
         await openWithRunningSync();
-        mockUiUtils.showConfirm.mockResolvedValue(true);
+        mockDialogs.showConfirm.mockResolvedValue(true);
         const before = document.getElementById('opacity-slider').value;
         mockElectronAPI.runProfileSync = jest.fn().mockResolvedValue({
           ok: true,
@@ -7356,7 +7360,7 @@ describe('Settings + Config Integration', () => {
 
       test('says when unsaved edits were discarded by the pull', async () => {
         await openWithRunningSync();
-        mockUiUtils.showConfirm.mockResolvedValue(true);
+        mockDialogs.showConfirm.mockResolvedValue(true);
         const opacity = document.getElementById('opacity-slider');
         opacity.value = '70';
         opacity.dispatchEvent(new Event('input', { bubbles: true }));
@@ -7644,7 +7648,7 @@ describe('Settings + Config Integration', () => {
         document.getElementById('profile-sync-clear-passphrase').click();
         await flush();
 
-        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
           'Clear saved passphrase',
           'Remove the saved sync passphrase from this device? Syncing stays paused until you enter it again.',
           expect.anything()
@@ -7761,12 +7765,12 @@ describe('Settings + Config Integration', () => {
 
       test('closes as usual for an unrelated change while a first-sync choice stays postponed', async () => {
         await openWithRunningSync({ needsResolution: true });
-        mockUiUtils.showToast.mockClear();
+        mockDialogs.showToast.mockClear();
 
         await settings.saveSettings();
 
         expect(document.getElementById('settings-modal').classList.contains('hidden')).toBe(true);
-        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
           'Waiting for your choice below.',
           expect.anything(),
           expect.anything()
@@ -7776,7 +7780,7 @@ describe('Settings + Config Integration', () => {
       test('closes as usual when the folder switch that would have changed the sync is declined', async () => {
         await openWithRunningSync({ needsResolution: true });
         document.getElementById('profile-sync-folder-path').value = '/tmp/another-folder';
-        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+        mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
         await settings.saveSettings();
 
@@ -7786,7 +7790,7 @@ describe('Settings + Config Integration', () => {
       test('comes back to a postponed first-sync choice when the save changes the sync', async () => {
         await openWithRunningSync({ needsResolution: true });
         document.getElementById('profile-sync-folder-path').value = '/tmp/another-folder';
-        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        mockDialogs.showConfirm.mockResolvedValueOnce(true);
 
         await settings.saveSettings();
 
@@ -7874,7 +7878,7 @@ describe('Settings + Config Integration', () => {
           </div>
         </div>`
       );
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
       mockElectronAPI.updateConfig.mockClear();
     });
 
@@ -8194,7 +8198,7 @@ describe('Settings + Config Integration', () => {
         // In the field's own notes, under its help, so it stays in the field's grid cell.
         expect(error('alert-duration').previousElementSibling.id).toBe('alert-duration-help');
         expect(document.activeElement).toBe(duration);
-        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockDialogs.showToast).not.toHaveBeenCalled();
         expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
 
         // Editing the value answers it.
@@ -8218,7 +8222,7 @@ describe('Settings + Config Integration', () => {
         );
         expect(error('alert-duration')).toBeNull();
         expect(document.activeElement).toBe(document.getElementById('alert-threshold'));
-        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockDialogs.showToast).not.toHaveBeenCalled();
       });
 
       test('asks for a target state under the state field', async () => {
@@ -8426,14 +8430,14 @@ describe('Settings + Config Integration', () => {
       test('Escape ends the recording instead of being offered as the hotkey', async () => {
         const { input, setBtn, preset } = await open();
         mockElectronAPI.registerPopupHotkey.mockClear();
-        mockUiUtils.showToast.mockClear();
+        mockDialogs.showToast.mockClear();
 
         const event = press(document.body, 'Escape');
         await tick();
 
         expect(event.defaultPrevented).toBe(true);
         expect(mockElectronAPI.registerPopupHotkey).not.toHaveBeenCalled();
-        expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+        expect(mockDialogs.showToast).not.toHaveBeenCalled();
         expect(setBtn.textContent).toBe('Set hotkey');
         expect(preset.disabled).toBe(false);
         expect(input.value).toBe(state.CONFIG.popupHotkey || '');
@@ -8491,7 +8495,7 @@ describe('Settings + Config Integration', () => {
         const record = async (init) => {
           const parts = await open();
           mockElectronAPI.registerPopupHotkey.mockClear();
-          mockUiUtils.showToast.mockClear();
+          mockDialogs.showToast.mockClear();
           press(document.body, init.key, init);
           await tick();
           await tick();
@@ -8522,7 +8526,7 @@ describe('Settings + Config Integration', () => {
 
             expect(mockElectronAPI.registerPopupHotkey).toHaveBeenCalledWith('Alt+Super+K');
             expect(input.value).toBe('Alt+Win+K');
-            expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+            expect(mockDialogs.showToast).toHaveBeenCalledWith(
               'Popup hotkey set to Alt+Win+K',
               'success'
             );
@@ -8581,7 +8585,7 @@ describe('Settings + Config Integration', () => {
           });
           const { input } = await record({ key: 'd', code: 'KeyD', ctrlKey: true });
 
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          expect(mockDialogs.showToast).toHaveBeenCalledWith(
             'Hotkey already assigned to Desk lamp',
             'error'
           );
@@ -8979,14 +8983,14 @@ describe('Settings + Config Integration', () => {
         });
 
         test('can be removed, which an orphan could not be before', async () => {
-          mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+          mockDialogs.showConfirm.mockResolvedValueOnce(true);
           mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
 
           row('light.gone').querySelector('.remove-alert').click();
           await tick();
           await tick();
 
-          expect(mockUiUtils.showConfirm.mock.calls.at(-1)[1]).toContain('light.gone');
+          expect(mockDialogs.showConfirm.mock.calls.at(-1)[1]).toContain('light.gone');
           expect(
             mockElectronAPI.updateConfig.mock.calls.at(-1)[0].entityAlerts.alerts
           ).not.toHaveProperty('light.gone');
@@ -9088,7 +9092,7 @@ describe('Settings + Config Integration', () => {
         test('still asks for a state when none was typed', async () => {
           await openFor('switch.kitchen');
           document.getElementById('target-state-input').value = '   ';
-          mockUiUtils.showToast.mockClear();
+          mockDialogs.showToast.mockClear();
           mockElectronAPI.updateConfig.mockClear();
 
           await settings.saveAlert();
@@ -9221,7 +9225,7 @@ describe('Settings + Config Integration', () => {
       test('puts focus on the Add button when the alert it was removing is gone', async () => {
         const remove = document.querySelector('.remove-alert[data-entity="switch.kitchen"]');
         remove.focus();
-        mockUiUtils.showConfirm.mockResolvedValueOnce(true);
+        mockDialogs.showConfirm.mockResolvedValueOnce(true);
         mockElectronAPI.updateConfig.mockImplementationOnce(async (next) => next);
 
         remove.click();
@@ -9229,7 +9233,7 @@ describe('Settings + Config Integration', () => {
         await tick();
 
         // The Remove button went with the row, so the confirmation is told where focus goes instead.
-        const [, , options] = mockUiUtils.showConfirm.mock.calls.at(-1);
+        const [, , options] = mockDialogs.showConfirm.mock.calls.at(-1);
         expect(document.querySelector('.remove-alert[data-entity="switch.kitchen"]')).toBeNull();
         expect(options.focusFallback()).toBe(document.querySelector('.add-alert-btn'));
       });
@@ -9268,7 +9272,7 @@ describe('Settings + Config Integration', () => {
       const modal = document.getElementById('donate-modal');
       const amount = document.getElementById('donate-custom-amount');
       const error = document.getElementById('donate-amount-error');
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       expect(modal.getAttribute('aria-describedby')).toBe('donate-intro');
       amount.value = '0.5';
@@ -9281,7 +9285,7 @@ describe('Settings + Config Integration', () => {
       expect(amount.getAttribute('aria-invalid')).toBe('true');
       expect(amount.getAttribute('aria-describedby')).toBe('donate-amount-error');
       expect(document.activeElement).toBe(amount);
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(mockElectronAPI.openExternal).not.toHaveBeenCalled();
 
       amount.value = '10';
@@ -9386,7 +9390,7 @@ describe('Settings + Config Integration', () => {
 
         await settings.saveSettings();
 
-        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
           expect.stringContaining('Custom icons saved'),
           expect.anything(),
           expect.anything()
@@ -9402,7 +9406,7 @@ describe('Settings + Config Integration', () => {
         await settings.saveSettings();
 
         // Pages, as the rest of the app calls them, not "tabs/tiles".
-        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).toHaveBeenCalledWith(
           'Custom icons saved. They show on your pages right away.',
           'success',
           expect.any(Number)
@@ -9412,12 +9416,12 @@ describe('Settings + Config Integration', () => {
 
     describe('the restart prompts', () => {
       const askedToRestart = () =>
-        mockUiUtils.showConfirm.mock.calls.filter(([title]) => title === 'Restart required');
+        mockDialogs.showConfirm.mock.calls.filter(([title]) => title === 'Restart required');
 
       test('Always on top asks in the themed dialog, and Restart now restarts', async () => {
         await settings.openSettings();
         document.getElementById('always-on-top').checked = false;
-        mockUiUtils.showConfirm.mockImplementation(async () => true);
+        mockDialogs.showConfirm.mockImplementation(async () => true);
 
         await settings.saveSettings();
 
@@ -9456,7 +9460,7 @@ describe('Settings + Config Integration', () => {
         state.CONFIG.desktopCapabilities = { alwaysTransparentWindows: false };
         await settings.openSettings();
         document.getElementById('opacity-slider').value = '60';
-        mockUiUtils.showConfirm.mockImplementation(async () => true);
+        mockDialogs.showConfirm.mockImplementation(async () => true);
 
         await settings.saveSettings();
 
@@ -9648,12 +9652,12 @@ describe('Settings + Config Integration', () => {
       test('Disconnect asks first, and declining leaves the authorization alone', async () => {
         oauthConnected();
         await settings.openSettings();
-        mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+        mockDialogs.showConfirm.mockResolvedValueOnce(false);
 
         document.getElementById('disconnect-ha-oauth-btn').click();
         await flushAsync();
 
-        expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+        expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
           'Disconnect',
           'Disconnect this widget from Home Assistant? You will need to authorize again.',
           expect.objectContaining({ confirmText: 'Disconnect', confirmClass: 'btn-danger' })
@@ -9747,7 +9751,7 @@ describe('Settings + Config Integration', () => {
           expect(document.getElementById('legacy-ha-token-settings').open).toBe(true);
           expect(document.activeElement).toBe(document.getElementById('ha-token'));
           // The status line says it; a toast on opening used to say it a third time.
-          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+          expect(mockDialogs.showToast).not.toHaveBeenCalled();
         });
 
         test('is brought to General with the token field when Settings was left on another page', async () => {
@@ -9881,17 +9885,17 @@ describe('Settings + Config Integration', () => {
         mockElectronAPI.openExternal = jest.fn().mockResolvedValue({ success: true });
         await settings.openSettings();
         document.getElementById('open-donate-modal-btn').click();
-        mockUiUtils.showToast.mockClear();
+        mockDialogs.showToast.mockClear();
 
         document.getElementById('donate-continue-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).toHaveBeenCalledWith(
           'Opened GitHub Sponsors in your browser.',
           'info',
           expect.any(Number)
         );
-        expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
           'Thank you for your support!',
           expect.anything(),
           expect.anything()
@@ -9909,7 +9913,7 @@ describe('Settings + Config Integration', () => {
           document.body.insertAdjacentHTML('beforeend', cardMarkup);
           await settings.openSettings();
           document.getElementById('open-donate-modal-btn').click();
-          mockUiUtils.showToast.mockClear();
+          mockDialogs.showToast.mockClear();
           // The dialog opens on Monthly; cards are for one-time donations.
           const oneTime = document.querySelector(
             'input[name="donate-frequency"][value="one-time"]'
@@ -9957,7 +9961,7 @@ describe('Settings + Config Integration', () => {
 
           finish({ status: 'complete' });
           await new Promise((resolve) => setTimeout(resolve, 0));
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          expect(mockDialogs.showToast).toHaveBeenCalledWith(
             'Thank you for your donation!',
             'success',
             expect.any(Number)
@@ -9973,7 +9977,7 @@ describe('Settings + Config Integration', () => {
           card.click();
           await new Promise((resolve) => setTimeout(resolve, 0));
 
-          expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+          expect(mockDialogs.showToast).not.toHaveBeenCalled();
           expect(document.getElementById('donate-modal').classList.contains('hidden')).toBe(false);
           expect(card.disabled).toBe(false);
         });
@@ -9984,7 +9988,7 @@ describe('Settings + Config Integration', () => {
           card.click();
           await new Promise((resolve) => setTimeout(resolve, 0));
 
-          expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+          expect(mockDialogs.showToast).toHaveBeenCalledWith(
             'Could not open card checkout. Please try again.',
             'error',
             expect.any(Number)
@@ -10293,13 +10297,13 @@ describe('Settings + Config Integration', () => {
       await openSettingsWithCustomIconsExpanded();
       document.getElementById('custom-entity-icons-reset-all').click();
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Alle eigenen Symbole entfernt. Zum Übernehmen Speichern und schließen klicken.',
         'info',
         2400
       );
 
-      mockUiUtils.showConfirm.mockResolvedValueOnce(false);
+      mockDialogs.showConfirm.mockResolvedValueOnce(false);
       state.CONFIG.entityAlerts = {
         enabled: true,
         alerts: { 'light.living_room': { onStateChange: true } },
@@ -10308,7 +10312,7 @@ describe('Settings + Config Integration', () => {
       settings.renderAlertsListInline();
       alertsList.querySelector('.remove-alert').click();
       await Promise.resolve();
-      expect(mockUiUtils.showConfirm).toHaveBeenCalledWith(
+      expect(mockDialogs.showConfirm).toHaveBeenCalledWith(
         'Warnung entfernen',
         'Warnung für „Living Room Light“ entfernen?',
         expect.objectContaining({ confirmText: 'Entfernen' })
@@ -10320,7 +10324,7 @@ describe('Settings + Config Integration', () => {
       await settings.openSettings();
       document.getElementById('profile-sync-push-now').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Profil-Upload abgeschlossen.',
         'success',
         2200
@@ -10609,11 +10613,11 @@ describe('Settings + Config Integration', () => {
       test('tells you when Refresh has run', async () => {
         window.electronAPI.getDesktopIntegration = jest.fn().mockResolvedValue(hyprland());
         await openPanel();
-        mockUiUtils.showToast.mockClear();
+        mockDialogs.showToast.mockClear();
 
         await el('desktop-integration-refresh').onclick();
 
-        expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+        expect(mockDialogs.showToast).toHaveBeenCalledWith(
           'Shortcut status updated.',
           'info',
           2000

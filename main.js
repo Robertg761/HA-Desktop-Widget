@@ -356,7 +356,6 @@ if (
 }
 // --------------------------- end early startup -----------------------------
 
-const profileSyncCore = require('./profile-sync-core.js');
 const { createLocalizationService, detectSystemLocale } = require('./src/i18n-main.cjs');
 const { createLocalePackRefresher } = require('./src/locale-pack-refresh.cjs');
 const { revealFile } = require('./src/reveal-file.cjs');
@@ -394,24 +393,8 @@ const {
   normalizeDesktopPinActionRequest,
   normalizeHaUnitSystem,
 } = require('./src/desktop-pin-ipc.cjs');
-const {
-  getWindowsStartupRegistryName,
-  isWindowsLoginItemEnabled,
-  quoteWindowsExecutablePath,
-} = require('./src/windows-startup.cjs');
-const {
-  getLinuxStartupExecutablePath,
-  isLinuxLoginItemEnabled,
-  migrateLegacyLinuxAutostartEntry,
-  setLinuxLoginItemSettings,
-  syncLinuxAutostartExecutablePath,
-} = require('./src/linux-startup.cjs');
-const {
-  isAllowedHlsProxyPath,
-  isPathInsideDirectory,
-  normalizeEntityIdForObjectKey,
-  validateProfileSyncCopyPaths,
-} = require('./src/main-security.cjs');
+const { createLoginItem } = require('./src/login-item.cjs');
+const { isAllowedHlsProxyPath, normalizeEntityIdForObjectKey } = require('./src/main-security.cjs');
 const {
   createElectronNetBinaryFetcher,
   createPinnedDnsBinaryFetcher,
@@ -535,29 +518,20 @@ const { createKWinWindowRaiser } = require('./src/kwin-window-raise.cjs');
 const { createPortalColorSchemeWatcher } = require('./src/portal-color-scheme.cjs');
 const { installSessionPermissionPolicy } = require('./src/session-permissions.cjs');
 const { turnOffSpellChecker } = require('./src/spell-checker.cjs');
+const { createIpcRoutes } = require('./src/ipc-routes.cjs');
 const {
-  createSerializedTaskRunner,
-  createLatestTaskCoalescer,
-} = require('./src/serialized-task-runner.cjs');
-const { CONFIG_FILE_NAME, shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
+  CONFIG_FILE_NAME,
+  CONFIG_STORE_CLOSED,
+  createConfigStore,
+  replaceConfigContents,
+} = require('./src/main-config-store.cjs');
 const { replaceConfigEntityIdReferences } = require('./src/config-entity-references.cjs');
-const { requireExistingSyncParentDirectory } = require('./src/cloud-sync-path.cjs');
+const settingsFields = require('./packages/widget-renderer/src/settings-fields.cjs');
 const {
-  createProfileSyncRewriteTransaction,
-  normalizeProfileSyncRewriteTransaction,
-  profileSyncRewriteEndpointMatches,
+  createProfileSyncEngine,
+  describeKnownProfileSyncFailure,
   isSecureProfileSyncStorageAvailable,
-  classifyProfileSyncPassphraseSubmission,
-  resolveProfileSyncEncryptionRequest,
-  stageProfileSyncRewriteTransaction,
-  runProfileSyncRewriteRecovery,
-  REWRITE_TRANSACTION_INVALID,
-  createRewriteTransactionError,
-} = require('./src/profile-sync-rewrite-transaction.cjs');
-const {
-  canCommitSnapshot,
-  createVersionedWriteAcknowledgements,
-} = require('./src/versioned-write-acknowledgements.cjs');
+} = require('./src/profile-sync-engine.cjs');
 const {
   HomeAssistantOAuthClient,
   normalizeHomeAssistantBaseUrl,
@@ -855,6 +829,8 @@ const trayEntityTicker = createTrayEntityTicker((entityId) => {
   }
   mainWindow.webContents.send('tray-entities-refresh-needed', { entityId });
 });
+// The config, as the config store holds it: the store keeps one object for the whole run and
+// edits it in place, so this name always reads the current config. It is only rebound by a load.
 let config;
 let isQuitting = false;
 let autoUpdateDownloaded = false;
@@ -867,45 +843,32 @@ let smokeTestFinished = false;
 let smokeTestRendererLoaded = false;
 let smokeTestRendererReady = false;
 let smokeTestTrayReady = false;
-const CONFIG_SAVE_DEBOUNCE_MS = 120;
 const QUIT_FINALIZATION_TIMEOUT_MS = 15000;
 // Inside logind's default 5 s shutdown delay, and far inside systemd's stop timeout.
 const SYSTEM_SHUTDOWN_EXIT_DEADLINE_MS = 4000;
 let systemShutdownRequested = false;
-let configWriteTimer = null;
-let configWriteInFlight = false;
-let pendingConfigSnapshot = null;
-let configSnapshotVersion = 0;
-let configWriteEpoch = 0;
-let configShutdownPending = false;
-const configWriteAcknowledgements = createVersionedWriteAcknowledgements();
-let lastConfigWriteError = null;
 let lastConfigPersistenceWarningSignature = '';
 let lastConfigPersistenceWarningAt = 0;
 let configRecoveryNotice = null;
-let configWriteBlockedReason = '';
 let configBackupCreatedThisRun = false;
 let preservedEncryptedTokenForRecovery = null;
-let configMutationQueueClosed = false;
-const runSerializedConfigMutationUnchecked = createSerializedTaskRunner();
-const runSerializedConfigMutation = (task) => {
-  if (configMutationQueueClosed) {
-    return Promise.reject(
-      new Error('The application is shutting down; the change was not applied')
-    );
-  }
-  return runSerializedConfigMutationUnchecked(task);
-};
+const configStore = createConfigStore({
+  filePath: path.join(app.getPath('userData'), CONFIG_FILE_NAME),
+  encode: (currentConfig) => encodeConfigForSave(currentConfig),
+  log,
+});
+const runSerializedConfigMutation = (task) => configStore.serialize(task);
 const runBackgroundConfigMutation = (task, context = 'background config mutation') => {
   void runSerializedConfigMutation(task).catch((error) => {
-    if (configMutationQueueClosed || quitFinalizationStarted) return;
+    // The store closes for a quit; work it turns away then is expected.
+    if (error?.code === CONFIG_STORE_CLOSED || quitFinalizationStarted) return;
     log.warn(`${context} failed:`, error?.message || String(error));
   });
 };
 const serializeConfigMutationHandler =
   (handler) =>
   (...args) => {
-    if (quitFinalizationStarted || configMutationQueueClosed) {
+    if (quitFinalizationStarted) {
       return Promise.resolve({
         success: false,
         error: 'The application is shutting down; the change was not applied',
@@ -913,48 +876,40 @@ const serializeConfigMutationHandler =
     }
     return runSerializedConfigMutation(() => handler(...args));
   };
-const PROFILE_SYNC_PUSH_DEBOUNCE_MS = 2000;
-// After Cloud Sync refuses a save for want of a subscription, automatic runs only download
-// for this long; Sync now, signing in and a renewed subscription try saving straight away.
-const CLOUD_SYNC_WRITE_RETRY_MS = 6 * 60 * 60 * 1000;
-const PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES = 5;
-const PROFILE_SYNC_MAX_FILE_BYTES = 512 * 1024;
-const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8;
-// Floor between syncs triggered by focus or resume, so alt-tabbing does not turn
-// into constant reads of a cloud-synced folder.
-const PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS = 60 * 1000;
-const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups';
-const PROFILE_SYNC_BACKUP_KEEP = 5;
-// Backups holding edits a run threw away (the losing side of a conflict, a stale copy of the
-// file) are kept longer: the newest 20, and any younger than 30 days up to 100 in all. A lost
-// edit may only be noticed weeks later, long after routine pulls would have pruned it.
-const PROFILE_SYNC_DISCARD_BACKUP_KEEP = 20;
-const PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const PROFILE_SYNC_DISCARD_BACKUP_LIMIT = 100;
-// Pulls remembered for recognising config updates built before them.
-const PROFILE_SYNC_PULL_HISTORY_LIMIT = 16;
-const PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS = 10;
-const PROFILE_SYNC_RESOLUTION_CHOICES = new Set(['upload_local', 'use_remote', 'cancel']);
-// Sync through a hosted account (Cloud Sync) rather than a file in a folder.
-const PROFILE_SYNC_HOSTED_PROVIDER = 'hostedAccount';
-const PROFILE_SYNC_SUPPORTED_PROVIDERS = new Set([
-  PROFILE_SYNC_HOSTED_PROVIDER,
-  'cloudFile',
-  'googleDrive',
-  'dropbox',
-  'oneDrive',
-  'icloudDrive',
-  'syncthing',
-]);
-// Filenames these providers leave behind when two devices write at once. Their
-// presence beside the sync file means a race already happened. OneDrive and iCloud
-// name a copy after the original, so theirs are built from the file's own name.
-const PROFILE_SYNC_CONFLICT_PATTERNS = [
-  /\.sync-conflict-/i, // Syncthing
-  /\bconflicted copy\b/i, // Dropbox
-  /\(\d+\)\.json$/i, // Google Drive / generic duplicate suffix
-];
-const PROFILE_SYNC_DEFAULT_FILE_NAME = 'ha-widget-profile-sync.json';
+// Profile sync lives in its own engine; main.js gives it the config store and Electron's pieces,
+// and tells it what the user and the config do.
+const profileSyncEngine = createProfileSyncEngine({
+  configStore,
+  fs,
+  app,
+  process,
+  safeStorage,
+  getCloudSyncClient,
+  dialog,
+  suspendAutoHide: () => windowAutoHide.suspend(),
+  t: mainT,
+  tError: mainTError,
+  log,
+  sendStatus: (buildStatus) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('profile-sync-status', buildStatus());
+  },
+  rendererConfig: () => sanitizeConfigForRenderer(config),
+  // What a pulled or restored profile is normalized with, besides the sync settings.
+  normalizeConfig: (target) => {
+    pruneConfig(target);
+    ensureDateTimeFormatConfigDefaults(target);
+    normalizeDesktopPinsConfig(target);
+    normalizeTrayEntitiesConfigInPlace(target);
+  },
+  // A pull that cannot be written puts the token kept for recovery back as it was.
+  snapshotMainState: () => {
+    const encryptedToken = preservedEncryptedTokenForRecovery;
+    return () => {
+      preservedEncryptedTokenForRecovery = encryptedToken;
+    };
+  },
+});
 const HOME_ASSISTANT_TOKEN_PLACEHOLDER = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
 // Why the saved token is not there to use. 'encryption_unavailable' and 'decryption_failed' are
 // about an encrypted token that is still on disk; 'not_persisted' says none was written, because
@@ -966,55 +921,6 @@ const TOKEN_RESET_RECOVERY_REASONS = new Set([
 ]);
 const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS = 5 * 60 * 1000;
 const HOME_ASSISTANT_OAUTH_RETRY_MS = 60 * 1000;
-
-const profileSyncRuntime = {
-  inFlight: false,
-  pushDebounceTimer: null,
-  intervalTimer: null,
-  // Hash of the scoped profile as it stood immediately before a pulled profile
-  // was applied. Armed by applySyncedProfileToConfig so the renderer's stale
-  // config echo can be recognised by content rather than by timing; see
-  // updateLocalProfileSyncTracking.
-  pendingPullEchoHash: null,
-  // The synced profile as it stood before that pull, for updates that carry no
-  // config revision.
-  pendingPullEchoProfile: null,
-  // Pulls applied this session, oldest first: the synced profile as it stood
-  // before each, and the config revision the renderer first sees it in. An
-  // update built from an older revision is compared with the profile before the
-  // first pull it missed. Kept after an update is answered, since another one
-  // built earlier (a rollback snapshot) can still follow.
-  pendingPulls: [],
-  // Cloud Sync revision of the last read; the next write expects it unchanged.
-  hostedRevision: null,
-  // When Cloud Sync last refused a save because the account has no subscription (0: never).
-  cloudSyncWriteRefusedAt: 0,
-  // Conflict-copy filenames found beside the sync file on the last run. Refreshed
-  // by sync runs because the check needs the filesystem.
-  conflictCopies: [],
-  lastOpportunisticSyncAt: 0,
-  needsResolution: false,
-  pendingRemoteEnvelope: null,
-  pendingRemoteIdentity: null,
-  localProfileHash: null,
-  localProfileUpdatedAt: null,
-  // Hash of each in-scope section as last seen locally. A save that changes a
-  // section stamps profileSync.sectionUpdatedAt for it, which only matters when
-  // two devices changed the same section and the newer edit has to win.
-  localSectionHashes: {},
-  // Sections that differ between this device and the file while a first-sync
-  // choice is pending, for the conflict prompt.
-  conflictSections: [],
-  // The subset of conflictSections that are damaged in the file, where only
-  // keeping this device's settings can resolve the conflict.
-  damagedConflictSections: [],
-  // What the last successful run moved, for the status line.
-  lastRunSummary: null,
-  lastRemote: null,
-  passphraseSession: '',
-  passphraseWarning: '',
-  approvedCopyDestinationFolders: [],
-};
 
 // Popup hotkey state
 let popupHotkeyPressed = false;
@@ -1389,7 +1295,6 @@ function isTrustedAppWebContents(candidate) {
 let postWindowStartupTasksScheduled = false;
 let deferredHomeAssistantTokenDecryptPending = false;
 let deferredPlaintextTokenMigrationPending = false;
-let deferredProfileSyncPassphraseDecryptPending = false;
 let deferredSecureConfigResolutionInProgress = false;
 let homeAssistantOAuthClient = null;
 let cloudSyncClient = null;
@@ -1490,35 +1395,6 @@ function applyWindowOpacityToAll(opacity, currentConfig = config) {
   return safeOpacity;
 }
 
-function refreshProfileSyncRuntimeTracking({ decodePassphrase = true } = {}) {
-  if (decodePassphrase) {
-    profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
-  }
-  const activeScope = getActiveProfileSyncScope();
-  const initialProfile = profileSyncCore.projectSyncProfile(config, activeScope);
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(initialProfile, activeScope);
-  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(activeScope);
-  profileSyncRuntime.pendingPullEchoHash = null;
-  profileSyncRuntime.pendingPullEchoProfile = null;
-  profileSyncRuntime.pendingPulls = [];
-  // Seed from the persisted content-change timestamp. lastSyncAt is only a
-  // fallback for configs written before profileUpdatedAt existed — it tracks
-  // sync *attempts* (including failures), so it must not be preferred here or
-  // a string of failed syncs would make the local profile look freshly edited.
-  const localProfileUpdatedAtSeed =
-    config?.profileSync?.profileUpdatedAt ||
-    config?.profileSync?.lastSyncAt ||
-    new Date().toISOString();
-  profileSyncRuntime.localProfileUpdatedAt = localProfileUpdatedAtSeed;
-  if (config?.profileSync && !config.profileSync.profileUpdatedAt) {
-    config.profileSync.profileUpdatedAt = localProfileUpdatedAtSeed;
-    // Persist the migration once. Otherwise a failed attempt can advance
-    // lastSyncAt, and the next restart would mistake that failure timestamp for
-    // the age of local profile content.
-    saveConfig({ allowDebouncedPush: false });
-  }
-}
-
 function mainT(key, vars = {}) {
   return localizationService.translate(config?.ui?.language || 'auto', key, vars);
 }
@@ -1528,29 +1404,13 @@ function mainLocale() {
   return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto').activeLocale;
 }
 
-/**
- * Words the failures profile sync reports by code for a person. The technical text in
- * the error stays for the log.
- */
-function describeKnownProfileSyncFailure(error) {
-  if (profileSyncCore.isSyncFileDamagedError(error)) {
-    return mainT(
-      "The sync file is damaged. Use Sync up to replace it with this computer's settings; the old file is backed up first."
-    );
-  }
-  if (error?.code === REWRITE_TRANSACTION_INVALID) {
-    return mainT("Could not update the sync file's encryption. Nothing was changed. Try again.");
-  }
-  return '';
-}
-
 // Shared helpers (profile-sync-core.js, src/cloud-sync-path.cjs,
 // src/profile-sync-rewrite-transaction.cjs) throw English messages that are also catalog
 // keys, so they are translated where they reach the renderer. Text without a catalog entry
 // (OS errors, text that is already translated) passes through unchanged. The failures that
 // carry a code are worded by describeKnownProfileSyncFailure instead.
 function mainTError(errorOrMessage) {
-  const known = describeKnownProfileSyncFailure(errorOrMessage);
+  const known = describeKnownProfileSyncFailure(errorOrMessage, mainT);
   if (known) return known;
   const message =
     typeof errorOrMessage === 'string'
@@ -1577,7 +1437,7 @@ function finishSmokeTest(success, error = '') {
   }
 
   if (success) {
-    const persistence = flushPendingConfigWriteSync({ shutdown: true });
+    const persistence = configStore.flushSync();
     if (!persistence.success) {
       success = false;
       error = `Configuration flush failed: ${persistence.error}`;
@@ -1748,125 +1608,6 @@ function startDevLiveReloadWatchers() {
   log.info('Dev live reload watchers enabled');
 }
 
-function isProfileSyncProviderSupported(provider) {
-  if (typeof provider !== 'string') return false;
-  return PROFILE_SYNC_SUPPORTED_PROVIDERS.has(provider.trim());
-}
-
-function normalizeProfileSyncProvider(provider) {
-  if (!isProfileSyncProviderSupported(provider)) return 'cloudFile';
-  return provider.trim();
-}
-
-async function getGoogleDriveFolderCandidates(home) {
-  const candidates = [];
-
-  if (process.platform === 'darwin') {
-    // Drive for Desktop mounts one root per signed-in account under CloudStorage,
-    // named GoogleDrive-<account>. The account is unknown here, so enumerate.
-    const cloudStorage = path.join(home, 'Library', 'CloudStorage');
-    try {
-      const entries = await fs.promises.readdir(cloudStorage);
-      entries
-        .filter((entry) => entry.startsWith('GoogleDrive-'))
-        .forEach((entry) => candidates.push(path.join(cloudStorage, entry, 'My Drive')));
-    } catch {
-      // CloudStorage is absent unless Drive for Desktop is installed
-    }
-  }
-
-  if (process.platform === 'win32') {
-    // Drive for Desktop mounts a virtual drive, G: by default. Only the default
-    // is probed: the letter is user-configurable, and stat on a disconnected
-    // network drive can block, so a full A-Z scan is not worth the risk.
-    candidates.push(path.join(`G:${path.sep}`, 'My Drive'));
-  }
-
-  // Legacy Backup and Sync, and the third-party clients Linux users rely on.
-  candidates.push(path.join(home, 'Google Drive'), path.join(home, 'GoogleDrive'));
-  return candidates;
-}
-
-async function getDropboxFolderCandidates(home) {
-  const candidates = [];
-  // The Dropbox client records its real folder here, which is authoritative when
-  // the user moved it off the default location.
-  try {
-    const info = JSON.parse(
-      await fs.promises.readFile(path.join(home, '.dropbox', 'info.json'), 'utf8')
-    );
-    Object.values(info || {}).forEach((account) => {
-      if (account && typeof account.path === 'string' && account.path.trim()) {
-        candidates.push(account.path.trim());
-      }
-    });
-  } catch {
-    // info.json is absent unless the desktop client is installed
-  }
-  candidates.push(path.join(home, 'Dropbox'));
-  return candidates;
-}
-
-function getOneDriveFolderCandidates(home) {
-  // The client exports its root through these, covering relocated folders and
-  // the personal/business split.
-  return [
-    process.env.OneDrive,
-    process.env.OneDriveConsumer,
-    process.env.OneDriveCommercial,
-    path.join(home, 'OneDrive'),
-  ].filter((candidate) => typeof candidate === 'string' && candidate.trim());
-}
-
-async function getProviderDefaultFolderCandidates(provider) {
-  let home;
-  try {
-    home = app.getPath('home');
-  } catch {
-    return [];
-  }
-  if (provider === 'googleDrive') {
-    return getGoogleDriveFolderCandidates(home);
-  }
-  if (provider === 'dropbox') {
-    return getDropboxFolderCandidates(home);
-  }
-  if (provider === 'oneDrive') {
-    return getOneDriveFolderCandidates(home);
-  }
-  if (provider === 'icloudDrive') {
-    if (process.platform === 'darwin') {
-      return [path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs')];
-    }
-    return [path.join(home, 'iCloudDrive'), path.join(home, 'iCloud Drive')];
-  }
-  if (provider === 'syncthing') {
-    return [path.join(home, 'Sync'), path.join(home, 'Syncthing')];
-  }
-  return [];
-}
-
-/**
- * Where the folder chooser opens: the folder already in use, else the sync app's usual
- * folder. The app's own data folder never counts as in use. It holds the default sync
- * file that nothing replicates, so starting there would hide the sync app's folder.
- */
-async function getDefaultProfileSyncFolderPath(provider, existingFolder = '') {
-  if (existingFolder && existingFolder !== '.' && !isProfileSyncFolderUnsynced(existingFolder)) {
-    return existingFolder;
-  }
-  for (const candidate of await getProviderDefaultFolderCandidates(
-    normalizeProfileSyncProvider(provider)
-  )) {
-    try {
-      if ((await fs.promises.stat(candidate)).isDirectory()) return candidate;
-    } catch {
-      // candidate does not exist; try the next one
-    }
-  }
-  return app.getPath('userData');
-}
-
 function isPortableBuild() {
   if (!app.isPackaged) return false;
   const env = process.env || {};
@@ -1875,227 +1616,6 @@ function isPortableBuild() {
     env.PORTABLE_EXECUTABLE_FILE ||
     env.PORTABLE_EXECUTABLE_APP_FILENAME
   );
-}
-
-/**
- * Resolve the executable path/options used for Windows startup registration.
- *
- * Portable builds run from a temporary extracted executable, so we must use
- * PORTABLE_EXECUTABLE_FILE to register the launcher that actually exists
- * across reboots.
- * @param {{quotePath?: boolean}} [options]
- * @returns {{path: string, args: string[], name: string, executablePath: string}}
- */
-function getWindowsStartupRegistrationTarget(options = {}) {
-  const env = process.env || {};
-  const portableExecutable = env.PORTABLE_EXECUTABLE_FILE;
-  const portableBuild = isPortableBuild();
-  const quotePath = options.quotePath !== false;
-
-  if (portableBuild && portableExecutable) {
-    const executablePath = portableExecutable;
-    return {
-      path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
-      args: [],
-      name: getWindowsStartupRegistryName(pkg, app.getName()),
-      executablePath,
-    };
-  }
-
-  if (portableBuild && !portableExecutable) {
-    log.warn(
-      "Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath('exe') which may be an ephemeral path."
-    );
-  }
-
-  const executablePath = app.getPath('exe');
-  return {
-    path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
-    args: [],
-    name: getWindowsStartupRegistryName(pkg, app.getName()),
-    executablePath,
-  };
-}
-
-function getWindowsStartupLookupOptions(target) {
-  return {
-    path: target.path,
-    args: target.args,
-  };
-}
-
-function generateProfileSyncDeviceId() {
-  // Fully random: the ID is written into the shared sync file, so it must not
-  // leak host details such as the machine name.
-  return (
-    nodeCrypto
-      .randomBytes(16)
-      .toString('base64')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .slice(0, 20) || 'device'
-  );
-}
-
-function getDefaultProfileSyncFilePath() {
-  return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME);
-}
-
-// A sync file path the renderer may switch to: the fixed file name inside the
-// app data folder, the folder already in use, or a folder picked in the native
-// dialog during this run.
-function isApprovedProfileSyncFilePath(filePath, currentFilePath = '') {
-  if (typeof filePath !== 'string' || !filePath || !path.isAbsolute(filePath)) return false;
-  const resolvedPath = path.resolve(filePath);
-  if (path.basename(resolvedPath) !== PROFILE_SYNC_DEFAULT_FILE_NAME) return false;
-  const folder = path.dirname(resolvedPath);
-  const approvedFolders = [
-    app.getPath('userData'),
-    currentFilePath ? path.dirname(currentFilePath) : '',
-    ...profileSyncRuntime.approvedCopyDestinationFolders,
-  ];
-  return approvedFolders.some(
-    (approved) => typeof approved === 'string' && approved && path.resolve(approved) === folder
-  );
-}
-
-function getNormalizedProfileSyncScopeValue(value) {
-  return profileSyncCore.normalizeSyncScope(value);
-}
-
-function normalizeProfileSyncStringMap(value) {
-  if (!isPlainObject(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([key, entry]) =>
-        profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) && typeof entry === 'string'
-    )
-  );
-}
-
-/** Keeps the agreed-version entries ({hash, updatedAt}) of known sections. */
-function normalizeProfileSyncAgreedMap(value) {
-  if (!isPlainObject(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(
-        ([key, entry]) =>
-          profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key) &&
-          isPlainObject(entry) &&
-          typeof entry.hash === 'string' &&
-          typeof entry.updatedAt === 'string' &&
-          !Number.isNaN(Date.parse(entry.updatedAt))
-      )
-      .map(([key, entry]) => [key, { hash: entry.hash, updatedAt: entry.updatedAt }])
-  );
-}
-
-function getDefaultProfileSyncConfig() {
-  return {
-    enabled: false,
-    provider: 'cloudFile',
-    cloudFilePath: getDefaultProfileSyncFilePath(),
-    syncScope: getNormalizedProfileSyncScopeValue(profileSyncCore.getDefaultSyncScope()),
-    intervalMinutes: PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
-    encryptionEnabled: false,
-    encryptionChangePending: null,
-    rememberPassphrase: false,
-    passphraseEncrypted: false,
-    storedPassphrase: '',
-    lastSyncAt: null,
-    lastSuccessfulSyncAt: null,
-    lastSyncStatus: 'idle',
-    lastSyncError: '',
-    profileUpdatedAt: null,
-    // Main-process-owned merge state: each section's hash after the last
-    // successful sync, the edit time of that agreed version ({hash, updatedAt},
-    // ignored once the hash no longer matches the baseline), and when each
-    // section last changed on this device.
-    syncBaseline: {},
-    syncBaselineUpdatedAt: {},
-    sectionUpdatedAt: {},
-    firstEnableResolutionPending: false,
-    remoteRewritePending: false,
-    passphraseTransition: null,
-    passphraseTransitionInvalid: false,
-    deviceId: generateProfileSyncDeviceId(),
-  };
-}
-
-/**
- * Gives entityAlerts its full shape after a sync pull or backup restore, which
- * can bring a partial object or clear it altogether.
- */
-function ensureEntityAlertsConfigDefaults(target) {
-  const current = isPlainObject(target.entityAlerts) ? target.entityAlerts : {};
-  target.entityAlerts = {
-    ...current,
-    enabled: current.enabled === true,
-    alerts: isPlainObject(current.alerts) ? current.alerts : {},
-  };
-  return target;
-}
-
-function ensureProfileSyncConfigDefaults(target) {
-  if (!target || typeof target !== 'object') return target;
-  const defaults = getDefaultProfileSyncConfig();
-  // Fill in place rather than replacing the object: code that holds on to
-  // config.profileSync across a helper that calls this again would otherwise
-  // write to a detached copy, and those writes (a staged key rewrite, a
-  // completion marker) would never be saved.
-  const profileSync = isPlainObject(target.profileSync) ? target.profileSync : {};
-  Object.keys(defaults).forEach((key) => {
-    if (!Object.prototype.hasOwnProperty.call(profileSync, key)) profileSync[key] = defaults[key];
-  });
-  target.profileSync = profileSync;
-  target.profileSync.intervalMinutes = Number.isFinite(Number(target.profileSync.intervalMinutes))
-    ? Math.max(1, Math.min(60, Number(target.profileSync.intervalMinutes)))
-    : PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES;
-  target.profileSync.provider = normalizeProfileSyncProvider(target.profileSync.provider);
-  target.profileSync.cloudFilePath =
-    typeof target.profileSync.cloudFilePath === 'string' && target.profileSync.cloudFilePath.trim()
-      ? target.profileSync.cloudFilePath.trim()
-      : getDefaultProfileSyncFilePath();
-  target.profileSync.syncScope = getNormalizedProfileSyncScopeValue(target.profileSync.syncScope);
-  if (!target.profileSync.deviceId || typeof target.profileSync.deviceId !== 'string') {
-    target.profileSync.deviceId = generateProfileSyncDeviceId();
-  }
-  if (typeof target.profileSync.lastSyncError !== 'string') {
-    target.profileSync.lastSyncError = '';
-  }
-  if (
-    target.profileSync.profileUpdatedAt != null &&
-    typeof target.profileSync.profileUpdatedAt !== 'string'
-  ) {
-    target.profileSync.profileUpdatedAt = null;
-  }
-  if (typeof target.profileSync.lastSuccessfulSyncAt !== 'string') {
-    target.profileSync.lastSuccessfulSyncAt = null;
-  }
-  target.profileSync.syncBaseline = normalizeProfileSyncStringMap(target.profileSync.syncBaseline);
-  target.profileSync.syncBaselineUpdatedAt = normalizeProfileSyncAgreedMap(
-    target.profileSync.syncBaselineUpdatedAt
-  );
-  target.profileSync.sectionUpdatedAt = normalizeProfileSyncStringMap(
-    target.profileSync.sectionUpdatedAt
-  );
-  target.profileSync.firstEnableResolutionPending =
-    target.profileSync.firstEnableResolutionPending === true;
-  target.profileSync.remoteRewritePending = target.profileSync.remoteRewritePending === true;
-  target.profileSync.encryptionChangePending =
-    typeof target.profileSync.encryptionChangePending === 'boolean'
-      ? target.profileSync.encryptionChangePending
-      : null;
-  const rawPassphraseTransition = target.profileSync.passphraseTransition;
-  const normalizedPassphraseTransition =
-    normalizeProfileSyncRewriteTransaction(rawPassphraseTransition);
-  target.profileSync.passphraseTransitionInvalid =
-    !!rawPassphraseTransition && !normalizedPassphraseTransition;
-  target.profileSync.passphraseTransition =
-    normalizedPassphraseTransition || rawPassphraseTransition || null;
-  if (target.profileSync.passphraseTransition || target.profileSync.passphraseTransitionInvalid) {
-    target.profileSync.remoteRewritePending = true;
-  }
-  return target;
 }
 
 function ensureUpdateConfigDefaults(target) {
@@ -2184,35 +1704,18 @@ function ensureFollowOmarchyDefault(target) {
   return target;
 }
 
-function getProfileSyncConfig() {
-  ensureProfileSyncConfigDefaults(config);
-  return config.profileSync;
-}
-
 function hasDeferredSecureConfigWork() {
   return (
     deferredHomeAssistantTokenDecryptPending ||
     deferredPlaintextTokenMigrationPending ||
-    deferredProfileSyncPassphraseDecryptPending
+    profileSyncEngine.hasDeferredPassphrase()
   );
-}
-
-// The file sync uses until a folder is chosen lives in the app's own data folder, where
-// nothing replicates it. Settings is told there is no folder, so a first enable does not
-// read as a move from that folder and the field asks for one.
-function getRendererSyncFilePath(cloudFilePath) {
-  return cloudFilePath === getDefaultProfileSyncFilePath() ? '' : cloudFilePath || '';
 }
 
 function sanitizeConfigForRenderer(inputConfig) {
   const cloned = JSON.parse(JSON.stringify(inputConfig || {}));
   if (cloned.profileSync) {
-    delete cloned.profileSync.storedPassphrase;
-    delete cloned.profileSync.passphraseTransition;
-    delete cloned.profileSync.syncBaseline;
-    delete cloned.profileSync.syncBaselineUpdatedAt;
-    delete cloned.profileSync.sectionUpdatedAt;
-    cloned.profileSync.cloudFilePath = getRendererSyncFilePath(cloned.profileSync.cloudFilePath);
+    profileSyncEngine.redactForRenderer(cloned.profileSync);
   }
   // The marker is runtime-only. It is never read from or written to a user
   // profile, including when the connected overlay is active.
@@ -2234,7 +1737,7 @@ function sanitizeConfigForRenderer(inputConfig) {
     systemColorScheme: getSystemColorScheme(),
     softwareRendering: rendersInSoftware(),
   };
-  cloned.configRevision = configSnapshotVersion;
+  cloned.configRevision = configStore.revision();
   cloned.secureStoragePending = hasDeferredSecureConfigWork();
   if (configRecoveryNotice) {
     cloned.configRecovery = { ...configRecoveryNotice };
@@ -2246,54 +1749,18 @@ function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function getAuthorizedIpcSender(event) {
-  const sender = event?.sender || null;
-  if (!sender) return null;
-
-  const senderWindow = BrowserWindow.fromWebContents(sender);
-  if (!senderWindow || senderWindow.isDestroyed()) return null;
-
-  const senderFrame = event?.senderFrame || null;
-  if (senderFrame?.top && senderFrame.top !== senderFrame) {
-    return null;
-  }
-
-  if (
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    sender === mainWindow.webContents &&
-    senderWindow === mainWindow
-  ) {
-    return { type: 'main', window: mainWindow };
-  }
-
-  for (const [entityId, pinWindow] of desktopPinWindows.entries()) {
-    if (
-      pinWindow &&
-      !pinWindow.isDestroyed() &&
-      sender === pinWindow.webContents &&
-      senderWindow === pinWindow
-    ) {
-      return { type: 'desktop-pin', entityId, window: pinWindow };
-    }
-  }
-
-  return null;
-}
-
-function rejectUnauthorizedIpc(channel, response = { success: false, error: 'Unauthorized' }) {
-  log.warn(`Unauthorized IPC sender rejected for ${channel}`);
-  return response;
-}
-
-function authorizeIpcSender(event, channel, options = {}) {
-  void channel;
-  const sender = getAuthorizedIpcSender(event);
-  if (!sender) return null;
-  if (sender.type === 'main') return sender;
-  if (sender.type === 'desktop-pin' && options.allowDesktopPin === true) return sender;
-  return null;
-}
+// Who may call each IPC channel is the route table's to decide (src/ipc-routes.cjs). Its sender
+// roles are the main window and the desktop pin windows.
+const ipcRoutes = createIpcRoutes({
+  ipcMain,
+  BrowserWindow,
+  log,
+  roles: {
+    main: () => [{ window: mainWindow }],
+    'desktop-pin': () => [...desktopPinWindows].map(([entityId, window]) => ({ window, entityId })),
+  },
+  queues: { config: serializeConfigMutationHandler },
+});
 
 function normalizeIpcEntityIdForKey(entityId) {
   return normalizeEntityIdForObjectKey(entityId, normalizeEntityId);
@@ -2580,11 +2047,13 @@ async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
     clampedBounds.height !== currentBounds.height;
 
   if (boundsChanged) {
-    const previousBounds = currentBounds;
-    config.desktopPins[normalizedEntityId] = clampedBounds;
-    const persistence = await saveConfigDurably();
+    const persistence = await configStore.apply(
+      (current) => {
+        current.desktopPins[normalizedEntityId] = clampedBounds;
+      },
+      { origin: 'desktop-pin-bounds' }
+    );
     if (!persistence.success) {
-      config.desktopPins[normalizedEntityId] = previousBounds;
       if (previousMinBounds) {
         desktopPinContentMinBounds.set(normalizedEntityId, previousMinBounds);
       } else {
@@ -2595,15 +2064,12 @@ async function syncDesktopPinContentMinBounds(entityId, minBounds = {}) {
         error: mainT('Failed to save desktop pin size: {{error}}', { error: persistence.error }),
       };
     }
-    const runtimeWarnings = [];
+    const { runtimeWarnings } = persistence;
     await runPostSaveSideEffect(runtimeWarnings, 'desktop pin minimum bounds', () =>
       applyDesktopPinBoundsToWindow(desktopPinWindows.get(normalizedEntityId), clampedBounds)
     );
     await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds update', () =>
       sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' })
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
-      pushConfigToRenderer({ runtimeWarnings })
     );
     return {
       success: true,
@@ -2760,38 +2226,26 @@ async function pinEntityToDesktopInternal(entityId, supportInfo = null) {
   }
 
   const existed = !!config?.desktopPins?.[normalizedEntityId];
-  const previousBounds = config?.desktopPins?.[normalizedEntityId];
-  config.desktopPins = config.desktopPins || {};
-  config.desktopPins[normalizedEntityId] = getDesktopPinBounds(
-    normalizedEntityId,
-    config.desktopPins[normalizedEntityId] || getDesktopPinOpenOrigin(normalizedEntityId)
+  const persistence = await configStore.apply(
+    (current) => {
+      current.desktopPins = current.desktopPins || {};
+      current.desktopPins[normalizedEntityId] = getDesktopPinBounds(
+        normalizedEntityId,
+        current.desktopPins[normalizedEntityId] || getDesktopPinOpenOrigin(normalizedEntityId)
+      );
+      normalizeDesktopPinsConfig(current);
+      normalizeTrayEntitiesConfigInPlace(current);
+    },
+    { origin: 'desktop-pins', focusEntityId: normalizedEntityId }
   );
-  normalizeDesktopPinsConfig(config);
-  normalizeTrayEntitiesConfigInPlace(config);
-  const persistence = await saveConfigDurably();
   if (!persistence.success) {
-    if (existed) {
-      config.desktopPins[normalizedEntityId] = previousBounds;
-    } else {
-      delete config.desktopPins[normalizedEntityId];
-    }
     return {
       success: false,
       error: mainT('Failed to save desktop pin: {{error}}', { error: persistence.error }),
       supportProfile,
     };
   }
-  const runtimeWarnings = [];
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin window creation', () =>
-    syncDesktopPinWindowsWithConfig({ focusEntityId: normalizedEntityId })
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin config broadcast', () =>
-    broadcastDesktopPinConfigUpdate()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
-    pushConfigToRenderer({ runtimeWarnings })
-  );
-
+  const { runtimeWarnings } = persistence;
   return {
     success: true,
     pinned: true,
@@ -2808,17 +2262,17 @@ async function unpinEntityFromDesktopInternal(entityId) {
     return { success: false, error: 'Invalid entity ID' };
   }
 
-  const previousBounds = config?.desktopPins?.[normalizedEntityId];
   const previousMinBounds = desktopPinContentMinBounds.get(normalizedEntityId);
-  if (previousBounds) {
-    delete config.desktopPins[normalizedEntityId];
-  }
   desktopPinContentMinBounds.delete(normalizedEntityId);
-  const persistence = await saveConfigDurably();
+  const persistence = await configStore.apply(
+    (current) => {
+      if (current.desktopPins?.[normalizedEntityId]) {
+        delete current.desktopPins[normalizedEntityId];
+      }
+    },
+    { origin: 'desktop-pins' }
+  );
   if (!persistence.success) {
-    if (previousBounds) {
-      config.desktopPins[normalizedEntityId] = previousBounds;
-    }
     if (previousMinBounds) {
       desktopPinContentMinBounds.set(normalizedEntityId, previousMinBounds);
     }
@@ -2827,17 +2281,7 @@ async function unpinEntityFromDesktopInternal(entityId) {
       error: mainT('Failed to save desktop pin removal: {{error}}', { error: persistence.error }),
     };
   }
-  const runtimeWarnings = [];
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin window removal', () =>
-    syncDesktopPinWindowsWithConfig()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin removal broadcast', () =>
-    broadcastDesktopPinConfigUpdate()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
-    pushConfigToRenderer({ runtimeWarnings })
-  );
-
+  const { runtimeWarnings } = persistence;
   return {
     success: true,
     pinned: false,
@@ -3316,14 +2760,13 @@ function settleDesktopPinResize(entityId) {
   const { revision } = session;
   runBackgroundConfigMutation(async () => {
     if (desktopPinResizeSessions.get(entityId) !== session || session.revision !== revision) return;
-    const persistence = await saveConfigDurably();
+    // The drag already put the size in the config; this writes it.
+    const persistence = await configStore.apply(null, { origin: 'desktop-pin-bounds' });
     endDesktopPinResizeSession(entityId);
     if (!persistence.success) {
       log.warn('Failed to save the desktop pin size:', persistence.error);
       restoreDesktopPinPersistedBounds(entityId, session.persisted, session.workArea);
-      return;
     }
-    pushConfigToRenderer();
   }, 'desktop pin resize save');
 }
 
@@ -3431,7 +2874,7 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
 
   const workArea = resizeSession?.workArea || null;
   endDesktopPinResizeSession(normalizedEntityId);
-  const persistence = await saveConfigDurably();
+  const persistence = await configStore.apply(null, { origin: 'desktop-pin-bounds' });
   if (!persistence.success) {
     restoreDesktopPinPersistedBounds(normalizedEntityId, persisted, workArea);
     return {
@@ -3441,7 +2884,7 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
     };
   }
 
-  const runtimeWarnings = [];
+  const { runtimeWarnings } = persistence;
   await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds', () => {
     const window = desktopPinWindows.get(normalizedEntityId);
     if (window && !window.isDestroyed()) {
@@ -3450,9 +2893,6 @@ async function updateDesktopPinBounds(entityId, nextBounds = {}) {
   });
   await runPostSaveSideEffect(runtimeWarnings, 'desktop pin bounds update', () =>
     sendDesktopPinUpdate(normalizedEntityId, { type: 'bounds' })
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'desktop pin renderer broadcast', () =>
-    pushConfigToRenderer({ runtimeWarnings })
   );
   return {
     success: true,
@@ -3505,7 +2945,7 @@ async function nudgeDesktopPin(entityId, delta) {
     layerPositions.set(normalizedEntityId, position);
     layerShellRaiser?.place(pinWindow.getTitle(), position);
     setDesktopPinLayerPosition(normalizedEntityId, monitor.name, position);
-    const persistence = await saveConfigDurably();
+    const persistence = await configStore.apply(null, { origin: 'local' });
     if (!persistence.success) {
       setDesktopPinLayerPosition(normalizedEntityId, monitor.name, savedPosition);
       // Unless a drag of the pin began during the save: the pin is the drag's now.
@@ -3706,7 +3146,7 @@ function createDesktopPinWindow(entityId, options = {}) {
       runBackgroundConfigMutation(() => {
         config.desktopPins = config.desktopPins || {};
         config.desktopPins[normalizedEntityId] = nextBounds;
-        saveConfig();
+        configStore.save({ origin: 'local' });
         // The saved bounds are held to one work area; a pin dropped across a monitor edge or past
         // the screen snaps to them now, not at the next unrelated config push.
         applyDesktopPinBoundsToWindow(pinWindow, nextBounds);
@@ -3757,7 +3197,7 @@ function createDesktopPinWindow(entityId, options = {}) {
 
 // Snapping is on until it is turned off in Settings > Appearance.
 function desktopPinSnapEnabled() {
-  return config?.ui?.desktopPinSnap !== false;
+  return settingsFields.settingValue(config, 'ui.desktopPinSnap');
 }
 
 /**
@@ -4038,1781 +3478,6 @@ function ensureDesktopCompanionIdentity() {
   return config.desktopCompanion.desktopId;
 }
 
-function buildProfileSyncStatus(extra = {}) {
-  const profileSync = getProfileSyncConfig();
-  const status = {
-    enabled: !!profileSync.enabled,
-    provider: normalizeProfileSyncProvider(profileSync.provider),
-    cloudFilePath: getRendererSyncFilePath(profileSync.cloudFilePath),
-    cloudSync: getCloudSyncStatus(),
-    syncScope: getNormalizedProfileSyncScopeValue(profileSync.syncScope),
-    intervalMinutes: profileSync.intervalMinutes || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES,
-    encryptionEnabled: !!profileSync.encryptionEnabled,
-    // What the file itself held when last read: true, false, or null when unknown.
-    remoteEncrypted: profileSyncRuntime.remoteEncrypted,
-    rememberPassphrase: !!profileSync.rememberPassphrase,
-    passphraseEncrypted: !!profileSync.passphraseEncrypted,
-    passphraseStored: !!profileSync.storedPassphrase,
-    // A passphrase is in use, saved on this device or only held until the app closes.
-    // Typing a different one over it re-encrypts the file.
-    passphraseActive: !!(profileSyncRuntime.passphraseSession || profileSync.storedPassphrase),
-    // Stored messages may be English text from shared helpers or older versions.
-    passphraseWarning: mainTError(profileSyncRuntime.passphraseWarning || ''),
-    lastSyncAt: profileSync.lastSyncAt || null,
-    lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt || null,
-    lastRemoteUpdatedAt: profileSyncRuntime.lastRemote?.updatedAt || null,
-    lastRemoteUpdatedByThisDevice: profileSyncRuntime.lastRemote
-      ? profileSyncRuntime.lastRemote.updatedByDeviceId === profileSync.deviceId
-      : null,
-    lastRunSummary: profileSyncRuntime.lastRunSummary,
-    conflictSections: profileSyncRuntime.needsResolution
-      ? [...profileSyncRuntime.conflictSections]
-      : [],
-    damagedConflictSections: profileSyncRuntime.needsResolution
-      ? [...profileSyncRuntime.damagedConflictSections]
-      : [],
-    lastSyncStatus: profileSync.lastSyncStatus || 'idle',
-    lastSyncError: mainTError(profileSync.lastSyncError || ''),
-    inFlight: !!profileSyncRuntime.inFlight,
-    needsResolution:
-      !!profileSyncRuntime.needsResolution || !!profileSync.firstEnableResolutionPending,
-    firstEnableResolutionPending: !!profileSync.firstEnableResolutionPending,
-    resolutionRetryRequired:
-      !!profileSync.firstEnableResolutionPending && !profileSyncRuntime.needsResolution,
-    remoteRewritePending: !!profileSync.remoteRewritePending,
-    rewriteRecoveryRequired:
-      !!profileSync.passphraseTransition || !!profileSync.passphraseTransitionInvalid,
-    rewriteRecoveryInvalid: !!profileSync.passphraseTransitionInvalid,
-    encryptionChangePending:
-      typeof profileSync.encryptionChangePending === 'boolean'
-        ? profileSync.encryptionChangePending
-        : null,
-    deviceId: profileSync.deviceId,
-    // Machine-readable codes rather than sentences, so the wording stays in the
-    // renderer with the rest of the translated UI text.
-    folderWarnings: collectProfileSyncFolderWarnings(),
-    conflictCopies: [...profileSyncRuntime.conflictCopies],
-    ...extra,
-  };
-  return status;
-}
-
-function hasProfileSyncCredentialTransitionPending(profileSync = getProfileSyncConfig()) {
-  return (
-    !!profileSync.passphraseTransition ||
-    !!profileSync.passphraseTransitionInvalid ||
-    typeof profileSync.encryptionChangePending === 'boolean' ||
-    !!profileSync.remoteRewritePending
-  );
-}
-
-/**
- * Conditions that make a sync setup look healthy while not actually working.
- * Only the cheap synchronous checks live here; conflict-copy detection needs the
- * filesystem and is refreshed on sync runs instead.
- *
- * @returns {string[]} warning codes for the renderer to translate
- */
-function collectProfileSyncFolderWarnings() {
-  const profileSync = getProfileSyncConfig();
-  const warnings = [];
-  // Folder warnings describe a sync folder; Cloud Sync has none.
-  if (isHostedProfileSyncProvider(profileSync.provider)) return warnings;
-
-  if (profileSync.enabled && isProfileSyncFolderUnsynced(profileSync.cloudFilePath)) {
-    warnings.push('unsynced_folder');
-  }
-  // Google has never shipped a Linux client, so picking that provider here means
-  // a third-party tool or nothing at all.
-  if (
-    normalizeProfileSyncProvider(profileSync.provider) === 'googleDrive' &&
-    process.platform === 'linux'
-  ) {
-    warnings.push('google_drive_linux');
-  }
-  if (profileSyncRuntime.conflictCopies.length > 0) {
-    warnings.push('conflict_copies');
-  }
-
-  return warnings;
-}
-
-/** Cloud Sync as the settings show it, from local state only (no network). */
-function getCloudSyncStatus() {
-  const client = getCloudSyncClient();
-  const account = client.getStoredAccount();
-  return {
-    available: client.isAvailable(),
-    signedIn: !!account,
-    email: account?.email || '',
-    provider: account?.provider || '',
-    signInPending: !!client.signInController,
-  };
-}
-
-// Written by main as syncs run and as settings change. A renderer snapshot taken
-// before the last run would roll them back, so update-config keeps main's.
-const PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS = [
-  'lastSyncAt',
-  'lastSuccessfulSyncAt',
-  'lastSyncStatus',
-  'lastSyncError',
-  'profileUpdatedAt',
-  'deviceId',
-];
-
-/**
- * Replaces the sync-result fields of an incoming profileSync object with the
- * values main holds.
- */
-function keepMainOwnedProfileSyncResults(nextProfileSync, currentProfileSync) {
-  PROFILE_SYNC_MAIN_OWNED_RESULT_FIELDS.forEach((field) => {
-    if (currentProfileSync && Object.prototype.hasOwnProperty.call(currentProfileSync, field)) {
-      nextProfileSync[field] = currentProfileSync[field];
-    } else {
-      delete nextProfileSync[field];
-    }
-  });
-  return nextProfileSync;
-}
-
-function updateProfileSyncStatus(status, errorMessage = '') {
-  const profileSync = getProfileSyncConfig();
-  profileSync.lastSyncAt = new Date().toISOString();
-  profileSync.lastSyncStatus = status;
-  profileSync.lastSyncError = errorMessage || '';
-  if (status === 'success') {
-    profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
-  }
-  saveConfig();
-}
-
-function decodeStoredProfileSyncPassphrase() {
-  const profileSync = getProfileSyncConfig();
-  profileSyncRuntime.passphraseWarning = '';
-  if (!profileSync.rememberPassphrase || !profileSync.storedPassphrase) {
-    return '';
-  }
-
-  if (profileSync.passphraseEncrypted) {
-    if (!safeStorage.isEncryptionAvailable()) {
-      profileSyncRuntime.passphraseWarning = mainT(
-        'Stored passphrase could not be decrypted on this system.'
-      );
-      return '';
-    }
-    try {
-      const encryptedBuffer = Buffer.from(profileSync.storedPassphrase, 'base64');
-      return safeStorage.decryptString(encryptedBuffer);
-    } catch (error) {
-      log.warn('Failed to decrypt remembered profile sync passphrase:', error.message);
-      profileSyncRuntime.passphraseWarning = mainT('Stored passphrase could not be decrypted.');
-      return '';
-    }
-  }
-
-  return profileSync.storedPassphrase;
-}
-
-/** Drops the sync passphrase from this device, for a file that no longer needs one. */
-function forgetProfileSyncPassphrase(profileSync) {
-  profileSync.rememberPassphrase = false;
-  profileSync.passphraseEncrypted = false;
-  profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseSession = '';
-  profileSyncRuntime.passphraseWarning = '';
-}
-
-function persistRememberedProfileSyncPassphrase(passphrase, remember) {
-  const profileSync = getProfileSyncConfig();
-
-  // An empty passphrase has nothing to remember, and sealing it would store nothing.
-  if (!remember || !passphrase) {
-    profileSync.rememberPassphrase = false;
-    profileSync.passphraseEncrypted = false;
-    profileSync.storedPassphrase = '';
-    profileSyncRuntime.passphraseSession = passphrase || '';
-    return { remembered: false, encrypted: false };
-  }
-
-  profileSync.rememberPassphrase = true;
-  profileSyncRuntime.passphraseSession = passphrase || '';
-  profileSyncRuntime.passphraseWarning = '';
-
-  if (safeStorage.isEncryptionAvailable()) {
-    try {
-      const encrypted = safeStorage.encryptString(passphrase || '');
-      profileSync.storedPassphrase = encrypted.toString('base64');
-      profileSync.passphraseEncrypted = true;
-      return { remembered: true, encrypted: true };
-    } catch (error) {
-      log.warn('Failed to encrypt remembered profile sync passphrase:', error.message);
-    }
-  }
-
-  profileSync.rememberPassphrase = false;
-  profileSync.passphraseEncrypted = false;
-  profileSync.storedPassphrase = '';
-  profileSyncRuntime.passphraseWarning = mainT(
-    'Passphrase will only be kept for this session because OS encryption is unavailable.'
-  );
-  return { remembered: false, encrypted: false };
-}
-
-function getActiveProfileSyncPassphrase() {
-  if (profileSyncRuntime.passphraseSession) {
-    return profileSyncRuntime.passphraseSession;
-  }
-  const remembered = decodeStoredProfileSyncPassphrase();
-  if (remembered) {
-    profileSyncRuntime.passphraseSession = remembered;
-  }
-  return remembered;
-}
-
-// Chromium seals an empty string to an empty buffer on some platforms (Linux with a
-// Secret Service keyring), and a recovery record needs a value for every secret. The old
-// passphrase of a file that is not encrypted yet is empty, so each secret is stored behind
-// this marker. Records written before it existed hold the bare secret.
-const PROFILE_SYNC_SEALED_SECRET_MARKER = '\u0001ha1:';
-
-function sealProfileSyncTransitionSecret(secret) {
-  if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
-    throw new Error(
-      mainT('Secure OS credential storage is required to change an active sync passphrase safely')
-    );
-  }
-  const encrypted = safeStorage.encryptString(
-    PROFILE_SYNC_SEALED_SECRET_MARKER + (typeof secret === 'string' ? secret : '')
-  );
-  if (!encrypted?.length) {
-    throw new Error(
-      mainT('Secure OS credential storage is required to change an active sync passphrase safely')
-    );
-  }
-  return encrypted.toString('base64');
-}
-
-function unsealProfileSyncTransitionSecret(encryptedSecret) {
-  if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
-    throw new Error(
-      mainT('Secure OS credential storage is unavailable for pending sync-key recovery')
-    );
-  }
-  try {
-    const secret = safeStorage.decryptString(Buffer.from(encryptedSecret, 'base64'));
-    return secret.startsWith(PROFILE_SYNC_SEALED_SECRET_MARKER)
-      ? secret.slice(PROFILE_SYNC_SEALED_SECRET_MARKER.length)
-      : secret;
-  } catch {
-    throw new Error(mainT('Pending sync-key recovery credentials could not be decrypted'));
-  }
-}
-
-/**
- * Builds a sync file from a config for the rewrite transaction (encryption and
- * passphrase changes). Sections already in the file are carried over as they
- * are, including ones this device does not sync; in-scope sections the file
- * lacks are added from the config.
- */
-async function buildProfileSyncEnvelopeForConfig(
-  sourceConfig,
-  {
-    encrypt,
-    passphrase,
-    remoteSections = {},
-    remoteExtensions = null,
-    updatedAt = new Date().toISOString(),
-  }
-) {
-  const profileSync = sourceConfig?.profileSync || getProfileSyncConfig();
-  const syncScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
-  const localSections = profileSyncCore.buildLocalSections(sourceConfig, syncScope);
-  const sections = { ...remoteSections };
-  Object.entries(localSections).forEach(([key, data]) => {
-    if (sections[key]) return;
-    sections[key] = profileSyncCore.buildPushedSectionEntry(key, data, null, {
-      updatedAt: profileSync.sectionUpdatedAt?.[key] || updatedAt,
-      deviceId: profileSync.deviceId,
-    });
-  });
-  return profileSyncCore.buildSyncEnvelope({
-    sections,
-    updatedAt,
-    updatedByDeviceId: profileSync.deviceId,
-    encrypt: encrypt === true,
-    passphrase: passphrase || '',
-    extensions: remoteExtensions,
-  });
-}
-
-const PROFILE_SYNC_SECTION_LABELS = {
-  quickAccessLayout: 'Quick Access and layout',
-  visualPersonalization: 'Appearance',
-  automationAlerts: 'Alerts',
-  connectionMediaPreferences: 'Weather and media',
-};
-
-function createDamagedSyncSectionsError(sectionKeys) {
-  return new Error(
-    mainT(
-      "The sync file's {{sections}} settings are damaged. Use Sync up to replace them with this computer's; the damaged copy is backed up first.",
-      {
-        sections: sectionKeys
-          .map((key) => mainT(PROFILE_SYNC_SECTION_LABELS[key] || key))
-          .join(', '),
-      }
-    )
-  );
-}
-
-async function decodeRemoteFileWithPassphrase(readResult, passphrase) {
-  if (!readResult?.exists || !readResult.envelope) {
-    return { sections: {}, malformed: {}, extensions: null };
-  }
-  const decoded = await profileSyncCore.decodeEnvelopeSections(readResult.envelope, passphrase);
-  // A key rewrite copies sections as they are, so it must not run over damage
-  // in sections this device syncs. Damaged sections it doesn't sync are carried
-  // through untouched.
-  const { inScope, outOfScope } = splitDamagedSyncSections(
-    decoded.malformed,
-    profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope())
-  );
-  const damaged = Object.keys(inScope);
-  if (damaged.length > 0) throw createDamagedSyncSectionsError(damaged);
-  return { ...decoded, sections: { ...outOfScope, ...decoded.sections } };
-}
-
-function splitDamagedSyncSections(malformed, sectionKeys) {
-  const inScope = {};
-  const outOfScope = {};
-  Object.entries(malformed || {}).forEach(([key, entry]) => {
-    (sectionKeys.includes(key) ? inScope : outOfScope)[key] = entry;
-  });
-  return { inScope, outOfScope };
-}
-
-async function decodeRemoteSectionsWithPassphrase(readResult, passphrase) {
-  return (await decodeRemoteFileWithPassphrase(readResult, passphrase)).sections;
-}
-
-/**
- * Whether every section this device syncs is the same in the file and in the
- * given config. A section the file lacks does not count as different.
- */
-function remoteSectionsMatchConfig(remoteSections, baselineConfig) {
-  const syncScope = getNormalizedProfileSyncScopeValue(baselineConfig?.profileSync?.syncScope);
-  const localSections = profileSyncCore.buildLocalSections(baselineConfig, syncScope);
-  return !Object.entries(localSections).some(
-    ([key, data]) =>
-      remoteSections[key] &&
-      profileSyncCore.computeSectionHash(key, data) !==
-        profileSyncCore.computeSectionHash(key, remoteSections[key].data)
-  );
-}
-
-/**
- * Throws when a section this device syncs differs between the file and the
- * given config, so a rewrite never publishes stale local content or hides
- * unsynced remote changes behind a new key.
- */
-function assertRemoteSectionsMatchConfig(remoteSections, baselineConfig) {
-  if (!remoteSectionsMatchConfig(remoteSections, baselineConfig)) {
-    throw new Error(
-      mainT(
-        'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
-      )
-    );
-  }
-}
-
-async function stageProfileSyncRewrite({
-  oldPassphrase,
-  newPassphrase,
-  rememberNewPassphrase,
-  targetEncryptionEnabled,
-  changeCredential,
-  baselineConfig = config,
-  targetConfig = config,
-  reason,
-  remoteResult = null,
-}) {
-  const profileSync = getProfileSyncConfig();
-  if (profileSync.passphraseTransition) {
-    throw new Error(mainT('A sync-key rewrite is already pending recovery'));
-  }
-  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
-    throw new Error(
-      mainT('Profile sync must have an active remote file before it can be rewritten')
-    );
-  }
-
-  // Seal both credentials before either side changes. This is intentionally
-  // required even for users who do not normally remember a passphrase: the
-  // short-lived recovery record is what makes every crash point reversible.
-  const oldPassphraseEncrypted = sealProfileSyncTransitionSecret(oldPassphrase);
-  const newPassphraseEncrypted = sealProfileSyncTransitionSecret(newPassphrase);
-  const baselineRemote = remoteResult || (await readConfiguredSyncEnvelope());
-  const { sections: remoteSections, extensions: remoteExtensions } =
-    await decodeRemoteFileWithPassphrase(baselineRemote, oldPassphrase);
-  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
-
-  const targetEnvelope = await buildProfileSyncEnvelopeForConfig(targetConfig, {
-    encrypt: targetEncryptionEnabled,
-    passphrase: newPassphrase,
-    remoteSections,
-    remoteExtensions,
-  });
-  const targetEnvelopeSerialized = profileSyncCore.serializeSyncEnvelope(targetEnvelope);
-  const transaction = createProfileSyncRewriteTransaction({
-    reason,
-    provider: normalizeProfileSyncProvider(profileSync.provider),
-    cloudFilePath: getProfileSyncEndpoint(profileSync),
-    expectedRemoteIdentity: getSyncEnvelopeIdentity(baselineRemote),
-    targetRemoteIdentity: getSyncEnvelopeIdentity({ exists: true, envelope: targetEnvelope }),
-    targetEnvelopeSerialized,
-    oldPassphraseEncrypted,
-    newPassphraseEncrypted,
-    targetEncryptionEnabled,
-    changeCredential,
-    rememberNewPassphrase,
-  });
-
-  const previousTransition = profileSync.passphraseTransition;
-  const previousRemoteRewritePending = profileSync.remoteRewritePending;
-  await stageProfileSyncRewriteTransaction(transaction, async (stagedTransaction) => {
-    profileSync.passphraseTransition = stagedTransaction;
-    profileSync.remoteRewritePending = true;
-    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-    if (!persistence.success) {
-      profileSync.passphraseTransition = previousTransition;
-      profileSync.remoteRewritePending = previousRemoteRewritePending;
-      throw new Error(
-        mainT('Failed to stage sync-key recovery: {{error}}', { error: persistence.error })
-      );
-    }
-  });
-  return transaction;
-}
-
-async function executePendingProfileSyncRewrite() {
-  const profileSync = getProfileSyncConfig();
-  const transaction = normalizeProfileSyncRewriteTransaction(profileSync.passphraseTransition);
-  if (!transaction) {
-    throw createRewriteTransactionError('No valid sync-key rewrite transaction is available');
-  }
-  if (!profileSyncRewriteTargetMatches(transaction, profileSync)) {
-    throw new Error(
-      mainT(
-        'The sync provider or file changed during key recovery. Restore the original target before retrying.'
-      )
-    );
-  }
-
-  const oldPassphrase = unsealProfileSyncTransitionSecret(transaction.oldPassphraseEncrypted);
-  const newPassphrase = unsealProfileSyncTransitionSecret(transaction.newPassphraseEncrypted);
-  const targetEnvelope = profileSyncCore.parseSyncEnvelope(transaction.targetEnvelopeSerialized);
-  const stagedTargetIdentity = getSyncEnvelopeIdentity({
-    exists: true,
-    envelope: targetEnvelope,
-  });
-  if (stagedTargetIdentity !== transaction.targetRemoteIdentity) {
-    throw createRewriteTransactionError('The staged sync-key target failed its integrity check');
-  }
-
-  let persistedCredential = {
-    remembered: profileSync.rememberPassphrase,
-    encrypted: profileSync.passphraseEncrypted,
-  };
-  try {
-    await runProfileSyncRewriteRecovery({
-      transaction,
-      readRemoteIdentity: async () => getSyncEnvelopeIdentity(await readConfiguredSyncEnvelope()),
-      verifyOldRemote: async () => {
-        const currentRemote = await readConfiguredSyncEnvelope();
-        await decodeRemoteSectionsWithPassphrase(currentRemote, oldPassphrase);
-      },
-      writeExactTarget: async (serializedTarget) => {
-        if (serializedTarget !== transaction.targetEnvelopeSerialized) {
-          throw createRewriteTransactionError(
-            'The staged sync-key target changed before its exact write'
-          );
-        }
-        await writeConfiguredSyncEnvelope(targetEnvelope);
-      },
-      promoteLocal: async () => {
-        // The baseline is what the file now holds, not the current config:
-        // settings edited while recovery was pending still differ from the staged
-        // file, and have to merge as local changes afterwards.
-        const writtenSections = (
-          await profileSyncCore.decodeEnvelopeSections(targetEnvelope, newPassphrase)
-        ).sections;
-        const writtenBaseline = {};
-        const writtenBaselineUpdatedAt = {};
-        profileSyncCore.getScopeSectionKeys(getActiveProfileSyncScope()).forEach((key) => {
-          if (writtenSections[key]) {
-            writtenBaseline[key] = profileSyncCore.computeSectionHash(
-              key,
-              writtenSections[key].data
-            );
-            writtenBaselineUpdatedAt[key] = {
-              hash: writtenBaseline[key],
-              updatedAt: writtenSections[key].updatedAt,
-            };
-          }
-        });
-        const previous = {
-          rememberPassphrase: profileSync.rememberPassphrase,
-          passphraseEncrypted: profileSync.passphraseEncrypted,
-          storedPassphrase: profileSync.storedPassphrase,
-          passphraseSession: profileSyncRuntime.passphraseSession,
-          passphraseWarning: profileSyncRuntime.passphraseWarning,
-          encryptionEnabled: profileSync.encryptionEnabled,
-          encryptionChangePending: profileSync.encryptionChangePending,
-          passphraseTransition: profileSync.passphraseTransition,
-          remoteRewritePending: profileSync.remoteRewritePending,
-          lastSyncAt: profileSync.lastSyncAt,
-          lastSyncStatus: profileSync.lastSyncStatus,
-          lastSyncError: profileSync.lastSyncError,
-          profileUpdatedAt: profileSync.profileUpdatedAt,
-          localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-          syncBaseline: profileSync.syncBaseline,
-          syncBaselineUpdatedAt: profileSync.syncBaselineUpdatedAt,
-          lastSuccessfulSyncAt: profileSync.lastSuccessfulSyncAt,
-        };
-
-        if (transaction.changeCredential) {
-          persistedCredential = persistRememberedProfileSyncPassphrase(
-            newPassphrase,
-            transaction.rememberNewPassphrase
-          );
-        } else if (!transaction.targetEncryptionEnabled) {
-          profileSync.rememberPassphrase = false;
-          profileSync.passphraseEncrypted = false;
-          profileSync.storedPassphrase = '';
-          profileSyncRuntime.passphraseSession = '';
-          profileSyncRuntime.passphraseWarning = '';
-          persistedCredential = { remembered: false, encrypted: false };
-        } else {
-          profileSyncRuntime.passphraseSession = newPassphrase;
-        }
-        profileSync.encryptionEnabled = transaction.targetEncryptionEnabled;
-        profileSync.encryptionChangePending = null;
-        profileSync.passphraseTransition = null;
-        profileSync.remoteRewritePending = false;
-        profileSync.lastSyncAt = new Date().toISOString();
-        profileSync.lastSyncStatus = 'success';
-        profileSync.lastSyncError = '';
-        profileSyncRuntime.localProfileUpdatedAt = targetEnvelope.updatedAt;
-        profileSync.profileUpdatedAt = targetEnvelope.updatedAt;
-        profileSync.syncBaseline = writtenBaseline;
-        profileSync.syncBaselineUpdatedAt = writtenBaselineUpdatedAt;
-        profileSync.lastSuccessfulSyncAt = profileSync.lastSyncAt;
-
-        const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-        if (!persistence.success) {
-          profileSync.rememberPassphrase = previous.rememberPassphrase;
-          profileSync.passphraseEncrypted = previous.passphraseEncrypted;
-          profileSync.storedPassphrase = previous.storedPassphrase;
-          profileSyncRuntime.passphraseSession = oldPassphrase || previous.passphraseSession;
-          profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
-          profileSync.encryptionEnabled = previous.encryptionEnabled;
-          profileSync.encryptionChangePending = previous.encryptionChangePending;
-          profileSync.passphraseTransition = previous.passphraseTransition;
-          profileSync.remoteRewritePending = previous.remoteRewritePending;
-          profileSync.lastSyncAt = previous.lastSyncAt;
-          profileSync.lastSyncStatus = previous.lastSyncStatus;
-          profileSync.lastSyncError = previous.lastSyncError;
-          profileSync.profileUpdatedAt = previous.profileUpdatedAt;
-          profileSyncRuntime.localProfileUpdatedAt = previous.localProfileUpdatedAt;
-          profileSync.syncBaseline = previous.syncBaseline;
-          profileSync.syncBaselineUpdatedAt = previous.syncBaselineUpdatedAt;
-          profileSync.lastSuccessfulSyncAt = previous.lastSuccessfulSyncAt;
-          const error = new Error(
-            mainT(
-              'The remote rewrite committed, but local key promotion could not be saved: {{error}}',
-              { error: persistence.error }
-            )
-          );
-          error.remoteRewriteCommitted = true;
-          throw error;
-        }
-      },
-    });
-  } catch (error) {
-    if (error?.code === 'PROFILE_SYNC_REWRITE_REMOTE_DIVERGED') {
-      profileSyncRuntime.passphraseSession = oldPassphrase;
-    }
-    throw error;
-  }
-
-  setupProfileSyncInterval();
-  emitProfileSyncStatus();
-  return {
-    ok: true,
-    action: 'rewrite_complete',
-    ...persistedCredential,
-    status: buildProfileSyncStatus(),
-  };
-}
-
-/**
- * Sentences for the file-system failures a sync folder produces, or an empty
- * string for an error that has none. The system's own text (a code, a path, the
- * temporary file's name) is for the log, not for the person using the widget.
- */
-function describeSyncFileSystemError(error) {
-  // Windows refuses to replace a file another program has open (a sync client scanning it,
-  // an antivirus) with EPERM. A read-only file or a protected folder gives the same code, so
-  // the sentence names both rather than sending the user to retry what cannot succeed.
-  if (error?.code === 'EPERM' && process.platform === 'win32') {
-    return mainT(
-      "The sync file is in use by another program or is read-only. Try again in a moment, and check the folder's permissions if it keeps happening."
-    );
-  }
-  switch (error?.code) {
-    case 'EACCES':
-    case 'EPERM':
-    case 'EROFS':
-      return mainT(
-        "This app does not have permission to use the sync file or its folder. Check the folder's permissions and that it is not read-only."
-      );
-    case 'ENOSPC':
-      return mainT('The disk that holds the sync folder is full.');
-    case 'EBUSY':
-      return mainT('The sync file is in use by another program. Try again in a moment.');
-    case 'ENOTDIR':
-      return mainT('The selected sync folder path is not a directory');
-    case 'ENOENT':
-      // The folder went away between checking it and writing (an unmounted drive).
-      return mainT(
-        'The selected sync folder is unavailable. Reconnect the cloud provider or choose the folder again.'
-      );
-    case 'EEXIST':
-    case 'ENOTEMPTY':
-      return '';
-    default:
-      return typeof error?.code === 'string' && /^E[A-Z0-9]+$/.test(error.code)
-        ? mainT('Could not access the sync file ({{code}}). Check the sync folder and try again.', {
-            code: error.code,
-          })
-        : '';
-  }
-}
-
-function throwSyncFileSystemError(error) {
-  const friendly = describeSyncFileSystemError(error);
-  if (!friendly) throw error;
-  log.warn('Sync file access failed:', error.message);
-  throw Object.assign(new Error(friendly), { cause: error });
-}
-
-/**
- * Reads the sync file. A file that exists but cannot be parsed comes back with
- * `damaged` (its text and the reason) instead of throwing, so the callers that may
- * replace it (Sync up, Keep Local on first enable) can keep a copy first;
- * readConfiguredSyncEnvelope throws for it unless asked to hand it back.
- */
-async function readCloudFileEnvelope(filePath) {
-  if (!filePath) {
-    return { exists: false, envelope: null };
-  }
-
-  try {
-    const stats = await fs.promises.stat(filePath);
-    if (!stats.isFile()) {
-      throw new Error(mainT('Selected sync path is not a file'));
-    }
-    if (stats.size > PROFILE_SYNC_MAX_FILE_BYTES) {
-      throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
-    }
-    const raw = await fs.promises.readFile(filePath, 'utf8');
-    try {
-      return { exists: true, envelope: profileSyncCore.parseSyncEnvelope(raw) };
-    } catch (error) {
-      if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
-      return { exists: true, envelope: null, damaged: { raw, error } };
-    }
-  } catch (error) {
-    if (error && error.code === 'ENOENT') {
-      await requireExistingSyncParentDirectory(filePath, fs);
-      return { exists: false, envelope: null };
-    }
-    return throwSyncFileSystemError(error);
-  }
-}
-
-async function writeCloudFileEnvelope(filePath, envelope) {
-  if (!filePath) {
-    throw new Error(mainT('Sync file path is not configured'));
-  }
-  const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
-  // Readers refuse files over the limit, so writing one would stop every device
-  // syncing, this one included.
-  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
-    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
-  }
-  await requireExistingSyncParentDirectory(filePath, fs);
-  // Hidden, and unique to this write, so a crash leaves nothing a person sees in the folder
-  // and two writers never share one; removeStaleSyncTempFiles clears what a crash leaves.
-  const tempPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.tmp-${Date.now()}-${nodeCrypto.randomBytes(4).toString('hex')}`
-  );
-  let handle = null;
-  try {
-    await fs.promises.writeFile(tempPath, serialized, { encoding: 'utf8', flag: 'wx' });
-    // On disk before the rename, so a crash or power cut cannot leave the sync file pointing
-    // at contents that were never written. fsync covers the file whichever handle asks.
-    handle = await fs.promises.open(tempPath, 'r+');
-    await handle.sync();
-    await handle.close();
-    handle = null;
-    // Replaces the file in one step, on Windows too.
-    await fs.promises.rename(tempPath, filePath);
-  } catch (error) {
-    await handle?.close().catch(() => {});
-    await fs.promises.unlink(tempPath).catch(() => {});
-    throwSyncFileSystemError(error);
-  }
-}
-
-const PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000;
-
-/**
- * Deletes temporary files a crashed write left beside the sync file, once they are an hour
- * old: they would otherwise replicate to every computer. Includes the visible ones earlier
- * versions wrote. Best effort; a folder that cannot be read is left alone.
- */
-async function removeStaleSyncTempFiles(filePath) {
-  if (!filePath) return;
-  const folder = path.dirname(filePath);
-  const name = path.basename(filePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`^(\\.${name}\\.tmp-\\d+-[0-9a-f]+|${name}\\.tmp-\\d+)$`);
-  try {
-    for (const entry of await fs.promises.readdir(folder)) {
-      if (!pattern.test(entry)) continue;
-      const target = path.join(folder, entry);
-      const stats = await fs.promises.stat(target).catch(() => null);
-      if (stats?.isFile() && Date.now() - stats.mtimeMs > PROFILE_SYNC_TEMP_FILE_MAX_AGE_MS) {
-        await fs.promises.unlink(target).catch(() => {});
-      }
-    }
-  } catch {
-    // nothing to clean up in a folder that cannot be read
-  }
-}
-
-async function copyProfileSyncFile(fromPath, toPath) {
-  try {
-    const profileSync = getProfileSyncConfig();
-    const configuredSyncFolder = profileSync.cloudFilePath
-      ? path.dirname(profileSync.cloudFilePath)
-      : '';
-    const { sourcePath, destinationPath } = await validateProfileSyncCopyPaths({
-      fromPath,
-      toPath,
-      defaultFileName: PROFILE_SYNC_DEFAULT_FILE_NAME,
-      allowedSourceFolders: [configuredSyncFolder, app.getPath('userData')],
-      allowedDestinationFolders: [
-        configuredSyncFolder,
-        app.getPath('userData'),
-        ...profileSyncRuntime.approvedCopyDestinationFolders,
-      ],
-      fsModule: fs,
-    });
-
-    if (sourcePath === destinationPath) {
-      return { ok: true, status: 'copied', copied: false, reason: 'same_path' };
-    }
-
-    let sourceStats;
-    try {
-      sourceStats = await fs.promises.stat(sourcePath);
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        return { ok: false, status: 'source_missing' };
-      }
-      throw error;
-    }
-
-    if (!sourceStats.isFile()) {
-      return { ok: false, status: 'error', error: mainT('Source sync file is not a file') };
-    }
-
-    await requireExistingSyncParentDirectory(destinationPath, fs);
-    try {
-      // Whatever is there may be another computer's file, so it is never replaced.
-      await fs.promises.copyFile(sourcePath, destinationPath, fs.constants.COPYFILE_EXCL);
-      return { ok: true, status: 'copied', copied: true };
-    } catch (error) {
-      if (error?.code === 'EEXIST') {
-        return { ok: false, status: 'destination_exists' };
-      }
-      throw error;
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      status: 'error',
-      error: describeSyncFileSystemError(error) || mainTError(error),
-    };
-  }
-}
-
-/**
- * Reads the configured sync file. A damaged file throws, as it cannot be merged or
- * rewritten; `allowDamaged` hands it back instead to the callers that may replace it.
- */
-async function readConfiguredSyncEnvelope({ allowDamaged = false } = {}) {
-  const profileSync = getProfileSyncConfig();
-  if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error(mainT('Unsupported profile sync provider'));
-  }
-  // Kept for the status: Settings needs to know what mode the file is in even when a sync
-  // stops on it, to ask for the right thing. A file that could not be read is not known,
-  // but the last answer stands while a read is under way so the form does not flicker.
-  let result;
-  try {
-    result = isHostedProfileSyncProvider(profileSync.provider)
-      ? await readHostedSyncEnvelope()
-      : await readCloudFileEnvelope(profileSync.cloudFilePath);
-  } catch (error) {
-    profileSyncRuntime.remoteEncrypted = null;
-    throw error;
-  }
-  profileSyncRuntime.remoteEncrypted =
-    result.exists && result.envelope ? profileSyncCore.isEnvelopeEncrypted(result.envelope) : null;
-  if (result.damaged && !allowDamaged) throw result.damaged.error;
-  return result;
-}
-
-async function writeConfiguredSyncEnvelope(envelope) {
-  const profileSync = getProfileSyncConfig();
-  if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error(mainT('Unsupported profile sync provider'));
-  }
-  if (isHostedProfileSyncProvider(profileSync.provider)) return writeHostedSyncEnvelope(envelope);
-  return writeCloudFileEnvelope(profileSync.cloudFilePath, envelope);
-}
-
-function isHostedProfileSyncProvider(provider) {
-  return provider === PROFILE_SYNC_HOSTED_PROVIDER;
-}
-
-/**
- * Whether sync has somewhere to go: a file path, or for Cloud Sync, a build
- * that knows the service and a signed-in account.
- */
-function hasProfileSyncTarget(profileSync = getProfileSyncConfig()) {
-  if (isHostedProfileSyncProvider(profileSync.provider)) {
-    const client = getCloudSyncClient();
-    return client.isAvailable() && !!client.getStoredAccount();
-  }
-  return !!profileSync.cloudFilePath;
-}
-
-function describeMissingProfileSyncTarget(profileSync = getProfileSyncConfig()) {
-  if (!isHostedProfileSyncProvider(profileSync.provider)) {
-    return mainT('Profile sync file is not configured');
-  }
-  return getCloudSyncClient().isAvailable()
-    ? mainT('Sign in to Cloud Sync to keep syncing')
-    : mainT('Cloud Sync is not available in this version of the app');
-}
-
-/**
- * Names where the synced profile lives, for the key-rewrite transaction to bind
- * to: the file path, or for Cloud Sync the service and account. The account is
- * named by its id, since an email can be empty (GitHub without a verified one);
- * a sign-in saved before ids were kept still names it by email.
- */
-function getProfileSyncEndpoint(profileSync = getProfileSyncConfig()) {
-  if (!isHostedProfileSyncProvider(profileSync.provider)) return profileSync.cloudFilePath;
-  const client = getCloudSyncClient();
-  const account = client.getStoredAccount();
-  return `cloud-sync:${client.serviceUrl}:${account?.id || account?.email || 'account'}`;
-}
-
-/**
- * Whether a key-rewrite transaction was staged for where sync points now. One staged
- * against Cloud Sync before account ids were kept names the account by email, and still
- * matches once signing in again has saved the id.
- */
-function profileSyncRewriteTargetMatches(transaction, profileSync = getProfileSyncConfig()) {
-  const provider = normalizeProfileSyncProvider(profileSync.provider);
-  const endpoint = getProfileSyncEndpoint(profileSync);
-  if (profileSyncRewriteEndpointMatches(transaction, provider, endpoint)) return true;
-  if (!isHostedProfileSyncProvider(profileSync.provider)) return false;
-  const client = getCloudSyncClient();
-  const account = client.getStoredAccount();
-  if (!account?.id || !account.email) return false;
-  return profileSyncRewriteEndpointMatches(
-    transaction,
-    provider,
-    `cloud-sync:${client.serviceUrl}:${account.email}`
-  );
-}
-
-/**
- * Whether two Cloud Sync sign-ins are the same account: by id, or by email for a
- * sign-in saved before ids were kept. Two accounts without an email never match.
- */
-function isSameCloudSyncAccount(previousAccount, account) {
-  if (!previousAccount || !account) return false;
-  if (previousAccount.id && account.id) return previousAccount.id === account.id;
-  return !!previousAccount.email && previousAccount.email === account.email;
-}
-
-const CLOUD_SYNC_ERROR_MESSAGES = {
-  CLOUD_SYNC_SIGNED_OUT: 'Sign in to Cloud Sync to keep syncing',
-  CLOUD_SYNC_SUBSCRIPTION_REQUIRED: 'Cloud Sync needs a subscription to save changes',
-  CLOUD_SYNC_CONFLICT: 'Sync file kept changing on the other device; try again',
-  CLOUD_SYNC_NETWORK: 'Cloud Sync could not be reached. Check your connection.',
-  CLOUD_SYNC_TIMEOUT: 'Cloud Sync could not be reached. Check your connection.',
-  CLOUD_SYNC_UNAVAILABLE: 'Cloud Sync is not available in this version of the app',
-  CLOUD_SYNC_SECURE_STORAGE_UNAVAILABLE:
-    'Cloud Sync needs secure credential storage, which is unavailable on this system',
-  CLOUD_SYNC_TOO_LARGE: 'Sync file exceeds size limit (512 KB)',
-  CLOUD_SYNC_SIGN_IN_CANCELED: 'Sign-in was canceled',
-  CLOUD_SYNC_SIGN_IN_DECLINED: 'Sign-in was declined in the browser',
-  CLOUD_SYNC_SIGN_IN_FAILED: 'Sign-in did not complete. Try again.',
-  CLOUD_SYNC_SIGN_IN_TIMEOUT: 'Sign-in timed out. Try again.',
-  CLOUD_SYNC_BILLING_UNAVAILABLE: 'Subscriptions are not available right now',
-  CLOUD_SYNC_NO_BILLING_ACCOUNT: 'There is no subscription to manage yet',
-  CLOUD_SYNC_BILLING_BUSY: 'A billing change is in progress. Try again shortly.',
-  CLOUD_SYNC_BILLING_PENDING: 'Your payment is being processed. Try again shortly.',
-  CLOUD_SYNC_SUBSCRIPTION_EXISTS: 'You already have a subscription. Reopen Settings to manage it.',
-  CLOUD_SYNC_NOT_LAUNCHED: 'Cloud Sync is not available yet.',
-};
-
-/**
- * Whether an automatic run should only download because Cloud Sync recently refused a save
- * for want of a subscription. Sync now always tries again.
- */
-function shouldHoldCloudSyncWrites(profileSync, source) {
-  if (!isHostedProfileSyncProvider(profileSync.provider) || source === 'manual') return false;
-  const refusedAt = profileSyncRuntime.cloudSyncWriteRefusedAt;
-  return !!refusedAt && Date.now() - refusedAt < CLOUD_SYNC_WRITE_RETRY_MS;
-}
-
-/** Lets the next run save again, and queues one when edits may be waiting. */
-function resumeCloudSyncWrites() {
-  if (!profileSyncRuntime.cloudSyncWriteRefusedAt) return;
-  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
-  scheduleDebouncedProfileSyncPush('subscription_restored');
-}
-
-/** Gives a Cloud Sync failure a translated message, keeping its code. */
-function toCloudSyncError(error) {
-  const key = CLOUD_SYNC_ERROR_MESSAGES[error?.code];
-  const translated = new Error(
-    key
-      ? mainT(key)
-      : mainT('Cloud Sync failed: {{error}}', { error: error?.message || String(error) })
-  );
-  translated.code = error?.code;
-  return translated;
-}
-
-async function readHostedSyncEnvelope() {
-  let result;
-  try {
-    result = await getCloudSyncClient().readProfile();
-  } catch (error) {
-    throw toCloudSyncError(error);
-  }
-  // Writes are compare-and-swap against the revision last read.
-  profileSyncRuntime.hostedRevision = result.exists ? result.revision : null;
-  if (!result.exists) return { exists: false, envelope: null };
-  if (Buffer.byteLength(result.text, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
-    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
-  }
-  try {
-    return { exists: true, envelope: profileSyncCore.parseSyncEnvelope(result.text) };
-  } catch (error) {
-    // Handed back like a damaged sync file, so only the callers that may replace it see it.
-    return { exists: true, envelope: null, damaged: { raw: result.text, error } };
-  }
-}
-
-async function writeHostedSyncEnvelope(envelope) {
-  const serialized = profileSyncCore.serializeSyncEnvelope(envelope);
-  if (Buffer.byteLength(serialized, 'utf8') > PROFILE_SYNC_MAX_FILE_BYTES) {
-    throw new Error(mainT('Sync file exceeds size limit (512 KB)'));
-  }
-  try {
-    // A null revision means none existed at the last read, so this only creates.
-    const { revision } = await getCloudSyncClient().writeProfile(
-      serialized,
-      profileSyncRuntime.hostedRevision ?? null
-    );
-    profileSyncRuntime.hostedRevision = revision;
-  } catch (error) {
-    throw toCloudSyncError(error);
-  }
-}
-
-/**
- * Re-reads the configured sync file and reports whether it moved since an earlier
- * read. This is the compare half of the compare-and-swap guarding a push.
- *
- * A failed re-read counts as changed: when the file is unreadable or a provider
- * is midway through replicating it, backing off is safer than overwriting.
- *
- * @param {{exists: boolean, envelope: object|null}} previousResult earlier read to compare against
- * @returns {Promise<boolean>} whether the remote file changed
- */
-async function hasRemoteSyncEnvelopeChanged(previousResult) {
-  let currentResult;
-  try {
-    currentResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
-  } catch (error) {
-    log.warn('Could not re-read the sync file before pushing:', error.message);
-    return true;
-  }
-
-  return getSyncEnvelopeIdentity(currentResult) !== getSyncEnvelopeIdentity(previousResult);
-}
-
-/**
- * Looks beside the sync file for the copies Syncthing, Dropbox, OneDrive and
- * Drive leave when two devices write at once. Their presence is the only signal
- * the app gets that a provider-level race happened, since the providers resolve
- * it by forking the file rather than reporting an error.
- *
- * @returns {Promise<string[]>} conflict-copy filenames, empty when none
- */
-async function findProfileSyncConflictCopies() {
-  if (isHostedProfileSyncProvider(getProfileSyncConfig().provider)) return [];
-  const filePath = getProfileSyncConfig().cloudFilePath;
-  if (!filePath) return [];
-
-  const folder = path.dirname(filePath);
-  const extension = path.extname(filePath);
-  const baseName = path.basename(filePath, extension);
-  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const escapedBase = escapeRegex(baseName);
-  const escapedExtension = escapeRegex(extension);
-  const namedAfterOriginal = [
-    new RegExp(`^${escapedBase}-[^./\\\\]+${escapedExtension}$`, 'i'), // OneDrive: name-COMPUTER.json
-    new RegExp(`^${escapedBase} \\d+${escapedExtension}$`, 'i'), // iCloud Drive: name 2.json
-  ];
-  try {
-    const entries = await fs.promises.readdir(folder);
-    return entries.filter(
-      (entry) =>
-        entry !== path.basename(filePath) &&
-        entry.includes(baseName) &&
-        [...PROFILE_SYNC_CONFLICT_PATTERNS, ...namedAfterOriginal].some((pattern) =>
-          pattern.test(entry)
-        )
-    );
-  } catch {
-    // folder unreadable or gone; nothing useful to report
-    return [];
-  }
-}
-
-/**
- * True when the sync file sits in the app's own data folder, which nothing
- * replicates. Enabling sync there succeeds and shares the profile with no one,
- * so it is worth calling out rather than reporting a healthy sync.
- */
-function isProfileSyncFolderUnsynced(filePath = getProfileSyncConfig().cloudFilePath) {
-  if (!filePath) return false;
-  try {
-    return isPathInsideDirectory(filePath, app.getPath('userData'));
-  } catch {
-    return false;
-  }
-}
-
-function getActiveProfileSyncScope() {
-  const profileSync = getProfileSyncConfig();
-  const normalizedScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
-  profileSync.syncScope = normalizedScope;
-  return normalizedScope;
-}
-
-function computeScopedProfileHash(profile, syncScope) {
-  return profileSyncCore.computeProfileHash({
-    syncScope: getNormalizedProfileSyncScopeValue(syncScope),
-    profile: profile || {},
-  });
-}
-
-function computeLocalSectionHashes(syncScope = getActiveProfileSyncScope(), source = config) {
-  const sections = profileSyncCore.buildLocalSections(source, syncScope);
-  return Object.fromEntries(
-    Object.entries(sections).map(([key, data]) => [
-      key,
-      profileSyncCore.computeSectionHash(key, data),
-    ])
-  );
-}
-
-function pickSections(sections, keys) {
-  return Object.fromEntries(keys.filter((key) => sections[key]).map((key) => [key, sections[key]]));
-}
-
-// Why a backup was taken. Syncing replaces settings routinely, many times a day with
-// several computers; an import or a restore is the person's own undo. The two are kept
-// in separate groups, so a busy stretch of syncing cannot push out the one backup
-// someone is counting on. A sync backup that holds edits the run discarded (`discarded`
-// names their sections) goes in a third group, kept longer still.
-const PROFILE_SYNC_MANUAL_BACKUP_REASONS = new Set(['import', 'restore']);
-
-async function writeProfileSyncBackup(prefix, contents, reason = 'pull', { discarded = [] } = {}) {
-  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-  await fs.promises.mkdir(backupDir, { recursive: true });
-  await fs.promises.writeFile(
-    path.join(backupDir, `${prefix}-${Date.now()}.json`),
-    JSON.stringify(
-      {
-        backedUpAt: new Date().toISOString(),
-        reason,
-        ...(discarded.length > 0 ? { discarded } : {}),
-        ...contents,
-      },
-      null,
-      2
-    ),
-    'utf8'
-  );
-
-  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.json$`), async (name) => {
-    try {
-      const saved = JSON.parse(await fs.promises.readFile(path.join(backupDir, name), 'utf8'));
-      if (PROFILE_SYNC_MANUAL_BACKUP_REASONS.has(saved?.reason)) return 'manual';
-      return Array.isArray(saved?.discarded) && saved.discarded.length > 0
-        ? 'discarded'
-        : 'routine';
-    } catch {
-      return 'routine';
-    }
-  });
-}
-
-/** Whether pruning should delete the oldest of a group's backups (oldest first in `names`). */
-function shouldPruneOldestProfileSyncBackup(group, names) {
-  if (group !== 'discarded') return names.length > PROFILE_SYNC_BACKUP_KEEP;
-  if (names.length > PROFILE_SYNC_DISCARD_BACKUP_LIMIT) return true;
-  const takenAt = Number(names[0].match(/-(\d+)\.[a-z]+$/)?.[1]);
-  return (
-    names.length > PROFILE_SYNC_DISCARD_BACKUP_KEEP &&
-    Date.now() - takenAt > PROFILE_SYNC_DISCARD_BACKUP_MAX_AGE_MS
-  );
-}
-
-/**
- * Deletes the oldest of the backups matching the pattern beyond the number kept, for
- * each group `groupOf` puts them in.
- */
-async function pruneProfileSyncBackups(backupDir, pattern, groupOf = async () => '') {
-  try {
-    const entries = (await fs.promises.readdir(backupDir))
-      .filter((name) => pattern.test(name))
-      .sort();
-    // No group can hold more than all of them, so there is nothing to sort into groups.
-    if (entries.length <= PROFILE_SYNC_BACKUP_KEEP) return;
-    const groups = new Map();
-    for (const name of entries) {
-      const group = await groupOf(name);
-      groups.set(group, [...(groups.get(group) || []), name]);
-    }
-    for (const [group, names] of groups) {
-      while (shouldPruneOldestProfileSyncBackup(group, names)) {
-        await fs.promises.unlink(path.join(backupDir, names.shift()));
-      }
-    }
-  } catch (error) {
-    log.warn('Created a profile sync backup, but failed to prune older backups:', error.message);
-  }
-}
-
-/**
- * Keeps a copy of a whole sync file before something replaces it. These are for the
- * user to open, not for restore: the file has no settings in it to apply. Fails the
- * operation when the copy cannot be made.
- */
-async function keepSyncFileCopy(prefix, extension, writeCopy) {
-  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-  try {
-    await fs.promises.mkdir(backupDir, { recursive: true });
-    await writeCopy(path.join(backupDir, `${prefix}-${Date.now()}.${extension}`));
-  } catch (error) {
-    log.warn('Failed to keep a copy of the sync file before replacing it:', error.message);
-    throw new Error(
-      mainT('The sync file was not updated because its backup failed: {{error}}', {
-        error: describeSyncFileSystemError(error) || mainTError(error),
-      }),
-      { cause: error }
-    );
-  }
-  await pruneProfileSyncBackups(backupDir, new RegExp(`^${prefix}-\\d+\\.${extension}$`));
-}
-
-/** Keeps the text of a sync file that could not be read before Sync up replaces it. */
-function backupDamagedSyncFile(raw) {
-  return keepSyncFileCopy('damaged-sync-file', 'txt', (target) =>
-    fs.promises.writeFile(target, raw, 'utf8')
-  );
-}
-
-/**
- * Keeps this device's sections before something replaces them. `discarded` names the ones
- * holding edits the replacement throws away, which keeps the backup longer.
- */
-async function backupLocalProfileBeforePullApply(
-  sectionKeys,
-  incomingSections = null,
-  reason = 'pull',
-  { discarded = [] } = {}
-) {
-  try {
-    const sections = profileSyncCore.scopeBackupToIncoming(
-      profileSyncCore.buildLocalSections(config, {
-        preset: 'custom',
-        sections: Object.fromEntries(sectionKeys.map((key) => [key, true])),
-      }),
-      incomingSections
-    );
-    await writeProfileSyncBackup('local-profile', { sections }, reason, { discarded });
-  } catch (error) {
-    log.warn('Failed to back up local profile before applying remote sync:', error.message);
-    throw new Error(
-      mainT('Remote profile was not applied because the local backup failed: {{error}}', {
-        error: error?.message || String(error),
-      }),
-      { cause: error }
-    );
-  }
-}
-
-/**
- * Keeps a copy of sections another device wrote before this device's newer
- * edits replace them in the file. Pushing without one would lose them for good.
- * `discarded` is as for backupLocalProfileBeforePullApply.
- */
-async function backupRemoteSectionsBeforePush(remoteSections, { discarded = [] } = {}) {
-  try {
-    await writeProfileSyncBackup('remote-profile', { sections: remoteSections }, 'push', {
-      discarded,
-    });
-  } catch (error) {
-    log.warn('Failed to back up remote profile sections before pushing:', error.message);
-    throw new Error(
-      mainT('The sync file was not updated because its backup failed: {{error}}', {
-        error: error?.message || String(error),
-      }),
-      { cause: error }
-    );
-  }
-}
-
-/**
- * Applies pulled sections to the config and runtime.
- *
- * @param {Object<string, {updatedAt: string, data: object}>} pulledSections remote entries to apply
- */
-async function applySyncedProfileToConfig(pulledSections) {
-  const previous = config;
-  const previousRuntimeTracking = {
-    localProfileHash: profileSyncRuntime.localProfileHash,
-    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-    localSectionHashes: profileSyncRuntime.localSectionHashes,
-    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
-    pendingPulls: profileSyncRuntime.pendingPulls,
-  };
-  const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
-  const scope = getActiveProfileSyncScope();
-  // Captured under the active scope so it is directly comparable to the hashes
-  // updateLocalProfileSyncTracking computes afterwards.
-  const prePullHash = computeScopedProfileHash(
-    profileSyncCore.projectSyncProfile(previous, scope),
-    scope
-  );
-  const sectionData = Object.fromEntries(
-    Object.entries(pulledSections).map(([key, entry]) => [key, entry.data])
-  );
-  const merged = profileSyncCore.mergeSectionsIntoConfig(config, sectionData);
-  // An edit time from a clock ahead of this one is recorded as now. File times count as at
-  // most five minutes ahead in a conflict, so a future one kept here would make a pulled
-  // section look like a newer edit of this device's. The agreed version keeps the time as
-  // written, but an edit made after this pull is stamped at most five minutes ahead of now
-  // (see stampLocalSectionEdit).
-  const nowIso = new Date().toISOString();
-  const notAfterNow = (value) =>
-    profileSyncCore.compareIsoTimestamps(value, nowIso) > 0 ? nowIso : value;
-  const latestPulledAt = Object.values(pulledSections)
-    .map((entry) => notAfterNow(entry.updatedAt))
-    .reduce(
-      (latest, value) => (profileSyncCore.compareIsoTimestamps(value, latest) > 0 ? value : latest),
-      null
-    );
-  merged.profileSync = {
-    ...previous.profileSync,
-    // A pulled section counts as changed when the other device changed it, so a
-    // later conflict on it compares against that edit rather than this pull.
-    sectionUpdatedAt: {
-      ...(previous.profileSync?.sectionUpdatedAt || {}),
-      ...Object.fromEntries(
-        Object.entries(pulledSections).map(([key, entry]) => [key, notAfterNow(entry.updatedAt)])
-      ),
-    },
-    profileUpdatedAt: latestPulledAt || new Date().toISOString(),
-  };
-  config = merged;
-  pruneConfig(config);
-  ensureDateTimeFormatConfigDefaults(config);
-  ensureProfileSyncConfigDefaults(config);
-  ensureEntityAlertsConfigDefaults(config);
-  normalizeDesktopPinsConfig(config);
-  normalizeTrayEntitiesConfigInPlace(config);
-
-  const projected = profileSyncCore.projectSyncProfile(config, scope);
-  profileSyncRuntime.localProfileHash = computeScopedProfileHash(projected, scope);
-  profileSyncRuntime.localSectionHashes = computeLocalSectionHashes(scope);
-  profileSyncRuntime.localProfileUpdatedAt = config.profileSync.profileUpdatedAt;
-  const pull = { profile: profileSyncCore.projectSyncProfile(previous, scope), revision: null };
-  // A pull that lands before anything answered the previous one leaves the
-  // content guard on the state before the first: a stale snapshot may predate both.
-  if (profileSyncRuntime.pendingPullEchoHash === null) {
-    profileSyncRuntime.pendingPullEchoHash =
-      prePullHash === profileSyncRuntime.localProfileHash ? null : prePullHash;
-    profileSyncRuntime.pendingPullEchoProfile = pull.profile;
-  }
-  profileSyncRuntime.pendingPulls = appendPendingPull(profileSyncRuntime.pendingPulls, pull);
-
-  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!persistence.success) {
-    config = previous;
-    Object.assign(profileSyncRuntime, previousRuntimeTracking);
-    preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
-    throw new Error(
-      mainT('Failed to persist pulled profile: {{error}}', { error: persistence.error })
-    );
-  }
-  pull.revision = configSnapshotVersion;
-
-  return applySyncedConfigSideEffects(previous, persistence);
-}
-
-/**
- * Adds a pull to the history, merging the two oldest entries once it is full.
- * The merged entry keeps the older state and where its range began: an update
- * built before the range is still compared exactly, and one built inside it,
- * whose starting state is gone, is handled conservatively.
- */
-function appendPendingPull(pulls, pull) {
-  let next = [...(pulls || []), pull];
-  while (next.length > PROFILE_SYNC_PULL_HISTORY_LIMIT) {
-    const [oldest, following, ...rest] = next;
-    next = [
-      {
-        profile: oldest.profile,
-        revision: following.revision,
-        compactedFrom:
-          typeof oldest.compactedFrom === 'number' ? oldest.compactedFrom : oldest.revision,
-      },
-      ...rest,
-    ];
-  }
-  return next;
-}
-
-/**
- * Carries a config change that did not come from the renderer (a pull or a
- * backup restore) out to the windows, tray and runtime.
- */
-async function applySyncedConfigSideEffects(previous, persistence) {
-  const runtimeWarnings = [];
-  await runPostSaveSideEffect(runtimeWarnings, 'synced main window settings', () =>
-    applyMainWindowSettingSideEffects(previous, config)
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings', () =>
-    applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')
-  );
-  if (previous?.ui?.language !== config?.ui?.language && tray) {
-    await runPostSaveSideEffect(runtimeWarnings, 'synced tray language', () => createTray());
-  }
-  if (previous?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
-  await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin windows', () =>
-    syncDesktopPinWindowsWithConfig()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'synced tray entity icons', () =>
-    syncTrayEntitiesWithConfig()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'synced desktop pin config broadcast', () =>
-    broadcastDesktopPinConfigUpdate()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'synced renderer config broadcast', () =>
-    pushConfigToRenderer({
-      persistenceWarnings: persistence.persistenceWarnings,
-      runtimeWarnings,
-    })
-  );
-  return { runtimeWarnings };
-}
-
-const PROFILE_SYNC_BACKUP_FILE_PATTERN = /^(local|remote)-profile-(\d+)\.json$/;
-
-function extractProfileSyncBackupSections(backup, kind) {
-  if (isPlainObject(backup?.sections)) {
-    return Object.fromEntries(
-      Object.entries(backup.sections)
-        .filter(([key]) => profileSyncCore.SYNC_SCOPE_SECTION_KEYS.includes(key))
-        .map(([key, value]) => [key, kind === 'remote' ? value?.data : value])
-        // A damaged section is kept in the file for reference but never restored.
-        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
-    );
-  }
-  // Backups written before sections existed hold one flat profile.
-  if (isPlainObject(backup?.profile)) {
-    const scope = profileSyncCore.normalizeSyncScope(backup.syncScope);
-    return Object.fromEntries(
-      profileSyncCore
-        .getScopeSectionKeys(scope)
-        .map((key) => [key, profileSyncCore.projectSection(backup.profile, key)])
-        .filter(([key, data]) => profileSyncCore.hasValidSectionFields(key, data))
-    );
-  }
-  return {};
-}
-
-async function readProfileSyncBackup(id) {
-  const match = typeof id === 'string' ? id.match(PROFILE_SYNC_BACKUP_FILE_PATTERN) : null;
-  if (!match) {
-    throw new Error(mainT('That backup is no longer available'));
-  }
-  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-  let backup;
-  try {
-    backup = JSON.parse(await fs.promises.readFile(path.join(backupDir, id), 'utf8'));
-  } catch {
-    throw new Error(mainT('That backup is no longer available'));
-  }
-  return {
-    id,
-    kind: match[1],
-    // Backups written before the reason was recorded are all from syncing.
-    reason:
-      typeof backup?.reason === 'string' ? backup.reason : match[1] === 'remote' ? 'push' : 'pull',
-    createdAt: new Date(Number(match[2])).toISOString(),
-    sections: extractProfileSyncBackupSections(backup, match[1]),
-  };
-}
-
-/**
- * Lists the backups kept before settings are replaced, newest first: `local` ones
- * hold this device's settings before a pull, an import or a restore replaced them
- * (`reason` says which), and `remote` ones hold the file's settings before this
- * device's push replaced them.
- */
-async function listProfileSyncBackups() {
-  const backupDir = path.join(app.getPath('userData'), PROFILE_SYNC_BACKUP_DIR_NAME);
-  let entries;
-  try {
-    entries = await fs.promises.readdir(backupDir);
-  } catch (error) {
-    if (error?.code === 'ENOENT') return [];
-    throw error;
-  }
-  const backups = await Promise.all(
-    entries
-      .filter((name) => PROFILE_SYNC_BACKUP_FILE_PATTERN.test(name))
-      .map((name) => readProfileSyncBackup(name).catch(() => null))
-  );
-  return backups
-    .filter((backup) => backup && Object.keys(backup.sections).length > 0)
-    .map(({ id, kind, reason, createdAt, sections }) => ({
-      id,
-      kind,
-      reason,
-      createdAt,
-      sections: Object.keys(sections),
-    }))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-/**
- * Applies a backup on this device as an ordinary local change, so the next merge
- * run carries it to the other devices. The settings it replaces are backed up
- * first, which keeps the restore itself undoable.
- */
-async function restoreProfileSyncBackup(id) {
-  const backup = await readProfileSyncBackup(id);
-  return applyLocalProfileSections(backup.sections, { clearNullUiKeys: true }, 'restore');
-}
-
-async function applyLocalProfileSections(sections, mergeOptions, reason = 'import') {
-  const sectionKeys = Object.keys(sections);
-  if (sectionKeys.length === 0) {
-    throw new Error(mainT('That backup is no longer available'));
-  }
-  await backupLocalProfileBeforePullApply(sectionKeys, sections, reason);
-
-  const previous = config;
-  const previousRuntimeTracking = {
-    localProfileHash: profileSyncRuntime.localProfileHash,
-    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-    localSectionHashes: profileSyncRuntime.localSectionHashes,
-    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    pendingPullEchoProfile: profileSyncRuntime.pendingPullEchoProfile,
-  };
-  // Restoring what the last pull replaced reproduces the pre-pull profile exactly,
-  // which the content guard would otherwise drop as a stale echo instead of
-  // syncing it. The pull history stays: an update built before the pull is
-  // still stale.
-  profileSyncRuntime.pendingPullEchoHash = null;
-  profileSyncRuntime.pendingPullEchoProfile = null;
-  config = profileSyncCore.mergeSectionsIntoConfig(config, sections, mergeOptions);
-  pruneConfig(config);
-  ensureDateTimeFormatConfigDefaults(config);
-  ensureProfileSyncConfigDefaults(config);
-  ensureEntityAlertsConfigDefaults(config);
-  normalizeDesktopPinsConfig(config);
-  normalizeTrayEntitiesConfigInPlace(config);
-  const persistence = await saveConfigDurably();
-  if (!persistence.success) {
-    config = previous;
-    Object.assign(profileSyncRuntime, previousRuntimeTracking);
-    throw new Error(mainT('Failed to restore the backup: {{error}}', { error: persistence.error }));
-  }
-  await applySyncedConfigSideEffects(previous, persistence);
-  return { restored: sectionKeys };
-}
-
-function clearProfileSyncTimers() {
-  if (profileSyncRuntime.pushDebounceTimer) {
-    clearTimeout(profileSyncRuntime.pushDebounceTimer);
-    profileSyncRuntime.pushDebounceTimer = null;
-  }
-  if (profileSyncRuntime.intervalTimer) {
-    clearInterval(profileSyncRuntime.intervalTimer);
-    profileSyncRuntime.intervalTimer = null;
-  }
-}
-
-/**
- * Reverses a renderer config update that predates a just-applied pull.
- *
- * applySyncedProfileToConfig pushes the pulled profile out to the renderer, but a
- * config update already in flight arrives afterwards still carrying the pre-pull
- * values, and the update-config merge would silently revert the pull. The stale
- * update is recognised by content — every setting the user did not touch still
- * holds its pre-pull value — and the pulled fields are merged back over it,
- * keeping the ones the user touched.
- *
- * @param {object} pulledConfig config as it stood before this update, i.e. the pulled state
- * @param {string[]} [touchedKeys] settings the user changed ('key' or 'ui.key'), kept as sent
- * @param {number|null} [baseRevision] config revision the renderer built the update from
- * @returns {boolean} whether a stale update was detected and reversed
- */
-function restoreProfileFromStalePullEcho(pulledConfig, touchedKeys = [], baseRevision = null) {
-  if (!pulledConfig) return false;
-  const pulls = profileSyncRuntime.pendingPulls || [];
-  const revisionKnown = baseRevision !== null && pulls.length > 0;
-  let prePullProfile;
-  let startingStateLost = false;
-  if (revisionKnown) {
-    // The profile the update was built from: before the first pull it missed. A
-    // pull still being saved has no revision yet, and nothing has seen it.
-    const missedPull = pulls.find(
-      (entry) => entry.revision === null || entry.revision > baseRevision
-    );
-    if (!missedPull) {
-      // Built after the renderer saw every pull: every value in it is deliberate.
-      profileSyncRuntime.pendingPullEchoHash = null;
-      return false;
-    }
-    prePullProfile = missedPull.profile;
-    startingStateLost =
-      typeof missedPull.compactedFrom === 'number' && baseRevision >= missedPull.compactedFrom;
-  } else {
-    // No revision (an older renderer): checked once, against the last pull.
-    if (profileSyncRuntime.pendingPullEchoHash === null) return false;
-    prePullProfile = profileSyncRuntime.pendingPullEchoProfile;
-    if (!prePullProfile) return false;
-  }
-
-  // Scope comes from the pulled config, not the merged one: the stale update may
-  // carry a stale syncScope too.
-  const scope = getNormalizedProfileSyncScopeValue(pulledConfig?.profileSync?.syncScope);
-  const touched = new Set(touchedKeys);
-  const incomingProfile = profileSyncCore.projectSyncProfile(config, scope);
-  const same = (a, b) =>
-    profileSyncCore.computeProfileHash({ value: a }) ===
-    profileSyncCore.computeProfileHash({ value: b });
-  const eachSyncedSetting = (visit) => {
-    const fields = new Set([...Object.keys(prePullProfile), ...Object.keys(incomingProfile)]);
-    return [...fields].every((field) => {
-      if (field !== 'ui') return visit(field, incomingProfile[field], prePullProfile[field]);
-      const incomingUi = incomingProfile.ui || {};
-      const prePullUi = prePullProfile.ui || {};
-      return [...new Set([...Object.keys(incomingUi), ...Object.keys(prePullUi)])].every((key) =>
-        visit(`ui.${key}`, incomingUi[key], prePullUi[key])
-      );
-    });
-  };
-
-  let keep = touched;
-  if (revisionKnown) {
-    // Built before the pull. Whatever it changed relative to the pre-pull
-    // profile is a deliberate edit; everything else is stale.
-    keep = new Set(touched);
-    // Built inside a compacted stretch of history, the state it started from is
-    // unknown, so only settings the user touched are taken from it.
-    if (!startingStateLost) {
-      eachSyncedSetting((key, incomingValue, prePullValue) => {
-        if (!same(incomingValue, prePullValue)) keep.add(key);
-        return true;
-      });
-    }
-  } else {
-    // Stale when every setting the user did not touch still holds its pre-pull value.
-    const stale = eachSyncedSetting(
-      (key, incomingValue, prePullValue) => touched.has(key) || same(incomingValue, prePullValue)
-    );
-    if (!stale) return false;
-  }
-
-  const incoming = config;
-  config = profileSyncCore.mergeSyncedProfileIntoConfig(
-    config,
-    // Cleared fields come through as null, so a setting the pull removed is
-    // removed from the stale update too rather than left as it was.
-    profileSyncCore.projectSyncProfile(pulledConfig, scope, { markCleared: true }),
-    scope
-  );
-  // Deliberate values from the update survive, even ones equal to the pre-pull value.
-  keep.forEach((key) => {
-    const [owner, field] = key.startsWith('ui.') ? [incoming.ui, key.slice(3)] : [incoming, key];
-    const target = key.startsWith('ui.') ? (config.ui = { ...(config.ui || {}) }) : config;
-    if (owner && Object.prototype.hasOwnProperty.call(owner, field)) {
-      target[field] = owner[field];
-    } else {
-      delete target[field];
-    }
-  });
-  ensureProfileSyncConfigDefaults(config);
-  config.profileSync.syncScope = scope;
-  profileSyncRuntime.pendingPullEchoHash = null;
-  log.debug('Reverted the stale part of a renderer config update that predates the last pull');
-  return true;
-}
-
-function updateLocalProfileSyncTracking({ allowDebouncedPush = true } = {}) {
-  const scope = getActiveProfileSyncScope();
-  const profile = profileSyncCore.projectSyncProfile(config, scope);
-  const nextHash = computeScopedProfileHash(profile, scope);
-  const previousSectionHashes = profileSyncRuntime.localSectionHashes || {};
-  const nextSectionHashes = computeLocalSectionHashes(scope);
-  profileSyncRuntime.localSectionHashes = nextSectionHashes;
-  const changedSections = Object.keys(nextSectionHashes).filter(
-    (key) => previousSectionHashes[key] !== nextSectionHashes[key]
-  );
-  if (profileSyncRuntime.localProfileHash === null) {
-    profileSyncRuntime.localProfileHash = nextHash;
-    profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
-    return;
-  }
-  if (profileSyncRuntime.localProfileHash === nextHash) {
-    return;
-  }
-
-  // A pulled profile is applied here in main, but the renderer may still have an
-  // in-flight config snapshot from before the pull. That snapshot comes back
-  // through update-config and looks like a change back to the pre-pull content.
-  // Reverting to byte-identical pre-pull content is never a real user edit, so
-  // drop it instead of pushing stale data over the newer remote profile. Matching
-  // on content rather than on a timer means a genuine edit made moments after a
-  // pull still pushes immediately.
-  if (
-    profileSyncRuntime.pendingPullEchoHash !== null &&
-    nextHash === profileSyncRuntime.pendingPullEchoHash
-  ) {
-    profileSyncRuntime.pendingPullEchoHash = null;
-    profileSyncRuntime.localProfileHash = nextHash;
-    // The edit times deliberately stay on the pulled sections' timestamps, and
-    // their baseline is dropped: the next run then sees a tie with the file,
-    // which the file wins, so the pulled content comes back instead of the
-    // stale echo being pushed out.
-    if (config?.profileSync?.syncBaseline) {
-      changedSections.forEach((key) => {
-        delete config.profileSync.syncBaseline[key];
-      });
-    }
-    return;
-  }
-
-  profileSyncRuntime.pendingPullEchoHash = null;
-  profileSyncRuntime.localProfileHash = nextHash;
-  profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();
-  if (config?.profileSync) {
-    config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt;
-    const nowMs = Date.parse(profileSyncRuntime.localProfileUpdatedAt);
-    config.profileSync.sectionUpdatedAt = {
-      ...(config.profileSync.sectionUpdatedAt || {}),
-      ...Object.fromEntries(
-        changedSections.map((key) => [key, stampLocalSectionEdit(config.profileSync, key, nowMs)])
-      ),
-    };
-  }
-
-  if (allowDebouncedPush) {
-    scheduleDebouncedProfileSyncPush('config_change');
-  }
-}
-
-/**
- * The latest edit time this device knows for a section: its own last edit or pull, or the
- * version it last agreed on with the file, as that version's writer recorded it.
- */
-function getKnownSectionUpdatedAt(profileSync, key) {
-  return [
-    profileSync?.sectionUpdatedAt?.[key],
-    profileSync?.syncBaselineUpdatedAt?.[key]?.updatedAt,
-  ].reduce(
-    (latest, value) =>
-      typeof value === 'string' && profileSyncCore.compareIsoTimestamps(value, latest) > 0
-        ? value
-        : latest,
-    null
-  );
-}
-
-/**
- * The edit time of a section changed on this device: now, or just after the version it
- * replaced when this clock is slightly behind the one that wrote that version. An edit made
- * after a pull then beats what it replaced, and no device takes it for a stale copy of the
- * file. It never carries more of another clock's lead than the sync clock tolerance, or one
- * pull from a clock a day ahead would stamp every later edit here a day ahead as well, and
- * those would win conflicts they should lose.
- */
-function stampLocalSectionEdit(profileSync, key, nowMs = Date.now()) {
-  const knownMs = Date.parse(getKnownSectionUpdatedAt(profileSync, key) || '');
-  const latestMs = nowMs + profileSyncCore.SYNC_FUTURE_TOLERANCE_MS;
-  return new Date(
-    Number.isNaN(knownMs) ? nowMs : Math.min(Math.max(nowMs, knownMs + 1), latestMs)
-  ).toISOString();
-}
-
-/**
- * The edit time written for a pushed section. It is always later than the file's version it
- * replaces, so no other device takes it for a stale copy of the file: Sync up and Keep local
- * can push a section this device last changed before the file's version was written.
- */
-function stampPushedSection(profileSync, key, remoteEntry) {
-  const own = getKnownSectionUpdatedAt(profileSync, key) || new Date().toISOString();
-  const remoteMs = Date.parse(remoteEntry?.updatedAt || '');
-  return Number.isNaN(remoteMs) || Date.parse(own) > remoteMs
-    ? own
-    : new Date(remoteMs + 1).toISOString();
-}
-
 /**
  * Selects and returns an appropriate tray icon image for the current platform (see
  * src/tray-icon.cjs for what that is on each).
@@ -5944,30 +3609,34 @@ function quarantineCorruptConfig(configPath) {
  *
  * Side effects:
  * - Mutates the module-level `config` variable.
- * - May call `saveConfig()` and `backupConfig()` to persist changes or backups.
+ * - May save through the config store and call `backupConfig()` to persist changes or backups.
  * - Logs migration and error information.
  */
 function loadConfig(options = {}) {
   log.debug('Loading configuration');
   configRecoveryNotice = null;
-  configWriteBlockedReason = '';
+  // Set when the file on disk could not be read safely: the store then refuses every write, which
+  // would replace the user's config with defaults.
+  let writeBlockedReason = '';
+  // Every config this load settles on becomes the store's.
+  const adoptConfig = (next) => {
+    config = configStore.load(next, { writeBlockedReason });
+  };
   const deferSecureStorage = !!options.deferSecureStorage;
   const userDataDir = app.getPath('userData');
   const configPath = path.join(userDataDir, CONFIG_FILE_NAME);
   preservedEncryptedTokenForRecovery = null;
   deferredHomeAssistantTokenDecryptPending = false;
   deferredPlaintextTokenMigrationPending = false;
-  deferredProfileSyncPassphraseDecryptPending = false;
 
   // Default configuration
   const defaultConfig = {
     windowPosition: { x: 100, y: 100 },
     windowDisplay: null,
     windowSize: { ...DEFAULT_WINDOW_SIZE },
-    alwaysOnTop: true,
-    hideOnBlur: false,
-    opacity: 0.95,
-    frostedGlass: true,
+    // Every setting the settings field registry gives a default to: the look, the layout, alerts
+    // and hotkeys.
+    ...settingsFields.defaultSettings(),
     homeAssistant: {
       // Home Assistant OS 2026.8+ fresh installs use the standard HTTP port by default.
       // Existing saved URLs, including legacy :8123 installs, are merged over this value.
@@ -5983,43 +3652,6 @@ function loadConfig(options = {}) {
       revision: 0,
       appliedAt: '',
     },
-    globalHotkeys: {
-      enabled: false,
-      hotkeys: {}, // entityId -> hotkey combination
-    },
-    entityAlerts: {
-      enabled: false,
-      // persistentNotifications (desktop notifications for Home Assistant's own) is absent until
-      // someone turns it off; absent means on.
-      alerts: {}, // entityId -> alert configuration
-    },
-    ui: {
-      theme: 'auto',
-      accent: 'original',
-      background: 'original',
-      language: 'auto',
-      customColors: [],
-      density: 'comfortable',
-      activeTileGlow: true,
-      personalizationSectionsCollapsed: {},
-      use24HourClock: false,
-      timeFormat: 'system',
-      dateFormat: 'weekday-short',
-      weatherEffectsEnabled: false,
-      weatherOverride: 'auto',
-      enableInteractionDebugLogs: false,
-      // Only takes effect where an Omarchy palette exists.
-      followOmarchy: true,
-    },
-    primaryCards: ['weather', 'time'],
-    favoriteEntities: [],
-    customTabs: [],
-    activeTabId: '',
-    comparisonGraphs: [],
-    desktopPins: {},
-    trayEntities: {},
-    customEntityIcons: {},
-    quickAccessTileOptions: {},
     updates: {
       allowPrerelease: false,
       anonymousUsagePing: false,
@@ -6032,7 +3664,7 @@ function loadConfig(options = {}) {
     // compositors — a layer surface cannot be dragged between monitors, so
     // this is set from the tray's monitor submenu and applied via relaunch.
     layerShellOutputName: '',
-    profileSync: getDefaultProfileSyncConfig(),
+    profileSync: profileSyncEngine.defaultSettings(),
   };
 
   try {
@@ -6042,17 +3674,13 @@ function loadConfig(options = {}) {
       try {
         serializedConfig = fs.readFileSync(configPath, 'utf8');
       } catch (error) {
-        configWriteBlockedReason = mainT(
-          'The existing config could not be read safely: {{error}}',
-          {
-            error: error?.message || String(error),
-          }
-        );
-        lastConfigWriteError = configWriteBlockedReason;
+        writeBlockedReason = mainT('The existing config could not be read safely: {{error}}', {
+          error: error?.message || String(error),
+        });
         configRecoveryNotice = {
           recovered: false,
           backupPath: '',
-          error: configWriteBlockedReason,
+          error: writeBlockedReason,
         };
         throw error;
       }
@@ -6064,10 +3692,10 @@ function loadConfig(options = {}) {
       } catch (error) {
         log.error('Configuration could not be parsed:', error.message);
         const recovery = quarantineCorruptConfig(configPath);
-        config = defaultConfig;
+        adoptConfig(defaultConfig);
         pruneConfig(config);
         ensureDateTimeFormatConfigDefaults(config);
-        ensureProfileSyncConfigDefaults(config);
+        profileSyncEngine.normalizeSettings(config);
         ensureUpdateConfigDefaults(config);
         ensureHaProfileConfigDefaults(config);
         ensureFollowOmarchyDefault(config);
@@ -6075,35 +3703,29 @@ function loadConfig(options = {}) {
         normalizeTrayEntitiesConfigInPlace(config);
 
         if (recovery.success) {
-          const scheduled = saveConfig();
-          const persisted = scheduled
-            ? flushPendingConfigWriteSync({ shutdown: false })
-            : {
-                success: false,
-                error: lastConfigWriteError || 'Failed to schedule recovered config save',
-              };
+          const persisted = configStore.flushSync({ shutdown: false, origin: 'startup' });
           configRecoveryNotice = {
             recovered: persisted.success,
             backupPath: recovery.path,
             error: persisted.success ? '' : persisted.error,
           };
         } else {
-          lastConfigWriteError = mainT(
+          writeBlockedReason = mainT(
             'The existing config is invalid and could not be moved aside: {{error}}',
             { error: recovery.error }
           );
-          configWriteBlockedReason = lastConfigWriteError;
+          adoptConfig(config);
           configRecoveryNotice = {
             recovered: false,
             backupPath: '',
-            error: lastConfigWriteError,
+            error: writeBlockedReason,
           };
         }
 
-        refreshProfileSyncRuntimeTracking();
+        profileSyncEngine.configLoaded();
         return;
       }
-      config = {
+      adoptConfig({
         ...defaultConfig,
         ...userConfig,
         homeAssistant: { ...defaultConfig.homeAssistant, ...(userConfig.homeAssistant || {}) },
@@ -6117,7 +3739,7 @@ function loadConfig(options = {}) {
         ui: { ...defaultConfig.ui, ...(userConfig.ui || {}) },
         profileSync: { ...defaultConfig.profileSync, ...(userConfig.profileSync || {}) },
         updates: { ...defaultConfig.updates, ...(userConfig.updates || {}) },
-      };
+      });
       normalizeDesktopPinsConfig(config);
       normalizeWindowGeometryConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
@@ -6131,7 +3753,7 @@ function loadConfig(options = {}) {
           'timeFormat'
         ),
       });
-      ensureProfileSyncConfigDefaults(config);
+      profileSyncEngine.normalizeSettings(config);
       ensureUpdateConfigDefaults(config);
       ensureHaProfileConfigDefaults(config);
       ensureFollowOmarchyDefault(config);
@@ -6221,17 +3843,17 @@ function loadConfig(options = {}) {
                   tokenEncrypted: true,
                 };
                 log.debug('Saving encrypted config...');
-                // buildConfigSnapshotForSave owns encryption. Keeping plaintext
+                // encodeConfigForSave owns encryption. Keeping plaintext
                 // in memory here avoids encrypting the already-encrypted base64
                 // a second time when the snapshot is built.
-                const migrationSnapshot = saveConfig();
+                const migrationSave = configStore.save({ origin: 'startup' });
                 if (
-                  !migrationSnapshot ||
-                  migrationSnapshot.persistenceWarnings?.some(
+                  !migrationSave.success ||
+                  migrationSave.persistenceWarnings?.some(
                     (warning) => warning.code === 'home_assistant_token_not_persisted'
                   )
                 ) {
-                  throw new Error(lastConfigWriteError || 'Token encryption failed');
+                  throw new Error(migrationSave.error || 'Token encryption failed');
                 }
                 log.info('Token migration complete - token is now encrypted at rest');
               } catch (error) {
@@ -6247,7 +3869,7 @@ function loadConfig(options = {}) {
                   tokenEncrypted: false,
                   reason: 'encryption_failed',
                 };
-                saveConfig(); // Persist the flag without writing the plaintext token.
+                configStore.save({ origin: 'startup' }); // Persist the flag without writing the plaintext token.
                 log.info('Token omitted from saved config until it can be re-entered or encrypted');
               }
             } else {
@@ -6262,7 +3884,7 @@ function loadConfig(options = {}) {
                 tokenEncrypted: false,
                 reason: 'encryption_unavailable',
               };
-              saveConfig(); // Persist the flag without writing the plaintext token.
+              configStore.save({ origin: 'startup' }); // Persist the flag without writing the plaintext token.
               log.info('Token omitted from saved config until it can be re-entered or encrypted');
             }
           } catch (error) {
@@ -6278,7 +3900,7 @@ function loadConfig(options = {}) {
               tokenEncrypted: false,
               reason: 'migration_error',
             };
-            saveConfig();
+            configStore.save({ origin: 'startup' });
           }
         }
       }
@@ -6290,7 +3912,7 @@ function loadConfig(options = {}) {
       if (fs.existsSync(legacyPath)) {
         try {
           const legacyConfig = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
-          config = { ...defaultConfig, ...legacyConfig };
+          adoptConfig({ ...defaultConfig, ...legacyConfig });
           pruneConfig(config);
           ensureDateTimeFormatConfigDefaults(config, {
             migrateLegacyClock: !Object.prototype.hasOwnProperty.call(
@@ -6298,74 +3920,60 @@ function loadConfig(options = {}) {
               'timeFormat'
             ),
           });
-          ensureProfileSyncConfigDefaults(config);
+          profileSyncEngine.normalizeSettings(config);
           ensureUpdateConfigDefaults(config);
           normalizeDesktopPinsConfig(config);
           normalizeTrayEntitiesConfigInPlace(config);
           migrated = true;
         } catch (error) {
           log.warn('Legacy config exists but could not be parsed, using defaults:', error.message);
-          config = defaultConfig;
+          adoptConfig(defaultConfig);
         }
       } else {
-        config = defaultConfig;
+        adoptConfig(defaultConfig);
       }
       ensureDateTimeFormatConfigDefaults(config);
-      ensureProfileSyncConfigDefaults(config);
+      profileSyncEngine.normalizeSettings(config);
       ensureUpdateConfigDefaults(config);
       ensureFollowOmarchyDefault(config);
       normalizeDesktopPinsConfig(config);
       normalizeTrayEntitiesConfigInPlace(config);
       // Ensure directory exists and persist
       fs.mkdirSync(userDataDir, { recursive: true });
-      saveConfig();
+      configStore.save({ origin: 'startup' });
       if (migrated) {
         log.info('Migrated legacy config.json to userData.');
       }
     }
   } catch (error) {
     log.error('Error loading config:', error);
-    if (!configWriteBlockedReason && fs.existsSync(configPath)) {
-      configWriteBlockedReason = mainT(
-        'The existing config could not be normalized safely: {{error}}',
-        { error: error?.message || String(error) }
-      );
-      lastConfigWriteError = configWriteBlockedReason;
+    if (!writeBlockedReason && fs.existsSync(configPath)) {
+      writeBlockedReason = mainT('The existing config could not be normalized safely: {{error}}', {
+        error: error?.message || String(error),
+      });
       configRecoveryNotice = {
         recovered: false,
         backupPath: '',
-        error: configWriteBlockedReason,
+        error: writeBlockedReason,
       };
     }
-    config = defaultConfig;
+    adoptConfig(defaultConfig);
     pruneConfig(config);
     ensureDateTimeFormatConfigDefaults(config);
-    ensureProfileSyncConfigDefaults(config);
+    profileSyncEngine.normalizeSettings(config);
     ensureUpdateConfigDefaults(config);
     ensureFollowOmarchyDefault(config);
     normalizeDesktopPinsConfig(config);
     normalizeTrayEntitiesConfigInPlace(config);
   }
 
-  deferredProfileSyncPassphraseDecryptPending = !!(
-    deferSecureStorage &&
-    config?.profileSync?.rememberPassphrase &&
-    config?.profileSync?.storedPassphrase &&
-    config?.profileSync?.passphraseEncrypted
-  );
-  if (deferredProfileSyncPassphraseDecryptPending) {
-    profileSyncRuntime.passphraseSession = '';
-    profileSyncRuntime.passphraseWarning = '';
-    refreshProfileSyncRuntimeTracking({ decodePassphrase: false });
-  } else {
-    refreshProfileSyncRuntimeTracking();
-  }
+  profileSyncEngine.configLoaded({ deferPassphrase: deferSecureStorage });
 }
 
 function enableDevelopmentClimateDemo() {
   if (!IS_CLIMATE_DEMO_MODE) return;
 
-  config = {
+  replaceConfigContents(config, {
     ...config,
     homeAssistant: {
       url: '',
@@ -6378,8 +3986,8 @@ function enableDevelopmentClimateDemo() {
     trayEntities: {},
     globalHotkeys: { enabled: false, hotkeys: {} },
     entityAlerts: { enabled: false, alerts: {} },
-    profileSync: { ...getDefaultProfileSyncConfig(), enabled: false },
-  };
+    profileSync: { ...profileSyncEngine.defaultSettings(), enabled: false },
+  });
 }
 
 function resolveDeferredSecureConfig(options = {}) {
@@ -6445,14 +4053,14 @@ function resolveDeferredSecureConfig(options = {}) {
               };
               // Snapshot construction performs the one and only encryption,
               // while the runtime value remains plaintext.
-              const migrationSnapshot = saveConfig();
+              const migrationSave = configStore.save({ origin: 'local' });
               if (
-                !migrationSnapshot ||
-                migrationSnapshot.persistenceWarnings?.some(
+                !migrationSave.success ||
+                migrationSave.persistenceWarnings?.some(
                   (warning) => warning.code === 'home_assistant_token_not_persisted'
                 )
               ) {
-                throw new Error(lastConfigWriteError || 'Token encryption failed');
+                throw new Error(migrationSave.error || 'Token encryption failed');
               }
               changed = true;
               log.info('Deferred token migration complete - token is now encrypted at rest');
@@ -6465,7 +4073,7 @@ function resolveDeferredSecureConfig(options = {}) {
                 tokenEncrypted: false,
                 reason: 'encryption_failed',
               };
-              saveConfig();
+              configStore.save({ origin: 'local' });
               changed = true;
             }
           } else {
@@ -6476,7 +4084,7 @@ function resolveDeferredSecureConfig(options = {}) {
               tokenEncrypted: false,
               reason: 'encryption_unavailable',
             };
-            saveConfig();
+            configStore.save({ origin: 'local' });
             changed = true;
           }
         } catch (error) {
@@ -6488,24 +4096,20 @@ function resolveDeferredSecureConfig(options = {}) {
             tokenEncrypted: false,
             reason: 'migration_error',
           };
-          saveConfig();
+          configStore.save({ origin: 'local' });
           changed = true;
         }
       }
     }
 
-    if (deferredProfileSyncPassphraseDecryptPending) {
-      deferredProfileSyncPassphraseDecryptPending = false;
-      profileSyncRuntime.passphraseSession = decodeStoredProfileSyncPassphrase() || '';
+    if (profileSyncEngine.unlockDeferredPassphrase()) {
       changed = true;
     }
-
-    refreshProfileSyncRuntimeTracking({ decodePassphrase: false });
 
     if (changed && notifyRenderer) {
       pushConfigToRenderer();
       broadcastDesktopPinConfigUpdate();
-      emitProfileSyncStatus();
+      profileSyncEngine.emitStatus();
     }
 
     return changed;
@@ -6620,37 +4224,21 @@ function scrubPlaintextTokensFromConfigBackups(userDataDir) {
   }
 }
 
-function shouldBlockPotentialConfigClobber() {
-  // Authorized mutations may intentionally clear the last favorite, pin,
-  // token, or custom page. Only an unsafe config load arms the write block;
-  // shape/content heuristics cannot distinguish those valid clears.
-  return shouldBlockConfigWrite({ blockedReason: configWriteBlockedReason });
-}
-
 /**
- * Persist the in-memory configuration to the user's config.json and attempt to secure the Home Assistant token.
+ * Turn the config into the text the config store writes to config.json, securing the Home Assistant token.
  *
- * Writes the current `config` object to the application's userData/config.json. If `homeAssistant.token` is present
- * and not the placeholder value, this function attempts to encrypt the token using Electron's `safeStorage`; on
- * successful encryption the token is stored as a base64 string and `homeAssistant.tokenEncrypted` is set to `true`.
- * If encryption is unavailable or fails, the token is omitted from the saved config, which records `tokenResetReason`
- * 'not_persisted' for the next start.
- * The in-memory `config` remains unchanged with the token kept in plaintext for runtime use. Errors during the save
- * process are logged; the function does not throw.
+ * If `homeAssistant.token` is present and not the placeholder value, this function attempts to encrypt the token
+ * using Electron's `safeStorage`; on successful encryption the token is stored as a base64 string and
+ * `homeAssistant.tokenEncrypted` is set to `true`. If encryption is unavailable or fails, the token is omitted from
+ * the saved config, which records `tokenResetReason` 'not_persisted' for the next start.
+ * The in-memory config remains unchanged with the token kept in plaintext for runtime use. Encryption errors are
+ * logged and reported as persistence warnings rather than thrown.
  */
-function buildConfigSnapshotForSave() {
-  if (configWriteBlockedReason) {
-    throw new Error(configWriteBlockedReason);
-  }
-  const userDataDir = app.getPath('userData');
-  const configPath = path.join(userDataDir, CONFIG_FILE_NAME);
-  const snapshotVersion = ++configSnapshotVersion;
-  const tempPath = `${configPath}.${snapshotVersion}.tmp`;
-
+function encodeConfigForSave(currentConfig) {
   ensureConfigBackupBeforeFirstWrite('pre-save');
 
   // Create a copy for saving with encrypted token
-  const configToSave = JSON.parse(JSON.stringify(config));
+  const configToSave = JSON.parse(JSON.stringify(currentConfig));
   pruneConfig(configToSave);
   const usesOAuth = configToSave.homeAssistant?.authMethod === 'oauth';
   const preserveRecoveryToken = !usesOAuth && shouldPreserveRecoveryTokenForSave(configToSave);
@@ -6723,44 +4311,8 @@ function buildConfigSnapshotForSave() {
     }
   }
 
-  return {
-    userDataDir,
-    configPath,
-    tempPath,
-    snapshotVersion,
-    epoch: configWriteEpoch,
-    configToSave,
-    serializedConfig: JSON.stringify(configToSave, null, 2),
-    persistenceWarnings,
-  };
-}
-
-async function writeConfigSnapshotAsync(snapshot) {
-  try {
-    if (shouldBlockPotentialConfigClobber(snapshot)) {
-      throw new Error(configWriteBlockedReason || mainT('Configuration writes are blocked'));
-    }
-    await fs.promises.mkdir(snapshot.userDataDir, { recursive: true });
-    await fs.promises.writeFile(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
-    if (
-      !canCommitSnapshot(snapshot, {
-        shutdownPending: configShutdownPending,
-        currentEpoch: configWriteEpoch,
-      })
-    ) {
-      await fs.promises.unlink(snapshot.tempPath).catch(() => {});
-      return { written: false };
-    }
-    // Keep the epoch check and final atomic replacement in the same JavaScript turn.
-    // If this were an awaited async rename, restart/before-quit could sync-write a newer
-    // snapshot while the older rename was already queued, then the old write could win
-    // after shutdown. The local rename is tiny and closes that race.
-    fs.renameSync(snapshot.tempPath, snapshot.configPath);
-    return { written: true };
-  } catch (error) {
-    await fs.promises.unlink(snapshot.tempPath).catch(() => {});
-    throw error;
-  }
+  emitConfigPersistenceWarnings(persistenceWarnings);
+  return { text: JSON.stringify(configToSave, null, 2), persistenceWarnings };
 }
 
 function emitConfigPersistenceWarnings(warnings = []) {
@@ -6806,1005 +4358,149 @@ async function runPostSaveSideEffect(runtimeWarnings, context, sideEffect) {
   }
 }
 
-function flushConfigWriteQueue() {
-  if (configWriteInFlight) return;
-  if (!pendingConfigSnapshot) return;
+// Config change effects. What each kind of config change sets off once it is on disk, in one
+// place and one order: every change runs these effects in the order they are subscribed below,
+// and its origin names the ones it needs. A failed effect becomes a runtime warning and the rest
+// still run.
+const CONFIG_CHANGE_EFFECTS = {
+  // A Settings save: anything may have changed.
+  settings: [
+    'syncPush',
+    'syncSettings',
+    'windowSettings',
+    'runtime',
+    'language',
+    'updateChannel',
+    'pinWindows',
+    'trayEntities',
+    'renderer',
+    'pinBroadcast',
+    'syncStatus',
+  ],
+  'entity-replacement': [
+    'syncPush',
+    'runtime',
+    'pinWindows',
+    'trayEntities',
+    'renderer',
+    'pinBroadcast',
+    'syncStatus',
+  ],
+  // A profile pulled from the sync file, which must not be pushed straight back, and a backup
+  // restored over this device's profile. The update channel is not synced, so neither touches it.
+  'profile-sync-pull': [
+    'windowSettings',
+    'runtime',
+    'language',
+    'pinWindows',
+    'trayEntities',
+    'renderer',
+    'pinBroadcast',
+  ],
+  'profile-restore': [
+    'syncPush',
+    'windowSettings',
+    'runtime',
+    'language',
+    'pinWindows',
+    'trayEntities',
+    'renderer',
+    'pinBroadcast',
+  ],
+  'desktop-pins': ['syncPush', 'pinWindows', 'renderer', 'pinBroadcast'],
+  // The pin's own window is moved by the caller, which knows the work area it was dragged on.
+  'desktop-pin-bounds': ['syncPush', 'renderer'],
+  'tray-entities': ['syncPush', 'trayEntities', 'renderer'],
+  'home-assistant-auth': ['renderer', 'pinBroadcast'],
+  // A setting only the main window shows, such as an acknowledged notice.
+  'renderer-setting': ['syncPush', 'renderer'],
+  // Sync's own bookkeeping, the desktop companion's id, startup migrations and the quit flush:
+  // nothing beyond the write.
+  'profile-sync': [],
+  'desktop-companion': [],
+  startup: [],
+  shutdown: [],
+  // Window geometry, hotkeys, alerts and the other single settings, whose callers apply them.
+  local: ['syncPush'],
+};
 
-  const snapshot = pendingConfigSnapshot;
-  pendingConfigSnapshot = null;
-  configWriteInFlight = true;
-  lastConfigWriteError = null;
-
-  writeConfigSnapshotAsync(snapshot)
-    .then((writeResult) => {
-      if (!writeResult?.written) return;
-      lastConfigWriteError = null;
-      configWriteAcknowledgements.complete(snapshot.snapshotVersion, { success: true });
-    })
-    .catch((error) => {
-      log.error('Failed to save config asynchronously:', error);
-      lastConfigWriteError = error?.message || String(error);
-      // A newer queued snapshot contains this mutation too, so give it a chance
-      // to satisfy the durable acknowledgement. Only fail now when there is no
-      // superseding snapshot left to persist.
-      configWriteAcknowledgements.complete(
-        snapshot.snapshotVersion,
-        {
-          success: false,
-          error: lastConfigWriteError,
-        },
-        { hasSupersedingSnapshot: !!pendingConfigSnapshot }
-      );
-    })
-    .finally(() => {
-      configWriteInFlight = false;
-      if (pendingConfigSnapshot) {
-        flushConfigWriteQueue();
-      }
-    });
+function getConfigChangeEffects(origin) {
+  return CONFIG_CHANGE_EFFECTS[origin] || CONFIG_CHANGE_EFFECTS.local;
 }
 
-function flushPendingConfigWriteSync(options = {}) {
-  const shutdown = options.shutdown !== false;
-  configShutdownPending = shutdown;
-  // Invalidate any older in-flight async write attempts before flushing latest config.
-  configWriteEpoch += 1;
+// The wording of the runtime warning, which names what the change was.
+const CONFIG_CHANGE_RUNTIME_SOURCES = {
+  settings: 'settings update',
+  'entity-replacement': 'entity ID replacement',
+  'profile-sync-pull': 'profile sync pull',
+  'profile-restore': 'profile sync pull',
+};
 
-  if (configWriteTimer) {
-    clearTimeout(configWriteTimer);
-    configWriteTimer = null;
-  }
-
-  let snapshot = pendingConfigSnapshot;
-  pendingConfigSnapshot = null;
-
-  if (!snapshot) {
-    try {
-      snapshot = buildConfigSnapshotForSave();
-    } catch (error) {
-      log.error('Failed to build config snapshot for sync flush:', error);
-      lastConfigWriteError = error?.message || String(error);
-      const result = { success: false, error: lastConfigWriteError };
-      configWriteAcknowledgements.failAll(lastConfigWriteError);
-      return result;
-    }
-  }
-
-  try {
-    if (shouldBlockPotentialConfigClobber(snapshot)) {
-      throw new Error(
-        'Blocked synchronous config save because it would replace an existing user config with default-like data.'
-      );
-    }
-    fs.mkdirSync(snapshot.userDataDir, { recursive: true });
-    fs.writeFileSync(snapshot.tempPath, snapshot.serializedConfig, 'utf8');
-    fs.renameSync(snapshot.tempPath, snapshot.configPath);
-    lastConfigWriteError = null;
-    const result = { success: true };
-    configWriteAcknowledgements.complete(snapshot.snapshotVersion, result);
-    return result;
-  } catch (error) {
-    log.error('Failed to flush config synchronously:', error);
-    lastConfigWriteError = error?.message || String(error);
-    try {
-      if (snapshot?.tempPath && fs.existsSync(snapshot.tempPath)) {
-        fs.unlinkSync(snapshot.tempPath);
-      }
-    } catch {
-      // best effort cleanup
-    }
-    const result = { success: false, error: lastConfigWriteError };
-    configWriteAcknowledgements.failAll(lastConfigWriteError);
-    return result;
-  }
-}
-
-function saveConfig(options = {}) {
-  log.debug('Scheduling configuration save');
-  try {
-    // Track first so profileSync.profileUpdatedAt lands in this snapshot
-    // rather than trailing one save behind.
-    updateLocalProfileSyncTracking({
-      allowDebouncedPush: options.allowDebouncedPush !== false,
-    });
-    pendingConfigSnapshot = buildConfigSnapshotForSave();
-    const scheduledSnapshot = pendingConfigSnapshot;
-    emitConfigPersistenceWarnings(scheduledSnapshot.persistenceWarnings);
-    if (configWriteTimer) {
-      clearTimeout(configWriteTimer);
-    }
-    configWriteTimer = setTimeout(() => {
-      configWriteTimer = null;
-      flushConfigWriteQueue();
-    }, CONFIG_SAVE_DEBOUNCE_MS);
-    return scheduledSnapshot;
-  } catch (error) {
-    log.error('Failed to schedule config save:', error);
-    lastConfigWriteError = error?.message || String(error);
-    return false;
-  }
-}
-
-async function saveConfigDurably(options = {}) {
-  const previousRuntimeTracking = {
-    localProfileHash: profileSyncRuntime.localProfileHash,
-    localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-    pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-    localSectionHashes: profileSyncRuntime.localSectionHashes,
-  };
-  const previousProfileUpdatedAt = config?.profileSync?.profileUpdatedAt ?? null;
-  const hadTokenResetReason = Object.prototype.hasOwnProperty.call(
-    config || {},
-    'tokenResetReason'
-  );
-  const previousTokenResetReason = config?.tokenResetReason;
-  const restoreSaveSideEffects = () => {
-    Object.assign(profileSyncRuntime, previousRuntimeTracking);
-    if (config?.profileSync) {
-      config.profileSync.profileUpdatedAt = previousProfileUpdatedAt;
-    }
-    if (hadTokenResetReason) {
-      config.tokenResetReason = previousTokenResetReason;
-    } else {
-      delete config.tokenResetReason;
-    }
-  };
-  const scheduledSnapshot = saveConfig({ allowDebouncedPush: false });
-  if (!scheduledSnapshot) {
-    restoreSaveSideEffects();
-    return {
-      success: false,
-      error: lastConfigWriteError || 'Failed to schedule configuration save',
-    };
-  }
-
-  if (configWriteTimer) {
-    clearTimeout(configWriteTimer);
-    configWriteTimer = null;
-  }
-
-  const completion = configWriteAcknowledgements.waitFor(scheduledSnapshot.snapshotVersion);
-  flushConfigWriteQueue();
-  const result = await completion;
-  if (!result.success) {
-    restoreSaveSideEffects();
-    return result;
-  }
-  if (
-    options.allowDebouncedPush !== false &&
-    profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash
-  ) {
-    scheduleDebouncedProfileSyncPush('config_change');
-  }
-  return {
-    ...result,
-    persistenceWarnings: [...(scheduledSnapshot.persistenceWarnings || [])],
-  };
-}
-
-function emitProfileSyncStatus(extra = {}) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('profile-sync-status', buildProfileSyncStatus(extra));
-}
-
-function setupProfileSyncInterval() {
-  if (profileSyncRuntime.intervalTimer) {
-    clearInterval(profileSyncRuntime.intervalTimer);
-    profileSyncRuntime.intervalTimer = null;
-  }
-
-  const profileSync = getProfileSyncConfig();
-  if (
-    !profileSync.enabled ||
-    profileSyncRuntime.needsResolution ||
-    profileSync.firstEnableResolutionPending ||
-    hasProfileSyncCredentialTransitionPending(profileSync) ||
-    !hasProfileSyncTarget(profileSync)
-  ) {
-    return;
-  }
-
-  const intervalMs =
-    Math.max(1, Number(profileSync.intervalMinutes) || PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES) *
-    60 *
-    1000;
-  profileSyncRuntime.intervalTimer = setInterval(() => {
-    runProfileSync('auto', 'interval').catch((error) => {
-      log.warn('Profile sync interval run failed:', error.message);
-    });
-  }, intervalMs);
-}
-
-/**
- * Sections this computer and the file both hold, with different content and no
- * shared history to merge from.
- */
-async function findProfileSyncConflictSections(envelope) {
-  const localSections = profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope());
-  let decoded;
-  try {
-    decoded = await profileSyncCore.decodeEnvelopeSections(
-      envelope,
-      getActiveProfileSyncPassphrase()
-    );
-  } catch (error) {
-    // A file whose content cannot be read is damaged in every section.
-    if (!profileSyncCore.isSyncFileDamagedError(error)) throw error;
-    const everySection = Object.keys(localSections);
-    return { sections: everySection, damaged: everySection, unreadable: true };
-  }
-  const { sections: remoteSections, malformed } = decoded;
-  const baseline = getProfileSyncConfig().syncBaseline || {};
-  // A damaged section also needs a choice: Keep Local replaces it after backing
-  // it up, where an automatic run would only stop. Use Remote cannot apply it.
-  const isDamaged = (key) => !!malformed && Object.prototype.hasOwnProperty.call(malformed, key);
-  const sections = Object.entries(localSections)
-    .filter(
-      ([key, data]) =>
-        isDamaged(key) ||
-        (!baseline[key] &&
-          remoteSections[key] &&
-          profileSyncCore.computeSectionHash(key, data) !==
-            profileSyncCore.computeSectionHash(key, remoteSections[key].data))
-    )
-    .map(([key]) => key);
-  return { sections, damaged: sections.filter(isDamaged) };
-}
-
-/**
- * Before the first sync against a file (or of a section newly added to this
- * device's scope), finds sections where this device and the file already hold
- * different content with no shared history to merge from. Those need the user to
- * choose a side; everything else can sync normally.
- */
-async function prepareProfileSyncFirstEnableResolution() {
-  const profileSync = getProfileSyncConfig();
-  profileSyncRuntime.needsResolution = false;
-  profileSyncRuntime.pendingRemoteEnvelope = null;
-  profileSyncRuntime.pendingRemoteIdentity = null;
-  profileSyncRuntime.conflictSections = [];
-  profileSyncRuntime.damagedConflictSections = [];
-
-  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
-    return { needsResolution: false };
-  }
-
-  let readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
-  profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
-  if (!readResult.exists) {
-    return { needsResolution: false };
-  }
-
-  let conflicts = await findProfileSyncConflictSectionsInRead(readResult);
-  if (conflicts.unreadable) {
-    // A file the provider is still delivering reads as damaged for a moment, and the choice
-    // offered for a damaged file replaces it. It is read once more before that is offered.
-    await waitForSyncFileToSettle();
-    readResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
-    profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
-    if (!readResult.exists) {
-      return { needsResolution: false };
-    }
-    conflicts = await findProfileSyncConflictSectionsInRead(readResult);
-  }
-  const { sections: conflictSections, damaged } = conflicts;
-  if (conflictSections.length === 0) {
-    return { needsResolution: false };
-  }
-
-  profileSyncRuntime.needsResolution = true;
-  profileSyncRuntime.conflictSections = conflictSections;
-  profileSyncRuntime.damagedConflictSections = damaged;
-  profileSyncRuntime.pendingRemoteEnvelope = readResult.envelope;
-  profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(readResult);
-  // A pending choice is not a failure: the status line and the choice panel carry it.
-  updateProfileSyncStatus('needs_resolution');
-  emitProfileSyncStatus();
-  return { needsResolution: true };
-}
-
-/**
- * The conflict check for what a read returned, which may be a file that cannot be parsed.
- * `unreadable` says the whole file could not be read, rather than some of its sections.
- */
-async function findProfileSyncConflictSectionsInRead(readResult) {
-  if (readResult.damaged) {
-    const everySection = Object.keys(
-      profileSyncCore.buildLocalSections(config, getActiveProfileSyncScope())
-    );
-    return { sections: everySection, damaged: everySection, unreadable: true };
-  }
-  return findProfileSyncConflictSections(readResult.envelope);
-}
-
-const PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS = 1500;
-
-/** The pause before reading again a sync file that read as damaged on first enable. */
-function waitForSyncFileToSettle() {
-  return new Promise((resolve) => setTimeout(resolve, PROFILE_SYNC_DAMAGED_REREAD_DELAY_MS));
-}
-
-function getSyncEnvelopeIdentity(readResult) {
-  if (readResult?.damaged) {
-    return `damaged:${nodeCrypto.createHash('sha256').update(readResult.damaged.raw).digest('hex')}`;
-  }
-  if (!readResult?.exists || !readResult.envelope) return 'missing';
-  return nodeCrypto
-    .createHash('sha256')
-    .update(profileSyncCore.serializeSyncEnvelope(readResult.envelope))
-    .digest('hex');
-}
-
-async function prepareRemoteRewriteBaseline(passphrase, baselineConfig = config) {
-  const readResult = await readConfiguredSyncEnvelope();
-  const remoteSections = await decodeRemoteSectionsWithPassphrase(readResult, passphrase);
-  assertRemoteSectionsMatchConfig(remoteSections, baselineConfig);
-  return getSyncEnvelopeIdentity(readResult);
-}
-
-async function verifyPendingRemoteEnvelopeUnchanged() {
-  const expectedIdentity = profileSyncRuntime.pendingRemoteIdentity;
-  if (!expectedIdentity) {
-    throw new Error(
-      mainT('The pending profile conflict is no longer available; retry conflict check')
-    );
-  }
-  const currentResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
-  const currentIdentity = getSyncEnvelopeIdentity(currentResult);
-  if (currentIdentity !== expectedIdentity) {
-    profileSyncRuntime.pendingRemoteEnvelope = currentResult.envelope;
-    profileSyncRuntime.pendingRemoteIdentity = currentIdentity;
-    profileSyncRuntime.needsResolution = true;
-    const refreshed = currentResult.exists
-      ? await findProfileSyncConflictSectionsInRead(currentResult).catch(() => null)
-      : null;
-    profileSyncRuntime.conflictSections = refreshed?.sections || [];
-    profileSyncRuntime.damagedConflictSections = refreshed?.damaged || [];
-    updateProfileSyncStatus(
-      'needs_resolution',
-      mainT('The remote profile changed while waiting for a choice. Review it and choose again.')
-    );
-    emitProfileSyncStatus();
-    const error = new Error(
-      mainT('The remote profile changed while waiting for conflict resolution')
-    );
-    error.remoteConflictRefreshed = true;
-    throw error;
-  }
-  return currentResult;
-}
-
-async function clearProfileSyncFirstEnableResolutionPending() {
-  const profileSync = getProfileSyncConfig();
-  if (!profileSync.firstEnableResolutionPending) {
-    return { success: true };
-  }
-
-  profileSync.firstEnableResolutionPending = false;
-  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!persistence.success) {
-    profileSync.firstEnableResolutionPending = true;
-    throw new Error(
-      mainT('Failed to save profile sync conflict check: {{error}}', { error: persistence.error })
-    );
-  }
-  return persistence;
-}
-
-/** Words why a first sync stopped short, rather than handing its reason code to the status line. */
-function describeIncompleteFirstProfileSync(result) {
-  switch (result?.reason) {
-    case 'rewrite_pending':
-      return getProfileSyncConfig().passphraseTransition
-        ? mainT(
-            'A protected sync-key recovery is pending. Use Sync up to resume it; sync remains paused if the remote changed.'
-          )
-        : mainT('The remote profile still needs its encryption update. Use Sync up to retry.');
-    case 'encryption_change_pending':
-      return mainT('Finish or cancel the pending encryption change first.');
-    case 'needs_resolution':
-      return mainT('The first-time conflict check did not complete. Retry it before syncing.');
-    case 'remote_changed':
-      return mainT('The remote profile changed before the initial sync could complete');
-    default:
-      return mainT('Initial profile sync did not complete');
-  }
-}
-
-async function completeProfileSyncFirstEnablePreparation(source) {
-  const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) {
-    clearProfileSyncTimers();
-    return { ok: false, reason: 'not_configured', status: buildProfileSyncStatus() };
-  }
-  // Keep the durable gate armed through the first identity-checked write. If the
-  // provider changes or fails, retry remains available and no conflict is
-  // silently bypassed.
-  // No section conflicts remain, so a merge run syncs each section the right way:
-  // matching ones only record their baseline, missing ones are uploaded.
-  const expectedRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
-  const result = await runProfileSyncInternal('auto', source, { expectedRemoteIdentity });
-  if (result?.ok !== true || result?.reason === 'remote_changed') {
-    throw new Error(
-      result?.error ? mainTError(result.error) : describeIncompleteFirstProfileSync(result)
-    );
-  }
-  await clearProfileSyncFirstEnableResolutionPending();
-  profileSyncRuntime.needsResolution = false;
-  profileSyncRuntime.pendingRemoteEnvelope = null;
-  profileSyncRuntime.pendingRemoteIdentity = null;
-  setupProfileSyncInterval();
-  return result;
-}
-
-function scheduleDebouncedProfileSyncPush(source = 'config_change') {
-  const profileSync = getProfileSyncConfig();
-  if (
-    !profileSync.enabled ||
-    profileSyncRuntime.needsResolution ||
-    profileSync.firstEnableResolutionPending ||
-    hasProfileSyncCredentialTransitionPending(profileSync)
-  )
-    return;
-  if (!hasProfileSyncTarget(profileSync) || !isProfileSyncProviderSupported(profileSync.provider)) {
-    return;
-  }
-
-  if (profileSyncRuntime.pushDebounceTimer) {
-    clearTimeout(profileSyncRuntime.pushDebounceTimer);
-  }
-  profileSyncRuntime.pushDebounceTimer = setTimeout(() => {
-    profileSyncRuntime.pushDebounceTimer = null;
-    // A merge, not a forced push: another device may have changed other
-    // sections since the last run, and those have to come in, not be overwritten.
-    runProfileSync('auto', source).catch((error) => {
-      log.warn('Debounced profile sync push failed:', error.message);
-    });
-  }, PROFILE_SYNC_PUSH_DEBOUNCE_MS);
-}
-
-const runCoalescedProfileSync = createLatestTaskCoalescer(
-  (direction, source) =>
-    runSerializedConfigMutation(() => runProfileSyncInternal(direction, source)),
-  { getPriority: (args) => (args[1] === 'manual' ? 1 : 0) }
+// Sync dirty-tracking: each write records whether the synced profile changed and stamps its edit
+// time into the snapshot. A change waiting on its write pushes only once it is on disk (the
+// syncPush effect); a save that only writes pushes straight away.
+configStore.beforeWrite((_config, change) =>
+  profileSyncEngine.trackConfigWrite(change, {
+    pushes: getConfigChangeEffects(change.origin).includes('syncPush'),
+  })
 );
 
-function runProfileSync(direction = 'auto', source = 'manual') {
-  return runCoalescedProfileSync(direction, source);
+function subscribeConfigChangeEffect(effect, name, run) {
+  configStore.subscribe((change) => {
+    if (!getConfigChangeEffects(change.origin).includes(effect)) return undefined;
+    return run(change);
+  }, name);
 }
 
-async function runProfileSyncInternal(direction = 'auto', source = 'manual', options = {}) {
-  // Reassigned after a pull: applying one replaces config, and with it this object.
-  let profileSync = getProfileSyncConfig();
-
-  if (!profileSync.enabled) {
-    return { ok: false, reason: 'disabled', status: buildProfileSyncStatus() };
-  }
-  if (!isProfileSyncProviderSupported(profileSync.provider)) {
-    throw new Error(mainT('Unsupported profile sync provider'));
-  }
-  if (!hasProfileSyncTarget(profileSync)) {
-    throw new Error(describeMissingProfileSyncTarget(profileSync));
-  }
-  if (profileSync.passphraseTransition) {
-    if (source === 'manual' || source === 'startup_rewrite_recovery') {
-      return executePendingProfileSyncRewrite();
-    }
-    return { ok: false, reason: 'rewrite_pending', status: buildProfileSyncStatus() };
-  }
-  // The merge that precedes an encryption change (options.encryptionPrepare) has to run
-  // while that change is pending, or the edits it must publish could never be pushed.
-  if (typeof profileSync.encryptionChangePending === 'boolean' && !options.encryptionPrepare) {
-    return { ok: false, reason: 'encryption_change_pending', status: buildProfileSyncStatus() };
-  }
-  if (profileSync.firstEnableResolutionPending && source === 'manual') {
-    try {
-      const resolution = await prepareProfileSyncFirstEnableResolution();
-      if (resolution?.needsResolution) {
-        return { ok: false, reason: 'needs_resolution', status: buildProfileSyncStatus() };
-      }
-      return await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
-    } catch (error) {
-      updateProfileSyncStatus('error', mainTError(error));
-      emitProfileSyncStatus();
-      throw error;
-    }
-  }
-  if (profileSync.remoteRewritePending && source === 'manual') {
-    try {
-      const expectedRemoteIdentity = await prepareRemoteRewriteBaseline(
-        getActiveProfileSyncPassphrase(),
-        config
-      );
-      return await runProfileSyncInternal('push', 'remote_rewrite_retry', {
-        expectedRemoteIdentity,
-      });
-    } catch (error) {
-      updateProfileSyncStatus('error', mainTError(error));
-      emitProfileSyncStatus();
-      throw error;
-    }
-  }
-  if (profileSync.remoteRewritePending && !options.expectedRemoteIdentity) {
-    return { ok: false, reason: 'rewrite_pending', status: buildProfileSyncStatus() };
-  }
-  if (
-    (profileSyncRuntime.needsResolution || profileSync.firstEnableResolutionPending) &&
-    source !== 'first_enable_resolution' &&
-    !options.expectedRemoteIdentity
-  ) {
-    return { ok: false, reason: 'needs_resolution', status: buildProfileSyncStatus() };
-  }
-
-  if (profileSyncRuntime.inFlight) {
-    return { ok: false, reason: 'in_flight', queued: true, status: buildProfileSyncStatus() };
-  }
-
-  profileSyncRuntime.inFlight = true;
-  emitProfileSyncStatus();
-
-  try {
-    const remoteResult = await readConfiguredSyncEnvelope({ allowDamaged: true });
-    if (
-      options.expectedRemoteIdentity &&
-      getSyncEnvelopeIdentity(remoteResult) !== options.expectedRemoteIdentity
-    ) {
-      profileSyncRuntime.needsResolution = false;
-      profileSyncRuntime.pendingRemoteEnvelope = remoteResult.envelope;
-      profileSyncRuntime.pendingRemoteIdentity = getSyncEnvelopeIdentity(remoteResult);
-      const error = new Error(
-        mainT('The remote profile changed before the initial sync could complete')
-      );
-      error.remoteChangedBeforeResolution = true;
-      error.remoteConflictRefreshed = true;
-      throw error;
-    }
-    profileSyncRuntime.conflictCopies = await findProfileSyncConflictCopies();
-    if (!isHostedProfileSyncProvider(profileSync.provider)) {
-      await removeStaleSyncTempFiles(profileSync.cloudFilePath);
-    }
-
-    if (remoteResult.damaged) {
-      // A file that cannot be read is only replaced by an explicit Sync up (or Keep
-      // Local on first enable), and only after a copy is kept.
-      if (direction !== 'push') throw remoteResult.damaged.error;
-      await backupDamagedSyncFile(remoteResult.damaged.raw);
-    }
-    // No file where this device has synced with one before is more likely an unmounted drive,
-    // a file the provider evicted or a stopped sync client than a fresh start. Recreating it
-    // would leave only this device's sections, so only an explicit Sync up may.
-    if (
-      !remoteResult.exists &&
-      direction !== 'push' &&
-      Object.keys(profileSync.syncBaseline || {}).length > 0
-    ) {
-      throw new Error(
-        isHostedProfileSyncProvider(profileSync.provider)
-          ? mainT(
-              'Your synced settings are missing from Cloud Sync. If you deleted them on purpose, use Sync up to save them again.'
-            )
-          : mainT(
-              'The sync file is missing from the sync folder. If you deleted it on purpose, use Sync up to create it again.'
-            )
-      );
-    }
-
-    // A routine run never changes the file's encryption. Only the rewrite and
-    // first-sync flows (which pin the exact remote they checked) may, so a
-    // device with stale settings cannot publish the profile unencrypted or
-    // re-encrypt it under a passphrase another device has replaced.
-    let remoteEnvelope = remoteResult.exists ? remoteResult.envelope : null;
-    const mayChangeEncryption =
-      !!options.expectedRemoteIdentity || !!profileSync.remoteRewritePending;
-    const remoteEncrypted = !!remoteEnvelope && profileSyncCore.isEnvelopeEncrypted(remoteEnvelope);
-    if (
-      remoteEnvelope &&
-      !mayChangeEncryption &&
-      remoteEncrypted !== !!profileSync.encryptionEnabled
-    ) {
-      throw new Error(
-        profileSync.encryptionEnabled
-          ? mainT(
-              'The sync file is not encrypted, but encryption is on for this device. If another device turned encryption off, turn it off here too.'
-            )
-          : mainT(
-              'The sync file is encrypted. Turn on encryption and enter the passphrase your other devices use.'
-            )
-      );
-    }
-    // Encryption is already on here, so the file's own error would send the user to turn
-    // it on. What is missing is the passphrase (not remembered across a restart).
-    if (remoteEncrypted && profileSync.encryptionEnabled && !getActiveProfileSyncPassphrase()) {
-      throw new Error(
-        mainT('Enter the sync passphrase in Settings > Advanced to continue syncing.')
-      );
-    }
-
-    let decoded = { sections: {}, malformed: {}, extensions: null };
-    if (remoteEnvelope) {
-      try {
-        decoded = await profileSyncCore.decodeEnvelopeSections(
-          remoteEnvelope,
-          getActiveProfileSyncPassphrase()
-        );
-      } catch (error) {
-        // Content that parsed but cannot be read (a cut-off encrypted payload) is
-        // damage like an unparseable file: Sync up replaces it after keeping a copy.
-        if (!profileSyncCore.isSyncFileDamagedError(error) || direction !== 'push') throw error;
-        await backupDamagedSyncFile(profileSyncCore.serializeSyncEnvelope(remoteEnvelope));
-        remoteEnvelope = null;
-      }
-    }
-    const {
-      sections: remoteSections,
-      malformed: remoteMalformed,
-      extensions: remoteExtensions,
-    } = decoded;
-    const syncScope = getActiveProfileSyncScope();
-    const scopeKeys = profileSyncCore.getScopeSectionKeys(syncScope);
-    // A run can be limited to some sections (repairing damage on first enable);
-    // the others are left exactly as they are on both sides.
-    const sectionKeys = Array.isArray(options.onlySections)
-      ? scopeKeys.filter((key) => options.onlySections.includes(key))
-      : scopeKeys;
-    // Damage only matters in sections this run syncs; the rest are written
-    // back exactly as found.
-    const { inScope: damagedInScope, outOfScope: damagedOutOfScope } = splitDamagedSyncSections(
-      remoteMalformed,
-      sectionKeys
-    );
-    const damagedSections = Object.keys(damagedInScope);
-    if (damagedSections.length > 0) {
-      // Only an explicit Sync up may replace damaged sections, after keeping them.
-      if (direction !== 'push') throw createDamagedSyncSectionsError(damagedSections);
-      await backupRemoteSectionsBeforePush(damagedInScope);
-    }
-    const localSections = profileSyncCore.buildLocalSections(config, syncScope);
-    const localUpdatedAt = Object.fromEntries(
-      sectionKeys.map((key) => [
-        key,
-        profileSync.sectionUpdatedAt?.[key] || profileSync.profileUpdatedAt || null,
-      ])
-    );
-    const runStartedMs = Date.now();
-    const plan = profileSyncCore.planSectionSync({
-      sectionKeys,
-      localSections,
-      remoteSections,
-      baseline: profileSync.syncBaseline,
-      agreedUpdatedAt: profileSync.syncBaselineUpdatedAt,
-      localUpdatedAt,
-      direction,
-      forceSections: options.forceSections || null,
-      now: runStartedMs,
-    });
-    const nextBaseline = {};
-    // The edit time of each agreed version, which tells a stale copy of the file from an edit.
-    const nextBaselineUpdatedAt = {};
-    const previousAgreed = profileSync.syncBaselineUpdatedAt || {};
-    const agreeOnRemote = (key, hash) => {
-      nextBaseline[key] = hash;
-      // The same content in an older copy of the file (a restored version holding it, or
-      // another computer that wrote it earlier) must not move the agreed time back: a later
-      // stale copy would then no longer read as older than it.
-      const remoteAt = remoteSections[key].updatedAt;
-      const before = previousAgreed[key];
-      nextBaselineUpdatedAt[key] =
-        before?.hash === hash &&
-        profileSyncCore.compareIsoTimestamps(before.updatedAt, remoteAt) > 0
-          ? before.updatedAt
-          : remoteAt;
-    };
-    plan.unchanged.forEach((key) => {
-      if (plan.localHashes[key] === plan.remoteHashes[key]) {
-        agreeOnRemote(key, plan.localHashes[key]);
-      }
-    });
-
-    let currentLocalSections = localSections;
-    const pushKeys = [...plan.push];
-    if (plan.pull.length > 0) {
-      await backupLocalProfileBeforePullApply(plan.pull, null, 'pull', {
-        discarded: plan.discardsLocal,
-      });
-      await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));
-      profileSync = getProfileSyncConfig();
-      currentLocalSections = profileSyncCore.buildLocalSections(config, syncScope);
-      plan.pull.forEach((key) => {
-        const appliedHash = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
-        if (appliedHash === plan.remoteHashes[key]) {
-          agreeOnRemote(key, appliedHash);
-        } else {
-          // The file lacked fields this version keeps (an older writer), so the
-          // applied section still differs; write it back so both sides agree.
-          pushKeys.push(key);
-        }
-      });
-    }
-
-    // Changing the encryption mode rewrites the whole file even when no section
-    // content changed. A file that is already in this device's mode (another computer
-    // got there first) needs no rewrite, only the marker cleared.
-    const remoteModeMatches =
-      !remoteEnvelope || remoteEncrypted === !!profileSync.encryptionEnabled;
-    const rewriteRequired =
-      !!profileSync.remoteRewritePending && mayChangeEncryption && !remoteModeMatches;
-    // Without a subscription Cloud Sync still serves the profile but refuses saves. The
-    // pulls above are kept and recorded; this device's own edits wait, unsaved, until a
-    // save is accepted. A pending encryption rewrite cannot wait like that, so it fails.
-    const mayHoldPushes = !rewriteRequired && !profileSync.remoteRewritePending;
-    const finishWithoutSaving = async () => {
-      await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
-      profileSyncRuntime.lastRemote = remoteEnvelope
-        ? {
-            updatedAt: remoteEnvelope.updatedAt,
-            updatedByDeviceId: remoteEnvelope.updatedByDeviceId,
-          }
-        : null;
-      profileSyncRuntime.lastRunSummary = {
-        at: new Date().toISOString(),
-        pushed: [],
-        pulled: plan.pull,
-        replacedLocal: plan.discardsLocal,
-        replacedRemote: [],
-        staleRemote: [],
-      };
-      updateProfileSyncStatus(
-        'error',
-        mainT(
-          'Cloud Sync needs a subscription to save changes. Changes from your other computers still download.'
-        )
-      );
-      setupProfileSyncInterval();
-      profileSyncRuntime.inFlight = false;
-      const status = buildProfileSyncStatus();
-      emitProfileSyncStatus();
-      const pulled = plan.pull.length > 0;
-      return {
-        ok: true,
-        action: pulled ? 'pull' : 'none',
-        reason: 'subscription_required',
-        pushed: [],
-        pulled: plan.pull,
-        status,
-        ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
-      };
-    };
-    if (pushKeys.length > 0 && mayHoldPushes && shouldHoldCloudSyncWrites(profileSync, source)) {
-      return await finishWithoutSaving();
-    }
-
-    let wroteEnvelope = null;
-    if (pushKeys.length > 0 || rewriteRequired) {
-      // A merge only replaces remote edits it reports as discarded. Sync up replaces
-      // whatever the file holds for the sections it pushes, so it keeps all of them.
-      const replacedRemoteKeys = direction === 'push' ? plan.push : plan.discardsRemote;
-      const replacedRemoteSections = pickSections(remoteSections, replacedRemoteKeys);
-      if (Object.keys(replacedRemoteSections).length > 0) {
-        await backupRemoteSectionsBeforePush(replacedRemoteSections, {
-          discarded: plan.discardsRemote.filter((key) => replacedRemoteSections[key]),
-        });
-      }
-      const now = new Date().toISOString();
-      const nextSections = { ...damagedOutOfScope, ...remoteSections };
-      pushKeys.forEach((key) => {
-        nextSections[key] = profileSyncCore.buildPushedSectionEntry(
-          key,
-          currentLocalSections[key],
-          remoteSections[key],
-          {
-            updatedAt: stampPushedSection(profileSync, key, remoteSections[key]),
-            deviceId: profileSync.deviceId,
-          }
-        );
-      });
-      const encrypt = !!profileSync.encryptionEnabled;
-      const passphrase = getActiveProfileSyncPassphrase();
-      if (encrypt && !passphrase) {
-        throw new Error(mainT('A passphrase is required to sync encrypted profiles'));
-      }
-      const envelopeToWrite = await profileSyncCore.buildSyncEnvelope({
-        sections: nextSections,
-        updatedAt: now,
-        updatedByDeviceId: profileSync.deviceId,
-        encrypt,
-        passphrase,
-        extensions: remoteExtensions,
-      });
-
-      // Another device wrote first: keep what this run agreed on and merge again from
-      // what is there now.
-      const recheckAfterRemoteChange = async () => {
-        await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
-        // Sync up and a conflict choice were decided against the file as it was;
-        // an automatic merge must not stand in for them, so the user is asked again.
-        if (source === 'conflict_recheck' || direction !== 'auto') {
-          throw new Error(mainT('Sync file kept changing on the other device; try again'));
-        }
-        void runProfileSync('auto', 'conflict_recheck');
-        // The finally below only clears this after the last status has gone out, so the
-        // run is marked over first or Settings would keep its buttons disabled.
-        profileSyncRuntime.inFlight = false;
-        const status = buildProfileSyncStatus();
-        emitProfileSyncStatus();
-        return { ok: true, action: 'none', reason: 'remote_changed', queued: true, status };
-      };
-
-      // Best-effort compare-before-write: encryption and provider replication take time, so
-      // another device can land a write between the read above and this one.
-      // Overwriting blind would silently drop it, so re-check and re-resolve.
-      if (await hasRemoteSyncEnvelopeChanged(remoteResult)) {
-        log.info('Remote sync file changed while preparing a push; re-resolving direction');
-        return await recheckAfterRemoteChange();
-      }
-
-      try {
-        await writeConfiguredSyncEnvelope(envelopeToWrite);
-      } catch (error) {
-        // Cloud Sync refuses a write that lost the race after the check above, the same
-        // situation that check catches earlier.
-        if (error?.code === 'CLOUD_SYNC_CONFLICT') {
-          log.info('Cloud Sync profile changed during the push; re-resolving direction');
-          return await recheckAfterRemoteChange();
-        }
-        if (error?.code !== 'CLOUD_SYNC_SUBSCRIPTION_REQUIRED' || !mayHoldPushes) throw error;
-        profileSyncRuntime.cloudSyncWriteRefusedAt = Date.now();
-        return await finishWithoutSaving();
-      }
-      profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
-      wroteEnvelope = envelopeToWrite;
-      pushKeys.forEach((key) => {
-        nextBaseline[key] = profileSyncCore.computeSectionHash(key, currentLocalSections[key]);
-        nextBaselineUpdatedAt[key] = nextSections[key].updatedAt;
-      });
-      if (profileSync.remoteRewritePending) await completeProfileSyncRemoteRewrite();
-    } else if (profileSync.remoteRewritePending && mayChangeEncryption && remoteModeMatches) {
-      await completeProfileSyncRemoteRewrite();
-    }
-
-    await persistProfileSyncBaseline(nextBaseline, scopeKeys, nextBaselineUpdatedAt);
-    const finalEnvelope = wroteEnvelope || remoteEnvelope;
-    profileSyncRuntime.lastRemote = finalEnvelope
-      ? {
-          updatedAt: finalEnvelope.updatedAt,
-          updatedByDeviceId: finalEnvelope.updatedByDeviceId,
-        }
-      : null;
-    profileSyncRuntime.lastRunSummary = {
-      at: new Date().toISOString(),
-      pushed: pushKeys,
-      pulled: plan.pull,
-      replacedLocal: plan.discardsLocal,
-      // A stale copy was not an edit on another computer, so it is reported on its own.
-      replacedRemote: plan.discardsRemote.filter((key) => !plan.staleRemote.includes(key)),
-      staleRemote: plan.staleRemote,
-    };
-    updateProfileSyncStatus('success', '');
-    setupProfileSyncInterval();
-    profileSyncRuntime.inFlight = false;
-    const status = buildProfileSyncStatus();
-    emitProfileSyncStatus();
-    const pushed = pushKeys.length > 0 || !!wroteEnvelope;
-    const pulled = plan.pull.length > 0;
-    const action = pushed && pulled ? 'merge' : pushed ? 'push' : pulled ? 'pull' : 'none';
-    return {
-      ok: true,
-      action,
-      pushed: pushKeys,
-      pulled: plan.pull,
-      status,
-      ...(pulled ? { config: sanitizeConfigForRenderer(config) } : {}),
-    };
-  } catch (error) {
-    profileSyncRuntime.inFlight = false;
-    updateProfileSyncStatus('error', mainTError(error));
-    emitProfileSyncStatus();
-    throw error;
-  } finally {
-    profileSyncRuntime.inFlight = false;
-  }
-}
-
-/**
- * Clears the marker saying the sync file still has to be rewritten in this device's
- * encryption mode, once the file is in it. Turning encryption off also forgets the
- * passphrase, which nothing needs any more.
- */
-async function completeProfileSyncRemoteRewrite() {
-  const profileSync = getProfileSyncConfig();
-  const previousCredential = {
-    rememberPassphrase: profileSync.rememberPassphrase,
-    passphraseEncrypted: profileSync.passphraseEncrypted,
-    storedPassphrase: profileSync.storedPassphrase,
-    passphraseSession: profileSyncRuntime.passphraseSession,
-    passphraseWarning: profileSyncRuntime.passphraseWarning,
-  };
-  profileSync.remoteRewritePending = false;
-  if (!profileSync.encryptionEnabled) forgetProfileSyncPassphrase(profileSync);
-  const markerPersistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!markerPersistence.success) {
-    profileSync.remoteRewritePending = true;
-    profileSync.rememberPassphrase = previousCredential.rememberPassphrase;
-    profileSync.passphraseEncrypted = previousCredential.passphraseEncrypted;
-    profileSync.storedPassphrase = previousCredential.storedPassphrase;
-    profileSyncRuntime.passphraseSession = previousCredential.passphraseSession;
-    profileSyncRuntime.passphraseWarning = previousCredential.passphraseWarning;
-    const markerError = new Error(
-      mainT(
-        'Remote profile was rewritten, but the local completion marker could not be saved: {{error}}',
-        { error: markerPersistence.error }
-      )
-    );
-    markerError.remoteRewriteCommitted = true;
-    throw markerError;
-  }
-}
-
-/**
- * Records which sections this device and the file now agree on. Sections that
- * are out of scope are forgotten, and ones whose outcome is still open (a
- * re-check is queued) keep their previous baseline. `agreedUpdatedAt` holds the
- * edit time of each agreed version.
- */
-async function persistProfileSyncBaseline(agreedHashes, sectionKeys, agreedUpdatedAt = {}) {
-  const profileSync = getProfileSyncConfig();
-  const previous = profileSync.syncBaseline || {};
-  const previousUpdatedAt = profileSync.syncBaselineUpdatedAt || {};
-  const next = {};
-  const nextUpdatedAt = {};
-  sectionKeys.forEach((key) => {
-    if (agreedHashes[key]) {
-      next[key] = agreedHashes[key];
-      if (typeof agreedUpdatedAt[key] === 'string') {
-        nextUpdatedAt[key] = { hash: agreedHashes[key], updatedAt: agreedUpdatedAt[key] };
-      }
-    } else if (previous[key]) {
-      next[key] = previous[key];
-      if (previousUpdatedAt[key]) nextUpdatedAt[key] = previousUpdatedAt[key];
-    }
-  });
-  profileSync.syncBaseline = next;
-  profileSync.syncBaselineUpdatedAt = nextUpdatedAt;
-  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!persistence.success) {
-    profileSync.syncBaseline = previous;
-    profileSync.syncBaselineUpdatedAt = previousUpdatedAt;
-    throw new Error(
-      mainT('Failed to save profile sync state: {{error}}', { error: persistence.error })
-    );
-  }
-}
-
-/**
- * Runs a sync triggered by something other than the interval timer (window focus,
- * waking from suspend). Best-effort: it declines rather than queues when a sync is
- * already running or the setup is incomplete.
- *
- * @param {string} source label recorded for logging
- */
-function requestOpportunisticProfileSync(source) {
-  const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
-  if (
-    profileSyncRuntime.needsResolution ||
-    profileSync.firstEnableResolutionPending ||
-    hasProfileSyncCredentialTransitionPending(profileSync) ||
-    profileSyncRuntime.inFlight
+subscribeConfigChangeEffect('syncPush', 'profile sync scheduling', (change) =>
+  profileSyncEngine.pushAfterWrite(change)
+);
+subscribeConfigChangeEffect('syncSettings', 'profile sync settings', (change) =>
+  profileSyncEngine.applySettingsChange(change)
+);
+subscribeConfigChangeEffect('windowSettings', 'main window settings', (change) =>
+  applyMainWindowSettingSideEffects(change.previous, change.config, change.displayChoiceState)
+);
+subscribeConfigChangeEffect('runtime', 'runtime settings', (change) =>
+  applyRuntimeConfigSideEffects(
+    change.previous,
+    change.config,
+    CONFIG_CHANGE_RUNTIME_SOURCES[change.origin] || 'config update'
   )
-    return;
-
-  // focus fires on every alt-tab, so without a floor this would hit the sync
-  // folder constantly to discover nothing changed.
-  const now = Date.now();
-  if (now - profileSyncRuntime.lastOpportunisticSyncAt < PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS) {
-    return;
+);
+subscribeConfigChangeEffect('language', 'tray language', (change) => {
+  if (change.previous?.ui?.language === change.config?.ui?.language) return;
+  try {
+    if (tray) createTray();
+  } finally {
+    omarchyBarPublisher?.update();
   }
-  profileSyncRuntime.lastOpportunisticSyncAt = now;
-
-  runProfileSync('auto', source).catch((error) => {
-    log.warn(`Opportunistic profile sync (${source}) failed:`, error.message);
-  });
-}
+});
+subscribeConfigChangeEffect('updateChannel', 'update channel', (change) => {
+  if (change.previous?.updates?.allowPrerelease === change.config?.updates?.allowPrerelease) {
+    return undefined;
+  }
+  return autoUpdaterInstance ? configureAutoUpdaterChannel(autoUpdaterInstance) : undefined;
+});
+subscribeConfigChangeEffect('pinWindows', 'desktop pin windows', (change) =>
+  syncDesktopPinWindowsWithConfig({ focusEntityId: change.focusEntityId })
+);
+subscribeConfigChangeEffect('trayEntities', 'tray entity icons', () =>
+  syncTrayEntitiesWithConfig()
+);
+subscribeConfigChangeEffect('renderer', 'renderer config broadcast', (change) =>
+  pushConfigToRenderer({
+    persistenceWarnings: change.persistenceWarnings,
+    runtimeWarnings: change.runtimeWarnings,
+  })
+);
+subscribeConfigChangeEffect('pinBroadcast', 'desktop pin config broadcast', () =>
+  broadcastDesktopPinConfigUpdate()
+);
+subscribeConfigChangeEffect('syncStatus', 'profile sync status broadcast', () =>
+  profileSyncEngine.emitStatus()
+);
+// End of config change effects.
 
 function setupProfileSyncWakeTriggers() {
   try {
@@ -7812,7 +4508,7 @@ function setupProfileSyncWakeTriggers() {
     // usually stale by the time the machine comes back.
     powerMonitor.on('suspend', () => invalidateHaConnectionState('disconnected'));
     powerMonitor.on('resume', () => {
-      requestOpportunisticProfileSync('resume');
+      profileSyncEngine.requestSync('resume');
       invalidateHaConnectionState('connecting');
       const requestReconnect = () => {
         // An expired authorization (also one the refresh below just found revoked) waits for
@@ -7860,44 +4556,6 @@ function isHomeAssistantOAuthSessionStale(now = Date.now()) {
   }
   const expiresAt = Number(homeAssistant.oauthExpiresAt || 0);
   return !expiresAt || expiresAt - now <= HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS;
-}
-
-async function initializeProfileSyncOnStartupInternal() {
-  const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !hasProfileSyncTarget(profileSync)) return;
-  if (profileSyncRuntime.needsResolution || profileSyncRuntime.pendingRemoteEnvelope) return;
-
-  try {
-    if (profileSync.passphraseTransition) {
-      await executePendingProfileSyncRewrite();
-      return;
-    }
-    if (profileSync.firstEnableResolutionPending) {
-      const resolution = await prepareProfileSyncFirstEnableResolution();
-      if (resolution?.needsResolution) {
-        clearProfileSyncTimers();
-        return;
-      }
-      await completeProfileSyncFirstEnablePreparation('startup_first_enable');
-      return;
-    }
-    setupProfileSyncInterval();
-    // 'auto' compares content timestamps, so offline edits made on this device
-    // after the remote's last write are pushed instead of being discarded by a
-    // forced pull.
-    await runProfileSyncInternal('auto', 'startup');
-  } catch (error) {
-    // Keep the interval: at login the sync folder is often not mounted yet
-    // (OneDrive, a Google Drive letter) and a later run succeeds on its own.
-    // setupProfileSyncInterval stays off while a choice or recovery is pending.
-    clearProfileSyncTimers();
-    setupProfileSyncInterval();
-    log.warn('Profile sync startup run failed:', error.message);
-  }
-}
-
-function initializeProfileSyncOnStartup() {
-  return runSerializedConfigMutation(initializeProfileSyncOnStartupInternal);
 }
 
 /**
@@ -7994,7 +4652,7 @@ function applyNativeThemeSource() {
  *
  * The window is created with security-conscious webPreferences and respects configured options
  * such as always-on-top, resizability, and the configured icon. This function updates in-memory
- * configuration (e.g., clamped opacity) and calls saveConfig() when position/size changes.
+ * configuration (e.g., clamped opacity) and saves it through the config store when position/size changes.
  */
 function mainWindowMatchesSavedBounds(bounds) {
   const positionMatches =
@@ -8082,7 +4740,7 @@ function watchMainWindowBounds(targetWindow) {
           config.windowPosition = { x: boundsToPersist.x, y: boundsToPersist.y };
         }
         config.windowSize = clampToMinimumWindowSize(boundsToPersist);
-        saveConfig();
+        configStore.save({ origin: 'local' });
         if (previousDisplayId !== config.windowDisplay?.id) {
           refreshTrayMenu();
           pushConfigToRenderer();
@@ -8207,7 +4865,7 @@ function recoverWindowsAfterDisplayChange() {
       runBackgroundConfigMutation(() => {
         if (placementRevision !== (targetWindow.__displayPlacementRevision || 0)) return;
         config.windowPosition = { x: position.x, y: position.y };
-        saveConfig();
+        configStore.save({ origin: 'local' });
       }, 'window position recovery');
     }
   }
@@ -8391,7 +5049,7 @@ function createWindow() {
   // Load the index.html file
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
-    emitProfileSyncStatus();
+    profileSyncEngine.emitStatus();
     refreshLayerPlacement();
     pushConfigToRenderer();
     if (initialLaunchAction === 'hide') mainWindow.hide();
@@ -8484,7 +5142,7 @@ function createWindow() {
   mainWindow.on('focus', () => {
     layerPointerRelease.stop();
     windowAutoHide.handleFocus();
-    requestOpportunisticProfileSync('focus');
+    profileSyncEngine.requestSync('focus');
   });
   // BrowserWindow may already be visible before these listeners are attached.
   windowAutoHide.prepareToShow();
@@ -8602,7 +5260,7 @@ function applyPreferredWindowDisplay(displayChoiceState) {
   } else if (userBounds) {
     config.windowPosition = { x: bounds.x, y: bounds.y };
   }
-  if (userBounds) saveConfig();
+  if (userBounds) configStore.save({ origin: 'local' });
 }
 
 function applyWindowDisplayChoice(id) {
@@ -8613,11 +5271,10 @@ function applyWindowDisplayChoice(id) {
       recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
     };
     const patch = getWindowDisplayChoicePatch(id);
-    const previous = config;
-    config = { ...config, ...patch };
-    const persistence = await saveConfigDurably();
+    const persistence = await configStore.apply((current) => ({ ...current, ...patch }), {
+      origin: 'local',
+    });
     if (!persistence.success) {
-      config = previous;
       refreshTrayMenu();
       log.warn('Failed to save display selection:', persistence.error);
       return;
@@ -8640,7 +5297,7 @@ function applyLayerShellMonitorChoice(outputName) {
     const previousValue = config.layerShellOutputName || '';
     if (previousValue === outputName) return false;
     config.layerShellOutputName = outputName;
-    const persistence = await saveConfigDurably();
+    const persistence = await configStore.apply(null, { origin: 'local' });
     if (!persistence.success) {
       config.layerShellOutputName = previousValue;
       log.warn(`Failed to save layer-shell monitor choice: ${persistence.error}`);
@@ -8835,8 +5492,7 @@ async function setTrayEntityInternal(entityId, enabled) {
     return { success: false, error: 'Invalid entity ID' };
   }
 
-  const previousTrayEntities = config.trayEntities;
-  const nextTrayEntities = normalizeTrayEntitiesConfig(previousTrayEntities);
+  const nextTrayEntities = normalizeTrayEntitiesConfig(config.trayEntities);
   const existed = !!nextTrayEntities[normalizedEntityId];
   if (!!enabled === existed) {
     return { success: true, shown: existed, changed: false };
@@ -8846,21 +5502,18 @@ async function setTrayEntityInternal(entityId, enabled) {
   } else {
     delete nextTrayEntities[normalizedEntityId];
   }
-  config.trayEntities = nextTrayEntities;
 
-  const persistence = await saveConfigDurably();
+  const persistence = await configStore.apply(
+    (current) => {
+      current.trayEntities = nextTrayEntities;
+    },
+    { origin: 'tray-entities' }
+  );
   if (!persistence.success) {
-    config.trayEntities = previousTrayEntities;
     return { success: false, error: `Failed to save tray entity: ${persistence.error}` };
   }
 
-  const runtimeWarnings = [];
-  await runPostSaveSideEffect(runtimeWarnings, 'tray entity icons', () =>
-    syncTrayEntitiesWithConfig()
-  );
-  await runPostSaveSideEffect(runtimeWarnings, 'tray entity renderer broadcast', () =>
-    pushConfigToRenderer({ runtimeWarnings })
-  );
+  const { runtimeWarnings } = persistence;
   return {
     success: true,
     shown: !!enabled,
@@ -8904,7 +5557,7 @@ function buildTrayContextMenu() {
           const previousValue = !!config.alwaysOnTop;
           config.alwaysOnTop = requestedValue;
           applyAlwaysOnTopPreference();
-          const persistence = await saveConfigDurably();
+          const persistence = await configStore.apply(null, { origin: 'local' });
           if (!persistence.success) {
             config.alwaysOnTop = previousValue;
             applyAlwaysOnTopPreference();
@@ -8931,7 +5584,7 @@ function buildTrayContextMenu() {
             void runSerializedConfigMutation(async () => {
               const previous = config.layerPositions;
               config.layerPositions = { ...previous, main: {} };
-              const persistence = await saveConfigDurably();
+              const persistence = await configStore.apply(null, { origin: 'local' });
               if (!persistence.success) {
                 config.layerPositions = previous;
                 return;
@@ -8963,7 +5616,7 @@ function buildTrayContextMenu() {
           if (config.windowDisplay) {
             config.windowDisplay = { ...config.windowDisplay, offset: { x: 100, y: 100 } };
           }
-          const persistence = await saveConfigDurably();
+          const persistence = await configStore.apply(null, { origin: 'local' });
           if (!persistence.success) {
             config.windowPosition = previousPosition;
             config.windowSize = previousSize;
@@ -9417,7 +6070,7 @@ function schedulePostWindowStartupTasks() {
     }
 
     setupProfileSyncWakeTriggers();
-    void initializeProfileSyncOnStartup().catch((error) => {
+    void profileSyncEngine.start().catch((error) => {
       log.warn('Profile sync startup initialization failed:', error.message);
     });
     if (!IS_SMOKE_TEST_MODE) localePackRefresher.start();
@@ -9425,9 +6078,7 @@ function schedulePostWindowStartupTasks() {
 }
 
 // IPC handlers for configuration
-ipcMain.handle('renderer-ready', (event) => {
-  const sender = authorizeIpcSender(event, 'renderer-ready');
-  if (!sender) return rejectUnauthorizedIpc('renderer-ready');
+ipcRoutes.handle('renderer-ready', () => {
   if (IS_SMOKE_TEST_MODE) {
     smokeTestRendererReady = true;
     maybeFinishSmokeTest();
@@ -9437,27 +6088,19 @@ ipcMain.handle('renderer-ready', (event) => {
   return { success: true };
 });
 
-ipcMain.handle('get-config', (event) => {
-  const sender = authorizeIpcSender(event, 'get-config');
-  if (!sender) return rejectUnauthorizedIpc('get-config');
+ipcRoutes.handle('get-config', () => {
   return sanitizeConfigForRenderer(config);
 });
 
-ipcMain.handle('get-window-displays', (event) => {
-  const sender = authorizeIpcSender(event, 'get-window-displays');
-  if (!sender) return rejectUnauthorizedIpc('get-window-displays');
+ipcRoutes.handle('get-window-displays', () => {
   return getWindowDisplaySettings();
 });
 
-ipcMain.handle('get-locale-bootstrap', (event) => {
-  const sender = authorizeIpcSender(event, 'get-locale-bootstrap', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('get-locale-bootstrap');
+ipcRoutes.handle('get-locale-bootstrap', () => {
   return localizationService.getLocaleBootstrap(config?.ui?.language || 'auto');
 });
 
-ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
-  const sender = authorizeIpcSender(event, 'get-locale-packs');
-  if (!sender) return rejectUnauthorizedIpc('get-locale-packs');
+ipcRoutes.handle('get-locale-packs', async (_sender, forceRefresh = false) => {
   try {
     return await localizationService.listLocalePacks(!!forceRefresh);
   } catch (error) {
@@ -9471,9 +6114,7 @@ ipcMain.handle('get-locale-packs', async (event, forceRefresh = false) => {
   }
 });
 
-ipcMain.handle('download-locale-pack', async (event, locale) => {
-  const sender = authorizeIpcSender(event, 'download-locale-pack');
-  if (!sender) return rejectUnauthorizedIpc('download-locale-pack');
+ipcRoutes.handle('download-locale-pack', async (_sender, locale) => {
   const pack = await localizationService.downloadLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -9488,9 +6129,7 @@ ipcMain.handle('download-locale-pack', async (event, locale) => {
   };
 });
 
-ipcMain.handle('remove-locale-pack', async (event, locale) => {
-  const sender = authorizeIpcSender(event, 'remove-locale-pack');
-  if (!sender) return rejectUnauthorizedIpc('remove-locale-pack');
+ipcRoutes.handle('remove-locale-pack', async (_sender, locale) => {
   const result = localizationService.removeLocalePack(locale);
   pushConfigToRenderer();
   if (tray) {
@@ -9505,483 +6144,206 @@ ipcMain.handle('remove-locale-pack', async (event, locale) => {
   };
 });
 
-ipcMain.handle(
-  'replace-config-entity-id',
-  serializeConfigMutationHandler(async (event, rawOldEntityId, rawNewEntityId) => {
-    const sender = authorizeIpcSender(event, 'replace-config-entity-id');
-    if (!sender) return rejectUnauthorizedIpc('replace-config-entity-id');
+ipcRoutes.handle('replace-config-entity-id', async (_sender, rawOldEntityId, rawNewEntityId) => {
+  const oldEntityId = normalizeIpcEntityIdForKey(rawOldEntityId);
+  const newEntityId = normalizeIpcEntityIdForKey(rawNewEntityId);
+  if (!oldEntityId || !newEntityId) {
+    return {
+      success: false,
+      error: 'Invalid entity ID replacement',
+      config: sanitizeConfigForRenderer(config),
+    };
+  }
+  if (oldEntityId === newEntityId) {
+    return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+  }
 
-    const oldEntityId = normalizeIpcEntityIdForKey(rawOldEntityId);
-    const newEntityId = normalizeIpcEntityIdForKey(rawNewEntityId);
-    if (!oldEntityId || !newEntityId) {
+  // This transformation runs inside the same serialized queue as update-config,
+  // so it always starts from the latest authoritative main-process snapshot.
+  const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
+  if (!replacement.changed) {
+    return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+  }
+
+  const persistence = await configStore.apply(
+    () => {
+      const next = {
+        ...replacement.config,
+        profileSync: { ...(replacement.config.profileSync || {}) },
+      };
+      normalizeDesktopPinsConfig(next);
+      normalizeTrayEntitiesConfigInPlace(next);
+      pruneConfig(next);
+      return next;
+    },
+    { origin: 'entity-replacement' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
+      config: sanitizeConfigForRenderer(config),
+    };
+  }
+  return {
+    success: true,
+    changed: true,
+    config: buildRendererConfigAfterChange(persistence),
+  };
+});
+
+ipcRoutes.handle('update-config', async (_sender, newConfig) => {
+  if (!isPlainObject(newConfig)) {
+    return { success: false, error: 'Invalid config payload' };
+  }
+  log.debug('Updating configuration');
+  let windowDisplayPatch = {};
+  let displayChoiceState;
+  if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
+    try {
+      if (electronScreen.ensureDisplayIdentities) {
+        await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
+      }
+      displayChoiceState = {
+        moveRevision: mainWindow?.__userMoveRevision || 0,
+        recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
+      };
+      windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
+    } catch (error) {
       return {
         success: false,
-        error: 'Invalid entity ID replacement',
+        error: mainTError(error),
         config: sanitizeConfigForRenderer(config),
       };
     }
-    if (oldEntityId === newEntityId) {
-      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
-    }
-
-    // This transformation runs inside the same serialized queue as update-config,
-    // so it always starts from the latest authoritative main-process snapshot.
-    const previousConfig = config;
-    const previousRuntimeTracking = {
-      localProfileHash: profileSyncRuntime.localProfileHash,
-      localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-      pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-      localSectionHashes: profileSyncRuntime.localSectionHashes,
+  }
+  // Geometry belongs to the main process. An old Settings snapshot must not undo a
+  // tray selection or a drag. Only an explicit selector edit requests another display.
+  delete newConfig.windowDisplayChoice;
+  delete newConfig.windowDisplay;
+  delete newConfig.windowPosition;
+  const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
+  const previousDesktopCompanion = { ...(config?.desktopCompanion || {}) };
+  const previousHomeAssistant = { ...(config?.homeAssistant || {}) };
+  // Development demo state is an IPC-only marker. Never let an overlay renderer
+  // write it back into the user's real configuration.
+  delete newConfig.developmentDemo;
+  pruneConfig(newConfig);
+  // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
+  const customTabs = Array.isArray(newConfig.customTabs)
+    ? toStoredPages(newConfig.customTabs)
+    : Array.isArray(config.customTabs)
+      ? config.customTabs
+      : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
+  // The sync settings, and what they set off, are the sync engine's to decide.
+  const syncSettings = profileSyncEngine.receiveSettings(newConfig);
+  if (syncSettings.error) {
+    return {
+      success: false,
+      error: syncSettings.error,
+      config: sanitizeConfigForRenderer(config),
     };
-    const replacement = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
-    if (!replacement.changed) {
-      return { success: true, changed: false, config: sanitizeConfigForRenderer(config) };
+  }
+  const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
+  const homeAssistant = {
+    ...(config.homeAssistant || {}),
+    ...(newConfig.homeAssistant || {}),
+  };
+  if (previousHomeAssistant.authMethod === 'oauth') {
+    Object.assign(homeAssistant, previousHomeAssistant);
+  } else {
+    // Entering OAuth creates credentials and runtime state through the dedicated
+    // pairing IPC. A renderer config echo cannot opt itself into OAuth.
+    homeAssistant.authMethod = 'token';
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      // What the update is merged over, for recognising a stale echo of a pull.
+      const prevConfig = JSON.parse(JSON.stringify(current));
+      replaceConfigContents(current, {
+        ...current,
+        ...newConfig,
+        ...windowDisplayPatch,
+        homeAssistant,
+        desktopCompanion: previousDesktopCompanion,
+        customTabs,
+        profileSync: syncSettings.profileSync,
+        updates,
+      });
+      ensureDateTimeFormatConfigDefaults(current);
+      profileSyncEngine.normalizeSettings(current);
+      ensureUpdateConfigDefaults(current);
+      ensureHaProfileConfigDefaults(current);
+      normalizeDesktopPinsConfig(current);
+      normalizeTrayEntitiesConfigInPlace(current);
+      pruneConfig(current);
+      syncSettings.merged(current, prevConfig);
+      if (
+        TOKEN_RESET_RECOVERY_REASONS.has(current?.tokenResetReason) &&
+        !isPlaceholderOrEmptyToken(current.homeAssistant?.token)
+      ) {
+        delete current.tokenResetReason;
+      }
+      if (
+        current.homeAssistant?.token &&
+        current.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
+      ) {
+        preservedEncryptedTokenForRecovery = null;
+      }
+    },
+    {
+      origin: 'settings',
+      requiresInitialPreparation: syncSettings.requiresInitialPreparation,
+      displayChoiceState,
     }
-
-    config = {
-      ...replacement.config,
-      profileSync: { ...(replacement.config.profileSync || {}) },
+  );
+  if (!persistence.success) {
+    syncSettings.notSaved();
+    preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
+    log.error('Configuration update was not persisted:', persistence.error);
+    return {
+      success: false,
+      error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
+      config: sanitizeConfigForRenderer(config),
     };
-    normalizeDesktopPinsConfig(config);
-    normalizeTrayEntitiesConfigInPlace(config);
-    pruneConfig(config);
-    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+  }
+  return buildRendererConfigAfterChange(persistence);
+});
+
+// The config a handler answers with after a change: the renderer's copy, with the warnings its
+// write and its effects produced.
+function buildRendererConfigAfterChange({ persistenceWarnings = [], runtimeWarnings = [] }) {
+  const rendererConfig = sanitizeConfigForRenderer(config);
+  if (persistenceWarnings.length) {
+    rendererConfig.persistenceWarnings = persistenceWarnings;
+  }
+  if (runtimeWarnings.length) {
+    rendererConfig.runtimeWarnings = runtimeWarnings;
+  }
+  return rendererConfig;
+}
+
+ipcRoutes.handle('clear-token-reset-reason', async () => {
+  if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
+    const persistence = await configStore.apply(
+      (current) => {
+        delete current.tokenResetReason;
+      },
+      { origin: 'renderer-setting' }
+    );
     if (!persistence.success) {
-      config = previousConfig;
-      Object.assign(profileSyncRuntime, previousRuntimeTracking);
       return {
         success: false,
-        error: mainT('Failed to save entity replacement: {{error}}', { error: persistence.error }),
+        error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
+          error: persistence.error,
+        }),
         config: sanitizeConfigForRenderer(config),
       };
     }
-
-    const runtimeWarnings = [];
-    await runPostSaveSideEffect(
-      runtimeWarnings,
-      'entity replacement profile sync scheduling',
-      () => {
-        if (profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash) {
-          scheduleDebouncedProfileSyncPush('config_change');
-        }
-      }
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement runtime settings', () =>
-      applyRuntimeConfigSideEffects(previousConfig, config, 'entity ID replacement')
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement desktop pin windows', () =>
-      syncDesktopPinWindowsWithConfig()
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement tray entity icons', () =>
-      syncTrayEntitiesWithConfig()
-    );
-
-    const rendererConfig = sanitizeConfigForRenderer(config);
-    if (persistence.persistenceWarnings?.length) {
-      rendererConfig.persistenceWarnings = persistence.persistenceWarnings;
-    }
-    if (runtimeWarnings.length) {
-      rendererConfig.runtimeWarnings = runtimeWarnings;
-    }
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement renderer broadcast', () =>
-      pushConfigToRenderer({
-        persistenceWarnings: persistence.persistenceWarnings,
-        runtimeWarnings,
-      })
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement desktop pin broadcast', () =>
-      broadcastDesktopPinConfigUpdate()
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'entity replacement profile sync broadcast', () =>
-      emitProfileSyncStatus()
-    );
-    if (runtimeWarnings.length) {
-      rendererConfig.runtimeWarnings = runtimeWarnings;
-    }
-    return { success: true, changed: true, config: rendererConfig };
-  })
-);
-
-ipcMain.handle(
-  'update-config',
-  serializeConfigMutationHandler(async (event, newConfig) => {
-    const sender = authorizeIpcSender(event, 'update-config');
-    if (!sender) return rejectUnauthorizedIpc('update-config');
-    if (!isPlainObject(newConfig)) {
-      return { success: false, error: 'Invalid config payload' };
-    }
-    log.debug('Updating configuration');
-    const prevConfig = config;
-    let windowDisplayPatch = {};
-    let displayChoiceState;
-    if (Object.prototype.hasOwnProperty.call(newConfig, 'windowDisplayChoice')) {
-      try {
-        if (electronScreen.ensureDisplayIdentities) {
-          await electronScreen.ensureDisplayIdentities(newConfig.windowDisplayChoice);
-        }
-        displayChoiceState = {
-          moveRevision: mainWindow?.__userMoveRevision || 0,
-          recoveryBounds: mainWindow?.__displayRecoveryUserBounds,
-        };
-        windowDisplayPatch = getWindowDisplayChoicePatch(newConfig.windowDisplayChoice);
-      } catch (error) {
-        return {
-          success: false,
-          error: mainTError(error),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-    }
-    // Geometry belongs to the main process. An old Settings snapshot must not undo a
-    // tray selection or a drag. Only an explicit selector edit requests another display.
-    delete newConfig.windowDisplayChoice;
-    delete newConfig.windowDisplay;
-    delete newConfig.windowPosition;
-    const previousRuntimeTracking = {
-      localProfileHash: profileSyncRuntime.localProfileHash,
-      localProfileUpdatedAt: profileSyncRuntime.localProfileUpdatedAt,
-      pendingPullEchoHash: profileSyncRuntime.pendingPullEchoHash,
-      localSectionHashes: profileSyncRuntime.localSectionHashes,
-    };
-    const previousEncryptedTokenForRecovery = preservedEncryptedTokenForRecovery;
-    const prevSyncEnabled = !!config?.profileSync?.enabled;
-    const previousDesktopCompanion = { ...(config?.desktopCompanion || {}) };
-    const previousHomeAssistant = { ...(config?.homeAssistant || {}) };
-    // Development demo state is an IPC-only marker. Never let an overlay renderer
-    // write it back into the user's real configuration.
-    delete newConfig.developmentDemo;
-    // Settings lists the synced settings the user changed, for the stale-echo
-    // guard below. It is never stored.
-    const touchedSyncKeys = Array.isArray(newConfig.profileSyncTouchedKeys)
-      ? newConfig.profileSyncTouchedKeys
-          .filter((key) => typeof key === 'string' && /^(ui\.)?[A-Za-z0-9_]{1,64}$/.test(key))
-          .slice(0, 100)
-      : [];
-    delete newConfig.profileSyncTouchedKeys;
-    // The config revision the renderer built this update from (added by preload).
-    const baseRevision = Number.isInteger(newConfig.configBaseRevision)
-      ? newConfig.configBaseRevision
-      : null;
-    delete newConfig.configBaseRevision;
-    pruneConfig(newConfig);
-    // A page nobody named is stored unnamed; the renderer fills in the name of the language it is in.
-    const customTabs = Array.isArray(newConfig.customTabs)
-      ? toStoredPages(newConfig.customTabs)
-      : Array.isArray(config.customTabs)
-        ? config.customTabs
-        : { ...(config.customTabs || {}), ...(newConfig.customTabs || {}) };
-    const previousFirstEnableResolutionPending =
-      config.profileSync?.firstEnableResolutionPending === true;
-    const previousRemoteRewritePending = config.profileSync?.remoteRewritePending === true;
-    const previousEncryptionEnabled = config.profileSync?.encryptionEnabled === true;
-    const previousProvider = normalizeProfileSyncProvider(config.profileSync?.provider);
-    const previousCloudFilePath = config.profileSync?.cloudFilePath || '';
-    const previousSyncScope = getNormalizedProfileSyncScopeValue(config.profileSync?.syncScope);
-    const previousPassphraseMetadata = {
-      rememberPassphrase: config.profileSync?.rememberPassphrase === true,
-      passphraseEncrypted: config.profileSync?.passphraseEncrypted === true,
-      storedPassphrase: config.profileSync?.storedPassphrase || '',
-      passphraseTransition: config.profileSync?.passphraseTransition || null,
-      encryptionChangePending:
-        typeof config.profileSync?.encryptionChangePending === 'boolean'
-          ? config.profileSync.encryptionChangePending
-          : null,
-    };
-    const profileSync = { ...(config.profileSync || {}), ...(newConfig.profileSync || {}) };
-    const requestedEncryptionEnabled = profileSync.encryptionEnabled === true;
-    // Credential metadata and rewrite recovery are main-owned. The settings
-    // renderer sends a sanitized snapshot before the dedicated passphrase IPC;
-    // accepting those fields here creates a crash window that can discard or
-    // mislabel the only working credential.
-    Object.assign(profileSync, previousPassphraseMetadata);
-    profileSync.encryptionEnabled = previousEncryptionEnabled;
-    const normalizedNextProvider = normalizeProfileSyncProvider(profileSync.provider);
-    // Settings shows no folder until one is chosen (see getRendererSyncFilePath).
-    const normalizedNextPath =
-      (typeof profileSync.cloudFilePath === 'string' ? profileSync.cloudFilePath.trim() : '') ||
-      getDefaultProfileSyncFilePath();
-    const normalizedNextScope = getNormalizedProfileSyncScopeValue(profileSync.syncScope);
-    // Cloud Sync has no file, so a path left over from folder sync is not a target.
-    const pathChanged =
-      !isHostedProfileSyncProvider(normalizedNextProvider) &&
-      normalizedNextPath !== previousCloudFilePath;
-    // The sync engine reads this path and renames a temp file over it, so a new
-    // one is only taken from a folder the user picked in the native dialog (or
-    // one already in use), never as free text from the renderer.
-    if (
-      normalizedNextPath !== previousCloudFilePath &&
-      !isApprovedProfileSyncFilePath(normalizedNextPath, previousCloudFilePath)
-    ) {
-      log.warn('Rejected a profile sync file path that was not chosen through the folder dialog');
-      return {
-        success: false,
-        error: mainT('Choose a sync folder before enabling profile sync.'),
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
-    const remoteTargetChanged =
-      prevSyncEnabled &&
-      profileSync.enabled &&
-      (normalizedNextProvider !== previousProvider ||
-        pathChanged ||
-        JSON.stringify(normalizedNextScope) !== JSON.stringify(previousSyncScope));
-    if (
-      previousPassphraseMetadata.passphraseTransition &&
-      (profileSync.enabled !== prevSyncEnabled ||
-        remoteTargetChanged ||
-        requestedEncryptionEnabled !== previousEncryptionEnabled)
-    ) {
-      return {
-        success: false,
-        error: mainT(
-          'Finish the pending sync-key recovery before changing the sync target or encryption setting'
-        ),
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
-    const requiresInitialPreparation =
-      !!profileSync.enabled && (!prevSyncEnabled || remoteTargetChanged);
-    // Merge state is main-process-owned and describes the file it was built
-    // against: a new file or a fresh enable starts with no shared history, and a
-    // narrower scope forgets sections this device no longer syncs.
-    const syncFileChanged =
-      !prevSyncEnabled || normalizedNextProvider !== previousProvider || pathChanged;
-    const nextScopeKeys = new Set(profileSyncCore.getScopeSectionKeys(normalizedNextScope));
-    // What was last read from the old file says nothing about the new one.
-    if (syncFileChanged || !profileSync.enabled) profileSyncRuntime.remoteEncrypted = null;
-    profileSync.syncBaseline = syncFileChanged
-      ? {}
-      : Object.fromEntries(
-          Object.entries(config.profileSync?.syncBaseline || {}).filter(([key]) =>
-            nextScopeKeys.has(key)
-          )
-        );
-    profileSync.syncBaselineUpdatedAt = syncFileChanged
-      ? {}
-      : Object.fromEntries(
-          Object.entries(config.profileSync?.syncBaselineUpdatedAt || {}).filter(([key]) =>
-            nextScopeKeys.has(key)
-          )
-        );
-    profileSync.sectionUpdatedAt = { ...(config.profileSync?.sectionUpdatedAt || {}) };
-    keepMainOwnedProfileSyncResults(profileSync, config.profileSync);
-    if (requiresInitialPreparation) {
-      profileSync.firstEnableResolutionPending = true;
-    } else if (!profileSync.enabled) {
-      profileSync.firstEnableResolutionPending = false;
-    } else {
-      // This safety marker is main-process-authoritative. Renderer snapshots can
-      // arrive after a passphrase/conflict operation and must not resurrect or
-      // clear a first-enable gate with stale state.
-      profileSync.firstEnableResolutionPending = previousFirstEnableResolutionPending;
-    }
-    const encryptionRequest = resolveProfileSyncEncryptionRequest({
-      syncEnabled: !!profileSync.enabled,
-      wasSyncEnabled: prevSyncEnabled,
-      currentEncryptionEnabled: previousEncryptionEnabled,
-      requestedEncryptionEnabled,
-      existingPendingTarget: previousPassphraseMetadata.encryptionChangePending,
-    });
-    profileSync.encryptionEnabled = encryptionRequest.encryptionEnabled;
-    profileSync.encryptionChangePending = encryptionRequest.pendingTarget;
-    if (!profileSync.enabled) {
-      profileSync.remoteRewritePending = false;
-      profileSync.passphraseTransition = null;
-    } else if (!prevSyncEnabled) {
-      // The durable first-enable gate blocks every sync direction until the
-      // passphrase/conflict flow completes, so the requested mode can be
-      // recorded immediately without exposing the old-mode remote.
-      profileSync.remoteRewritePending =
-        requestedEncryptionEnabled !== previousEncryptionEnabled || previousRemoteRewritePending;
-    } else {
-      profileSync.remoteRewritePending = previousRemoteRewritePending;
-      if (requestedEncryptionEnabled !== previousEncryptionEnabled) {
-        profileSync.encryptionChangePending = requestedEncryptionEnabled;
-      }
-    }
-    const updates = { ...(config.updates || {}), ...(newConfig.updates || {}) };
-    const homeAssistant = {
-      ...(config.homeAssistant || {}),
-      ...(newConfig.homeAssistant || {}),
-    };
-    if (previousHomeAssistant.authMethod === 'oauth') {
-      Object.assign(homeAssistant, previousHomeAssistant);
-    } else {
-      // Entering OAuth creates credentials and runtime state through the dedicated
-      // pairing IPC. A renderer config echo cannot opt itself into OAuth.
-      homeAssistant.authMethod = 'token';
-    }
-    config = {
-      ...config,
-      ...newConfig,
-      ...windowDisplayPatch,
-      homeAssistant,
-      desktopCompanion: previousDesktopCompanion,
-      customTabs,
-      profileSync,
-      updates,
-    };
-    ensureDateTimeFormatConfigDefaults(config);
-    ensureProfileSyncConfigDefaults(config);
-    ensureUpdateConfigDefaults(config);
-    ensureHaProfileConfigDefaults(config);
-    normalizeDesktopPinsConfig(config);
-    normalizeTrayEntitiesConfigInPlace(config);
-    pruneConfig(config);
-    restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision);
-    // The renderer's echo of profileSync may be stale; the content-change
-    // timestamp is main-process-authoritative (saveConfig advances it on real
-    // profile changes).
-    config.profileSync.profileUpdatedAt = prevConfig?.profileSync?.profileUpdatedAt ?? null;
-    if (
-      TOKEN_RESET_RECOVERY_REASONS.has(config?.tokenResetReason) &&
-      !isPlaceholderOrEmptyToken(config.homeAssistant?.token)
-    ) {
-      delete config.tokenResetReason;
-    }
-    if (
-      config.homeAssistant?.token &&
-      config.homeAssistant.token !== HOME_ASSISTANT_TOKEN_PLACEHOLDER
-    ) {
-      preservedEncryptedTokenForRecovery = null;
-    }
-    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-    if (!persistence.success) {
-      config = prevConfig;
-      Object.assign(profileSyncRuntime, previousRuntimeTracking);
-      preservedEncryptedTokenForRecovery = previousEncryptedTokenForRecovery;
-      log.error('Configuration update was not persisted:', persistence.error);
-      return {
-        success: false,
-        error: mainT('Failed to save settings: {{error}}', { error: persistence.error }),
-        config: sanitizeConfigForRenderer(config),
-      };
-    }
-
-    const runtimeWarnings = [];
-    await runPostSaveSideEffect(runtimeWarnings, 'profile sync scheduling', async () => {
-      if (profileSyncRuntime.localProfileHash !== previousRuntimeTracking.localProfileHash) {
-        scheduleDebouncedProfileSyncPush('config_change');
-      }
-
-      const syncEnabled = !!config.profileSync?.enabled;
-      if (!syncEnabled) {
-        profileSyncRuntime.needsResolution = false;
-        profileSyncRuntime.pendingRemoteEnvelope = null;
-        clearProfileSyncTimers();
-      } else if (typeof config.profileSync.encryptionChangePending === 'boolean') {
-        clearProfileSyncTimers();
-        emitProfileSyncStatus();
-      } else if (requiresInitialPreparation) {
-        profileSyncRuntime.needsResolution = false;
-        profileSyncRuntime.pendingRemoteEnvelope = null;
-        profileSyncRuntime.pendingRemoteIdentity = null;
-        const hasRequiredPassphrase =
-          !config.profileSync.encryptionEnabled || !!getActiveProfileSyncPassphrase();
-        if (hasRequiredPassphrase) {
-          try {
-            const resolution = await prepareProfileSyncFirstEnableResolution();
-            if (!resolution?.needsResolution) {
-              await completeProfileSyncFirstEnablePreparation('settings_enable');
-            }
-          } catch (error) {
-            clearProfileSyncTimers();
-            updateProfileSyncStatus('error', mainTError(error));
-          }
-        } else {
-          clearProfileSyncTimers();
-          emitProfileSyncStatus();
-        }
-      } else if (config.profileSync.firstEnableResolutionPending) {
-        clearProfileSyncTimers();
-      } else {
-        setupProfileSyncInterval();
-      }
-    });
-
-    await runPostSaveSideEffect(runtimeWarnings, 'main window settings', () =>
-      applyMainWindowSettingSideEffects(prevConfig, config, displayChoiceState)
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'runtime settings', () =>
-      applyRuntimeConfigSideEffects(prevConfig, config, 'settings update')
-    );
-    if (prevConfig?.ui?.language !== config?.ui?.language && tray) {
-      await runPostSaveSideEffect(runtimeWarnings, 'tray language', () => createTray());
-    }
-    if (prevConfig?.ui?.language !== config?.ui?.language) omarchyBarPublisher?.update();
-    if (
-      prevConfig?.updates?.allowPrerelease !== config?.updates?.allowPrerelease &&
-      autoUpdaterInstance
-    ) {
-      await runPostSaveSideEffect(runtimeWarnings, 'update channel', () =>
-        configureAutoUpdaterChannel(autoUpdaterInstance)
-      );
-    }
-    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin windows', () =>
-      syncDesktopPinWindowsWithConfig()
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'tray entity icons', () =>
-      syncTrayEntitiesWithConfig()
-    );
-
-    const rendererConfig = sanitizeConfigForRenderer(config);
-    if (persistence.persistenceWarnings?.length) {
-      rendererConfig.persistenceWarnings = persistence.persistenceWarnings;
-    }
-    if (runtimeWarnings.length) {
-      rendererConfig.runtimeWarnings = runtimeWarnings;
-    }
-    await runPostSaveSideEffect(runtimeWarnings, 'renderer config broadcast', () =>
-      pushConfigToRenderer({
-        persistenceWarnings: persistence.persistenceWarnings,
-        runtimeWarnings,
-      })
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'desktop pin config broadcast', () =>
-      broadcastDesktopPinConfigUpdate()
-    );
-    await runPostSaveSideEffect(runtimeWarnings, 'profile sync status broadcast', () =>
-      emitProfileSyncStatus()
-    );
-    if (runtimeWarnings.length) {
-      rendererConfig.runtimeWarnings = runtimeWarnings;
-    }
-    return rendererConfig;
-  })
-);
-
-ipcMain.handle(
-  'clear-token-reset-reason',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'clear-token-reset-reason');
-    if (!sender) return rejectUnauthorizedIpc('clear-token-reset-reason');
-    if (isAcknowledgeableTokenResetReason(config?.tokenResetReason)) {
-      const previousReason = config.tokenResetReason;
-      delete config.tokenResetReason;
-      const persistence = await saveConfigDurably();
-      if (!persistence.success) {
-        config.tokenResetReason = previousReason;
-        return {
-          success: false,
-          error: mainT('Failed to save token recovery acknowledgement: {{error}}', {
-            error: persistence.error,
-          }),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-      const runtimeWarnings = [];
-      await runPostSaveSideEffect(runtimeWarnings, 'token recovery renderer broadcast', () =>
-        pushConfigToRenderer({ runtimeWarnings })
-      );
-      const rendererConfig = sanitizeConfigForRenderer(config);
-      if (runtimeWarnings.length) {
-        rendererConfig.runtimeWarnings = runtimeWarnings;
-      }
-      return rendererConfig;
-    }
-    return sanitizeConfigForRenderer(config);
-  })
-);
+    return buildRendererConfigAfterChange(persistence);
+  }
+  return sanitizeConfigForRenderer(config);
+});
 
 function normalizeHomeAssistantBaseUrlForIpc(rawUrl) {
   return normalizeHomeAssistantBaseUrl(rawUrl);
@@ -10053,57 +6415,53 @@ async function applyHomeAssistantOAuthSession(session, options = {}) {
   if (!session?.accessToken || !session?.baseUrl) {
     throw new Error('Home Assistant OAuth did not return a usable session');
   }
-  const previousConfig = config;
   const previousRecoveryToken = preservedEncryptedTokenForRecovery;
-  const nextConfig = {
-    ...config,
-    homeAssistant: {
-      ...(config?.homeAssistant || {}),
-      url: session.baseUrl,
-      token: session.accessToken,
-      tokenEncrypted: false,
-      authMethod: 'oauth',
-      oauthStatus: 'connected',
-      oauthExpiresAt: session.expiresAt,
-      oauthAuthorizationId: session.authorizationId,
-    },
-    desktopCompanion: { ...(config?.desktopCompanion || {}) },
-  };
-  delete nextConfig.homeAssistant.oauthLastError;
-  delete nextConfig.homeAssistant.oauthLastErrorCode;
-  delete nextConfig.tokenResetReason;
-  config = nextConfig;
-  ensureDesktopCompanionIdentity();
-  preservedEncryptedTokenForRecovery = null;
-
-  if (options.persist === true) {
-    try {
-      const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-      if (!persistence.success) {
-        throw new Error(`Failed to save Home Assistant authorization: ${persistence.error}`);
-      }
-    } catch (error) {
-      config = previousConfig;
-      preservedEncryptedTokenForRecovery = previousRecoveryToken;
-      throw error;
-    }
+  // A refreshed access token only lives in memory; a new authorization is written to disk.
+  let persistence;
+  try {
+    persistence = await configStore.apply(
+      (current) => {
+        const nextConfig = {
+          ...current,
+          homeAssistant: {
+            ...(current.homeAssistant || {}),
+            url: session.baseUrl,
+            token: session.accessToken,
+            tokenEncrypted: false,
+            authMethod: 'oauth',
+            oauthStatus: 'connected',
+            oauthExpiresAt: session.expiresAt,
+            oauthAuthorizationId: session.authorizationId,
+          },
+          desktopCompanion: { ...(current.desktopCompanion || {}) },
+        };
+        delete nextConfig.homeAssistant.oauthLastError;
+        delete nextConfig.homeAssistant.oauthLastErrorCode;
+        delete nextConfig.tokenResetReason;
+        replaceConfigContents(current, nextConfig);
+        ensureDesktopCompanionIdentity();
+        preservedEncryptedTokenForRecovery = null;
+      },
+      { origin: 'home-assistant-auth', persist: options.persist === true }
+    );
+  } catch (error) {
+    preservedEncryptedTokenForRecovery = previousRecoveryToken;
+    throw error;
+  }
+  if (!persistence.success) {
+    preservedEncryptedTokenForRecovery = previousRecoveryToken;
+    throw new Error(`Failed to save Home Assistant authorization: ${persistence.error}`);
   }
 
-  for (const [context, apply] of [
-    ['OAuth refresh timer', () => scheduleHomeAssistantOAuthRefresh(session.expiresAt)],
-    ['OAuth renderer update', () => pushConfigToRenderer()],
-    ['OAuth desktop pin update', () => broadcastDesktopPinConfigUpdate()],
-  ]) {
-    try {
-      apply();
-    } catch (error) {
-      if (options.persist !== true) throw error;
-      // A notification failure cannot undo an authorization already saved to disk.
-      log.warn(
-        `Failed to apply ${context} after authorization was saved:`,
-        error?.message || String(error)
-      );
-    }
+  try {
+    scheduleHomeAssistantOAuthRefresh(session.expiresAt);
+  } catch (error) {
+    if (options.persist !== true) throw error;
+    // A timer failure cannot undo an authorization already saved to disk.
+    log.warn(
+      'Failed to apply OAuth refresh timer after authorization was saved:',
+      error?.message || String(error)
+    );
   }
   return sanitizeConfigForRenderer(config);
 }
@@ -10152,21 +6510,27 @@ async function refreshHomeAssistantOAuthSession() {
       'OAUTH_STORE_DECRYPT',
       'OAUTH_SECURE_STORAGE_UNAVAILABLE',
     ].includes(error?.code);
-    config.homeAssistant = config.homeAssistant || {};
-    config.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
-    config.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
-    // The renderer shows a translated message for known codes; the text is the fallback.
-    config.homeAssistant.oauthLastErrorCode = describeLinuxKeyringOAuthError(error?.code);
+    // The connection state is runtime-only: the windows hear about it, the file does not.
+    await configStore.apply(
+      (current) => {
+        current.homeAssistant = current.homeAssistant || {};
+        current.homeAssistant.oauthStatus = reauthRequired ? 'reauth_required' : 'offline';
+        current.homeAssistant.oauthLastError = String(error?.message || error).slice(0, 512);
+        // The renderer shows a translated message for known codes; the text is the fallback.
+        current.homeAssistant.oauthLastErrorCode = describeLinuxKeyringOAuthError(error?.code);
+        if (reauthRequired) {
+          current.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
+          delete current.homeAssistant.oauthAuthorizationId;
+          delete current.homeAssistant.oauthExpiresAt;
+        }
+      },
+      { origin: 'home-assistant-auth', persist: false }
+    );
     if (reauthRequired) {
-      config.homeAssistant.token = HOME_ASSISTANT_TOKEN_PLACEHOLDER;
-      delete config.homeAssistant.oauthAuthorizationId;
-      delete config.homeAssistant.oauthExpiresAt;
       clearHomeAssistantOAuthRefreshTimer();
     } else {
       scheduleHomeAssistantOAuthRefresh(null, HOME_ASSISTANT_OAUTH_RETRY_MS);
     }
-    pushConfigToRenderer();
-    broadcastDesktopPinConfigUpdate();
     return null;
   }
 }
@@ -10178,9 +6542,7 @@ async function restoreHomeAssistantOAuthSession() {
   return refreshHomeAssistantOAuthSession();
 }
 
-ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
-  const sender = authorizeIpcSender(event, 'start-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('start-home-assistant-oauth');
+ipcRoutes.handle('start-home-assistant-oauth', async (_sender, rawUrl) => {
   // The authorization happens in the browser, which takes focus from the widget. With "hide when focus
   // is lost" on, the widget would be gone by the time the person comes back to it.
   const resumeAutoHide = windowAutoHide.suspend();
@@ -10218,9 +6580,7 @@ ipcMain.handle('start-home-assistant-oauth', async (event, rawUrl) => {
 // Home Assistant rejected the current access token (revoked authorization, or a token that
 // expired while the machine slept). Refresh now instead of waiting for the scheduled refresh; an
 // invalid grant turns into reauth_required, which the renderer explains to the user.
-ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'refresh-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('refresh-home-assistant-oauth');
+ipcRoutes.handle('refresh-home-assistant-oauth', async () => {
   if (config?.homeAssistant?.authMethod !== 'oauth') {
     return { success: false, error: 'Home Assistant authorization is not in use' };
   }
@@ -10230,37 +6590,35 @@ ipcMain.handle('refresh-home-assistant-oauth', async (event) => {
   return { success: true, oauthStatus: config?.homeAssistant?.oauthStatus || null };
 });
 
-ipcMain.handle('cancel-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'cancel-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('cancel-home-assistant-oauth');
+ipcRoutes.handle('cancel-home-assistant-oauth', async () => {
   // Never constructs a client just to cancel: with no pairing in flight there is
   // nothing to abort.
   if (!homeAssistantOAuthClient) return { success: true, canceled: false };
   return { success: true, canceled: homeAssistantOAuthClient.cancelPairing() };
 });
 
-ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
-  const sender = authorizeIpcSender(event, 'disconnect-home-assistant-oauth');
-  if (!sender) return rejectUnauthorizedIpc('disconnect-home-assistant-oauth');
+ipcRoutes.handle('disconnect-home-assistant-oauth', async () => {
   const updateResult = await runSerializedConfigMutation(async () => {
-    const previousConfig = config;
     clearHomeAssistantOAuthRefreshTimer();
-    config = {
-      ...config,
-      homeAssistant: {
-        url: config?.homeAssistant?.url || '',
-        token: HOME_ASSISTANT_TOKEN_PLACEHOLDER,
-        tokenEncrypted: false,
-        authMethod: 'token',
+    const persistence = await configStore.apply(
+      (current) => {
+        const nextConfig = {
+          ...current,
+          homeAssistant: {
+            url: current.homeAssistant?.url || '',
+            token: HOME_ASSISTANT_TOKEN_PLACEHOLDER,
+            tokenEncrypted: false,
+            authMethod: 'token',
+          },
+        };
+        delete nextConfig.tokenResetReason;
+        return nextConfig;
       },
-    };
-    delete config.tokenResetReason;
-    const persistence = await saveConfigDurably({ allowDebouncedPush: false });
+      { origin: 'home-assistant-auth' }
+    );
     if (!persistence.success) {
-      config = previousConfig;
       return { success: false, error: `Failed to save disconnected state: ${persistence.error}` };
     }
-    pushConfigToRenderer();
     return { success: true, config: sanitizeConfigForRenderer(config) };
   });
   if (!updateResult.success) return updateResult;
@@ -10274,28 +6632,24 @@ ipcMain.handle('disconnect-home-assistant-oauth', async (event) => {
   return { ...updateResult, ...revocation };
 });
 
-ipcMain.handle('get-desktop-companion-registration', async (event) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-companion-registration');
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-registration');
+ipcRoutes.handle('get-desktop-companion-registration', async () => {
   if (!config?.desktopCompanion?.desktopId) {
-    const result = await runSerializedConfigMutation(async () => {
-      ensureDesktopCompanionIdentity();
-      return saveConfigDurably({ allowDebouncedPush: false });
-    });
+    const result = await configStore.apply(
+      () => {
+        ensureDesktopCompanionIdentity();
+      },
+      { origin: 'desktop-companion' }
+    );
     if (!result.success) return { success: false, error: result.error };
   }
   return { success: true, registration: getDesktopCompanionRegistration() };
 });
 
-ipcMain.handle('get-desktop-companion-state', (event) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-companion-state');
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-companion-state');
+ipcRoutes.handle('get-desktop-companion-state', () => {
   return getDesktopCompanionState();
 });
 
-ipcMain.handle('apply-desktop-companion-command', (event, action) => {
-  const sender = authorizeIpcSender(event, 'apply-desktop-companion-command');
-  if (!sender) return rejectUnauthorizedIpc('apply-desktop-companion-command');
+ipcRoutes.handle('apply-desktop-companion-command', (_sender, action) => {
   if (!['show', 'hide', 'toggle'].includes(action)) {
     return { success: false, error: 'Unsupported main-process desktop command' };
   }
@@ -10370,81 +6724,51 @@ function testHomeAssistantApiRoot(baseUrl, token, timeoutMs = 8000) {
   });
 }
 
-ipcMain.handle('test-ha-connection', async (event, url, token) => {
-  const sender = authorizeIpcSender(event, 'test-ha-connection');
-  if (!sender) return rejectUnauthorizedIpc('test-ha-connection');
+ipcRoutes.handle('test-ha-connection', async (_sender, url, token) => {
   return testHomeAssistantApiRoot(url, token);
 });
 
-ipcMain.handle(
-  'pin-entity-to-desktop',
-  serializeConfigMutationHandler(async (event, entityId, supportInfo = null) => {
-    const sender = authorizeIpcSender(event, 'pin-entity-to-desktop');
-    if (!sender) return rejectUnauthorizedIpc('pin-entity-to-desktop');
-    return pinEntityToDesktopInternal(entityId, supportInfo);
-  })
-);
+ipcRoutes.handle('pin-entity-to-desktop', async (_sender, entityId, supportInfo = null) => {
+  return pinEntityToDesktopInternal(entityId, supportInfo);
+});
 
-ipcMain.handle('set-desktop-pin-edit-mode', (event, enabled) => {
-  const sender = authorizeIpcSender(event, 'set-desktop-pin-edit-mode');
-  if (!sender) return rejectUnauthorizedIpc('set-desktop-pin-edit-mode');
+ipcRoutes.handle('set-desktop-pin-edit-mode', (_sender, enabled) => {
   return setDesktopPinEditMode(enabled);
 });
 
-ipcMain.handle(
-  'update-desktop-pin-bounds',
-  serializeConfigMutationHandler(async (event, entityId, nextBounds = {}) => {
-    const sender = authorizeIpcSender(event, 'update-desktop-pin-bounds', {
-      allowDesktopPin: true,
-    });
-    if (!sender) return rejectUnauthorizedIpc('update-desktop-pin-bounds');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    return updateDesktopPinBounds(entityId, nextBounds);
-  })
-);
+// Only the main window may act on any pin. Every other role, today's desktop pins and any added
+// later, acts only on its own entity, so a new role starts out restricted.
+ipcRoutes.handle('update-desktop-pin-bounds', async (sender, entityId, nextBounds = {}) => {
+  if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  return updateDesktopPinBounds(entityId, nextBounds);
+});
 
-ipcMain.handle(
-  'nudge-desktop-pin',
-  serializeConfigMutationHandler(async (event, entityId, delta = {}) => {
-    const sender = authorizeIpcSender(event, 'nudge-desktop-pin', { allowDesktopPin: true });
-    if (!sender) return rejectUnauthorizedIpc('nudge-desktop-pin');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    return nudgeDesktopPin(entityId, delta);
-  })
-);
+ipcRoutes.handle('nudge-desktop-pin', async (sender, entityId, delta = {}) => {
+  if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
+    return { success: false, error: 'Unauthorized' };
+  }
+  return nudgeDesktopPin(entityId, delta);
+});
 
-ipcMain.handle(
+ipcRoutes.handle(
   'sync-desktop-pin-content-min-bounds',
-  serializeConfigMutationHandler(async (event, entityId, minBounds = {}) => {
-    const sender = authorizeIpcSender(event, 'sync-desktop-pin-content-min-bounds', {
-      allowDesktopPin: true,
-    });
-    if (!sender) return rejectUnauthorizedIpc('sync-desktop-pin-content-min-bounds');
-    if (sender.type === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+  async (sender, entityId, minBounds = {}) => {
+    if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
       return { success: false, error: 'Unauthorized' };
     }
     return syncDesktopPinContentMinBounds(entityId, minBounds);
-  })
+  }
 );
 
-ipcMain.handle(
-  'unpin-entity-from-desktop',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'unpin-entity-from-desktop');
-    if (!sender) return rejectUnauthorizedIpc('unpin-entity-from-desktop');
-    return unpinEntityFromDesktopInternal(entityId);
-  })
-);
+ipcRoutes.handle('unpin-entity-from-desktop', async (_sender, entityId) => {
+  return unpinEntityFromDesktopInternal(entityId);
+});
 
-ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'get-desktop-pin-bootstrap', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('get-desktop-pin-bootstrap');
+ipcRoutes.handle('get-desktop-pin-bootstrap', (sender, entityId) => {
   const normalizedEntityId = normalizeEntityId(entityId);
-  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role !== 'main' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
   // The cache can be empty here even though pins exist: an unpin-then-repin pair whose
@@ -10486,9 +6810,7 @@ ipcMain.handle('get-desktop-pin-bootstrap', (event, entityId) => {
   };
 });
 
-ipcMain.handle('publish-ha-connection-state', (event, status) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-connection-state');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-connection-state');
+ipcRoutes.handle('publish-ha-connection-state', (_sender, status) => {
   if (!['connecting', 'connected', 'disconnected', 'auth-failed'].includes(status)) {
     return { success: false, error: 'Invalid connection state' };
   }
@@ -10503,9 +6825,7 @@ ipcMain.handle('publish-ha-connection-state', (event, status) => {
 
 // The renderer describes exactly the tiles the Omarchy bar asked for (config.omarchyBarEntities),
 // as a full set each time, with the line icons they use.
-ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'publish-omarchy-bar-tiles');
-  if (!sender) return rejectUnauthorizedIpc('publish-omarchy-bar-tiles');
+ipcRoutes.handle('publish-omarchy-bar-tiles', (_sender, payload) => {
   if (!omarchyBarPublisher) return { success: true, discarded: true };
   const wanted = new Set(getOmarchyBarEntities().all);
   omarchyBarTiles.clear();
@@ -10529,9 +6849,7 @@ ipcMain.handle('publish-omarchy-bar-tiles', (event, payload) => {
   return { success: true, count: omarchyBarTiles.size };
 });
 
-ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-unit-system');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-unit-system');
+ipcRoutes.handle('publish-ha-unit-system', (_sender, unitSystem) => {
   const normalized = normalizeHaUnitSystem(unitSystem);
   if (!normalized) return { success: false, error: 'Invalid unit system' };
   if (JSON.stringify(normalized) === JSON.stringify(latestHaUnitSystem)) return { success: true };
@@ -10542,9 +6860,7 @@ ipcMain.handle('publish-ha-unit-system', (event, unitSystem) => {
   return { success: true };
 });
 
-ipcMain.handle('publish-ha-snapshot', (event, states) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-snapshot');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-snapshot');
+ipcRoutes.handle('publish-ha-snapshot', (_sender, states) => {
   // A publish can already be in flight while the last pin is removed; caching it would
   // recreate the state map syncDesktopPinWindowsWithConfig just dropped. `discarded`
   // tells the renderer's coalescing that joining this publish did not deliver a
@@ -10570,9 +6886,7 @@ ipcMain.handle('publish-ha-snapshot', (event, states) => {
   return { success: true, count: latestEntityStates.size };
 });
 
-ipcMain.handle('publish-ha-entity-update', (event, entity) => {
-  const sender = authorizeIpcSender(event, 'publish-ha-entity-update');
-  if (!sender) return rejectUnauthorizedIpc('publish-ha-entity-update');
+ipcRoutes.handle('publish-ha-entity-update', (_sender, entity) => {
   const normalizedEntityId = normalizeEntityId(entity?.entity_id);
   if (!normalizedEntityId || !isPlainObject(entity)) {
     return { success: false, error: 'Invalid entity payload' };
@@ -10586,19 +6900,18 @@ ipcMain.handle('publish-ha-entity-update', (event, entity) => {
   return { success: true };
 });
 
-ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload = {}) => {
-  const sender = authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('request-desktop-pin-action');
+ipcRoutes.handle('request-desktop-pin-action', (sender, entityId, action, payload = {}) => {
   let normalizedEntityId = normalizeEntityId(entityId);
   let normalizedAction = typeof action === 'string' ? action.trim() : '';
   let normalizedPayload = payload;
   if (!normalizedEntityId || !normalizedAction) {
     return { success: false, error: 'Invalid desktop pin action' };
   }
-  if (sender.type === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role !== 'main' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
-  if (sender.type === 'desktop-pin') {
+  // Every window but the main one gets the pin's allowed actions, with targeting fields removed.
+  if (sender.role !== 'main') {
     const normalizedRequest = normalizeDesktopPinActionRequest(
       normalizedEntityId,
       normalizedAction,
@@ -10632,15 +6945,13 @@ ipcMain.handle('request-desktop-pin-action', (event, entityId, action, payload =
   );
 });
 
-ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) => {
-  const sender = authorizeIpcSender(event, 'desktop-pin-action-response');
-  if (!sender) return rejectUnauthorizedIpc('desktop-pin-action-response');
+ipcRoutes.handle('desktop-pin-action-response', (sender, requestId, response = {}) => {
   const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
   if (!normalizedRequestId) {
     return { success: false, error: 'Invalid desktop pin action request ID' };
   }
 
-  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+  if (!mainWindow || mainWindow.isDestroyed() || sender.webContents !== mainWindow.webContents) {
     return { success: false, error: 'Desktop pin action responses must come from the main window' };
   }
 
@@ -10657,9 +6968,7 @@ ipcMain.handle('desktop-pin-action-response', (event, requestId, response = {}) 
   return { success: true };
 });
 
-ipcMain.handle('update-tray-entity-icon', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'update-tray-entity-icon');
-  if (!sender) return rejectUnauthorizedIpc('update-tray-entity-icon');
+ipcRoutes.handle('update-tray-entity-icon', (_sender, payload) => {
   if (!LIVE_TRAY_VALUES_ENABLED) {
     return { success: false, error: 'Live tray values are available only in beta builds.' };
   }
@@ -10714,18 +7023,13 @@ function entityTileEditMenuItems(reorganizing, requestTileAction) {
   ];
 }
 
-ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) => {
-  const sender = authorizeIpcSender(event, 'show-entity-tile-menu');
-  if (!sender) return rejectUnauthorizedIpc('show-entity-tile-menu');
+ipcRoutes.handle('show-entity-tile-menu', (sender, entityId, supportInfo = null) => {
   const normalizedEntityId = normalizeEntityId(entityId);
   if (!normalizedEntityId) {
     return { success: false, error: 'Invalid entity ID' };
   }
 
-  const senderWindow = BrowserWindow.fromWebContents(event.sender);
-  if (!senderWindow) {
-    return { success: false, error: 'Unable to resolve sender window' };
-  }
+  const senderWindow = sender.window;
 
   const isPinned = !!config?.desktopPins?.[normalizedEntityId];
   const isInTray = !!config?.trayEntities?.[normalizedEntityId];
@@ -10814,39 +7118,34 @@ ipcMain.handle('show-entity-tile-menu', (event, entityId, supportInfo = null) =>
   return { success: true, pinned: isPinned, supportProfile };
 });
 
-ipcMain.handle(
-  'set-opacity',
-  serializeConfigMutationHandler(async (event, opacity) => {
-    const sender = authorizeIpcSender(event, 'set-opacity');
-    if (!sender) return rejectUnauthorizedIpc('set-opacity');
-    const previousOpacity = config.opacity;
-    // Ensure opacity is within safe range (50% to 100%)
-    const requestedOpacity = Number(opacity);
-    let safeOpacity = Number.isFinite(requestedOpacity)
-      ? Math.max(0.5, Math.min(1, requestedOpacity))
-      : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
+ipcRoutes.handle('set-opacity', async (_sender, opacity) => {
+  const previousOpacity = config.opacity;
+  // Ensure opacity is within safe range (50% to 100%)
+  const requestedOpacity = Number(opacity);
+  let safeOpacity = Number.isFinite(requestedOpacity)
+    ? Math.max(0.5, Math.min(1, requestedOpacity))
+    : Math.max(0.5, Math.min(1, Number(previousOpacity) || 1));
+  try {
+    safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
+  } catch (error) {
+    log.warn('Failed to set main window opacity:', error.message);
+  }
+  config.opacity = safeOpacity;
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.opacity = previousOpacity;
     try {
-      safeOpacity = applyWindowOpacityToAll(safeOpacity, config);
+      applyWindowOpacityToAll(previousOpacity, config);
     } catch (error) {
-      log.warn('Failed to set main window opacity:', error.message);
+      log.warn('Failed to restore main window opacity:', error.message);
     }
-    config.opacity = safeOpacity;
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.opacity = previousOpacity;
-      try {
-        applyWindowOpacityToAll(previousOpacity, config);
-      } catch (error) {
-        log.warn('Failed to restore main window opacity:', error.message);
-      }
-      return {
-        success: false,
-        error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
-      };
-    }
-    return { success: true, opacity: safeOpacity };
-  })
-);
+    return {
+      success: false,
+      error: mainT('Failed to save window opacity: {{error}}', { error: persistence.error }),
+    };
+  }
+  return { success: true, opacity: safeOpacity };
+});
 
 // The frosted glass value Settings is previewing, while it differs from the saved one. Settings
 // puts the saved value back through the same IPC when it is cancelled or closed, and a save makes
@@ -10860,9 +7159,7 @@ function getPreviewFrostedGlassOverride() {
   return previewFrostedGlassOverride;
 }
 
-ipcMain.handle('preview-window-effects', (event, effects = {}) => {
-  const sender = authorizeIpcSender(event, 'preview-window-effects');
-  if (!sender) return rejectUnauthorizedIpc('preview-window-effects');
+ipcRoutes.handle('preview-window-effects', (_sender, effects = {}) => {
   if (!mainWindow) return;
   if (typeof effects.frostedGlass === 'boolean') {
     previewFrostedGlassOverride = effects.frostedGlass;
@@ -10883,51 +7180,46 @@ ipcMain.handle('preview-window-effects', (event, effects = {}) => {
   }
 });
 
-ipcMain.handle(
-  'set-always-on-top',
-  serializeConfigMutationHandler(async (event, value) => {
-    const sender = authorizeIpcSender(event, 'set-always-on-top');
-    if (!sender) return rejectUnauthorizedIpc('set-always-on-top');
-    if (isLayerShellChildProcess) return { success: true, applied: false, supported: false };
-    const flag = !!value;
-    const previousFlag = !!config.alwaysOnTop;
-    config.alwaysOnTop = flag;
-    let applied = false;
+ipcRoutes.handle('set-always-on-top', async (_sender, value) => {
+  if (isLayerShellChildProcess) return { success: true, applied: false, supported: false };
+  const flag = !!value;
+  const previousFlag = !!config.alwaysOnTop;
+  config.alwaysOnTop = flag;
+  let applied = false;
+  try {
+    if (popupWindowPresenter.isElevated()) {
+      // A popup raise keeps the window above full-screen content until it hides; the new
+      // preference is what the presenter falls back to when that raise ends.
+      applied = !!mainWindow && !mainWindow.isDestroyed();
+    } else {
+      applyAlwaysOnTopPreference();
+      applied = mainWindow?.isAlwaysOnTop?.() === flag;
+    }
+  } catch (error) {
+    log.warn('Failed to set always on top:', error.message);
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.alwaysOnTop = previousFlag;
     try {
-      if (popupWindowPresenter.isElevated()) {
-        // A popup raise keeps the window above full-screen content until it hides; the new
-        // preference is what the presenter falls back to when that raise ends.
-        applied = !!mainWindow && !mainWindow.isDestroyed();
-      } else {
+      if (!popupWindowPresenter.isElevated()) {
         applyAlwaysOnTopPreference();
-        applied = mainWindow?.isAlwaysOnTop?.() === flag;
       }
     } catch (error) {
-      log.warn('Failed to set always on top:', error.message);
-    }
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.alwaysOnTop = previousFlag;
-      try {
-        if (!popupWindowPresenter.isElevated()) {
-          applyAlwaysOnTopPreference();
-        }
-      } catch (error) {
-        log.warn('Failed to restore always on top:', error.message);
-      }
-      refreshTrayMenu();
-      return {
-        success: false,
-        error: mainT('Failed to save always-on-top setting: {{error}}', {
-          error: persistence.error,
-        }),
-        applied: false,
-      };
+      log.warn('Failed to restore always on top:', error.message);
     }
     refreshTrayMenu();
-    return { success: true, applied };
-  })
-);
+    return {
+      success: false,
+      error: mainT('Failed to save always-on-top setting: {{error}}', {
+        error: persistence.error,
+      }),
+      applied: false,
+    };
+  }
+  refreshTrayMenu();
+  return { success: true, applied };
+});
 
 async function updateLayerDrag(drag) {
   const cursor = await readHyprlandCursor();
@@ -10962,14 +7254,8 @@ function snapLayerPinPosition(drag) {
   layerPositions.set(drag.id, snapped);
   layerShellRaiser.place(drag.window.getTitle(), snapped);
 }
-ipcMain.handle('begin-layer-drag', async (event) => {
-  const sender = authorizeIpcSender(event, 'begin-layer-drag', { allowDesktopPin: true });
-  if (
-    !sender ||
-    !isLayerShellChildProcess ||
-    !isHyprland() ||
-    (sender.type === 'desktop-pin' && !desktopPinEditMode)
-  )
+ipcRoutes.handle('begin-layer-drag', async (sender) => {
+  if (!isLayerShellChildProcess || !isHyprland() || (sender.role !== 'main' && !desktopPinEditMode))
     return { success: false };
   if (layerDrag) return { success: false };
   const cursor = await readHyprlandCursor();
@@ -10992,37 +7278,29 @@ ipcMain.handle('begin-layer-drag', async (event) => {
   }, 32);
   return { success: true };
 });
-ipcMain.handle(
-  'end-layer-drag',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'end-layer-drag', { allowDesktopPin: true });
-    const drag = layerDrag;
-    if (!sender || !drag || drag.window !== sender.window) return { success: false };
-    clearInterval(drag.timer);
-    await drag.inFlight;
-    await updateLayerDrag(drag);
-    layerDrag = null;
-    if (drag.id !== 'main' && !drag.window.isDestroyed()) snapLayerPinPosition(drag);
-    const output = layerActualMonitor?.name;
-    if (output) {
-      config.layerPositions ||= {};
-      config.layerPositions[drag.id] ||= {};
-      config.layerPositions[drag.id][output] = layerPositions.get(drag.id);
-    }
-    return saveConfigDurably();
-  })
-);
+ipcRoutes.handle('end-layer-drag', async (sender) => {
+  const drag = layerDrag;
+  if (!drag || drag.window !== sender.window) return { success: false };
+  clearInterval(drag.timer);
+  await drag.inFlight;
+  await updateLayerDrag(drag);
+  layerDrag = null;
+  if (drag.id !== 'main' && !drag.window.isDestroyed()) snapLayerPinPosition(drag);
+  const output = layerActualMonitor?.name;
+  if (output) {
+    config.layerPositions ||= {};
+    config.layerPositions[drag.id] ||= {};
+    config.layerPositions[drag.id][output] = layerPositions.get(drag.id);
+  }
+  return configStore.apply(null, { origin: 'local' });
+});
 
-ipcMain.handle('get-desktop-blur-status', async (event) => {
-  if (!authorizeIpcSender(event, 'get-desktop-blur-status'))
-    return rejectUnauthorizedIpc('get-desktop-blur-status');
+ipcRoutes.handle('get-desktop-blur-status', async () => {
   if (process.platform !== 'linux' || !isHyprland()) return { supported: false };
   return hyprlandBlur.getDesktopBlurStatus();
 });
 
-ipcMain.handle('set-desktop-blur', async (event, enabled) => {
-  if (!authorizeIpcSender(event, 'set-desktop-blur'))
-    return rejectUnauthorizedIpc('set-desktop-blur');
+ipcRoutes.handle('set-desktop-blur', async (_sender, enabled) => {
   if (process.platform !== 'linux' || !isHyprland() || typeof enabled !== 'boolean')
     return { success: false, error: 'unsupported' };
   const result = await hyprlandBlur.setDesktopBlur(enabled);
@@ -11032,9 +7310,7 @@ ipcMain.handle('set-desktop-blur', async (event, enabled) => {
   return { ...result, status: await hyprlandBlur.getDesktopBlurStatus() };
 });
 
-ipcMain.handle('get-desktop-integration', (event) => {
-  if (!authorizeIpcSender(event, 'get-desktop-integration'))
-    return rejectUnauthorizedIpc('get-desktop-integration');
+ipcRoutes.handle('get-desktop-integration', () => {
   return {
     appId: APP_ID,
     version: app.getVersion(),
@@ -11072,9 +7348,7 @@ ipcMain.handle('get-desktop-integration', (event) => {
   };
 });
 
-ipcMain.handle('get-window-state', (event) => {
-  const sender = authorizeIpcSender(event, 'get-window-state');
-  if (!sender) return rejectUnauthorizedIpc('get-window-state');
+ipcRoutes.handle('get-window-state', () => {
   if (isLayerShellChildProcess) return { alwaysOnTop: false, supported: false, layerMode: true };
   // The temporary popup raise is not the user's preference, so report the stored value
   // while it is in effect.
@@ -11084,64 +7358,12 @@ ipcMain.handle('get-window-state', (event) => {
   return { alwaysOnTop: !!(mainWindow && mainWindow.isAlwaysOnTop && mainWindow.isAlwaysOnTop()) };
 });
 
-ipcMain.handle('choose-profile-sync-folder', async (event, provider, currentFolder = '') => {
-  const sender = authorizeIpcSender(event, 'choose-profile-sync-folder');
-  if (!sender) return rejectUnauthorizedIpc('choose-profile-sync-folder');
-  const profileSync = getProfileSyncConfig();
-  const providerToUse = normalizeProfileSyncProvider(provider || profileSync.provider);
-  // The folder in the form, which may not be saved yet, comes before the saved one.
-  const formFolder = typeof currentFolder === 'string' ? currentFolder.trim() : '';
-  const defaultPath = await getDefaultProfileSyncFolderPath(
-    providerToUse,
-    formFolder || path.dirname(profileSync.cloudFilePath)
-  );
-  const resumeAutoHide = windowAutoHide.suspend();
-  let result;
-  try {
-    const dialogOptions = {
-      title: mainT('Choose profile sync folder'),
-      defaultPath,
-      properties: ['openDirectory', 'createDirectory'],
-    };
-    // Parented to the Settings window, like the export and import pickers: a free-floating dialog
-    // can open behind an always-on-top widget on Windows, and is a panel rather than a sheet on macOS.
-    const parent = sender.window && !sender.window.isDestroyed?.() ? sender.window : null;
-    result = await (parent
-      ? dialog.showOpenDialog(parent, dialogOptions)
-      : dialog.showOpenDialog(dialogOptions));
-  } finally {
-    resumeAutoHide();
-  }
-
-  const folderPath = Array.isArray(result.filePaths) ? result.filePaths[0] : '';
-  if (result.canceled || !folderPath) {
-    return { canceled: true };
-  }
-
-  // Folders picked through the native dialog become valid copy destinations;
-  // copy-profile-sync-file rejects destinations the user never selected.
-  profileSyncRuntime.approvedCopyDestinationFolders.push(folderPath);
-  if (
-    profileSyncRuntime.approvedCopyDestinationFolders.length >
-    PROFILE_SYNC_MAX_APPROVED_COPY_FOLDERS
-  ) {
-    profileSyncRuntime.approvedCopyDestinationFolders.shift();
-  }
-
-  const filePath = path.join(folderPath, PROFILE_SYNC_DEFAULT_FILE_NAME);
-  return { canceled: false, folderPath, filePath, provider: providerToUse };
+ipcRoutes.handle('choose-profile-sync-folder', async (sender, provider, currentFolder = '') => {
+  return profileSyncEngine.chooseFolder(provider, currentFolder, sender.window);
 });
 
-ipcMain.handle('copy-profile-sync-file', async (event, fromPath, toPath) => {
-  const sender = authorizeIpcSender(event, 'copy-profile-sync-file');
-  if (!sender) {
-    return rejectUnauthorizedIpc('copy-profile-sync-file', {
-      ok: false,
-      status: 'error',
-      error: 'Unauthorized',
-    });
-  }
-  return copyProfileSyncFile(fromPath, toPath);
+ipcRoutes.handle('copy-profile-sync-file', async (_sender, fromPath, toPath) => {
+  return profileSyncEngine.copySyncFile(fromPath, toPath);
 });
 
 const settingsFileController = createSettingsFileController({
@@ -11151,14 +7373,12 @@ const settingsFileController = createSettingsFileController({
   getConfig: () => config,
   translate: (key) => mainT(key),
   applySections: async (sections) => {
-    await applyLocalProfileSections(sections, { clearNullUiKeys: true });
+    await profileSyncEngine.importSections(sections);
     return { config: sanitizeConfigForRenderer(config) };
   },
 });
 
-ipcMain.handle('export-settings-file', async (event) => {
-  const sender = authorizeIpcSender(event, 'export-settings-file');
-  if (!sender) return rejectUnauthorizedIpc('export-settings-file');
+ipcRoutes.handle('export-settings-file', async (sender) => {
   try {
     return { success: true, ...(await settingsFileController.exportSettings(sender.window)) };
   } catch (error) {
@@ -11166,1171 +7386,102 @@ ipcMain.handle('export-settings-file', async (event) => {
   }
 });
 
-ipcMain.handle('preview-settings-import', async (event) => {
-  const sender = authorizeIpcSender(event, 'preview-settings-import');
-  if (!sender) return rejectUnauthorizedIpc('preview-settings-import');
+ipcRoutes.handle('preview-settings-import', async (sender) => {
   try {
     return {
       success: true,
-      ...(await settingsFileController.previewImport(sender.window, event.sender.id)),
+      ...(await settingsFileController.previewImport(sender.window, sender.webContents.id)),
     };
   } catch (error) {
     return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
   }
 });
 
-ipcMain.handle(
-  'apply-settings-import',
-  serializeConfigMutationHandler(async (event, id) => {
-    const sender = authorizeIpcSender(event, 'apply-settings-import');
-    if (!sender) return rejectUnauthorizedIpc('apply-settings-import');
-    try {
-      return { success: true, ...(await settingsFileController.applyImport(event.sender.id, id)) };
-    } catch (error) {
-      return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
-    }
-  })
-);
-
-ipcMain.handle('get-profile-sync-status', (event) => {
-  const sender = authorizeIpcSender(event, 'get-profile-sync-status');
-  if (!sender) return rejectUnauthorizedIpc('get-profile-sync-status');
-  return buildProfileSyncStatus();
-});
-
-ipcMain.handle('run-profile-sync', async (event, direction = 'auto') => {
-  const sender = authorizeIpcSender(event, 'run-profile-sync');
-  if (!sender) return rejectUnauthorizedIpc('run-profile-sync');
+ipcRoutes.handle('apply-settings-import', async (sender, id) => {
   try {
-    const allowedDirections = new Set(['auto', 'pull', 'push']);
-    const normalizedDirection = allowedDirections.has(direction) ? direction : 'auto';
-    return await runProfileSync(normalizedDirection, 'manual');
+    return {
+      success: true,
+      ...(await settingsFileController.applyImport(sender.webContents.id, id)),
+    };
   } catch (error) {
-    return { ok: false, error: mainTError(error), status: buildProfileSyncStatus() };
+    return { success: false, code: settingsFileErrorCode(error, 'import_failed') };
   }
 });
 
-/**
- * Picks sync up after signing in to Cloud Sync while it is the enabled target.
- * The same account carries on from its shared history; a different or first
- * account is compared with this device the way enabling sync does. A sync-key
- * change waiting for recovery is left to finish first, unless it was the other
- * account's.
- */
-async function startHostedProfileSyncAfterSignIn(previousAccount, account) {
-  // A refusal belonged to the account signed in before; this one may be subscribed.
-  profileSyncRuntime.cloudSyncWriteRefusedAt = 0;
-  const profileSync = getProfileSyncConfig();
-  if (!profileSync.enabled || !isHostedProfileSyncProvider(profileSync.provider)) return;
-  // Signing out left this error behind; it is wrong now whichever way sign-in goes on,
-  // including when a pending key change holds sync back and no run replaces it.
-  if (profileSync.lastSyncError === mainT('Sign in to Cloud Sync to keep syncing')) {
-    profileSync.lastSyncStatus = 'idle';
-    profileSync.lastSyncError = '';
-    saveConfig();
-  }
-  const sameAccount = isSameCloudSyncAccount(previousAccount, account);
-  if (hasProfileSyncCredentialTransitionPending(profileSync)) {
-    // The recovery needs the history it was staged against, so it is kept rather than
-    // compared afresh; Settings shows what is pending, and Sync up resumes it.
-    if (sameAccount) {
-      setupProfileSyncInterval();
-      emitProfileSyncStatus();
-      return 'recovery_pending';
-    }
-    // Those markers name no account, but the work they describe was the other account's:
-    // its file is not this one's, and a staged rewrite refuses to run anywhere else. They
-    // are dropped so they cannot pause, or later be merged into, the account signed in now.
-    profileSync.encryptionChangePending = null;
-    profileSync.passphraseTransition = null;
-    profileSync.passphraseTransitionInvalid = false;
-    profileSync.remoteRewritePending = false;
-  }
-  if (
-    sameAccount &&
-    !profileSync.firstEnableResolutionPending &&
-    Object.keys(profileSync.syncBaseline || {}).length > 0
-  ) {
-    setupProfileSyncInterval();
-    return 'resume';
-  }
-  profileSync.syncBaseline = {};
-  profileSync.firstEnableResolutionPending = true;
-  profileSyncRuntime.needsResolution = false;
-  profileSyncRuntime.pendingRemoteEnvelope = null;
-  profileSyncRuntime.pendingRemoteIdentity = null;
-  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!persistence.success) {
-    throw new Error(mainT('Failed to save settings: {{error}}', { error: persistence.error }));
-  }
-  if (profileSync.encryptionEnabled && !getActiveProfileSyncPassphrase()) {
-    clearProfileSyncTimers();
-    emitProfileSyncStatus();
-    return 'needs_passphrase';
-  }
-  const resolution = await prepareProfileSyncFirstEnableResolution();
-  if (!resolution?.needsResolution) {
-    await completeProfileSyncFirstEnablePreparation('cloud_sign_in');
-  }
-  return 'prepared';
-}
-
-/** Stops syncing to an account this device is no longer signed in to, and says so. */
-function stopHostedProfileSyncAfterSignOut() {
-  const profileSync = getProfileSyncConfig();
-  if (!isHostedProfileSyncProvider(profileSync.provider)) return;
-  clearProfileSyncTimers();
-  profileSyncRuntime.needsResolution = false;
-  profileSyncRuntime.pendingRemoteEnvelope = null;
-  profileSyncRuntime.pendingRemoteIdentity = null;
-  profileSyncRuntime.hostedRevision = null;
-  if (profileSync.enabled) {
-    updateProfileSyncStatus('error', mainT('Sign in to Cloud Sync to keep syncing'));
-  }
-}
-
-function cloudSyncFailure(error) {
-  return {
-    success: false,
-    code: error?.code || '',
-    error: toCloudSyncError(error).message,
-    status: buildProfileSyncStatus(),
-  };
-}
-
-ipcMain.handle('get-cloud-sync-account', async (event) => {
-  const sender = authorizeIpcSender(event, 'get-cloud-sync-account');
-  if (!sender) return rejectUnauthorizedIpc('get-cloud-sync-account');
-  const client = getCloudSyncClient();
-  const result = {
-    success: true,
-    ...getCloudSyncStatus(),
-    providers: [],
-    billingAvailable: false,
-    account: null,
-    error: '',
-  };
-  if (!result.available) return result;
-  try {
-    Object.assign(result, await client.getServiceConfig());
-  } catch (error) {
-    result.error = toCloudSyncError(error).message;
-  }
-  if (result.signedIn) {
-    try {
-      result.account = await client.getAccount();
-      if (result.account?.entitled) resumeCloudSyncWrites();
-    } catch (error) {
-      result.error = toCloudSyncError(error).message;
-      Object.assign(result, getCloudSyncStatus());
-    }
-  }
-  return result;
+ipcRoutes.handle('get-profile-sync-status', () => {
+  return profileSyncEngine.status();
 });
 
-ipcMain.handle('cloud-sync-sign-in', async (event, provider) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-sign-in');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-in');
-  const client = getCloudSyncClient();
-  // The account this device's sync history belongs to: the one signed in now, or the
-  // one signed in before a sign-out or expired session.
-  const previousAccount = client.getStoredAccount() || client.getLastAccount();
-  try {
-    const signingIn = client.signIn(typeof provider === 'string' ? provider : '');
-    emitProfileSyncStatus();
-    const account = await signingIn;
-    try {
-      // Signing out while this waited its turn leaves nothing to start.
-      const next = await runSerializedConfigMutation(() =>
-        client.getStoredAccount()
-          ? startHostedProfileSyncAfterSignIn(previousAccount, account)
-          : null
-      );
-      if (next === 'resume') void runProfileSync('auto', 'cloud_sign_in').catch(() => {});
-    } catch (error) {
-      // Signed in either way; the status line explains why sync did not start.
-      clearProfileSyncTimers();
-      updateProfileSyncStatus('error', error.message);
-    }
-    return { success: true, account, status: buildProfileSyncStatus() };
-  } catch (error) {
-    return cloudSyncFailure(error);
-  } finally {
-    emitProfileSyncStatus();
-  }
+ipcRoutes.handle('run-profile-sync', async (_sender, direction = 'auto') => {
+  return profileSyncEngine.syncNow(direction);
 });
 
-ipcMain.handle('cloud-sync-cancel-sign-in', (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-cancel-sign-in');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-cancel-sign-in');
+ipcRoutes.handle('get-cloud-sync-account', async () => {
+  return profileSyncEngine.cloudAccount();
+});
+
+ipcRoutes.handle('cloud-sync-sign-in', async (_sender, provider) => {
+  return profileSyncEngine.cloudSignIn(provider);
+});
+
+ipcRoutes.handle('cloud-sync-cancel-sign-in', () => {
   getCloudSyncClient().cancelSignIn();
   return { success: true };
 });
 
-ipcMain.handle('cloud-sync-sign-out', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-sign-out');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-sign-out');
-  // Also cancels a sign-in still waiting for the browser, which would sign back in.
-  await getCloudSyncClient().signOut();
-  stopHostedProfileSyncAfterSignOut();
-  emitProfileSyncStatus();
-  return { success: true, status: buildProfileSyncStatus() };
+ipcRoutes.handle('cloud-sync-sign-out', async () => {
+  return profileSyncEngine.cloudSignOut();
 });
 
-ipcMain.handle('cloud-sync-open-billing', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-open-billing');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-open-billing');
-  try {
-    return { success: true, ...(await getCloudSyncClient().openBilling()) };
-  } catch (error) {
-    return cloudSyncFailure(error);
-  }
+ipcRoutes.handle('cloud-sync-open-billing', async () => {
+  return profileSyncEngine.cloudOpenBilling();
 });
 
-ipcMain.handle('cloud-sync-delete-account', async (event) => {
-  const sender = authorizeIpcSender(event, 'cloud-sync-delete-account');
-  if (!sender) return rejectUnauthorizedIpc('cloud-sync-delete-account');
-  try {
-    await getCloudSyncClient().deleteAccount();
-    stopHostedProfileSyncAfterSignOut();
-    return { success: true, status: buildProfileSyncStatus() };
-  } catch (error) {
-    // The service keeps the account when it cannot cancel the subscription first.
-    if (error?.code === 'CLOUD_SYNC_BILLING_UNAVAILABLE') {
-      return {
-        success: false,
-        code: error.code,
-        error: mainT(
-          'Your subscription could not be canceled, so the account was kept. Try again later.'
-        ),
-        status: buildProfileSyncStatus(),
-      };
-    }
-    return cloudSyncFailure(error);
-  } finally {
-    emitProfileSyncStatus();
-  }
+ipcRoutes.handle('cloud-sync-delete-account', async () => {
+  return profileSyncEngine.cloudDeleteAccount();
 });
 
-ipcMain.handle('list-profile-sync-backups', async (event) => {
-  const sender = authorizeIpcSender(event, 'list-profile-sync-backups');
-  if (!sender) return rejectUnauthorizedIpc('list-profile-sync-backups');
-  try {
-    return { success: true, backups: await listProfileSyncBackups() };
-  } catch (error) {
-    return { success: false, error: mainTError(error), backups: [] };
-  }
+ipcRoutes.handle('list-profile-sync-backups', async () => {
+  return profileSyncEngine.listBackups();
 });
 
-ipcMain.handle(
-  'restore-profile-sync-backup',
-  serializeConfigMutationHandler(async (event, id) => {
-    const sender = authorizeIpcSender(event, 'restore-profile-sync-backup');
-    if (!sender) return rejectUnauthorizedIpc('restore-profile-sync-backup');
-    try {
-      const result = await restoreProfileSyncBackup(id);
-      return { success: true, ...result, config: sanitizeConfigForRenderer(config) };
-    } catch (error) {
-      return { success: false, error: mainTError(error) };
-    }
-  })
-);
+ipcRoutes.handle('restore-profile-sync-backup', async (_sender, id) => {
+  return profileSyncEngine.restoreBackup(id);
+});
 
-/*
- * Profile sync encryption, as one state machine.
- *
- * A device holds a committed mode (`encryptionEnabled`, which every routine sync checks
- * the file against), a passphrase (remembered, or kept for the session) and two markers
- * for work in flight: `encryptionChangePending` (Settings asked for a mode that is not
- * committed yet) and `passphraseTransition` (a staged, crash-recoverable rewrite). The
- * file is missing, plain text or encrypted.
- *
- * A Settings save runs update-config, which stores everything except credentials and
- * the mode (a requested mode change is only recorded as pending), then the handler
- * below, which compares the requested mode with the file:
- *
- *   sync was off, or there is no file   commit the mode here; first-enable writes the file
- *   the file is already in that mode    join: prove the passphrase unlocks it (on) or follow
- *                                       it (off); nothing is rewritten
- *   the file is in the other mode       rewrite: merge what differs, stage, write the exact
- *                                       target, promote the new mode and passphrase here
- *   same mode, a different passphrase   rekey: the same rewrite under a new key
- *   same mode, the passphrase only      unlock or remember it
- *
- * Every refusal (no keyring to seal the recovery record with, a missing or wrong
- * passphrase, changes that could not be merged) happens before anything is staged or
- * written. It puts the device back as it was and drops the pending marker, so sync is
- * never left paused behind advice that cannot work. Only a staged rewrite survives a
- * failure, because only then can the file be half changed.
- */
-
-// A request that cannot be carried out. The message is already worded for the user.
-function createProfileSyncRefusal(message) {
-  const error = new Error(message);
-  error.profileSyncRefusal = true;
-  return error;
-}
-
-/**
- * Drops an encryption change that update-config recorded as pending but that could not
- * be carried out, so sync resumes. A staged rewrite is left for recovery.
- */
-async function abandonProfileSyncEncryptionChange() {
-  const profileSync = getProfileSyncConfig();
-  if (
-    typeof profileSync.encryptionChangePending !== 'boolean' ||
-    profileSync.passphraseTransition
-  ) {
-    return;
-  }
-  profileSync.encryptionChangePending = null;
-  const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-  if (!persistence.success) {
-    log.warn('Could not save the dropped encryption change:', persistence.error);
-  }
-  setupProfileSyncInterval();
-  // Edits saved with the request were held back by the pending marker.
-  scheduleDebouncedProfileSyncPush('config_change');
-}
-
-ipcMain.handle(
+ipcRoutes.handle(
   'set-profile-sync-passphrase',
-  serializeConfigMutationHandler(
-    async (event, passphrase, remember = false, desiredEncryptionEnabled = null) => {
-      const sender = authorizeIpcSender(event, 'set-profile-sync-passphrase');
-      if (!sender) return rejectUnauthorizedIpc('set-profile-sync-passphrase');
-      const refuse = async (error) => {
-        await abandonProfileSyncEncryptionChange();
-        return { success: false, error, status: buildProfileSyncStatus() };
-      };
-      try {
-        const candidatePassphrase = typeof passphrase === 'string' ? passphrase.trim() : '';
-        if (
-          candidatePassphrase &&
-          candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH
-        ) {
-          return refuse(
-            mainT('Passphrase must be at least {{count}} characters long', {
-              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-            })
-          );
-        }
-        const profileSync = getProfileSyncConfig();
-
-        if (profileSync.passphraseTransition) {
-          try {
-            await executePendingProfileSyncRewrite();
-          } catch (error) {
-            return {
-              success: false,
-              error: mainT(
-                'Finish the pending sync-key recovery before changing the passphrase: {{error}}',
-                { error: mainTError(error) }
-              ),
-              status: buildProfileSyncStatus(),
-            };
-          }
-        }
-
-        const activePassphrase = getActiveProfileSyncPassphrase();
-        const targetEncryptionEnabled =
-          typeof desiredEncryptionEnabled === 'boolean'
-            ? desiredEncryptionEnabled
-            : typeof profileSync.encryptionChangePending === 'boolean'
-              ? profileSync.encryptionChangePending
-              : profileSync.encryptionEnabled;
-        const effectiveNewPassphrase = candidatePassphrase || activePassphrase;
-        // Giving up on a pending change needs neither a passphrase nor the file.
-        if (
-          typeof desiredEncryptionEnabled === 'boolean' &&
-          typeof profileSync.encryptionChangePending === 'boolean' &&
-          desiredEncryptionEnabled === profileSync.encryptionEnabled
-        ) {
-          const previousPendingTarget = profileSync.encryptionChangePending;
-          profileSync.encryptionChangePending = null;
-          const cancellationPersistence = await saveConfigDurably({
-            allowDebouncedPush: false,
-          });
-          if (!cancellationPersistence.success) {
-            profileSync.encryptionChangePending = previousPendingTarget;
-            return {
-              success: false,
-              error: mainT('Failed to cancel the pending encryption change: {{error}}', {
-                error: cancellationPersistence.error,
-              }),
-              status: buildProfileSyncStatus(),
-            };
-          }
-          setupProfileSyncInterval();
-          if (!candidatePassphrase) {
-            emitProfileSyncStatus();
-            return {
-              success: true,
-              remembered: profileSync.rememberPassphrase,
-              encrypted: profileSync.passphraseEncrypted,
-              status: buildProfileSyncStatus(),
-              config: sanitizeConfigForRenderer(config),
-            };
-          }
-        }
-
-        if (targetEncryptionEnabled && !effectiveNewPassphrase) {
-          return refuse(
-            mainT('Passphrase must be at least {{count}} characters long', {
-              count: PROFILE_SYNC_MIN_PASSPHRASE_LENGTH,
-            })
-          );
-        }
-
-        const remoteResult =
-          profileSync.enabled && hasProfileSyncTarget(profileSync)
-            ? await readConfiguredSyncEnvelope()
-            : { exists: false, envelope: null };
-
-        if (targetEncryptionEnabled !== profileSync.encryptionEnabled) {
-          let localEncryptionCommitPersisted = false;
-          const previous = {
-            encryptionEnabled: profileSync.encryptionEnabled,
-            remoteRewritePending: profileSync.remoteRewritePending,
-            rememberPassphrase: profileSync.rememberPassphrase,
-            passphraseEncrypted: profileSync.passphraseEncrypted,
-            storedPassphrase: profileSync.storedPassphrase,
-            passphraseSession: profileSyncRuntime.passphraseSession,
-            passphraseWarning: profileSyncRuntime.passphraseWarning,
-          };
-          const remoteExists = !!remoteResult.exists && !!remoteResult.envelope;
-          const remoteMatchesTarget =
-            remoteExists &&
-            profileSyncCore.isEnvelopeEncrypted(remoteResult.envelope) === targetEncryptionEnabled;
-          // What decrypts the file as it stands: nothing while it is plain text.
-          const oldPassphrase = profileSync.encryptionEnabled
-            ? candidatePassphrase || activePassphrase
-            : '';
-
-          try {
-            if (profileSync.firstEnableResolutionPending || !remoteExists) {
-              // The first-enable gate prevents either direction from running, so
-              // committing the requested mode and credential locally is safe
-              // until conflict preparation chooses the exact first write.
-              profileSync.encryptionEnabled = targetEncryptionEnabled;
-              profileSync.encryptionChangePending = null;
-              profileSync.remoteRewritePending =
-                !!remoteResult.envelope &&
-                (remoteResult.envelope?.payload?.encrypted === true) !== targetEncryptionEnabled;
-              let persisted = {
-                remembered: profileSync.rememberPassphrase,
-                encrypted: profileSync.passphraseEncrypted,
-              };
-              if (targetEncryptionEnabled) {
-                persisted = persistRememberedProfileSyncPassphrase(
-                  effectiveNewPassphrase,
-                  !!remember
-                );
-              } else {
-                profileSync.rememberPassphrase = false;
-                profileSync.passphraseEncrypted = false;
-                profileSync.storedPassphrase = '';
-                profileSyncRuntime.passphraseSession = '';
-                profileSyncRuntime.passphraseWarning = '';
-                persisted = { remembered: false, encrypted: false };
-              }
-              const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-              if (!persistence.success) {
-                throw new Error(
-                  mainT('Failed to save the requested encryption mode: {{error}}', {
-                    error: persistence.error,
-                  })
-                );
-              }
-              localEncryptionCommitPersisted = true;
-
-              if (profileSync.enabled && profileSync.firstEnableResolutionPending) {
-                const resolution = await prepareProfileSyncFirstEnableResolution();
-                if (!resolution?.needsResolution) {
-                  await completeProfileSyncFirstEnablePreparation('passphrase_first_enable');
-                } else {
-                  clearProfileSyncTimers();
-                }
-              } else if (profileSync.enabled && !remoteResult.exists) {
-                const createResult = await runProfileSyncInternal(
-                  'push',
-                  'encryption_transition_missing',
-                  { expectedRemoteIdentity: 'missing' }
-                );
-                if (createResult?.ok !== true || createResult?.reason === 'remote_changed') {
-                  throw new Error(
-                    createResult?.error ||
-                      createResult?.reason ||
-                      mainT('The missing remote profile could not be created')
-                  );
-                }
-                setupProfileSyncInterval();
-              }
-              emitProfileSyncStatus();
-              return {
-                success: true,
-                ...persisted,
-                status: buildProfileSyncStatus(),
-                config: sanitizeConfigForRenderer(config),
-              };
-            }
-
-            if (remoteMatchesTarget) {
-              // Another computer already put the file in the requested mode, so this one
-              // only follows it. Nothing is rewritten, whatever the old mode was here.
-              const joinPassphrase = candidatePassphrase || activePassphrase;
-              if (targetEncryptionEnabled) {
-                if (!joinPassphrase) {
-                  throw createProfileSyncRefusal(
-                    mainT('Enter the passphrase your other computers use for this sync file.')
-                  );
-                }
-                // Decoding proves the passphrase before anything is stored.
-                await profileSyncCore.decodeEnvelopeSections(remoteResult.envelope, joinPassphrase);
-              }
-              profileSync.encryptionEnabled = targetEncryptionEnabled;
-              profileSync.encryptionChangePending = null;
-              profileSync.remoteRewritePending = false;
-              let persisted = { remembered: false, encrypted: false };
-              if (targetEncryptionEnabled) {
-                persisted = persistRememberedProfileSyncPassphrase(joinPassphrase, !!remember);
-              } else {
-                forgetProfileSyncPassphrase(profileSync);
-              }
-              const persistence = await saveConfigDurably({ allowDebouncedPush: false });
-              if (!persistence.success) {
-                throw new Error(
-                  mainT('Failed to save the requested encryption mode: {{error}}', {
-                    error: persistence.error,
-                  })
-                );
-              }
-              localEncryptionCommitPersisted = true;
-              setupProfileSyncInterval();
-              // Bring this device level with the file now rather than at the next interval.
-              let warning = '';
-              try {
-                await runProfileSyncInternal('auto', 'encryption_join');
-              } catch (error) {
-                warning = mainTError(error);
-              }
-              emitProfileSyncStatus();
-              return {
-                success: true,
-                ...persisted,
-                warning,
-                status: buildProfileSyncStatus(),
-                config: sanitizeConfigForRenderer(config),
-              };
-            }
-
-            // The file is in the other mode, so it has to be rewritten. Every check that
-            // can say no comes first: once a rewrite is staged the file may be half changed.
-            if (!isSecureProfileSyncStorageAvailable(safeStorage, process.platform)) {
-              throw createProfileSyncRefusal(
-                mainT(
-                  'Secure system storage is unavailable, and changing the encryption of an existing sync file needs it. On Linux, start and unlock a keyring such as GNOME Keyring or KWallet, then restart the widget.'
-                )
-              );
-            }
-            if (profileSync.encryptionEnabled && !oldPassphrase) {
-              throw createProfileSyncRefusal(
-                mainT('Enter the current remote passphrase before disabling profile encryption')
-              );
-            }
-            let currentRemote = remoteResult;
-            const { sections: remoteSections } = await decodeRemoteFileWithPassphrase(
-              currentRemote,
-              oldPassphrase
-            );
-            if (!remoteSectionsMatchConfig(remoteSections, config)) {
-              // Settings changed here in the same save, or on another computer since the
-              // last sync. A rewrite must not hide either behind the new mode, so merge first.
-              if (profileSync.encryptionEnabled)
-                profileSyncRuntime.passphraseSession = oldPassphrase;
-              const merged = await runProfileSyncInternal('auto', 'encryption_prepare', {
-                encryptionPrepare: true,
-              });
-              if (merged?.ok !== true) {
-                throw createProfileSyncRefusal(
-                  mainT(
-                    'The remote profile has changes that are not present locally. Sync or resolve them before changing encryption.'
-                  )
-                );
-              }
-              currentRemote = await readConfiguredSyncEnvelope();
-            }
-
-            const targetConfig = {
-              ...config,
-              profileSync: {
-                ...getProfileSyncConfig(),
-                encryptionEnabled: targetEncryptionEnabled,
-                encryptionChangePending: null,
-              },
-            };
-            await stageProfileSyncRewrite({
-              oldPassphrase,
-              newPassphrase: targetEncryptionEnabled ? effectiveNewPassphrase : oldPassphrase,
-              rememberNewPassphrase: !!remember,
-              targetEncryptionEnabled,
-              changeCredential: targetEncryptionEnabled,
-              baselineConfig: config,
-              targetConfig,
-              reason: 'encryption_transition',
-              remoteResult: currentRemote,
-            });
-            const result = await executePendingProfileSyncRewrite();
-            emitProfileSyncStatus();
-            return {
-              success: true,
-              ...result,
-              status: buildProfileSyncStatus(),
-              config: sanitizeConfigForRenderer(config),
-            };
-          } catch (error) {
-            // A merge or rewrite can replace the config, and the profileSync in it.
-            const current = getProfileSyncConfig();
-            if (!current.passphraseTransition && !localEncryptionCommitPersisted) {
-              // Nothing was written: put the device back as it was and drop the request.
-              current.encryptionEnabled = previous.encryptionEnabled;
-              current.remoteRewritePending = previous.remoteRewritePending;
-              current.rememberPassphrase = previous.rememberPassphrase;
-              current.passphraseEncrypted = previous.passphraseEncrypted;
-              current.storedPassphrase = previous.storedPassphrase;
-              profileSyncRuntime.passphraseSession = previous.passphraseSession;
-              profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
-              await abandonProfileSyncEncryptionChange();
-              emitProfileSyncStatus();
-              return {
-                success: false,
-                error: error?.profileSyncRefusal
-                  ? mainTError(error)
-                  : mainT('Cannot change profile encryption safely: {{error}}', {
-                      error: mainTError(error),
-                    }),
-                status: buildProfileSyncStatus(),
-                config: sanitizeConfigForRenderer(config),
-              };
-            }
-            clearProfileSyncTimers();
-            if (localEncryptionCommitPersisted) {
-              setupProfileSyncInterval();
-            }
-            updateProfileSyncStatus('error', mainTError(error));
-            emitProfileSyncStatus();
-            return {
-              success: false,
-              error: mainT('Cannot change profile encryption safely: {{error}}', {
-                error: mainTError(error),
-              }),
-              status: buildProfileSyncStatus(),
-              config: sanitizeConfigForRenderer(config),
-            };
-          }
-        }
-
-        let candidateUnlocksRemote = !remoteResult.exists || !remoteResult.envelope;
-        if (remoteResult.exists && remoteResult.envelope) {
-          try {
-            await decodeRemoteSectionsWithPassphrase(
-              remoteResult,
-              candidatePassphrase || activePassphrase
-            );
-            candidateUnlocksRemote = true;
-          } catch {
-            candidateUnlocksRemote = false;
-          }
-        }
-
-        const passphraseSubmission = classifyProfileSyncPassphraseSubmission({
-          remoteExists: !!remoteResult.exists && !!remoteResult.envelope,
-          remoteEncrypted: remoteResult.envelope?.payload?.encrypted === true,
-          candidateUnlocksRemote,
-          activePassphrase,
-          candidatePassphrase,
-        });
-
-        if (passphraseSubmission === 'rekey') {
-          try {
-            // Prove the current key still owns the exact remote state before
-            // staging a crash-recoverable exact replacement.
-            await stageProfileSyncRewrite({
-              oldPassphrase: activePassphrase,
-              newPassphrase: candidatePassphrase,
-              rememberNewPassphrase: !!remember,
-              targetEncryptionEnabled: true,
-              changeCredential: true,
-              baselineConfig: config,
-              targetConfig: config,
-              reason: 'passphrase_rekey',
-              remoteResult,
-            });
-            const result = await executePendingProfileSyncRewrite();
-            emitProfileSyncStatus();
-            return {
-              success: true,
-              ...result,
-              status: buildProfileSyncStatus(),
-              config: sanitizeConfigForRenderer(config),
-            };
-          } catch (error) {
-            clearProfileSyncTimers();
-            updateProfileSyncStatus('error', mainTError(error));
-            emitProfileSyncStatus();
-            return {
-              success: false,
-              error: mainT('Cannot change the sync passphrase safely: {{error}}', {
-                error: mainTError(error),
-              }),
-              status: buildProfileSyncStatus(),
-              config: sanitizeConfigForRenderer(config),
-            };
-          }
-        }
-
-        if (passphraseSubmission === 'reject') {
-          // This device cannot read the file with what it holds, so say so in the
-          // status too: the toast is gone once Settings closes.
-          const message = mainT(
-            'That passphrase does not unlock the sync file. Enter the passphrase your other computers use.'
-          );
-          updateProfileSyncStatus('error', message);
-          emitProfileSyncStatus();
-          return { success: false, error: message, status: buildProfileSyncStatus() };
-        }
-
-        // The submitted candidate already decrypts the remote (including the
-        // remember=false restart case), matches the active key, or initializes a
-        // missing remote. This is unlock/remember-only, not a rewrite.
-        const previous = {
-          rememberPassphrase: profileSync.rememberPassphrase,
-          passphraseEncrypted: profileSync.passphraseEncrypted,
-          storedPassphrase: profileSync.storedPassphrase,
-          passphraseSession: profileSyncRuntime.passphraseSession,
-          passphraseWarning: profileSyncRuntime.passphraseWarning,
-        };
-        const persisted = persistRememberedProfileSyncPassphrase(
-          candidatePassphrase || activePassphrase,
-          !!remember
-        );
-        const persistence = await saveConfigDurably();
-        if (!persistence.success) {
-          profileSync.rememberPassphrase = previous.rememberPassphrase;
-          profileSync.passphraseEncrypted = previous.passphraseEncrypted;
-          profileSync.storedPassphrase = previous.storedPassphrase;
-          profileSyncRuntime.passphraseSession = previous.passphraseSession;
-          profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
-          emitProfileSyncStatus();
-          return {
-            success: false,
-            error: mainT('Failed to save sync passphrase: {{error}}', { error: persistence.error }),
-            status: buildProfileSyncStatus(),
-          };
-        }
-        let resolutionWarning = '';
-        try {
-          if (profileSync.enabled && profileSync.firstEnableResolutionPending) {
-            const resolution = await prepareProfileSyncFirstEnableResolution();
-            if (!resolution?.needsResolution) {
-              await completeProfileSyncFirstEnablePreparation('passphrase_first_enable');
-            } else {
-              clearProfileSyncTimers();
-            }
-          } else {
-            setupProfileSyncInterval();
-          }
-        } catch (error) {
-          clearProfileSyncTimers();
-          resolutionWarning = mainTError(error);
-          updateProfileSyncStatus('error', resolutionWarning);
-        }
-        emitProfileSyncStatus();
-        return {
-          success: true,
-          ...persisted,
-          warning: resolutionWarning,
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      } catch (error) {
-        return refuse(mainTError(error));
-      }
-    }
-  )
+  async (_sender, passphrase, remember = false, desiredEncryptionEnabled = null) => {
+    return profileSyncEngine.setPassphrase(passphrase, remember, desiredEncryptionEnabled);
+  }
 );
 
-ipcMain.handle(
-  'clear-profile-sync-passphrase',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'clear-profile-sync-passphrase');
-    if (!sender) return rejectUnauthorizedIpc('clear-profile-sync-passphrase');
-    const profileSync = getProfileSyncConfig();
-    if (hasProfileSyncCredentialTransitionPending(profileSync)) {
-      return {
-        success: false,
-        error: mainT(
-          'The passphrase cannot be cleared until the pending encryption change or remote rewrite succeeds'
-        ),
-        status: buildProfileSyncStatus(),
-      };
-    }
-    const previous = {
-      rememberPassphrase: profileSync.rememberPassphrase,
-      passphraseEncrypted: profileSync.passphraseEncrypted,
-      storedPassphrase: profileSync.storedPassphrase,
-      passphraseSession: profileSyncRuntime.passphraseSession,
-      passphraseWarning: profileSyncRuntime.passphraseWarning,
-    };
-    profileSyncRuntime.passphraseSession = '';
-    profileSync.rememberPassphrase = false;
-    profileSync.passphraseEncrypted = false;
-    profileSync.storedPassphrase = '';
-    profileSyncRuntime.passphraseWarning = '';
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      profileSync.rememberPassphrase = previous.rememberPassphrase;
-      profileSync.passphraseEncrypted = previous.passphraseEncrypted;
-      profileSync.storedPassphrase = previous.storedPassphrase;
-      profileSyncRuntime.passphraseSession = previous.passphraseSession;
-      profileSyncRuntime.passphraseWarning = previous.passphraseWarning;
-      emitProfileSyncStatus();
-      return {
-        success: false,
-        error: mainT('Failed to clear sync passphrase: {{error}}', { error: persistence.error }),
-        status: buildProfileSyncStatus(),
-      };
-    }
-    emitProfileSyncStatus();
-    return { success: true, status: buildProfileSyncStatus() };
-  })
-);
+ipcRoutes.handle('clear-profile-sync-passphrase', async () => {
+  return profileSyncEngine.clearPassphrase();
+});
 
-ipcMain.handle(
-  'resolve-profile-sync-first-enable',
-  serializeConfigMutationHandler(async (event, choice) => {
-    const sender = authorizeIpcSender(event, 'resolve-profile-sync-first-enable');
-    if (!sender) return rejectUnauthorizedIpc('resolve-profile-sync-first-enable');
-    if (!PROFILE_SYNC_RESOLUTION_CHOICES.has(choice)) {
-      return {
-        success: false,
-        error: 'Invalid resolution choice',
-        status: buildProfileSyncStatus(),
-      };
-    }
-    const activeProfileSync = getProfileSyncConfig();
-    if (
-      activeProfileSync.passphraseTransition ||
-      typeof activeProfileSync.encryptionChangePending === 'boolean'
-    ) {
-      return {
-        success: false,
-        error: mainT(
-          'Finish the pending encryption or key recovery before resolving this conflict'
-        ),
-        status: buildProfileSyncStatus(),
-      };
-    }
-
-    const previousResolutionState = {
-      needsResolution: profileSyncRuntime.needsResolution,
-      pendingRemoteEnvelope: profileSyncRuntime.pendingRemoteEnvelope,
-      pendingRemoteIdentity: profileSyncRuntime.pendingRemoteIdentity,
-      firstEnableResolutionPending: getProfileSyncConfig().firstEnableResolutionPending,
-    };
-
-    try {
-      if (
-        choice !== 'cancel' &&
-        !profileSyncRuntime.needsResolution &&
-        getProfileSyncConfig().firstEnableResolutionPending
-      ) {
-        const resolution = await prepareProfileSyncFirstEnableResolution();
-        if (!resolution?.needsResolution) {
-          const result = await completeProfileSyncFirstEnablePreparation(
-            'first_enable_resolution_retry'
-          );
-          return {
-            success: true,
-            ...result,
-            status: buildProfileSyncStatus(),
-            config: sanitizeConfigForRenderer(config),
-          };
-        }
-        return {
-          success: false,
-          error: mainT('A remote profile conflict was found. Review it and choose again.'),
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-      if (!profileSyncRuntime.needsResolution && choice !== 'cancel') {
-        return { success: true, status: buildProfileSyncStatus() };
-      }
-
-      if (choice === 'cancel') {
-        const profileSync = getProfileSyncConfig();
-        const previousEnabled = profileSync.enabled;
-        const previousNeedsResolution = profileSyncRuntime.needsResolution;
-        const previousPendingRemoteEnvelope = profileSyncRuntime.pendingRemoteEnvelope;
-        const previousPendingRemoteIdentity = profileSyncRuntime.pendingRemoteIdentity;
-        const previousFirstEnableResolutionPending = profileSync.firstEnableResolutionPending;
-        const previousRemoteRewritePending = profileSync.remoteRewritePending;
-        profileSync.enabled = false;
-        profileSync.firstEnableResolutionPending = false;
-        profileSync.remoteRewritePending = false;
-        profileSyncRuntime.needsResolution = false;
-        profileSyncRuntime.pendingRemoteEnvelope = null;
-        profileSyncRuntime.pendingRemoteIdentity = null;
-        clearProfileSyncTimers();
-        const persistence = await saveConfigDurably();
-        if (!persistence.success) {
-          profileSync.enabled = previousEnabled;
-          profileSync.firstEnableResolutionPending = previousFirstEnableResolutionPending;
-          profileSync.remoteRewritePending = previousRemoteRewritePending;
-          profileSyncRuntime.needsResolution = previousNeedsResolution;
-          profileSyncRuntime.pendingRemoteEnvelope = previousPendingRemoteEnvelope;
-          profileSyncRuntime.pendingRemoteIdentity = previousPendingRemoteIdentity;
-          setupProfileSyncInterval();
-          emitProfileSyncStatus();
-          return {
-            success: false,
-            error: mainT('Failed to save profile sync cancellation: {{error}}', {
-              error: persistence.error,
-            }),
-            status: buildProfileSyncStatus(),
-            config: sanitizeConfigForRenderer(config),
-          };
-        }
-        emitProfileSyncStatus();
-        return {
-          success: true,
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-
-      // The choice covers only the sections the prompt named; sections this
-      // computer already shares a history with keep merging normally. An empty
-      // list (the file changed and no longer conflicts) forces nothing.
-      const chosenSections = [...profileSyncRuntime.conflictSections];
-      const damagedSections = [...profileSyncRuntime.damagedConflictSections];
-      if (choice === 'upload_local' && damagedSections.length > 0) {
-        // Repair the damaged sections only; valid conflicts are then offered again
-        // with both choices instead of being overwritten along with them.
-        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
-        const repair = await runProfileSyncInternal('push', 'first_enable_resolution', {
-          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
-          forceSections: damagedSections,
-          onlySections: damagedSections,
-        });
-        if (repair?.ok !== true || repair?.reason === 'remote_changed') {
-          throw new Error(
-            repair?.reason === 'remote_changed'
-              ? mainT('The remote profile changed during upload; review the conflict and try again')
-              : repair?.error || repair?.reason || mainT('Profile upload did not complete')
-          );
-        }
-        const next = await prepareProfileSyncFirstEnableResolution();
-        const result = next?.needsResolution
-          ? repair
-          : await completeProfileSyncFirstEnablePreparation('first_enable_resolution_retry');
-        return {
-          success: true,
-          ...result,
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-      if (choice === 'upload_local') {
-        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
-        const result = await runProfileSyncInternal('push', 'first_enable_resolution', {
-          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
-          forceSections: chosenSections,
-        });
-        if (result?.ok !== true || result?.reason === 'remote_changed') {
-          throw new Error(
-            result?.reason === 'remote_changed'
-              ? mainT('The remote profile changed during upload; review the conflict and try again')
-              : result?.error || result?.reason || mainT('Profile upload did not complete')
-          );
-        }
-        await clearProfileSyncFirstEnableResolutionPending();
-        profileSyncRuntime.needsResolution = false;
-        profileSyncRuntime.pendingRemoteEnvelope = null;
-        profileSyncRuntime.pendingRemoteIdentity = null;
-        setupProfileSyncInterval();
-        return {
-          success: true,
-          ...result,
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-
-      if (choice === 'use_remote') {
-        const remoteResult = await verifyPendingRemoteEnvelopeUnchanged();
-        if (!remoteResult.envelope) {
-          throw new Error(mainT('Remote profile is no longer available'));
-        }
-        profileSyncRuntime.needsResolution = false;
-        profileSyncRuntime.pendingRemoteEnvelope = null;
-        profileSyncRuntime.pendingRemoteIdentity = null;
-        // A forced pull of the exact file the user reviewed. When an encryption
-        // change is pending, the same run rewrites the file in the new mode.
-        const result = await runProfileSyncInternal('pull', 'first_enable_resolution', {
-          expectedRemoteIdentity: getSyncEnvelopeIdentity(remoteResult),
-          forceSections: chosenSections,
-        });
-        if (result?.ok !== true || result?.reason === 'remote_changed') {
-          throw new Error(
-            result?.reason === 'remote_changed'
-              ? mainT(
-                  'The remote profile changed before encryption could be applied; review it again'
-                )
-              : result?.error || mainT('The accepted remote profile could not be rewritten safely')
-          );
-        }
-        await clearProfileSyncFirstEnableResolutionPending();
-        setupProfileSyncInterval();
-        emitProfileSyncStatus();
-        return {
-          success: true,
-          status: buildProfileSyncStatus(),
-          config: sanitizeConfigForRenderer(config),
-        };
-      }
-    } catch (error) {
-      if (!error?.remoteConflictRefreshed) {
-        profileSyncRuntime.needsResolution = previousResolutionState.needsResolution;
-        profileSyncRuntime.pendingRemoteEnvelope = previousResolutionState.pendingRemoteEnvelope;
-        profileSyncRuntime.pendingRemoteIdentity = previousResolutionState.pendingRemoteIdentity;
-        getProfileSyncConfig().firstEnableResolutionPending =
-          previousResolutionState.firstEnableResolutionPending;
-      }
-      updateProfileSyncStatus('error', mainTError(error));
-      emitProfileSyncStatus();
-      return { success: false, error: mainTError(error), status: buildProfileSyncStatus() };
-    }
-  })
-);
+ipcRoutes.handle('resolve-profile-sync-first-enable', async (_sender, choice) => {
+  return profileSyncEngine.resolveFirstEnable(choice);
+});
 
 // Start at login IPC handlers
-ipcMain.handle('get-login-item-settings', (event) => {
-  const sender = authorizeIpcSender(event, 'get-login-item-settings');
-  if (!sender) return rejectUnauthorizedIpc('get-login-item-settings');
-  if (IS_ISOLATED_PROFILE) return { openAtLogin: false, supported: false };
-  try {
-    if (process.platform === 'win32') {
-      const startupTarget = getWindowsStartupRegistrationTarget();
-      const legacyStartupTarget = getWindowsStartupRegistrationTarget({ quotePath: false });
-      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
-      let openAtLogin = isWindowsLoginItemEnabled(settings, startupTarget.executablePath);
-      let legacySettings = null;
-
-      if (!openAtLogin && legacyStartupTarget.path !== startupTarget.path) {
-        legacySettings = app.getLoginItemSettings(
-          getWindowsStartupLookupOptions(legacyStartupTarget)
-        );
-        openAtLogin = isWindowsLoginItemEnabled(legacySettings, startupTarget.executablePath);
-      }
-
-      log.debug('Login item settings:', { settings, legacySettings });
-      return { openAtLogin, supported: true };
-    }
-
-    if (process.platform === 'linux') {
-      const executablePath = getLinuxStartupExecutablePath(app, process.env);
-      const openAtLogin = isLinuxLoginItemEnabled({
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      return { openAtLogin, supported: true };
-    }
-
-    const settings = app.getLoginItemSettings();
-    const openAtLogin = Boolean(settings.openAtLogin);
-    log.debug('Login item settings:', settings);
-    return { openAtLogin, supported: true };
-  } catch (error) {
-    log.error('Failed to get login item settings:', error);
-    return { openAtLogin: false, supported: false, error: error.message };
-  }
+const loginItem = createLoginItem({
+  app,
+  platform: process.platform,
+  pkg,
+  appName: APP_DISPLAY_NAME,
+  env: process.env,
+  log,
+  isPortableBuild,
+  isolated: IS_ISOLATED_PROFILE,
 });
 
-ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
-  const sender = authorizeIpcSender(event, 'set-login-item-settings');
-  if (!sender) return rejectUnauthorizedIpc('set-login-item-settings');
-  if (IS_ISOLATED_PROFILE)
-    return {
-      success: false,
-      supported: false,
-      error: 'Startup is disabled for an isolated profile',
-    };
-  try {
-    const normalizedOpenAtLogin = !!openAtLogin;
-    if (process.platform === 'linux') {
-      const executablePath = getLinuxStartupExecutablePath(app, process.env);
-      setLinuxLoginItemSettings(normalizedOpenAtLogin, {
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      const confirmedOpenAtLogin = isLinuxLoginItemEnabled({
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
-    }
+ipcRoutes.handle('get-login-item-settings', () => {
+  return loginItem.getSettings();
+});
 
-    const startupTarget = process.platform === 'win32' ? getWindowsStartupRegistrationTarget() : {};
-    const loginItemSettings = {
-      openAtLogin: normalizedOpenAtLogin,
-      ...(process.platform === 'win32'
-        ? {
-            path: startupTarget.path,
-            args: startupTarget.args,
-            name: startupTarget.name,
-          }
-        : startupTarget),
-    };
-
-    if (process.platform === 'win32') {
-      // Keep Windows startup approval in sync with the toggle state.
-      loginItemSettings.enabled = normalizedOpenAtLogin;
-    }
-
-    const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
-    log.info(
-      `Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`,
-      loginItemSettings
-    );
-    app.setLoginItemSettings(loginItemSettings);
-
-    if (process.platform === 'win32') {
-      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
-      const confirmedOpenAtLogin = isWindowsLoginItemEnabled(
-        settings,
-        startupTarget.executablePath
-      );
-      if (confirmedOpenAtLogin !== normalizedOpenAtLogin) {
-        const error = `Windows startup setting did not persist as ${normalizedOpenAtLogin ? 'enabled' : 'disabled'}`;
-        log.warn(error, settings);
-        return { success: false, error, openAtLogin: confirmedOpenAtLogin };
-      }
-      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
-    }
-
-    return { success: true, openAtLogin: normalizedOpenAtLogin, supported: true };
-  } catch (error) {
-    log.error('Failed to set login item settings:', error);
-    return { success: false, error: error.message, supported: false };
-  }
+ipcRoutes.handle('set-login-item-settings', (_sender, openAtLogin) => {
+  return loginItem.setOpenAtLogin(openAtLogin);
 });
 
 async function restartApplication() {
@@ -12366,9 +7517,7 @@ async function restartApplication() {
   app.exit(0);
 }
 
-ipcMain.handle('restart-app', async (event) => {
-  const sender = authorizeIpcSender(event, 'restart-app');
-  if (!sender) return rejectUnauthorizedIpc('restart-app');
+ipcRoutes.handle('restart-app', async () => {
   try {
     await restartApplication();
     return { success: true };
@@ -12423,45 +7572,33 @@ function minimizeMainWindow() {
   }
 }
 
-ipcMain.handle('minimize-window', (event) => {
-  const sender = authorizeIpcSender(event, 'minimize-window');
-  if (!sender) return rejectUnauthorizedIpc('minimize-window');
+ipcRoutes.handle('minimize-window', () => {
   minimizeMainWindow();
 });
 
 // The title bar's X. It closes the window exactly as Alt+F4 and Cmd+W do, so the window's own close
 // handler decides what that means (hide to the tray, or whatever that handler does on this
 // platform) and the app keeps running. Quitting stays with the tray menu and the app menu.
-ipcMain.handle('close-window', (event) => {
-  const sender = authorizeIpcSender(event, 'close-window');
-  if (!sender) return rejectUnauthorizedIpc('close-window');
+ipcRoutes.handle('close-window', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 // A click on one of the widget's desktop notifications. Shows it the way the tray does, which
 // also brings back a widget hidden to the tray and keeps a desktop-layer widget raised.
-ipcMain.handle('show-window', (event) => {
-  const sender = authorizeIpcSender(event, 'show-window');
-  if (!sender) return rejectUnauthorizedIpc('show-window');
+ipcRoutes.handle('show-window', () => {
   return showMainWindowFromTray();
 });
 
-ipcMain.handle('focus-window', (event) => {
-  const sender = authorizeIpcSender(event, 'focus-window');
-  if (!sender) return rejectUnauthorizedIpc('focus-window');
+ipcRoutes.handle('focus-window', () => {
   return focusMainWindow();
 });
 
-ipcMain.handle('focus-desktop-pin', (event, entityId) => {
-  const sender = authorizeIpcSender(event, 'focus-desktop-pin');
-  if (!sender) return rejectUnauthorizedIpc('focus-desktop-pin');
+ipcRoutes.handle('focus-desktop-pin', (_sender, entityId) => {
   return focusDesktopPinWindow(normalizeEntityId(entityId));
 });
 
 // Updates IPC
-ipcMain.handle('check-for-updates', async (event, options) => {
-  const sender = authorizeIpcSender(event, 'check-for-updates');
-  if (!sender) return rejectUnauthorizedIpc('check-for-updates');
+ipcRoutes.handle('check-for-updates', async (_sender, options) => {
   // The window asks about the channel as its switch shows it, which Save may not have stored yet.
   const allowPrerelease =
     typeof options?.allowPrerelease === 'boolean' ? options.allowPrerelease : undefined;
@@ -12546,9 +7683,7 @@ async function runTrayUpdateCheck() {
   }
 }
 
-ipcMain.handle('quit-and-install', async (event) => {
-  const sender = authorizeIpcSender(event, 'quit-and-install');
-  if (!sender) return rejectUnauthorizedIpc('quit-and-install');
+ipcRoutes.handle('quit-and-install', async () => {
   if (!app.isPackaged) {
     return { success: false, error: 'Update install is only available in packaged builds' };
   }
@@ -12576,9 +7711,8 @@ ipcMain.handle('quit-and-install', async (event) => {
       quitFinalized = false;
       quitFinalizationStarted = false;
       isQuitting = false;
-      configMutationQueueClosed = false;
-      configShutdownPending = false;
-      setupProfileSyncInterval();
+      configStore.reopen();
+      profileSyncEngine.resume();
     };
     // electron-updater reports installer failures through events, including errors
     // emitted after quitAndInstall returns. Recover only this prepared install,
@@ -12606,16 +7740,12 @@ ipcMain.handle('quit-and-install', async (event) => {
 });
 
 // Handle quit request from renderer
-ipcMain.handle('quit-app', (event) => {
-  const sender = authorizeIpcSender(event, 'quit-app');
-  if (!sender) return rejectUnauthorizedIpc('quit-app');
+ipcRoutes.handle('quit-app', () => {
   isQuitting = true;
   app.quit();
 });
 
-ipcMain.handle('get-app-version', (event) => {
-  const sender = authorizeIpcSender(event, 'get-app-version');
-  if (!sender) return rejectUnauthorizedIpc('get-app-version');
+ipcRoutes.handle('get-app-version', () => {
   return app.getVersion();
 });
 
@@ -12646,16 +7776,12 @@ function describeOperatingSystem() {
   return info;
 }
 
-ipcMain.handle('get-os-info', (event) => {
-  const sender = authorizeIpcSender(event, 'get-os-info');
-  if (!sender) return rejectUnauthorizedIpc('get-os-info');
+ipcRoutes.handle('get-os-info', () => {
   return describeOperatingSystem();
 });
 
 // Log file viewer functionality
-ipcMain.handle('open-logs', async (event) => {
-  const sender = authorizeIpcSender(event, 'open-logs');
-  if (!sender) return rejectUnauthorizedIpc('open-logs');
+ipcRoutes.handle('open-logs', async () => {
   try {
     let logFilePath = null;
     try {
@@ -12693,9 +7819,7 @@ ipcMain.handle('open-logs', async (event) => {
   }
 });
 
-ipcMain.handle('open-external', async (event, url) => {
-  const sender = authorizeIpcSender(event, 'open-external');
-  if (!sender) return rejectUnauthorizedIpc('open-external');
+ipcRoutes.handle('open-external', async (_sender, url) => {
   try {
     if (!url || typeof url !== 'string') {
       return { success: false, error: 'Invalid URL' };
@@ -12725,9 +7849,7 @@ function getCardDonationFlow() {
 
 // Card donations for people without a GitHub account: Stripe's checkout opens in a window of the
 // app's own (see src/card-donation.cjs) and this resolves once it is paid, cancelled or closed.
-ipcMain.handle('start-card-donation', async (event, request) => {
-  const sender = authorizeIpcSender(event, 'start-card-donation');
-  if (!sender) return rejectUnauthorizedIpc('start-card-donation', { status: 'failed' });
+ipcRoutes.handle('start-card-donation', async (_sender, request) => {
   const flow = getCardDonationFlow();
   if (flow.isBusy()) {
     flow.focus();
@@ -12762,9 +7884,7 @@ ipcMain.handle('start-card-donation', async (event, request) => {
 // The renderer's own clipboard permission stays denied (see session-permissions.cjs); copy
 // buttons go through this narrow, main-window-only channel instead.
 const MAX_CLIPBOARD_TEXT_LENGTH = 256 * 1024;
-ipcMain.handle('write-clipboard-text', async (event, text) => {
-  const sender = authorizeIpcSender(event, 'write-clipboard-text');
-  if (!sender) return rejectUnauthorizedIpc('write-clipboard-text');
+ipcRoutes.handle('write-clipboard-text', async (_sender, text) => {
   if (typeof text !== 'string' || text.length > MAX_CLIPBOARD_TEXT_LENGTH) {
     return { success: false, error: 'Invalid clipboard text' };
   }
@@ -12777,9 +7897,7 @@ ipcMain.handle('write-clipboard-text', async (event, text) => {
   }
 });
 
-ipcMain.handle('debug-log', (event, payload) => {
-  const sender = authorizeIpcSender(event, 'debug-log', { allowDesktopPin: true });
-  if (!sender) return rejectUnauthorizedIpc('debug-log');
+ipcRoutes.handle('debug-log', (_sender, payload) => {
   try {
     // Renderer text goes on one line of its own, so it cannot forge other log entries.
     const singleLine = (value, maxLength) =>
@@ -12823,106 +7941,76 @@ ipcMain.handle('debug-log', (event, payload) => {
 });
 
 // Global Hotkey IPC Handlers
-ipcMain.handle(
-  'register-hotkey',
-  serializeConfigMutationHandler(async (event, entityId, hotkey, action) => {
-    const sender = authorizeIpcSender(event, 'register-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('register-hotkey');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
+ipcRoutes.handle('register-hotkey', async (_sender, entityId, hotkey, action) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  // A hotkey on any other domain would be a shortcut that does nothing.
+  if (!supportsEntityHotkey(normalizedEntityId)) {
+    return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
+  }
+
+  if (!validateHotkey(hotkey)) {
+    return {
+      success: false,
+      error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
+    };
+  }
+
+  if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
+    return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
+  }
+
+  // Check for conflicts with existing hotkeys first
+  // Handle both string (legacy) and object (new) formats
+  const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
+
+  if (existingEntity) {
+    return hotkeyConflictResult(existingEntity[0]);
+  }
+
+  if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+
+  const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+  config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
+  // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
+  // copies into their Hyprland config, so the renderer must not say the hotkey is set.
+  let requiresCompositorBinding = false;
+
+  // Only register if hotkeys are enabled
+  if (config.globalHotkeys.enabled) {
+    const registrationResult = portalShortcutsActive
+      ? await syncPortalShortcuts({ immediate: true })
+      : registerGlobalHotkeys();
+    const portalBinding = registrationResult?.bound?.find(
+      (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
+    );
+    requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
+    let registered = portalShortcutsActive
+      ? registrationResult.success && isPortalBindingRegistered(portalBinding)
+      : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
+
+    // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
+    // approval) must not hard-fail where X grabs would work: engage the session
+    // fallback, which re-registers every configured hotkey including the
+    // candidate this handler already wrote into config.
+    if (
+      !registered &&
+      portalShortcutsActive &&
+      deactivatePortalShortcutsForLegacyFallback(
+        `The desktop portal did not assign a trigger for hotkey ${hotkey}.`
+      )
+    ) {
+      registered = globalShortcut.isRegistered(hotkey);
     }
-    // A hotkey on any other domain would be a shortcut that does nothing.
-    if (!supportsEntityHotkey(normalizedEntityId)) {
-      return { success: false, error: mainT('Hotkeys cannot control this kind of entity') };
-    }
 
-    if (!validateHotkey(hotkey)) {
-      return {
-        success: false,
-        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
-      };
-    }
-
-    if (acceleratorsConflict(config.popupHotkey, hotkey, process.platform)) {
-      return { success: false, error: mainT('Hotkey already assigned to the popup trigger') };
-    }
-
-    // Check for conflicts with existing hotkeys first
-    // Handle both string (legacy) and object (new) formats
-    const existingEntity = findConfiguredEntityHotkey(hotkey, normalizedEntityId);
-
-    if (existingEntity) {
-      return hotkeyConflictResult(existingEntity[0]);
-    }
-
-    if (config.globalHotkeys.enabled && usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-
-    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
-    config.globalHotkeys.hotkeys[normalizedEntityId] = { hotkey, action };
-    // On Hyprland the portal only registers a shortcut target; the key itself is a bind the user
-    // copies into their Hyprland config, so the renderer must not say the hotkey is set.
-    let requiresCompositorBinding = false;
-
-    // Only register if hotkeys are enabled
-    if (config.globalHotkeys.enabled) {
-      const registrationResult = portalShortcutsActive
-        ? await syncPortalShortcuts({ immediate: true })
-        : registerGlobalHotkeys();
-      const portalBinding = registrationResult?.bound?.find(
-        (entry) => entry.id === PORTAL_ENTITY_SHORTCUT_PREFIX + normalizedEntityId
+    if (!registered) {
+      log.warn(
+        `Failed to register hotkey: ${hotkey}. It might be in use or unapproved by the desktop.`
       );
-      requiresCompositorBinding = portalBinding?.requiresCompositorBinding === true;
-      let registered = portalShortcutsActive
-        ? registrationResult.success && isPortalBindingRegistered(portalBinding)
-        : hasLegacyGlobalShortcutFallback && globalShortcut.isRegistered(hotkey);
-
-      // A trigger-less portal bind at runtime (first hotkey ever, or a dismissed
-      // approval) must not hard-fail where X grabs would work: engage the session
-      // fallback, which re-registers every configured hotkey including the
-      // candidate this handler already wrote into config.
-      if (
-        !registered &&
-        portalShortcutsActive &&
-        deactivatePortalShortcutsForLegacyFallback(
-          `The desktop portal did not assign a trigger for hotkey ${hotkey}.`
-        )
-      ) {
-        registered = globalShortcut.isRegistered(hotkey);
-      }
-
-      if (!registered) {
-        log.warn(
-          `Failed to register hotkey: ${hotkey}. It might be in use or unapproved by the desktop.`
-        );
-        if (previousHotkey === undefined) {
-          delete config.globalHotkeys.hotkeys[normalizedEntityId];
-        } else {
-          config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
-        }
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-        );
-        const rollbackWarning =
-          rollbackResult?.success === false
-            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-            : '';
-        return {
-          success: false,
-          error: withRollbackWarning(
-            registrationResult?.error ||
-              mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
-            rollbackWarning
-          ),
-          rollbackWarning,
-        };
-      }
-    }
-
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
       if (previousHotkey === undefined) {
         delete config.globalHotkeys.hotkeys[normalizedEntityId];
       } else {
@@ -12938,80 +8026,98 @@ ipcMain.handle(
       return {
         success: false,
         error: withRollbackWarning(
-          mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+          registrationResult?.error ||
+            mainT('Hotkey is in use, unsupported, or was not approved by the desktop'),
           rollbackWarning
         ),
         rollbackWarning,
       };
     }
+  }
 
-    return {
-      success: true,
-      backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
-      requiresCompositorBinding,
-    };
-  })
-);
-
-ipcMain.handle(
-  'unregister-hotkey',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'unregister-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('unregister-hotkey');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
-    delete config.globalHotkeys.hotkeys[normalizedEntityId];
-    let registrationResult;
-    if (portalShortcutsActive && portalShortcutsController) {
-      // Close the prior portal session first so this target is removed even if an
-      // unrelated remaining accelerator cannot be rebound afterwards.
-      await portalShortcutsController.syncShortcuts([]);
-      registrationResult = await syncPortalShortcuts({ immediate: true });
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    if (previousHotkey === undefined) {
+      delete config.globalHotkeys.hotkeys[normalizedEntityId];
     } else {
-      registrationResult = await Promise.resolve(registerGlobalHotkeys());
+      config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
     }
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      if (previousHotkey !== undefined) {
-        config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-        );
-        const rollbackWarning =
-          rollbackResult?.success === false
-            ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-            : '';
-        return {
-          success: false,
-          error: withRollbackWarning(
-            mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
-            rollbackWarning
-          ),
-          rollbackWarning,
-        };
-      }
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save hotkey: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+
+  return {
+    success: true,
+    backend: portalShortcutsActive ? PORTAL_SHORTCUTS_BACKEND : 'globalShortcut',
+    requiresCompositorBinding,
+  };
+});
+
+ipcRoutes.handle('unregister-hotkey', async (_sender, entityId) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const previousHotkey = config.globalHotkeys.hotkeys[normalizedEntityId];
+  delete config.globalHotkeys.hotkeys[normalizedEntityId];
+  let registrationResult;
+  if (portalShortcutsActive && portalShortcutsController) {
+    // Close the prior portal session first so this target is removed even if an
+    // unrelated remaining accelerator cannot be rebound afterwards.
+    await portalShortcutsController.syncShortcuts([]);
+    registrationResult = await syncPortalShortcuts({ immediate: true });
+  } else {
+    registrationResult = await Promise.resolve(registerGlobalHotkeys());
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    if (previousHotkey !== undefined) {
+      config.globalHotkeys.hotkeys[normalizedEntityId] = previousHotkey;
+      const rollbackResult = await Promise.resolve(
+        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+      );
+      const rollbackWarning =
+        rollbackResult?.success === false
+          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+          : '';
       return {
         success: false,
-        error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+        error: withRollbackWarning(
+          mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
+          rollbackWarning
+        ),
+        rollbackWarning,
       };
     }
     return {
-      success: true,
-      warning:
-        registrationResult?.success === false
-          ? registrationResult.error ||
-            mainT('The hotkey was removed, but another shortcut could not be activated')
-          : '',
+      success: false,
+      error: mainT('Failed to save hotkey removal: {{error}}', { error: persistence.error }),
     };
-  })
-);
+  }
+  return {
+    success: true,
+    warning:
+      registrationResult?.success === false
+        ? registrationResult.error ||
+          mainT('The hotkey was removed, but another shortcut could not be activated')
+        : '',
+  };
+});
 
-ipcMain.handle('register-hotkeys', async (event) => {
-  const sender = authorizeIpcSender(event, 'register-hotkeys');
-  if (!sender) return rejectUnauthorizedIpc('register-hotkeys');
+ipcRoutes.handle('register-hotkeys', async () => {
   if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
   }
@@ -13025,9 +8131,7 @@ ipcMain.handle('register-hotkeys', async (event) => {
 // DEPRECATED: Use 'update-config' instead for safer config merging
 // Whole-config replacement cannot preserve main-owned sync gates or encrypted
 // secrets from a sanitized renderer snapshot, so it is intentionally rejected.
-ipcMain.handle('save-config', (event) => {
-  const sender = authorizeIpcSender(event, 'save-config');
-  if (!sender) return rejectUnauthorizedIpc('save-config');
+ipcRoutes.handle('save-config', () => {
   return {
     success: false,
     error: 'save-config is no longer supported; use update-config',
@@ -13035,368 +8139,326 @@ ipcMain.handle('save-config', (event) => {
   };
 });
 
-ipcMain.handle(
-  'toggle-hotkeys',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'toggle-hotkeys');
-    if (!sender) return rejectUnauthorizedIpc('toggle-hotkeys');
-    if (enabled && usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-    const previousEnabled = !!config.globalHotkeys.enabled;
-    config.globalHotkeys.enabled = !!enabled;
+ipcRoutes.handle('toggle-hotkeys', async (_sender, enabled) => {
+  if (enabled && usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+  const previousEnabled = !!config.globalHotkeys.enabled;
+  config.globalHotkeys.enabled = !!enabled;
 
-    let registrationResult;
-    if (config.globalHotkeys.enabled) {
-      registrationResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
+  let registrationResult;
+  if (config.globalHotkeys.enabled) {
+    registrationResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+  } else {
+    unregisterGlobalHotkeys();
+    if (portalShortcutsActive && portalShortcutsController) {
+      await portalShortcutsController.syncShortcuts([]);
+      registrationResult = await syncPortalShortcuts({ immediate: true });
     } else {
-      unregisterGlobalHotkeys();
-      if (portalShortcutsActive && portalShortcutsController) {
-        await portalShortcutsController.syncShortcuts([]);
-        registrationResult = await syncPortalShortcuts({ immediate: true });
-      } else {
-        registrationResult = { success: true };
-      }
+      registrationResult = { success: true };
     }
+  }
 
-    if (registrationResult?.success === false && config.globalHotkeys.enabled) {
-      config.globalHotkeys.enabled = previousEnabled;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-          : '';
-      return {
-        ...registrationResult,
-        error: withRollbackWarning(
-          registrationResult.error || mainT('Failed to activate global hotkeys'),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.globalHotkeys.enabled = previousEnabled;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
+  if (registrationResult?.success === false && config.globalHotkeys.enabled) {
+    config.globalHotkeys.enabled = previousEnabled;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
     return {
-      success: true,
-      warning:
-        registrationResult?.success === false
-          ? registrationResult.error ||
-            mainT('Global hotkeys were disabled, but another shortcut could not be activated')
-          : '',
+      ...registrationResult,
+      error: withRollbackWarning(
+        registrationResult.error || mainT('Failed to activate global hotkeys'),
+        rollbackWarning
+      ),
+      rollbackWarning,
     };
-  })
-);
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.globalHotkeys.enabled = previousEnabled;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerGlobalHotkeys()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('Previous hotkey bindings could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save hotkey setting: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return {
+    success: true,
+    warning:
+      registrationResult?.success === false
+        ? registrationResult.error ||
+          mainT('Global hotkeys were disabled, but another shortcut could not be activated')
+        : '',
+  };
+});
 
-ipcMain.handle('validate-hotkey', (event, hotkey) => {
-  const sender = authorizeIpcSender(event, 'validate-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('validate-hotkey');
+ipcRoutes.handle('validate-hotkey', (_sender, hotkey) => {
   return { valid: validateHotkey(hotkey) };
 });
 
 // Entity Alert IPC Handlers
-ipcMain.handle(
-  'set-entity-alert',
-  serializeConfigMutationHandler(async (event, entityId, alertConfig) => {
-    const sender = authorizeIpcSender(event, 'set-entity-alert');
-    if (!sender) return rejectUnauthorizedIpc('set-entity-alert');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const previousAlert = config.entityAlerts.alerts[normalizedEntityId];
-    config.entityAlerts.alerts[normalizedEntityId] = alertConfig;
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      if (previousAlert === undefined) {
-        delete config.entityAlerts.alerts[normalizedEntityId];
-      } else {
-        config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
-      }
-      return {
-        success: false,
-        error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('set-entity-alert', async (_sender, entityId, alertConfig) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.alerts[normalizedEntityId] = alertConfig;
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
-ipcMain.handle(
-  'remove-entity-alert',
-  serializeConfigMutationHandler(async (event, entityId) => {
-    const sender = authorizeIpcSender(event, 'remove-entity-alert');
-    if (!sender) return rejectUnauthorizedIpc('remove-entity-alert');
-    const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
-    if (!normalizedEntityId) {
-      return { success: false, error: 'Invalid entity ID' };
-    }
-    const previousAlert = config.entityAlerts.alerts[normalizedEntityId];
-    delete config.entityAlerts.alerts[normalizedEntityId];
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      if (previousAlert !== undefined) {
-        config.entityAlerts.alerts[normalizedEntityId] = previousAlert;
-      }
-      return {
-        success: false,
-        error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('remove-entity-alert', async (_sender, entityId) => {
+  const normalizedEntityId = normalizeIpcEntityIdForKey(entityId);
+  if (!normalizedEntityId) {
+    return { success: false, error: 'Invalid entity ID' };
+  }
+  const persistence = await configStore.apply(
+    (current) => {
+      delete current.entityAlerts.alerts[normalizedEntityId];
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to remove alert: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
-ipcMain.handle(
-  'toggle-alerts',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'toggle-alerts');
-    if (!sender) return rejectUnauthorizedIpc('toggle-alerts');
-    const previousEnabled = !!config.entityAlerts.enabled;
-    config.entityAlerts.enabled = !!enabled;
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.entityAlerts.enabled = previousEnabled;
-      return {
-        success: false,
-        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
-      };
-    }
-    setupEntityAlerts();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('toggle-alerts', async (_sender, enabled) => {
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.enabled = !!enabled;
+    },
+    { origin: 'local' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+    };
+  }
+  setupEntityAlerts();
+  return { success: true };
+});
 
 // Whether Home Assistant's own notifications also show as desktop notifications. They are not entity
 // alerts, so this has its own switch, which works with entity alerts off.
-ipcMain.handle(
-  'set-persistent-notification-toasts',
-  serializeConfigMutationHandler(async (event, enabled) => {
-    const sender = authorizeIpcSender(event, 'set-persistent-notification-toasts');
-    if (!sender) return rejectUnauthorizedIpc('set-persistent-notification-toasts');
-    const previous = config.entityAlerts.persistentNotifications !== false;
-    config.entityAlerts.persistentNotifications = !!enabled;
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.entityAlerts.persistentNotifications = previous;
-      return {
-        success: false,
-        error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
-      };
-    }
-    pushConfigToRenderer();
-    return { success: true };
-  })
-);
+ipcRoutes.handle('set-persistent-notification-toasts', async (_sender, enabled) => {
+  const persistence = await configStore.apply(
+    (current) => {
+      current.entityAlerts.persistentNotifications = !!enabled;
+    },
+    { origin: 'renderer-setting' }
+  );
+  if (!persistence.success) {
+    return {
+      success: false,
+      error: mainT('Failed to save alert setting: {{error}}', { error: persistence.error }),
+    };
+  }
+  return { success: true };
+});
 
 // Popup Hotkey IPC Handlers
-ipcMain.handle(
-  'register-popup-hotkey',
-  serializeConfigMutationHandler(async (event, hotkey) => {
-    const sender = authorizeIpcSender(event, 'register-popup-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('register-popup-hotkey');
-    if (usesPortalGlobalShortcuts) {
-      await ensurePortalShortcutsBackendInitialized();
-    }
-    if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
-      return {
-        success: false,
-        error: mainT(
-          'The desktop does not provide the Global Shortcuts portal required on Wayland'
-        ),
-      };
-    }
-    if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
-      return {
-        success: false,
-        error: mainT('Popup hotkey feature is not available on this platform'),
-      };
-    }
+ipcRoutes.handle('register-popup-hotkey', async (_sender, hotkey) => {
+  if (usesPortalGlobalShortcuts) {
+    await ensurePortalShortcutsBackendInitialized();
+  }
+  if (!hasLegacyGlobalShortcutFallback && !portalShortcutsActive) {
+    return {
+      success: false,
+      error: mainT('The desktop does not provide the Global Shortcuts portal required on Wayland'),
+    };
+  }
+  if (!usesLinuxPopupHotkeyBackend && !uiohookAvailable) {
+    return {
+      success: false,
+      error: mainT('Popup hotkey feature is not available on this platform'),
+    };
+  }
 
-    // Validate the hotkey
-    if (!validateHotkey(hotkey)) {
-      return {
-        success: false,
-        error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
-      };
-    }
+  // Validate the hotkey
+  if (!validateHotkey(hotkey)) {
+    return {
+      success: false,
+      error: mainT('Invalid hotkey format or conflicts with common system shortcuts'),
+    };
+  }
 
-    const conflictingEntity = findConfiguredEntityHotkey(hotkey);
-    if (conflictingEntity) {
-      return hotkeyConflictResult(conflictingEntity[0]);
-    }
+  const conflictingEntity = findConfiguredEntityHotkey(hotkey);
+  if (conflictingEntity) {
+    return hotkeyConflictResult(conflictingEntity[0]);
+  }
 
-    // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
-    // launch only checks, so a denied app is not asked again every time it starts.
-    if (!usesLinuxPopupHotkeyBackend) {
-      isAccessibilityGranted({ systemPreferences, prompt: true });
-    }
+  // Setting a hotkey is the one moment macOS may show its Accessibility prompt; registering at
+  // launch only checks, so a denied app is not asked again every time it starts.
+  if (!usesLinuxPopupHotkeyBackend) {
+    isAccessibilityGranted({ systemPreferences, prompt: true });
+  }
 
-    const previousHotkey = config.popupHotkey || '';
+  const previousHotkey = config.popupHotkey || '';
+  if (!portalShortcutsActive) {
+    unregisterPopupHotkey();
+  }
+  config.popupHotkey = hotkey;
+  let registrationResult = await Promise.resolve(
+    portalShortcutsActive
+      ? syncPortalShortcuts({ immediate: true }).then((result) => {
+          if (!result.success) return result;
+          const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
+          return isPortalBindingRegistered(binding)
+            ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
+            : {
+                success: false,
+                backend: PORTAL_SHORTCUTS_BACKEND,
+                error: mainT(
+                  "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
+                ),
+              };
+        })
+      : registerPopupHotkey()
+  );
+
+  // Same runtime fallback as entity hotkeys: a portal that will not assign a popup
+  // trigger must not hard-fail while X grabs can serve it.
+  if (
+    !registrationResult.success &&
+    registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
+    deactivatePortalShortcutsForLegacyFallback(
+      'The desktop portal did not assign the popup hotkey.'
+    )
+  ) {
+    registrationResult = await Promise.resolve(registerPopupHotkey());
+  }
+
+  if (!registrationResult.success) {
     if (!portalShortcutsActive) {
-      unregisterPopupHotkey();
+      // A native backend can fail after partially attaching listeners. Always
+      // tear down the candidate before restoring (or clearing) the preference.
+      await Promise.resolve(unregisterPopupHotkey());
     }
-    config.popupHotkey = hotkey;
-    let registrationResult = await Promise.resolve(
-      portalShortcutsActive
-        ? syncPortalShortcuts({ immediate: true }).then((result) => {
-            if (!result.success) return result;
-            const binding = result.bound.find((entry) => entry.id === PORTAL_POPUP_SHORTCUT_ID);
-            return isPortalBindingRegistered(binding)
-              ? { success: true, backend: PORTAL_SHORTCUTS_BACKEND, binding }
-              : {
-                  success: false,
-                  backend: PORTAL_SHORTCUTS_BACKEND,
-                  error: mainT(
-                    "The desktop portal did not assign the popup hotkey. Assign it in your system's shortcut settings."
-                  ),
-                };
-          })
-        : registerPopupHotkey()
-    );
-
-    // Same runtime fallback as entity hotkeys: a portal that will not assign a popup
-    // trigger must not hard-fail while X grabs can serve it.
-    if (
-      !registrationResult.success &&
-      registrationResult.backend === PORTAL_SHORTCUTS_BACKEND &&
-      deactivatePortalShortcutsForLegacyFallback(
-        'The desktop portal did not assign the popup hotkey.'
-      )
-    ) {
-      registrationResult = await Promise.resolve(registerPopupHotkey());
-    }
-
-    if (!registrationResult.success) {
-      if (!portalShortcutsActive) {
-        // A native backend can fail after partially attaching listeners. Always
-        // tear down the candidate before restoring (or clearing) the preference.
-        await Promise.resolve(unregisterPopupHotkey());
-      }
-      config.popupHotkey = previousHotkey;
-      let rollbackWarning = '';
-      if (previousHotkey) {
-        const rollbackResult = await Promise.resolve(
-          portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
-        );
-        if (!rollbackResult.success) {
-          log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
-          rollbackWarning =
-            rollbackResult.error || mainT('The previous popup hotkey could not be restored');
-        }
-      }
-      return {
-        ...registrationResult,
-        error: withRollbackWarning(
-          registrationResult.error || mainT('Failed to register popup hotkey'),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.popupHotkey = previousHotkey;
+    config.popupHotkey = previousHotkey;
+    let rollbackWarning = '';
+    if (previousHotkey) {
       const rollbackResult = await Promise.resolve(
         portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
       );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
-    }
-    return registrationResult;
-  })
-);
-
-ipcMain.handle(
-  'unregister-popup-hotkey',
-  serializeConfigMutationHandler(async (event) => {
-    const sender = authorizeIpcSender(event, 'unregister-popup-hotkey');
-    if (!sender) return rejectUnauthorizedIpc('unregister-popup-hotkey');
-    const previousHotkey = config.popupHotkey || '';
-    config.popupHotkey = '';
-    let unregisterResult;
-    if (portalShortcutsActive && portalShortcutsController) {
-      // Close the old session first so the removed popup target cannot survive an
-      // unrelated failure while rebinding entity shortcuts.
-      await portalShortcutsController.syncShortcuts([]);
-      unregisterResult = await syncPortalShortcuts({ immediate: true });
-    } else {
-      unregisterResult = await Promise.resolve(unregisterPopupHotkey());
-    }
-    const persistence = await saveConfigDurably();
-    if (!persistence.success) {
-      config.popupHotkey = previousHotkey;
-      const rollbackResult = await Promise.resolve(
-        portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
-      );
-      const rollbackWarning =
-        rollbackResult?.success === false
-          ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
-          : '';
-      return {
-        success: false,
-        error: withRollbackWarning(
-          mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
-          rollbackWarning
-        ),
-        rollbackWarning,
-      };
+      if (!rollbackResult.success) {
+        log.error('Failed to restore the previous popup hotkey:', rollbackResult.error);
+        rollbackWarning =
+          rollbackResult.error || mainT('The previous popup hotkey could not be restored');
+      }
     }
     return {
-      success: true,
-      backend: unregisterResult?.backend,
-      warning:
-        unregisterResult?.success === false
-          ? unregisterResult.error ||
-            mainT('The popup hotkey was removed, but another shortcut could not be activated')
-          : '',
+      ...registrationResult,
+      error: withRollbackWarning(
+        registrationResult.error || mainT('Failed to register popup hotkey'),
+        rollbackWarning
+      ),
+      rollbackWarning,
     };
-  })
-);
+  }
 
-ipcMain.handle('get-popup-hotkey', (event) => {
-  const sender = authorizeIpcSender(event, 'get-popup-hotkey');
-  if (!sender) return rejectUnauthorizedIpc('get-popup-hotkey');
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.popupHotkey = previousHotkey;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save popup hotkey: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return registrationResult;
+});
+
+ipcRoutes.handle('unregister-popup-hotkey', async () => {
+  const previousHotkey = config.popupHotkey || '';
+  config.popupHotkey = '';
+  let unregisterResult;
+  if (portalShortcutsActive && portalShortcutsController) {
+    // Close the old session first so the removed popup target cannot survive an
+    // unrelated failure while rebinding entity shortcuts.
+    await portalShortcutsController.syncShortcuts([]);
+    unregisterResult = await syncPortalShortcuts({ immediate: true });
+  } else {
+    unregisterResult = await Promise.resolve(unregisterPopupHotkey());
+  }
+  const persistence = await configStore.apply(null, { origin: 'local' });
+  if (!persistence.success) {
+    config.popupHotkey = previousHotkey;
+    const rollbackResult = await Promise.resolve(
+      portalShortcutsActive ? syncPortalShortcuts({ immediate: true }) : registerPopupHotkey()
+    );
+    const rollbackWarning =
+      rollbackResult?.success === false
+        ? rollbackResult.error || mainT('The previous popup hotkey could not be restored')
+        : '';
+    return {
+      success: false,
+      error: withRollbackWarning(
+        mainT('Failed to save popup hotkey removal: {{error}}', { error: persistence.error }),
+        rollbackWarning
+      ),
+      rollbackWarning,
+    };
+  }
+  return {
+    success: true,
+    backend: unregisterResult?.backend,
+    warning:
+      unregisterResult?.success === false
+        ? unregisterResult.error ||
+          mainT('The popup hotkey was removed, but another shortcut could not be activated')
+        : '',
+  };
+});
+
+ipcRoutes.handle('get-popup-hotkey', () => {
   return { hotkey: config.popupHotkey || '' };
 });
 
-ipcMain.handle('is-popup-hotkey-available', async (event) => {
-  const sender = authorizeIpcSender(event, 'is-popup-hotkey-available');
-  if (!sender) return rejectUnauthorizedIpc('is-popup-hotkey-available');
+ipcRoutes.handle('is-popup-hotkey-available', async () => {
   if (usesPortalGlobalShortcuts) {
     await ensurePortalShortcutsBackendInitialized();
     if (portalShortcutsActive) return true;
@@ -14620,27 +9682,22 @@ function capturePendingWindowBoundsForShutdown() {
 }
 
 async function flushConfigForBoundedExit(actionLabel) {
-  if (quitFinalizationStarted || configMutationQueueClosed) {
+  if (quitFinalizationStarted) {
     throw new Error('An application shutdown is already in progress');
   }
   quitFinalizationStarted = true;
   isQuitting = true;
   freezePendingWindowBoundsForShutdown();
-  configMutationQueueClosed = true;
-  clearProfileSyncTimers();
+  profileSyncEngine.pause();
 
   const shutdownAttempt = { canceled: false };
-  const finalization = runSerializedConfigMutationUnchecked(() => {
+  // Closing the store turns new changes away; this flush runs after the ones already queued.
+  const finalization = configStore.close(() => {
     if (shutdownAttempt.canceled) {
       throw new Error(`The timed-out ${actionLabel} attempt was canceled`);
     }
     capturePendingWindowBoundsForShutdown();
-    if (!saveConfig({ allowDebouncedPush: false })) {
-      throw new Error(
-        lastConfigWriteError || `Failed to prepare configuration before ${actionLabel}`
-      );
-    }
-    const persistence = flushPendingConfigWriteSync({ shutdown: true });
+    const persistence = configStore.flushSync();
     if (!persistence.success) {
       throw new Error(persistence.error || `Failed to save configuration before ${actionLabel}`);
     }
@@ -14662,20 +9719,19 @@ async function flushConfigForBoundedExit(actionLabel) {
     ]);
   } catch (error) {
     shutdownAttempt.canceled = true;
-    configShutdownPending = false;
+    configStore.reopen();
     quitFinalizationStarted = false;
     isQuitting = false;
-    configMutationQueueClosed = false;
     if (error?.code === 'QUIT_FINALIZATION_TIMEOUT') {
       void finalization
         .catch(() => {})
         .finally(() => {
-          if (!quitFinalizationStarted && !configMutationQueueClosed && !isQuitting) {
-            setupProfileSyncInterval();
+          if (!quitFinalizationStarted && !isQuitting) {
+            profileSyncEngine.resume();
           }
         });
     } else {
-      setupProfileSyncInterval();
+      profileSyncEngine.resume();
     }
     throw error;
   } finally {
@@ -14692,7 +9748,7 @@ function shutDownRuntimeAfterConfigFlush() {
   if (layerDrag) clearInterval(layerDrag.timer);
   layerDrag = null;
   closeDevReloadWatchers();
-  clearProfileSyncTimers();
+  profileSyncEngine.pause();
   clearHomeAssistantOAuthRefreshTimer();
   clearTimeout(portalReconnectTimer);
   portalReconnectTimer = null;
@@ -14744,7 +9800,7 @@ function exitForSystemShutdown(reason) {
   log.warn(`Exiting for system shutdown without a clean quit (${reason})`);
   if (config && !quitFinalized) {
     try {
-      const persistence = flushPendingConfigWriteSync({ shutdown: true });
+      const persistence = configStore.flushSync();
       if (!persistence.success) {
         log.error('Could not save configuration before exiting:', persistence.error);
       }
@@ -14884,44 +9940,8 @@ app
       } catch (error) {
         log.warn('Could not scan AppImage launchers:', error?.message || error);
       }
-      const linuxStartupOptions = {
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath: getLinuxStartupExecutablePath(app, process.env),
-        env: process.env,
-      };
-
-      try {
-        // The autostart file is named after the app id, which package.json has not always
-        // carried. An entry written before it was added sits under the older name where nothing
-        // can see it, so the setting reads as off, ticking the box adds a second entry, and the
-        // repair below never reaches it. Adopt it first, then repair whatever we now own.
-        const { adopted, removedDuplicate, legacyPath } =
-          migrateLegacyLinuxAutostartEntry(linuxStartupOptions);
-        if (adopted) {
-          log.info(
-            `Adopted the start-at-login entry left behind under an older file name (${legacyPath})`
-          );
-        } else if (removedDuplicate) {
-          log.info(
-            `Removed a duplicate start-at-login entry left behind under an older file name (${legacyPath})`
-          );
-        }
-      } catch (error) {
-        log.warn('Could not migrate the Linux autostart entry:', error?.message || error);
-      }
-      try {
-        const { repaired, autostartPath } = syncLinuxAutostartExecutablePath(linuxStartupOptions);
-        if (repaired) {
-          log.info(
-            `Start-at-login pointed at an executable that no longer exists (likely a previous update); repointed ${autostartPath} at this build`
-          );
-        }
-      } catch (error) {
-        // Start-at-login is a convenience; a read-only or unwritable autostart directory must
-        // never stop the widget from starting.
-        log.warn('Could not refresh the Linux autostart entry:', error?.message || error);
-      }
+      // Also adopts an entry left under an older file name; see src/login-item.cjs.
+      loginItem.repairOnStartup();
     }
 
     installApplicationMenu(Menu, process.platform, {

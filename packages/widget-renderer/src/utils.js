@@ -20,6 +20,7 @@ import {
 } from './format.js';
 import { normalizeWeatherCondition, WEATHER_LABELS } from './weather-icons.js';
 import timerSensors from './timer-sensors.cjs';
+import settingsFields from './settings-fields.cjs';
 
 const { isTimerLikeSensor } = timerSensors;
 
@@ -871,12 +872,6 @@ function reconcileConfigEntityIds(config, states = state.STATES, explicitMapping
     return typeof mapped === 'string' && mapped.trim() ? mapped.trim() : null;
   };
 
-  const sameArray = (a, b) =>
-    Array.isArray(a) &&
-    Array.isArray(b) &&
-    a.length === b.length &&
-    a.every((value, index) => value === b[index]);
-
   const remapEntityId = (value) => {
     if (typeof value !== 'string') return value;
     const explicitMapping = getExplicitMapping(value);
@@ -884,198 +879,27 @@ function reconcileConfigEntityIds(config, states = state.STATES, explicitMapping
     return resolveEntityId(value, states) || value;
   };
 
-  const remapArray = (list, options = {}) => {
-    if (!Array.isArray(list)) return { value: list, changed: false };
-    const specialValues = options.specialValues || null;
-    const dedupe = !!options.dedupe;
-    const seen = new Set();
-    let localChanged = false;
-
-    const next = list.reduce((acc, item) => {
-      const preserveSpecial = typeof item === 'string' && specialValues && specialValues.has(item);
-      const mapped = preserveSpecial ? item : remapEntityId(item);
-      if (mapped !== item) localChanged = true;
-
-      if (dedupe && typeof mapped === 'string') {
-        if (seen.has(mapped)) {
-          localChanged = true;
-          return acc;
+  // A page an earlier version saved with its entities under `entities` moves them to `entityIds`
+  // here, whether or not any of them is remapped.
+  let legacyPagesChanged = false;
+  const customTabs = Array.isArray(config.customTabs)
+    ? config.customTabs.map((tab) => {
+        if (!tab || typeof tab !== 'object' || Array.isArray(tab)) return tab;
+        if (
+          Array.isArray(tab.entityIds) &&
+          !Object.prototype.hasOwnProperty.call(tab, 'entities')
+        ) {
+          return tab;
         }
-        seen.add(mapped);
-      }
-
-      acc.push(mapped);
-      return acc;
-    }, []);
-
-    if (!localChanged && sameArray(list, next)) {
-      return { value: list, changed: false };
-    }
-    return { value: next, changed: true };
-  };
-
-  const remapObjectKeys = (input) => {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      return { value: input, changed: false };
-    }
-
-    let localChanged = false;
-    const next = {};
-
-    Object.entries(input).forEach(([key, value]) => {
-      const mappedKey = remapEntityId(key);
-      if (mappedKey !== key) localChanged = true;
-
-      if (Object.prototype.hasOwnProperty.call(next, mappedKey)) {
-        // Prefer exact keys when both malformed and corrected forms exist.
-        if (mappedKey === key) {
-          next[mappedKey] = value;
-        } else {
-          localChanged = true;
-        }
-        return;
-      }
-
-      next[mappedKey] = value;
-    });
-
-    return localChanged ? { value: next, changed: true } : { value: input, changed: false };
-  };
-
-  let changed = false;
-  let nextConfig = config;
-  const ensureConfigClone = () => {
-    if (nextConfig === config) nextConfig = { ...config };
-  };
-
-  if (typeof config.primaryMediaPlayer === 'string') {
-    const mapped = remapEntityId(config.primaryMediaPlayer);
-    if (mapped !== config.primaryMediaPlayer) {
-      ensureConfigClone();
-      nextConfig.primaryMediaPlayer = mapped;
-      changed = true;
-    }
-  }
-
-  if (typeof config.selectedWeatherEntity === 'string') {
-    const mapped = remapEntityId(config.selectedWeatherEntity);
-    if (mapped !== config.selectedWeatherEntity) {
-      ensureConfigClone();
-      nextConfig.selectedWeatherEntity = mapped;
-      changed = true;
-    }
-  }
-
-  const favoritesResult = remapArray(config.favoriteEntities, { dedupe: true });
-  if (favoritesResult.changed) {
-    ensureConfigClone();
-    nextConfig.favoriteEntities = favoritesResult.value;
-    changed = true;
-  }
-
-  if (Array.isArray(config.customTabs)) {
-    let customTabsChanged = false;
-    const customTabsResult = config.customTabs.map((tab) => {
-      if (!tab || typeof tab !== 'object' || Array.isArray(tab)) return tab;
-      const entitySource = Array.isArray(tab.entityIds) ? tab.entityIds : tab.entities;
-      const entityIdsResult = remapArray(entitySource, { dedupe: true });
-      if (
-        entityIdsResult.changed ||
-        !Array.isArray(tab.entityIds) ||
-        Object.prototype.hasOwnProperty.call(tab, 'entities')
-      ) {
-        customTabsChanged = true;
-        const rest = { ...tab };
-        delete rest.entities;
-        return { ...rest, entityIds: entityIdsResult.value };
-      }
-      return tab;
-    });
-    if (customTabsChanged) {
-      ensureConfigClone();
-      nextConfig.customTabs = customTabsResult;
-      changed = true;
-    }
-  }
-
-  if (Array.isArray(config.comparisonGraphs)) {
-    let comparisonGraphsChanged = false;
-    const comparisonGraphsResult = config.comparisonGraphs.map((graph) => {
-      if (!graph || typeof graph !== 'object' || Array.isArray(graph)) return graph;
-      const entityIdsResult = remapArray(graph.entityIds, { dedupe: true });
-      if (!entityIdsResult.changed) return graph;
-      comparisonGraphsChanged = true;
-      return { ...graph, entityIds: entityIdsResult.value };
-    });
-    if (comparisonGraphsChanged) {
-      ensureConfigClone();
-      nextConfig.comparisonGraphs = comparisonGraphsResult;
-      changed = true;
-    }
-  }
-
-  const desktopPinsResult = remapObjectKeys(config.desktopPins);
-  if (desktopPinsResult.changed) {
-    ensureConfigClone();
-    nextConfig.desktopPins = desktopPinsResult.value;
-    changed = true;
-  }
-
-  const primaryCardSpecial = new Set(['weather', 'time', 'none']);
-  const primaryCardsResult = remapArray(config.primaryCards, { specialValues: primaryCardSpecial });
-  if (primaryCardsResult.changed) {
-    ensureConfigClone();
-    nextConfig.primaryCards = primaryCardsResult.value;
-    changed = true;
-  }
-
-  const customNamesResult = remapObjectKeys(config.customEntityNames);
-  if (customNamesResult.changed) {
-    ensureConfigClone();
-    nextConfig.customEntityNames = customNamesResult.value;
-    changed = true;
-  }
-
-  const customIconsResult = remapObjectKeys(config.customEntityIcons);
-  if (customIconsResult.changed) {
-    ensureConfigClone();
-    nextConfig.customEntityIcons = customIconsResult.value;
-    changed = true;
-  }
-
-  const tileSpansResult = remapObjectKeys(config.tileSpans);
-  if (tileSpansResult.changed) {
-    ensureConfigClone();
-    nextConfig.tileSpans = tileSpansResult.value;
-    changed = true;
-  }
-
-  const quickAccessTileOptionsResult = remapObjectKeys(config.quickAccessTileOptions);
-  if (quickAccessTileOptionsResult.changed) {
-    ensureConfigClone();
-    nextConfig.quickAccessTileOptions = quickAccessTileOptionsResult.value;
-    changed = true;
-  }
-
-  if (config.globalHotkeys && typeof config.globalHotkeys === 'object') {
-    const hotkeysResult = remapObjectKeys(config.globalHotkeys.hotkeys);
-    if (hotkeysResult.changed) {
-      ensureConfigClone();
-      nextConfig.globalHotkeys = { ...config.globalHotkeys, hotkeys: hotkeysResult.value };
-      changed = true;
-    }
-  }
-
-  if (config.entityAlerts && typeof config.entityAlerts === 'object') {
-    const alertsResult = remapObjectKeys(config.entityAlerts.alerts);
-    if (alertsResult.changed) {
-      ensureConfigClone();
-      nextConfig.entityAlerts = { ...config.entityAlerts, alerts: alertsResult.value };
-      changed = true;
-    }
-  }
-
-  return { config: nextConfig, changed };
+        legacyPagesChanged = true;
+        const { entities, ...rest } = tab;
+        return { ...rest, entityIds: Array.isArray(tab.entityIds) ? tab.entityIds : entities };
+      })
+    : config.customTabs;
+  const source = legacyPagesChanged ? { ...config, customTabs } : config;
+  // Every field the settings field registry types as holding entity IDs is remapped.
+  const remapped = settingsFields.mapEntityIds(source, remapEntityId);
+  return { config: remapped.config, changed: legacyPagesChanged || remapped.changed };
 }
 
 export {

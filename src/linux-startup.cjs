@@ -322,18 +322,13 @@ function setLinuxLoginItemSettings(
   return { autostartPath };
 }
 
+// The autostart entry itself is managed through src/login-item.cjs; the Exec helpers are shared
+// with the AppImage launcher code in src/linux-desktop-entry.cjs.
 module.exports = {
   buildLinuxAutostartDesktopEntry,
-  getLinuxAutostartDir,
   getLinuxAutostartFilePath,
-  getLinuxStartupDesktopFileName,
-  getLegacyLinuxAutostartFilePaths,
   getLinuxStartupExecutablePath,
-  isGeneratedLinuxAutostartEntry,
   isLinuxLoginItemEnabled,
-  linuxAutostartEntryEnabled,
-  linuxAutostartEntryMatches,
-  linuxAutostartEntryNeedsRepair,
   migrateLegacyLinuxAutostartEntry,
   quoteDesktopExecArg,
   buildDesktopExecPrefix,

@@ -33,6 +33,8 @@ function createElectronHost(
     canPersistConfig: typeof electronAPI.updateConfig === 'function',
     getConfig: () => electronAPI.getConfig(),
     updateConfig: (patch) => electronAPI.updateConfig(patch),
+    // The revision of the newest config this window has seen, for a write to name later.
+    getConfigRevision: () => electronAPI.getConfigRevision?.() ?? null,
     replaceConfigEntityId:
       typeof electronAPI.replaceConfigEntityId === 'function'
         ? (oldEntityId, newEntityId) => electronAPI.replaceConfigEntityId(oldEntityId, newEntityId)

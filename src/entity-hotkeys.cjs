@@ -1,7 +1,7 @@
 /**
  * Which entities an entity hotkey can act on, and what it can do to each. A hotkey runs one of the
  * actions Settings offers for its domain (toggle, turn on, press, ...), and a toggle is the one a
- * tile's click runs (ui.js toggleEntity). On any other domain (a sensor, a camera, a thermostat, a
+ * tile's click runs (entity-actions.cjs). On any other domain (a sensor, a camera, a thermostat, a
  * media player) the renderer has nothing to run, so a hotkey there would be a global shortcut that
  * does nothing. The Settings list, the tile menu and main all ask here, so they cannot drift apart.
  *
@@ -11,38 +11,19 @@
  * as its tile does, or only open or only close, so a garage door can have a hotkey that only shuts.
  */
 
-// Dependency-free on purpose: main (CommonJS) and the Vite-built renderer both load this file.
+// Plain CommonJS with no dependency outside src on purpose: main and the Vite-built renderer both
+// load this file. What a hotkey on each domain can run is Entity Actions' table (describeEntity's hotkeyActions),
+// so a hotkey only ever runs an action the runner takes.
+const { describeEntity } = require('./entity-actions.cjs');
 
-// What a hotkey on each domain can run, the first being what a new hotkey runs. Settings names
-// them (hotkeys.js getActionOptionsForDomain).
-const ENTITY_HOTKEY_ACTIONS = Object.freeze({
-  light: Object.freeze(['toggle', 'turn_on', 'turn_off', 'brightness_up', 'brightness_down']),
-  switch: Object.freeze(['toggle', 'turn_on', 'turn_off']),
-  scene: Object.freeze(['turn_on']),
-  script: Object.freeze(['turn_on']),
-  automation: Object.freeze(['trigger', 'toggle', 'turn_on', 'turn_off']),
-  button: Object.freeze(['press']),
-  input_button: Object.freeze(['press']),
-  input_boolean: Object.freeze(['toggle', 'turn_on', 'turn_off']),
-  fan: Object.freeze(['toggle', 'turn_on', 'turn_off', 'increase_speed', 'decrease_speed']),
-  cover: Object.freeze(['toggle', 'open', 'close']),
-  valve: Object.freeze(['toggle', 'open', 'close']),
-  lock: Object.freeze(['lock', 'unlock']),
-  humidifier: Object.freeze(['toggle', 'turn_on', 'turn_off']),
-  siren: Object.freeze(['toggle', 'turn_on', 'turn_off']),
-});
-
-const ENTITY_HOTKEY_DOMAINS = Object.freeze(Object.keys(ENTITY_HOTKEY_ACTIONS));
-
-function getDomain(entityId) {
-  if (typeof entityId !== 'string') return '';
-  const dot = entityId.indexOf('.');
-  return dot > 0 ? entityId.slice(0, dot) : '';
+/** The actions a hotkey on `entityId` can run, the first being what a new hotkey runs. */
+function getEntityHotkeyActions(entityId) {
+  return typeof entityId === 'string' ? describeEntity(entityId).hotkeyActions : [];
 }
 
 /** True when `entityId` belongs to a domain an entity hotkey has an action for. */
 function supportsEntityHotkey(entityId) {
-  return ENTITY_HOTKEY_DOMAINS.includes(getDomain(entityId));
+  return getEntityHotkeyActions(entityId).length > 0;
 }
 
 /**
@@ -51,8 +32,8 @@ function supportsEntityHotkey(entityId) {
  * did, and so did a bare accelerator), and a lock offers no toggle, so that hotkey locks.
  */
 function resolveEntityHotkeyAction(entityId, action) {
-  const actions = ENTITY_HOTKEY_ACTIONS[getDomain(entityId)];
-  if (!actions) return typeof action === 'string' && action ? action : 'toggle';
+  const actions = getEntityHotkeyActions(entityId);
+  if (!actions.length) return typeof action === 'string' && action ? action : 'toggle';
   return actions.includes(action) ? action : actions[0];
 }
 
@@ -74,8 +55,7 @@ function liveEntityHotkeys(hotkeys) {
 }
 
 module.exports = {
-  ENTITY_HOTKEY_ACTIONS,
-  ENTITY_HOTKEY_DOMAINS,
+  getEntityHotkeyActions,
   supportsEntityHotkey,
   resolveEntityHotkeyAction,
   liveEntityHotkeys,

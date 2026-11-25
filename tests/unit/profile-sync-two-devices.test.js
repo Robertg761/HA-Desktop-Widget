@@ -376,9 +376,7 @@ describe('a computer that did not change the encryption', () => {
     const result = await desktop.saveSettings({ profileSync: { encryptionEnabled: false } });
     expect(result.passphrase.success).toBe(true);
     expect(isEncrypted()).toBe(false);
-    laptop.context.profileSyncRuntime.passphraseSession = '';
-    laptop.config.profileSync.storedPassphrase = '';
-    laptop.config.profileSync.rememberPassphrase = false;
+    await laptop.invoke('clear-profile-sync-passphrase');
 
     await expect(laptop.sync()).rejects.toThrow('The sync file is not encrypted');
     const followed = await laptop.saveSettings({ profileSync: { encryptionEnabled: false } });
@@ -391,11 +389,17 @@ describe('a computer that did not change the encryption', () => {
   test('what the status says about the file is forgotten when the file cannot be read or the folder changes', async () => {
     const { desktop } = await encryptedByDesktop();
     expect(desktop.status().remoteEncrypted).toBe(true);
+    const encryptedFile = fs.readFileSync(syncFilePath(), 'utf8');
+    const readEncryptedFile = async () => {
+      fs.writeFileSync(syncFilePath(), encryptedFile);
+      await desktop.sync();
+      expect(desktop.status().remoteEncrypted).toBe(true);
+    };
 
     // The last answer stands while the file is being read, so the form does not flicker.
     const realReadFile = fs.promises.readFile;
     let duringRead;
-    desktop.context.fs = {
+    desktop.fs = {
       ...fs,
       promises: {
         ...fs.promises,
@@ -412,8 +416,8 @@ describe('a computer that did not change the encryption', () => {
     await desktop.sync().catch(() => {});
     expect(desktop.status().remoteEncrypted).toBeNull();
 
-    desktop.context.profileSyncRuntime.remoteEncrypted = true;
-    desktop.context.fs = {
+    await readEncryptedFile();
+    desktop.fs = {
       ...fs,
       promises: {
         ...fs.promises,
@@ -424,7 +428,7 @@ describe('a computer that did not change the encryption', () => {
     };
     await desktop.sync().catch(() => {});
     expect(desktop.status().remoteEncrypted).toBeNull();
-    desktop.context.fs = fs;
+    desktop.fs = fs;
 
     const next = desktop.rendererConfig();
     next.profileSync.cloudFilePath = path.join(
@@ -433,20 +437,21 @@ describe('a computer that did not change the encryption', () => {
       'ha-widget-profile-sync.json'
     );
     fs.mkdirSync(path.dirname(next.profileSync.cloudFilePath));
-    // As if picked in the folder dialog, which is the only way to a new folder.
-    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
-      path.dirname(next.profileSync.cloudFilePath)
-    );
-    desktop.context.profileSyncRuntime.remoteEncrypted = true;
+    // Picked in the folder dialog, which is the only way to a new folder.
+    desktop.queueDialogResult({
+      canceled: false,
+      filePaths: [path.dirname(next.profileSync.cloudFilePath)],
+    });
+    await desktop.invoke('choose-profile-sync-folder', 'dropbox');
+    await readEncryptedFile();
     await desktop.invoke('update-config', next);
     expect(desktop.status().remoteEncrypted).toBeNull();
   });
 
   test('a restart without a remembered passphrase asks for the passphrase, not for encryption', async () => {
     const { desktop } = await encryptedByDesktop();
-    desktop.context.profileSyncRuntime.passphraseSession = '';
-    desktop.config.profileSync.storedPassphrase = '';
-    desktop.config.profileSync.rememberPassphrase = false;
+    await desktop.invoke('clear-profile-sync-passphrase');
+    desktop.restart();
 
     await expect(desktop.sync()).rejects.toThrow('Enter the sync passphrase');
   });
@@ -455,19 +460,25 @@ describe('a computer that did not change the encryption', () => {
 describe('recovery records', () => {
   test('a staged rewrite sealed before secrets were wrapped still recovers', async () => {
     const { desktop } = await createSyncedPair();
-    const { context } = desktop;
-    await context.stageProfileSyncRewrite({
-      oldPassphrase: '',
-      newPassphrase: PASSPHRASE,
-      rememberNewPassphrase: false,
-      targetEncryptionEnabled: true,
-      changeCredential: true,
-      reason: 'encryption_transition',
+    // The folder is away while encryption is turned on, so the change waits to be recovered.
+    desktop.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        rename: async () => {
+          throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+        },
+      },
+    };
+    await desktop.saveSettings({
+      profileSync: { encryptionEnabled: true },
+      passphrase: PASSPHRASE,
     });
+    desktop.fs = fs;
     const legacySeal = (secret) => Buffer.from(`sealed:${secret}`).toString('base64');
-    context.config.profileSync.passphraseTransition.newPassphraseEncrypted = legacySeal(PASSPHRASE);
+    desktop.config.profileSync.passphraseTransition.newPassphraseEncrypted = legacySeal(PASSPHRASE);
 
-    await context.executePendingProfileSyncRewrite();
+    await desktop.sync('auto', 'manual');
 
     expect(isEncrypted()).toBe(true);
     expect(desktop.config.profileSync).toMatchObject(settled(true));
@@ -507,7 +518,7 @@ describe('a change that was asked for but never carried out', () => {
     next.profileSync.encryptionEnabled = false;
     await desktop.invoke('update-config', next);
     expect(desktop.status().encryptionChangePending).toBe(false);
-    desktop.context.profileSyncRuntime.passphraseSession = '';
+    desktop.restart();
     fs.rmSync(syncFilePath());
 
     const result = await desktop.invoke('set-profile-sync-passphrase', '', false, true);
@@ -549,7 +560,7 @@ describe('turning encryption off', () => {
       profileSync: { encryptionEnabled: true },
       passphrase: PASSPHRASE,
     });
-    desktop.context.profileSyncRuntime.passphraseSession = '';
+    desktop.restart();
     const before = readRaw();
 
     const result = await desktop.saveSettings({ profileSync: { encryptionEnabled: false } });
