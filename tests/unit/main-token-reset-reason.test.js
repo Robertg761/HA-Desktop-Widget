@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -29,20 +30,12 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
     authorizeIpcSender: () => ({}),
     rejectUnauthorizedIpc: () => ({ success: false }),
     mainT: (text) => text,
-    runPostSaveSideEffect: async () => {},
-    pushConfigToRenderer: () => {},
     sanitizeConfigForRenderer: (value) => JSON.parse(JSON.stringify(value)),
-    saveConfigDurably: async () => {
-      written.push(context.buildConfigSnapshotForSave().configToSave);
-      return { success: true };
-    },
+    buildRendererConfigAfterChange: () => context.sanitizeConfigForRenderer(context.config),
+    emitConfigPersistenceWarnings: () => {},
     log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
     app: { getPath: () => path.join('profile', 'userData') },
     path,
-    CONFIG_FILE_NAME: 'config.json',
-    configWriteBlockedReason: '',
-    configSnapshotVersion: 0,
-    configWriteEpoch: 0,
     preservedEncryptedTokenForRecovery: recoveryToken,
     ensureConfigBackupBeforeFirstWrite: () => {},
     safeStorage: {
@@ -62,7 +55,7 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
         'const HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS'
       ),
       sliceMain('function pruneConfig(', 'function quarantineCorruptConfig('),
-      sliceMain('function buildConfigSnapshotForSave(', 'async function writeConfigSnapshotAsync('),
+      sliceMain('function encodeConfigForSave(', 'function emitConfigPersistenceWarnings('),
       sliceMain(
         "ipcMain.handle(\n  'clear-token-reset-reason'",
         'function normalizeHomeAssistantBaseUrlForIpc('
@@ -72,6 +65,25 @@ function loadSnapshotCode({ keyring = 'working', config, recoveryToken = null } 
       .replace(/^const /gm, 'var '),
     context
   );
+  // What encodeConfigForSave makes of the config, as an object.
+  context.buildConfigSnapshot = () => {
+    const encoded = context.encodeConfigForSave(context.config);
+    return {
+      configToSave: JSON.parse(encoded.text),
+      persistenceWarnings: encoded.persistenceWarnings,
+    };
+  };
+  context.configStore = createMainConfigStore(
+    config,
+    {},
+    {
+      encode: (current) => {
+        const encoded = context.encodeConfigForSave(current);
+        written.push(JSON.parse(encoded.text));
+        return encoded;
+      },
+    }
+  ).configStore;
   return context;
 }
 
@@ -85,9 +97,9 @@ describe('a token that cannot be encrypted when it is saved', () => {
     'is left out of the file, which says it was not saved (keyring %s)',
     (keyring) => {
       const config = tokenConfig();
-      const { buildConfigSnapshotForSave } = loadSnapshotCode({ keyring, config });
+      const { buildConfigSnapshot } = loadSnapshotCode({ keyring, config });
 
-      const snapshot = buildConfigSnapshotForSave();
+      const snapshot = buildConfigSnapshot();
 
       expect(snapshot.configToSave.homeAssistant.token).toBeUndefined();
       expect(snapshot.configToSave.tokenResetReason).toBe('not_persisted');
@@ -103,9 +115,9 @@ describe('a token that cannot be encrypted when it is saved', () => {
 
   it('is encrypted into the file, with no reason, when the keyring works', () => {
     const config = tokenConfig();
-    const { buildConfigSnapshotForSave } = loadSnapshotCode({ config });
+    const { buildConfigSnapshot } = loadSnapshotCode({ config });
 
-    const snapshot = buildConfigSnapshotForSave();
+    const snapshot = buildConfigSnapshot();
 
     expect(snapshot.configToSave.homeAssistant.tokenEncrypted).toBe(true);
     expect(snapshot.configToSave.homeAssistant.token).toBe(
@@ -117,13 +129,13 @@ describe('a token that cannot be encrypted when it is saved', () => {
   it('keeps an unreadable encrypted token on disk, and the reason it could not be read', () => {
     const config = tokenConfig({ tokenResetReason: 'decryption_failed' });
     config.homeAssistant.token = 'YOUR_LONG_LIVED_ACCESS_TOKEN';
-    const { buildConfigSnapshotForSave } = loadSnapshotCode({
+    const { buildConfigSnapshot } = loadSnapshotCode({
       keyring: 'none',
       config,
       recoveryToken: 'ZW5jcnlwdGVk',
     });
 
-    const snapshot = buildConfigSnapshotForSave();
+    const snapshot = buildConfigSnapshot();
 
     expect(snapshot.configToSave.homeAssistant.token).toBe('ZW5jcnlwdGVk');
     expect(snapshot.configToSave.homeAssistant.tokenEncrypted).toBe(true);
@@ -180,7 +192,7 @@ describe('the reason a saved token is missing, once the renderer has shown it', 
 
     await main.handlers['clear-token-reset-reason']({});
     // Any later save (a theme, a tab) writes the file the next start reads.
-    main.written.push(main.buildConfigSnapshotForSave().configToSave);
+    main.written.push(main.buildConfigSnapshot().configToSave);
 
     for (const file of main.written) {
       expect(main.reconcileTokenResetReason(file).tokenResetReason).toBe('not_persisted');

@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 const { getWindowDisplayState, formatWindowDisplayLabel } = require('../../src/window-display.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
@@ -18,10 +19,14 @@ function sliceMain(startMarker, endMarker) {
 }
 
 function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } = {}) {
+  const config = { alwaysOnTop };
+  const store = createMainConfigStore(config);
   const context = {
     app: { isPackaged },
     IS_DEV_MODE: isDev,
-    config: { alwaysOnTop },
+    config,
+    configStore: store.configStore,
+    failNextWrite: store.failNextWrite,
     isLayerShellChildProcess: false,
     usesCompositorOwnedPlacement: false,
     layerShellRaiser: null,
@@ -52,7 +57,6 @@ function loadTrayMenu({ isPackaged = true, isDev = false, alwaysOnTop = true } =
     toggleMainWindowFromTrayEntity: jest.fn(),
     applyAlwaysOnTopPreference: jest.fn(),
     refreshTrayMenu: jest.fn(),
-    saveConfigDurably: jest.fn(async () => ({ success: true })),
     runSerializedConfigMutation: jest.fn((task) => task()),
     log: { warn: jest.fn() },
     showMainWindowFromTray: jest.fn(),
@@ -194,7 +198,7 @@ describe('the tray menu', () => {
 
     it('puts the setting and the check mark back when it cannot be saved', async () => {
       const context = loadTrayMenu({ alwaysOnTop: true });
-      context.saveConfigDurably = jest.fn(async () => ({ success: false, error: 'disk full' }));
+      context.failNextWrite('disk full');
       const item = alwaysOnTopItem(context);
       const menuItem = { checked: false };
       item.click(menuItem);

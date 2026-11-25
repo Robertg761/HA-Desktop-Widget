@@ -3,12 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const profileSyncCore = require('../../profile-sync-core.js');
+const { createMainConfigStore } = require('../helpers/main-config-store.js');
 const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const slice = (start, end) =>
   source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
 describe('settings file main-process application', () => {
-  let context, original;
+  let context, original, store;
+  const copy = (value) => JSON.parse(JSON.stringify(value));
   beforeEach(() => {
     original = {
       homeAssistant: { token: 'secret' },
@@ -23,10 +25,13 @@ describe('settings file main-process application', () => {
       profileSyncCore,
       profileSyncRuntime: { pendingPullEchoHash: 'old', pendingPullEchoProfile: {} },
       backupLocalProfileBeforePullApply: jest.fn().mockResolvedValue(),
-      saveConfigDurably: jest.fn().mockResolvedValue({ success: true }),
-      applySyncedConfigSideEffects: jest.fn().mockResolvedValue(),
       mainT: (key, data) => key.replace('{{error}}', data?.error || ''),
     };
+    store = createMainConfigStore(original, {
+      profileSyncRuntime: context.profileSyncRuntime,
+    });
+    context.configStore = store.configStore;
+    context.replaceConfigContents = store.replaceConfigContents;
     for (const name of [
       'pruneConfig',
       'ensureDateTimeFormatConfigDefaults',
@@ -43,6 +48,9 @@ describe('settings file main-process application', () => {
     );
   });
   test('backs up before writing and preserves local setup', async () => {
+    const before = copy(original);
+    const written = jest.fn();
+    store.interceptNextWrite(written);
     await context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } });
     // The incoming sections let the backup record ui keys the apply adds, so restore undoes them.
     expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith(
@@ -51,10 +59,11 @@ describe('settings file main-process application', () => {
       'import'
     );
     expect(context.backupLocalProfileBeforePullApply.mock.invocationCallOrder[0]).toBeLessThan(
-      context.saveConfigDurably.mock.invocationCallOrder[0]
+      written.mock.invocationCallOrder[0]
     );
-    expect(context.config).toEqual({ ...original, ui: { ...original.ui, theme: 'light' } });
-    expect(context.applySyncedConfigSideEffects).toHaveBeenCalledTimes(1);
+    expect(context.config).toEqual({ ...before, ui: { ...before.ui, theme: 'light' } });
+    expect(store.written()).toEqual(context.config);
+    expect(store.context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
   });
   test('clears the shared ui keys a section sets to null, and other nulls only when asked to', async () => {
     const sections = {
@@ -68,69 +77,65 @@ describe('settings file main-process application', () => {
     expect(context.config.ui).not.toHaveProperty('aKeyFromALaterVersion');
   });
   test('a failed backup never writes or changes config', async () => {
+    const before = copy(original);
     context.backupLocalProfileBeforePullApply.mockRejectedValue(new Error('Disk full'));
     await expect(
       context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } })
     ).rejects.toThrow('Disk full');
-    expect(context.config).toBe(original);
-    expect(context.saveConfigDurably).not.toHaveBeenCalled();
+    expect(context.config).toEqual(before);
+    expect(store.writeCount()).toBe(0);
   });
   test('a failed durable save restores config and sync tracking', async () => {
-    context.saveConfigDurably.mockResolvedValue({ success: false, error: 'Disk full' });
+    const before = copy(original);
+    store.failNextWrite('Disk full');
     await expect(
       context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } })
     ).rejects.toThrow('Disk full');
-    expect(context.config).toBe(original);
+    expect(context.config).toEqual(before);
     expect(context.profileSyncRuntime.pendingPullEchoHash).toBe('old');
-    expect(context.applySyncedConfigSideEffects).not.toHaveBeenCalled();
+    expect(store.context.pushConfigToRenderer).not.toHaveBeenCalled();
   });
 });
 
 describe('config changes that arrive outside the settings form', () => {
-  let context;
+  let store;
+  const changeLanguage = (language, origin = 'profile-sync-pull') =>
+    store.configStore.apply(
+      (current) => {
+        current.ui.language = language;
+      },
+      { origin }
+    );
   beforeEach(() => {
-    context = {
-      config: { ui: { language: 'de' } },
-      tray: {},
-      createTray: jest.fn(),
-      omarchyBarPublisher: { update: jest.fn() },
-      runPostSaveSideEffect: async (warnings, label, action) => action(),
-      applyMainWindowSettingSideEffects: jest.fn(),
-      applyRuntimeConfigSideEffects: jest.fn(),
-      syncDesktopPinWindowsWithConfig: jest.fn(),
-      syncTrayEntitiesWithConfig: jest.fn(),
-      broadcastDesktopPinConfigUpdate: jest.fn(),
-      pushConfigToRenderer: jest.fn(),
-    };
-    vm.createContext(context);
-    vm.runInContext(
-      slice(
-        'async function applySyncedConfigSideEffects(',
-        'const PROFILE_SYNC_BACKUP_FILE_PATTERN'
-      ),
-      context
+    store = createMainConfigStore(
+      { ui: { language: 'de' } },
+      { tray: {}, omarchyBarPublisher: { update: jest.fn() } }
     );
   });
-  test('rebuilds the tray when a pull, import or restore changes the language', async () => {
-    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
-    expect(context.createTray).toHaveBeenCalledTimes(1);
-  });
+  test.each(['profile-sync-pull', 'profile-restore', 'settings'])(
+    'rebuilds the tray when a change from %s switches the language',
+    async (origin) => {
+      await changeLanguage('auto', origin);
+      expect(store.context.createTray).toHaveBeenCalledTimes(1);
+    }
+  );
   test('has the Omarchy bar say its words in the new language too', async () => {
-    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
-    expect(context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
-    await context.applySyncedConfigSideEffects({ ui: { language: 'de' } }, {});
-    expect(context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
+    await changeLanguage('auto');
+    expect(store.context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
+    await changeLanguage('auto');
+    expect(store.context.omarchyBarPublisher.update).toHaveBeenCalledTimes(1);
     // No bar installed: nothing to tell.
-    context.omarchyBarPublisher = null;
-    await expect(
-      context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {})
-    ).resolves.not.toThrow();
+    store.context.omarchyBarPublisher = null;
+    await expect(changeLanguage('de')).resolves.toMatchObject({
+      success: true,
+      runtimeWarnings: [],
+    });
   });
   test('leaves the tray alone when the language is unchanged or there is no tray', async () => {
-    await context.applySyncedConfigSideEffects({ ui: { language: 'de' } }, {});
-    context.tray = null;
-    await context.applySyncedConfigSideEffects({ ui: { language: 'auto' } }, {});
-    expect(context.createTray).not.toHaveBeenCalled();
+    await changeLanguage('de');
+    store.context.tray = null;
+    await changeLanguage('auto');
+    expect(store.context.createTray).not.toHaveBeenCalled();
   });
 });
 

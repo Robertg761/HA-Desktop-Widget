@@ -69,7 +69,7 @@ test('an invalid display or a failed save does not partially apply Settings', as
     (await desktop.invoke('update-config', { windowDisplayChoice: 'gone', opacity: 0.5 })).success
   ).toBe(false);
   expect(JSON.stringify(desktop.config)).toBe(before);
-  desktop.context.saveConfigDurably = async () => ({ success: false, error: 'disk full' });
+  desktop.failConfigWrites('disk full');
   expect(
     (await desktop.invoke('update-config', { windowDisplayChoice: '2', opacity: 0.5 })).success
   ).toBe(false);
@@ -118,11 +118,10 @@ test('Settings preserves a drag made while its display selection is being saved'
     vm.runInContext(source.slice(start, source.indexOf(endMarker, start)), desktop.context);
   }
   desktop.context.watchMainWindowBounds(desktop.context.mainWindow);
-  desktop.context.saveConfigDurably = async () => {
+  desktop.interceptNextConfigWrite(async () => {
     bounds = { x: 320, y: 190, width: 500, height: 600 };
     moved();
-    return { success: true, persistenceWarnings: [] };
-  };
+  });
   const result = await desktop.invoke('update-config', { windowDisplayChoice: '2' });
   expect(result.success).not.toBe(false);
   expect(bounds).toEqual({ x: 320, y: 190, width: 500, height: 600 });

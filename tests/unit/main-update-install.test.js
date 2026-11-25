@@ -7,7 +7,8 @@ const path = require('path');
 const vm = require('vm');
 const { EventEmitter } = require('events');
 const { BaseUpdater } = require('electron-updater/out/BaseUpdater');
-const { createSerializedTaskRunner } = require('../../src/serialized-task-runner.cjs');
+const { createConfigStore } = require('../../src/main-config-store.cjs');
+const { createMemoryFs } = require('../helpers/main-config-store.js');
 
 const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 function section(start, end) {
@@ -25,8 +26,13 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
   const sent = [];
   let syncRunning = true;
   let syncRestarts = 0;
-  let configWrites = 0;
   const removed = [];
+  const configStore = createConfigStore({
+    filePath: '/profile/config.json',
+    fs: createMemoryFs().fs,
+  });
+  configStore.load({});
+  const flushSync = jest.spyOn(configStore, 'flushSync');
   const context = vm.createContext({
     app,
     require: (name) => {
@@ -57,15 +63,10 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
     },
     runScheduledUpdateCheck() {},
     powerMonitor: new EventEmitter(),
-    createSerializedTaskRunner,
+    configStore,
+    CONFIG_STORE_CLOSED: 'CONFIG_STORE_CLOSED',
     freezePendingWindowBoundsForShutdown() {},
     capturePendingWindowBoundsForShutdown() {},
-    saveConfig: () => true,
-    flushPendingConfigWriteSync: () => {
-      context.configShutdownPending = true;
-      configWrites++;
-      return { success: true };
-    },
     clearProfileSyncTimers: () => (syncRunning = false),
     setupProfileSyncInterval: () => {
       syncRunning = true;
@@ -75,13 +76,12 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
     quitFinalized: false,
     quitFinalizationStarted: false,
     isQuitting: false,
-    configShutdownPending: false,
     QUIT_FINALIZATION_TIMEOUT_MS: 15000,
     setTimeout,
     clearTimeout,
   });
   vm.runInContext(
-    `${section('let configMutationQueueClosed = false;', 'const runBackgroundConfigMutation =')}
+    `${section('const runSerializedConfigMutation =', 'const runBackgroundConfigMutation =')}
      ${section('async function flushConfigForBoundedExit(', 'function shutDownRuntimeAfterConfigFlush(')}
      ${section("ipcMain.handle('quit-and-install'", '// Handle quit request from renderer')}
      ${section('let updateCheckScheduler = null;', '// Anonymous install count')}
@@ -103,14 +103,14 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
       return handlers['quit-and-install']({});
     },
     mutate: () => vm.runInContext('runSerializedConfigMutation(() => "saved")', context),
+    save: () => configStore.apply(null, { origin: 'local' }),
     state: () => ({
       quitFinalized: context.quitFinalized,
       quitFinalizationStarted: context.quitFinalizationStarted,
       isQuitting: context.isQuitting,
-      configShutdownPending: context.configShutdownPending,
       syncRunning,
       syncRestarts,
-      configWrites,
+      configWrites: flushSync.mock.calls.length,
     }),
   };
 }
@@ -120,11 +120,12 @@ async function expectRecovered(main) {
     quitFinalized: false,
     quitFinalizationStarted: false,
     isQuitting: false,
-    configShutdownPending: false,
     syncRunning: true,
     syncRestarts: 1,
   });
   await expect(main.mutate()).resolves.toBe('saved');
+  // The shutdown flush no longer holds back ordinary writes.
+  await expect(main.save()).resolves.toMatchObject({ success: true });
   expect(main.app.listenerCount('before-quit')).toBe(0);
   expect(main.nativeUpdater.listenerCount('before-quit-for-update')).toBe(0);
   expect(main.updater.listenerCount('error')).toBe(1);

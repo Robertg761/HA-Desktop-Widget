@@ -607,11 +607,11 @@ describe('profile sync engine', () => {
     const { context } = desktop;
 
     // Settings saves opacity 0.9 again, and says the user set it.
-    const pulled = context.config;
-    context.config = { ...pulled, opacity: 0.9 };
+    const pulled = desktop.configCopy();
+    desktop.replaceConfig({ ...pulled, opacity: 0.9 });
     expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
     expect(context.config.opacity).toBe(0.9);
-    context.saveConfig();
+    desktop.save();
     await desktop.sync();
     await laptop.sync();
     expect(laptop.config.opacity).toBe(0.9);
@@ -622,8 +622,8 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const again = context.config;
-    context.config = { ...again, opacity: 0.9 };
+    const again = desktop.configCopy();
+    desktop.replaceConfig({ ...again, opacity: 0.9 });
     context.restoreProfileFromStalePullEcho(again);
     expect(context.config.opacity).toBe(0.5);
   });
@@ -695,13 +695,13 @@ describe('profile sync engine', () => {
     const { context } = desktop;
     expect(context.config.ui.accent).toBe('teal');
 
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
     // A save made after the pull (accent already teal), changing only opacity, is not stale.
-    context.config = { ...pulled, opacity: 0.6 };
+    desktop.replaceConfig({ ...pulled, opacity: 0.6 });
     expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(false);
 
     // A Settings save built before the pull arrived: old accent, new opacity.
-    context.config = { ...pulled, opacity: 0.5, ui: { ...pulled.ui, accent: 'original' } };
+    desktop.replaceConfig({ ...pulled, opacity: 0.5, ui: { ...pulled.ui, accent: 'original' } });
     expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.opacity).toBe(0.5);
@@ -710,21 +710,21 @@ describe('profile sync engine', () => {
   test('any update built before a pull keeps only what it changed', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const { context } = desktop;
-    const beforePull = context.configSnapshotVersion;
+    const beforePull = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
 
     // An alert save built from the pre-pull snapshot: old accent, new alert, and
     // favorites set back to what they were, which is no change at all for it.
-    context.config = {
+    desktop.replaceConfig({
       ...pulled,
       ui: { ...pulled.ui, accent: 'original' },
       entityAlerts: { enabled: true, alerts: { 'light.kitchen': { onStateChange: true } } },
-    };
+    });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.entityAlerts.enabled).toBe(true);
@@ -736,16 +736,16 @@ describe('profile sync engine', () => {
       laptop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
     });
     const { context } = desktop;
-    const beforePull = context.configSnapshotVersion;
+    const beforePull = desktop.revision();
     laptop.edit((config) => {
       delete config.selectedWeatherEntity;
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
     expect(pulled.selectedWeatherEntity).toBeUndefined();
 
-    context.config = { ...pulled, selectedWeatherEntity: 'weather.home', alwaysOnTop: false };
+    desktop.replaceConfig({ ...pulled, selectedWeatherEntity: 'weather.home', alwaysOnTop: false });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
     expect(context.config).not.toHaveProperty('selectedWeatherEntity');
     expect(context.config.alwaysOnTop).toBe(false);
@@ -754,7 +754,7 @@ describe('profile sync engine', () => {
   test('an update that predates two pulls keeps both of them', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const { context } = desktop;
-    const beforePulls = context.configSnapshotVersion;
+    const beforePulls = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
@@ -765,17 +765,17 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
     expect(pulled.ui.accent).toBe('teal');
     expect(pulled.opacity).toBe(0.7);
 
     // An alert save built before either pull.
-    context.config = {
+    desktop.replaceConfig({
       ...pulled,
       opacity: 0.9,
       ui: { ...pulled.ui, accent: 'original' },
       entityAlerts: { enabled: true, alerts: {} },
-    };
+    });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.opacity).toBe(0.7);
@@ -785,34 +785,32 @@ describe('profile sync engine', () => {
   test('every queued update built before a pull is repaired, not just the first', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const { context } = desktop;
-    const beforePull = context.configSnapshotVersion;
+    const beforePull = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
 
-    context.config = { ...pulled, ui: { ...pulled.ui, accent: 'original' }, opacity: 0.8 };
+    desktop.replaceConfig({ ...pulled, ui: { ...pulled.ui, accent: 'original' }, opacity: 0.8 });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
-    context.saveConfig();
-    const afterFirst = context.config;
+    desktop.save();
+    const afterFirst = desktop.configCopy();
     expect(afterFirst.ui.accent).toBe('teal');
 
     // An update made after the pull does not end it for older ones still to come,
     // such as a rollback snapshot.
-    context.config = { ...afterFirst, alwaysOnTop: false };
-    expect(
-      context.restoreProfileFromStalePullEcho(afterFirst, [], context.configSnapshotVersion)
-    ).toBe(false);
-    context.saveConfig();
-    const afterSecond = context.config;
+    desktop.replaceConfig({ ...afterFirst, alwaysOnTop: false });
+    expect(context.restoreProfileFromStalePullEcho(afterFirst, [], desktop.revision())).toBe(false);
+    desktop.save();
+    const afterSecond = desktop.configCopy();
 
-    context.config = {
+    desktop.replaceConfig({
       ...afterSecond,
       ui: { ...afterSecond.ui, accent: 'original' },
       entityAlerts: { enabled: true, alerts: {} },
-    };
+    });
     expect(context.restoreProfileFromStalePullEcho(afterSecond, [], beforePull)).toBe(true);
     expect(context.config.ui.accent).toBe('teal');
     expect(context.config.opacity).toBe(0.8);
@@ -837,19 +835,19 @@ describe('profile sync engine', () => {
   test('an update built inside a compacted stretch of pulls keeps only what was touched', async () => {
     const { desktop, laptop } = await createSyncedPair();
     const { context } = desktop;
-    const beforePulls = context.configSnapshotVersion;
+    const beforePulls = desktop.revision();
     laptop.edit((config) => {
       config.opacity = 0.8;
     });
     await laptop.sync();
     await desktop.sync();
-    const afterFirstPull = context.configSnapshotVersion;
+    const afterFirstPull = desktop.revision();
     laptop.edit((config) => {
       config.opacity = 0.7;
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
     // Squeeze the history so both pulls share one entry, as a full history would.
     const [first, second] = context.profileSyncRuntime.pendingPulls;
     context.profileSyncRuntime.pendingPulls = [
@@ -858,7 +856,7 @@ describe('profile sync engine', () => {
 
     // Built after the first pull, it carries that pull's opacity. The state it
     // started from is gone, so only the setting the user touched is kept.
-    context.config = { ...pulled, opacity: 0.8, alwaysOnTop: false };
+    desktop.replaceConfig({ ...pulled, opacity: 0.8, alwaysOnTop: false });
     expect(context.restoreProfileFromStalePullEcho(pulled, ['alwaysOnTop'], afterFirstPull)).toBe(
       true
     );
@@ -866,7 +864,7 @@ describe('profile sync engine', () => {
     expect(context.config.alwaysOnTop).toBe(false);
 
     // One built before the whole stretch is still compared exactly.
-    context.config = { ...pulled, opacity: 0.9, entityAlerts: { enabled: true, alerts: {} } };
+    desktop.replaceConfig({ ...pulled, opacity: 0.9, entityAlerts: { enabled: true, alerts: {} } });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
     expect(context.config.entityAlerts.enabled).toBe(true);
     expect(context.config.opacity).toBe(0.7);
@@ -880,17 +878,17 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const betweenPulls = context.configSnapshotVersion;
+    const betweenPulls = desktop.revision();
     laptop.edit((config) => {
       config.opacity = 0.7;
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
 
     // Built after the first pull: setting the accent back is deliberate, the
     // opacity is simply stale.
-    context.config = { ...pulled, opacity: 0.9, ui: { ...pulled.ui, accent: 'original' } };
+    desktop.replaceConfig({ ...pulled, opacity: 0.9, ui: { ...pulled.ui, accent: 'original' } });
     expect(context.restoreProfileFromStalePullEcho(pulled, [], betweenPulls)).toBe(true);
     expect(context.config.ui.accent).toBe('original');
     expect(context.config.opacity).toBe(0.7);
@@ -904,15 +902,13 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = context.config;
+    const pulled = desktop.configCopy();
 
     // The user removes the favorite that just arrived.
-    context.config = { ...pulled, favoriteEntities: ['light.kitchen'] };
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], context.configSnapshotVersion)).toBe(
-      false
-    );
+    desktop.replaceConfig({ ...pulled, favoriteEntities: ['light.kitchen'] });
+    expect(context.restoreProfileFromStalePullEcho(pulled, [], desktop.revision())).toBe(false);
     expect(context.config.favoriteEntities).toEqual(['light.kitchen']);
-    context.saveConfig();
+    desktop.save();
     expect((await desktop.sync()).pushed).toEqual(['quickAccessLayout']);
   });
 

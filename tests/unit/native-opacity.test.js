@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 const source = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
 
 function windowMock() {
@@ -11,13 +12,15 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
   const mainWindow = windowMock();
   const pin = windowMock();
   const handlers = {};
+  const config = { opacity: 0.5, ui: { opaquePanels } };
+  const store = createMainConfigStore(config);
   const context = {
     process: { platform, env: {} },
     shouldUseTransparentWindow: () => false,
     usesCompositorOwnedPlacement: wayland,
     isLayerShellChildProcess: false,
     OPAQUE_WINDOW_BACKGROUND_COLOR: '#12161e',
-    config: { opacity: 0.5, ui: { opaquePanels } },
+    config,
     mainWindow,
     desktopPinWindows: new Map([['light.test', pin]]),
     log: { warn: jest.fn() },
@@ -27,7 +30,7 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
     applyDesktopPinWindowEffects: jest.fn(),
     authorizeIpcSender: () => ({ type: 'main' }),
     serializeConfigMutationHandler: (handler) => handler,
-    saveConfigDurably: jest.fn(async () => ({ success: true })),
+    configStore: store.configStore,
     ipcMain: {
       handle: (name, handler) => {
         handlers[name] = handler;
@@ -56,7 +59,7 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
     ),
     context
   );
-  return { context, mainWindow, pin, handlers };
+  return { context, mainWindow, pin, handlers, store };
 }
 
 it.each(['darwin', 'linux', 'win32'])(
@@ -83,14 +86,14 @@ it('reapplies native opacity when only the preset changes and restores the saved
 });
 
 it('keeps both widget and pins opaque through preview, save, and failed-save rollback', async () => {
-  const { context, mainWindow, pin, handlers } = runtime('darwin', true);
+  const { context, mainWindow, pin, handlers, store } = runtime('darwin', true);
   handlers['preview-window-effects']({}, { opacity: 0.7 });
   expect(context.config.opacity).toBe(0.5);
   expect(mainWindow.setOpacity).toHaveBeenLastCalledWith(1);
   expect(pin.setOpacity).toHaveBeenLastCalledWith(1);
   expect(await handlers['set-opacity']({}, 0.7)).toEqual({ success: true, opacity: 0.7 });
   expect(context.config.opacity).toBe(0.7);
-  context.saveConfigDurably.mockResolvedValueOnce({ success: false, error: 'disk full' });
+  store.failNextWrite('disk full');
   expect((await handlers['set-opacity']({}, 0.9)).success).toBe(false);
   expect(context.config.opacity).toBe(0.7);
   expect(mainWindow.setOpacity).toHaveBeenLastCalledWith(1);

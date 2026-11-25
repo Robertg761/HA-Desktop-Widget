@@ -329,7 +329,7 @@ describe('main-process wiring safeguards', () => {
     expect(handlerSource).toContain('if (!registrationResult.success)');
     expect(handlerSource).toContain('await Promise.resolve(unregisterPopupHotkey())');
     expect(handlerSource).toContain('config.popupHotkey = previousHotkey');
-    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
+    expect(handlerSource.indexOf("configStore.apply(null, { origin: 'local' })")).toBeGreaterThan(
       handlerSource.indexOf('if (!registrationResult.success)')
     );
   });
@@ -349,7 +349,7 @@ describe('main-process wiring safeguards', () => {
     expect(handlerSource).not.toContain(
       'registrationResult?.success !== false && globalShortcut.isRegistered(hotkey)'
     );
-    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
+    expect(handlerSource.indexOf("configStore.apply(null, { origin: 'local' })")).toBeGreaterThan(
       handlerSource.indexOf('if (!registered)')
     );
   });
@@ -484,10 +484,8 @@ describe('main-process wiring safeguards', () => {
   it('backs up config before first write and blocks writes only after an unsafe load', () => {
     expect(mainSource).toContain('ensureConfigBackupBeforeFirstWrite');
     expect(mainSource).toContain('configBackupCreatedThisRun');
-    expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
-    expect(mainSource).toContain(
-      'shouldBlockConfigWrite({ blockedReason: configWriteBlockedReason })'
-    );
+    // The store refuses writes while the load left a reason (tests/unit/main-config-store.test.js).
+    expect(mainSource).toContain('configStore.load(next, { writeBlockedReason })');
     expect(mainSource).not.toContain('function hasMeaningfulConfigData');
   });
 
@@ -495,17 +493,15 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('function quarantineCorruptConfig');
     expect(mainSource).toContain('config.corrupt.${timestamp}.json');
     expect(mainSource).toContain('configRecoveryNotice');
-    expect(mainSource).toContain('configWriteBlockedReason');
+    expect(mainSource).toContain('writeBlockedReason');
     expect(mainSource).toContain('Configuration root must be a JSON object');
-    expect(mainSource).toContain('async function saveConfigDurably');
 
     const updateStart = mainSource.indexOf("'update-config'");
     const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
     const updateSource = mainSource.slice(updateStart, updateEnd);
-    expect(updateSource).toContain('const persistence = await saveConfigDurably');
+    expect(updateSource).toContain('const persistence = await configStore.apply(');
     expect(updateSource).toContain('success: false');
-    expect(updateSource).toContain('config = prevConfig');
-    expect(mainSource).toContain('cloned.configRevision = configSnapshotVersion');
+    expect(mainSource).toContain('cloned.configRevision = configStore.revision()');
     expect(mainSource).toContain('delete target.configRevision');
   });
 
@@ -515,9 +511,8 @@ describe('main-process wiring safeguards', () => {
     const pinStart = mainSource.indexOf('async function pinEntityToDesktopInternal');
     const pinEnd = mainSource.indexOf('async function unpinEntityFromDesktopInternal', pinStart);
     const pinSource = mainSource.slice(pinStart, pinEnd);
-    expect(pinSource).toContain(
-      "runPostSaveSideEffect(runtimeWarnings, 'desktop pin window creation'"
-    );
+    // Effects that fail after the write come back as runtime warnings, not a failed change.
+    expect(pinSource).toContain('const { runtimeWarnings } = persistence;');
     expect(pinSource).toContain('...(runtimeWarnings.length ? { runtimeWarnings } : {})');
 
     const deprecatedStart = mainSource.indexOf("'save-config'");
@@ -531,7 +526,7 @@ describe('main-process wiring safeguards', () => {
     const syncStart = mainSource.indexOf('async function applySyncedProfileToConfig');
     const syncEnd = mainSource.indexOf('function clearProfileSyncTimers', syncStart);
     expect(mainSource.slice(syncStart, syncEnd)).toContain(
-      "runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings'"
+      'return { runtimeWarnings: persistence.runtimeWarnings }'
     );
 
     const runtimeStart = mainSource.indexOf('async function applyRuntimeConfigSideEffects');
@@ -571,11 +566,15 @@ describe('main-process wiring safeguards', () => {
     const setPassphraseSource = mainSource.slice(setPassphraseStart, clearPassphraseStart);
     const clearPassphraseSource = mainSource.slice(clearPassphraseStart, resolveStart);
 
-    expect(setPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(setPassphraseSource).toContain(
+      "const persistence = await configStore.apply(null, { origin: 'local' })"
+    );
     expect(setPassphraseSource).toContain(
       'profileSync.storedPassphrase = previous.storedPassphrase'
     );
-    expect(clearPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(clearPassphraseSource).toContain(
+      "const persistence = await configStore.apply(null, { origin: 'local' })"
+    );
     expect(clearPassphraseSource).toContain(
       'profileSyncRuntime.passphraseSession = previous.passphraseSession'
     );
@@ -640,7 +639,12 @@ describe('main-process wiring safeguards', () => {
     expect(updateSource).toContain('normalizedNextPath !== previousCloudFilePath');
     expect(updateSource).toContain('const requiresInitialPreparation =');
     expect(updateSource).toContain('profileSync.firstEnableResolutionPending = true');
-    expect(updateSource).toContain('prepareProfileSyncFirstEnableResolution()');
+    expect(updateSource).toContain("{ origin: 'settings', requiresInitialPreparation");
+    const effectsStart = mainSource.indexOf('async function applyProfileSyncSettingsChange');
+    const effectsEnd = mainSource.indexOf('function subscribeConfigChangeEffect', effectsStart);
+    expect(mainSource.slice(effectsStart, effectsEnd)).toContain(
+      'prepareProfileSyncFirstEnableResolution()'
+    );
   });
 
   it('flushes the latest config before restart can bypass before-quit', () => {
@@ -665,25 +669,16 @@ describe('main-process wiring safeguards', () => {
     );
     const boundedExitSource = mainSource.slice(boundedExitStart, boundedExitEnd);
     expect(boundedExitSource).toContain('capturePendingWindowBoundsForShutdown()');
-    expect(boundedExitSource.indexOf('saveConfig({ allowDebouncedPush: false })')).toBeLessThan(
-      boundedExitSource.indexOf('flushPendingConfigWriteSync({ shutdown: true })')
+    // The final flush runs as the last task of the closed store, after the queued changes.
+    expect(boundedExitSource).toContain('configStore.close(');
+    expect(boundedExitSource.indexOf('capturePendingWindowBoundsForShutdown()')).toBeLessThan(
+      boundedExitSource.indexOf('configStore.flushSync()')
     );
     expect(boundedExitSource).toContain('QUIT_FINALIZATION_TIMEOUT');
     expect(boundedExitSource).toContain('void finalization');
     expect(boundedExitSource).toContain('setupProfileSyncInterval()');
 
-    const asyncWriteStart = mainSource.indexOf('async function writeConfigSnapshotAsync');
-    const asyncWriteEnd = mainSource.indexOf(
-      'function emitConfigPersistenceWarnings',
-      asyncWriteStart
-    );
-    const asyncWriteSource = mainSource.slice(asyncWriteStart, asyncWriteEnd);
-    expect(asyncWriteSource).toContain('canCommitSnapshot(snapshot');
-    expect(asyncWriteSource).toContain('currentEpoch: configWriteEpoch');
-    expect(asyncWriteSource).toContain('fs.renameSync(snapshot.tempPath, snapshot.configPath)');
-    expect(asyncWriteSource).not.toContain(
-      'await fs.promises.rename(snapshot.tempPath, snapshot.configPath)'
-    );
+    // An async write a shutdown flush overtook never lands: tests/unit/main-config-store.test.js.
 
     const quitStart = mainSource.indexOf("app.on('before-quit'");
     const quitEnd = mainSource.indexOf('// Register custom protocol', quitStart);
@@ -849,8 +844,12 @@ describe('main-process wiring safeguards', () => {
     const deferredMigrationSource = mainSource.slice(deferredMigrationStart, deferredMigrationEnd);
     expect(loadMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
     expect(deferredMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
-    expect(loadMigrationSource).toContain('const migrationSnapshot = saveConfig()');
-    expect(deferredMigrationSource).toContain('const migrationSnapshot = saveConfig()');
+    expect(loadMigrationSource).toContain(
+      "const migrationSave = configStore.save({ origin: 'startup' })"
+    );
+    expect(deferredMigrationSource).toContain(
+      "const migrationSave = configStore.save({ origin: 'local' })"
+    );
   });
 
   it('guards privileged IPC senders and restricts desktop-pin channels', () => {
@@ -931,10 +930,14 @@ describe('profile sync runtime safeguards', () => {
     const applyEnd = mainSource.indexOf('function clearProfileSyncTimers', applyStart);
     const applySource = mainSource.slice(applyStart, applyEnd);
 
-    expect(applySource).toContain('await saveConfigDurably({ allowDebouncedPush: false })');
-    expect(applySource).toContain(
-      "applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')"
+    // A pull runs the runtime effect once it is on disk, and is not pushed back.
+    expect(applySource).toContain("{ origin: 'profile-sync-pull' }");
+    const pullEffects = mainSource.slice(
+      mainSource.indexOf("'profile-sync-pull': ["),
+      mainSource.indexOf('],', mainSource.indexOf("'profile-sync-pull': ["))
     );
+    expect(pullEffects).toContain("'runtime'");
+    expect(pullEffects).not.toContain("'syncPush'");
     expect(mainSource).toContain('registerGlobalHotkeys()');
     expect(mainSource).toContain('registerPopupHotkey()');
     expect(mainSource).toContain('setupEntityAlerts()');
@@ -975,13 +978,13 @@ describe('profile sync runtime safeguards', () => {
     // The guard has to run inside update-config, after the renderer payload is
     // merged and pruned but before the merged config is treated as authoritative.
     const handlerStart = mainSource.indexOf("'update-config'");
-    const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
+    const merge = mainSource.indexOf('replaceConfigContents(current, {', handlerStart);
     const guard = mainSource.indexOf(
       'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision)',
       handlerStart
     );
     const timestampOverride = mainSource.indexOf(
-      'config.profileSync.profileUpdatedAt = prevConfig',
+      'current.profileSync.profileUpdatedAt = prevConfig',
       handlerStart
     );
 
@@ -1103,10 +1106,12 @@ describe('profile sync runtime safeguards', () => {
       'config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt'
     );
     expect(mainSource).toContain('config.profileSync.profileUpdatedAt = localProfileUpdatedAtSeed');
-    // Tracking must run before the snapshot is built so the timestamp lands in
-    // the same save instead of trailing one save behind.
-    expect(mainSource.indexOf('updateLocalProfileSyncTracking();')).toBeLessThan(
-      mainSource.indexOf('pendingConfigSnapshot = buildConfigSnapshotForSave();')
+    // Tracking runs as a before-write hook, so the timestamp lands in the same save instead of
+    // trailing one save behind (hooks run before encoding: tests/unit/main-config-store.test.js).
+    const hookStart = mainSource.indexOf('configStore.beforeWrite(');
+    expect(hookStart).toBeGreaterThan(-1);
+    expect(mainSource.indexOf('updateLocalProfileSyncTracking({', hookStart)).toBeGreaterThan(
+      hookStart
     );
   });
 
@@ -1160,16 +1165,13 @@ describe('profile sync runtime safeguards', () => {
     expect(mainSource).toContain("capabilities: ['visibility', 'switch_page', 'apply_profile']");
     expect(mainSource).not.toContain('os.hostname');
 
-    const snapshotStart = mainSource.indexOf('function buildConfigSnapshotForSave');
-    const snapshotEnd = mainSource.indexOf(
-      'async function writeConfigSnapshotAsync',
-      snapshotStart
-    );
+    const snapshotStart = mainSource.indexOf('function encodeConfigForSave');
+    const snapshotEnd = mainSource.indexOf('function emitConfigPersistenceWarnings', snapshotStart);
     const snapshotSource = mainSource.slice(snapshotStart, snapshotEnd);
     expect(snapshotSource).toContain("homeAssistant?.authMethod === 'oauth'");
     expect(snapshotSource).toContain('delete configToSave.homeAssistant.token');
     expect(snapshotSource.indexOf('delete configToSave.homeAssistant.token')).toBeLessThan(
-      snapshotSource.indexOf('serializedConfig: JSON.stringify(configToSave')
+      snapshotSource.indexOf('text: JSON.stringify(configToSave')
     );
 
     const updateStart = mainSource.indexOf("'update-config'");

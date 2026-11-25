@@ -31,6 +31,7 @@ module.exports = [
       'scripts/*.cjs',
       'scripts/**/*.cjs',
       'src/cloud-sync-client.cjs',
+      'src/main-config-store.cjs',
       'src/desktop-pin-ipc.cjs',
       'src/ha-oauth.cjs',
       'src/ha-protocol.cjs',

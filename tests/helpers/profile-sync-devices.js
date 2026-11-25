@@ -27,6 +27,8 @@ const {
   isPathInsideDirectory,
   validateProfileSyncCopyPaths,
 } = require('../../src/main-security.cjs');
+const { createConfigStore, replaceConfigContents } = require('../../src/main-config-store.cjs');
+const { createMemoryFs } = require('./main-config-store.js');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -60,6 +62,12 @@ const ENGINE_SOURCE = [
     '/**\n * Runs a sync triggered by something other than the interval timer'
   ),
 ].join('\n');
+
+// What a config change sets off once it is written, with the store's sync tracking.
+const CONFIG_CHANGE_EFFECTS_SOURCE = sliceMain(
+  '// Config change effects.',
+  '// End of config change effects.'
+);
 
 // The IPC handlers that make up a Settings save and the sync controls beside it.
 const HANDLER_SOURCE = [
@@ -172,6 +180,12 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
     }
 
     const handlers = {};
+    // The device's config store, writing its config.json to memory.
+    const configFile = createMemoryFs();
+    const configStore = createConfigStore({
+      filePath: path.join(userData, 'config.json'),
+      fs: configFile.fs,
+    });
     const dialogResults = [];
     const dialogCalls = [];
     // The window each dialog was parented to, in the same order; null when it had none.
@@ -185,6 +199,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       fs,
       path,
       nodeCrypto,
+      configStore,
+      replaceConfigContents,
       profileSyncCore,
       requireExistingSyncParentDirectory,
       ...rewriteTransaction,
@@ -214,7 +230,6 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       autoUpdaterInstance: null,
       pushes: [],
       emittedStatuses: [],
-      savedSnapshots: 0,
       ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
       serializeConfigMutationHandler: (handler) => handler,
       authorizeIpcSender: () => ({ type: 'main', window: {} }),
@@ -236,20 +251,10 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
     vm.runInContext(
       `${PROFILE_SYNC_CONSTANTS}
      ${ENGINE_SOURCE}
-     var configSnapshotVersion = 0;
-     function saveConfig(options = {}) {
-       updateLocalProfileSyncTracking({ allowDebouncedPush: options.allowDebouncedPush !== false });
-       savedSnapshots += 1;
-       configSnapshotVersion += 1;
-       return {};
-     }
-     async function saveConfigDurably(options = {}) {
-       saveConfig(options);
-       return { success: true, persistenceWarnings: [] };
-     }
+     ${CONFIG_CHANGE_EFFECTS_SOURCE}
      function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
      function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
-     function runSerializedConfigMutation(task) { return Promise.resolve().then(task); }
+     function runSerializedConfigMutation(task) { return configStore.serialize(task); }
      function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
      function setupProfileSyncInterval() {}
      // No pause before reading a damaged file again; a test can replace it to change the file.
@@ -273,7 +278,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
      var IS_CLIMATE_DEMO_MODE = false, IS_CLIMATE_DEMO_OVERLAY_MODE = false;
      var IS_ISOLATED_PROFILE = false, isLayerShellChildProcess = false, configRecoveryNotice = null;
      var NATIVE_GLASS_SUPPORTED = true;
-     var omarchyThemeWatcher = null;
+     var omarchyThemeWatcher = null, omarchyBarPublisher = null;
      function getOmarchyBarEntities() { return { all: [] }; }
      function isHyprland() { return false; }
      function windowsAreAlwaysTransparent() { return false; }
@@ -295,6 +300,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
         ...profileSync,
       },
     };
+    configStore.load(context.config);
     vm.runInContext(
       `ensureProfileSyncConfigDefaults(config);
      // Seeded at startup, as refreshProfileSyncRuntimeTracking does, from this device's clock.
@@ -314,10 +320,39 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       get config() {
         return context.config;
       },
-      /** Makes a local edit the way a settings save does. */
+      /** Makes a local edit and saves it, as the window geometry and status fields are saved. */
       edit(mutate) {
         mutate(context.config);
-        context.saveConfig();
+        device.save();
+      },
+      /** Saves the config as it stands, through the store's sync tracking. */
+      save() {
+        return configStore.save({ origin: 'local' });
+      },
+      /** Puts `next` in place of the config, as a change that builds a new config does. */
+      replaceConfig(next) {
+        replaceConfigContents(context.config, next);
+      },
+      /** A copy of the config as it stands now. */
+      configCopy() {
+        return JSON.parse(JSON.stringify(context.config));
+      },
+      /** The revision of the last config written: what the renderer's copy carries. */
+      revision() {
+        return configStore.revision();
+      },
+      /** The config as this device's config.json holds it, or null before the first write. */
+      writtenConfig() {
+        const text = configFile.files.get(path.join(userData, 'config.json'));
+        return text === undefined ? null : JSON.parse(text);
+      },
+      /** Makes the next config writes fail, as a full disk would. */
+      failConfigWrites(message = 'disk full') {
+        configFile.failWrites(message);
+      },
+      /** Runs `interceptor` while the next config write is under way; it fails if that throws. */
+      interceptNextConfigWrite(interceptor) {
+        configFile.interceptNextWrite(interceptor);
       },
       sync(direction = 'auto', source = 'interval') {
         return context.runProfileSyncInternal(direction, source);

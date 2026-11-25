@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -9,6 +10,9 @@ function registerHandler({ config, persistence = { success: true }, authorized =
   let handler;
   const start = mainSource.indexOf("ipcMain.handle(\n  'set-persistent-notification-toasts'");
   const end = mainSource.indexOf('// Popup Hotkey IPC Handlers', start);
+  const pushConfigToRenderer = jest.fn();
+  const store = createMainConfigStore(config, { pushConfigToRenderer });
+  if (!persistence.success) store.failNextWrite(persistence.error);
   const context = {
     ipcMain: { handle: (_channel, callback) => (handler = callback) },
     // The real wrapper runs the handler after earlier mutations; the order does not matter here.
@@ -16,8 +20,9 @@ function registerHandler({ config, persistence = { success: true }, authorized =
     authorizeIpcSender: () => authorized,
     rejectUnauthorizedIpc: () => ({ success: false, error: 'unauthorized' }),
     config,
-    saveConfigDurably: jest.fn(async () => persistence),
-    pushConfigToRenderer: jest.fn(),
+    configStore: store.configStore,
+    writeCount: store.writeCount,
+    pushConfigToRenderer,
     mainT: (key, vars = {}) => key.replace('{{error}}', vars.error ?? ''),
   };
   vm.runInNewContext(mainSource.slice(start, end), context);
@@ -32,7 +37,7 @@ describe('the Home Assistant notifications switch in the main process', () => {
     await expect(handler({}, false)).resolves.toEqual({ success: true });
 
     expect(config.entityAlerts.persistentNotifications).toBe(false);
-    expect(context.saveConfigDurably).toHaveBeenCalledTimes(1);
+    expect(context.writeCount()).toBe(1);
     expect(context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
     // Alerts for entities are a different thing and keep their own setting.
     expect(config.entityAlerts.enabled).toBe(false);
