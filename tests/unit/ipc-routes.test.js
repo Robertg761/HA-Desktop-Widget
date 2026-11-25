@@ -341,3 +341,64 @@ describe('IPC route table', () => {
     ).toThrow('No queue is given for config');
   });
 });
+
+// createRoutes() above builds its own role adapters; this runs the ones main.js really passes.
+describe("main.js's route wiring", () => {
+  function loadMainWiring() {
+    const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+    const start = mainSource.indexOf('const ipcRoutes = createIpcRoutes({');
+    const end = mainSource.indexOf('function normalizeIpcEntityIdForKey(', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const registered = new Map();
+    const mainWindow = createWindow(1);
+    const pinWindow = createWindow(2);
+    const strayWindow = createWindow(3);
+    const allWindows = [mainWindow, pinWindow, strayWindow];
+    const log = { warn: jest.fn() };
+    const context = {
+      createIpcRoutes,
+      ipcMain: { handle: (channel, listener) => registered.set(channel, listener) },
+      BrowserWindow: {
+        fromWebContents: (webContents) =>
+          allWindows.find((window) => window.webContents === webContents) || null,
+      },
+      log,
+      mainWindow,
+      desktopPinWindows: new Map([['light.office', pinWindow]]),
+      serializeConfigMutationHandler: (run) => run,
+    };
+    const routes = require('vm').runInNewContext(
+      `${mainSource.slice(start, end)}\nipcRoutes;`,
+      context
+    );
+    routes.handle('get-desktop-pin-bootstrap', (sender) => sender);
+    const invoke = (window) =>
+      registered.get('get-desktop-pin-bootstrap')({
+        sender: window.webContents,
+        senderFrame: topFrame(),
+      });
+    return { invoke, log, mainWindow, pinWindow, strayWindow };
+  }
+
+  test('gives the main window, a desktop pin and its entity, and turns away other windows', () => {
+    const world = loadMainWiring();
+
+    expect(world.invoke(world.mainWindow)).toEqual({
+      role: 'main',
+      window: world.mainWindow,
+      webContents: world.mainWindow.webContents,
+    });
+    expect(world.invoke(world.pinWindow)).toEqual({
+      role: 'desktop-pin',
+      entityId: 'light.office',
+      window: world.pinWindow,
+      webContents: world.pinWindow.webContents,
+    });
+    expect(world.invoke(world.strayWindow)).toEqual({ success: false, error: 'Unauthorized' });
+    expect(world.log.warn).toHaveBeenCalledWith(
+      'Unauthorized IPC sender rejected for get-desktop-pin-bootstrap'
+    );
+  });
+});

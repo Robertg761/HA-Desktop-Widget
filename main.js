@@ -6736,15 +6736,17 @@ ipcRoutes.handle('set-desktop-pin-edit-mode', (_sender, enabled) => {
   return setDesktopPinEditMode(enabled);
 });
 
+// Only the main window may act on any pin. Every other role, today's desktop pins and any added
+// later, acts only on its own entity, so a new role starts out restricted.
 ipcRoutes.handle('update-desktop-pin-bounds', async (sender, entityId, nextBounds = {}) => {
-  if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+  if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
   return updateDesktopPinBounds(entityId, nextBounds);
 });
 
 ipcRoutes.handle('nudge-desktop-pin', async (sender, entityId, delta = {}) => {
-  if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+  if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
   return nudgeDesktopPin(entityId, delta);
@@ -6753,7 +6755,7 @@ ipcRoutes.handle('nudge-desktop-pin', async (sender, entityId, delta = {}) => {
 ipcRoutes.handle(
   'sync-desktop-pin-content-min-bounds',
   async (sender, entityId, minBounds = {}) => {
-    if (sender.role === 'desktop-pin' && normalizeEntityId(entityId) !== sender.entityId) {
+    if (sender.role !== 'main' && normalizeEntityId(entityId) !== sender.entityId) {
       return { success: false, error: 'Unauthorized' };
     }
     return syncDesktopPinContentMinBounds(entityId, minBounds);
@@ -6766,7 +6768,7 @@ ipcRoutes.handle('unpin-entity-from-desktop', async (_sender, entityId) => {
 
 ipcRoutes.handle('get-desktop-pin-bootstrap', (sender, entityId) => {
   const normalizedEntityId = normalizeEntityId(entityId);
-  if (sender.role === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role !== 'main' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
   // The cache can be empty here even though pins exist: an unpin-then-repin pair whose
@@ -6905,10 +6907,11 @@ ipcRoutes.handle('request-desktop-pin-action', (sender, entityId, action, payloa
   if (!normalizedEntityId || !normalizedAction) {
     return { success: false, error: 'Invalid desktop pin action' };
   }
-  if (sender.role === 'desktop-pin' && normalizedEntityId !== sender.entityId) {
+  if (sender.role !== 'main' && normalizedEntityId !== sender.entityId) {
     return { success: false, error: 'Unauthorized' };
   }
-  if (sender.role === 'desktop-pin') {
+  // Every window but the main one gets the pin's allowed actions, with targeting fields removed.
+  if (sender.role !== 'main') {
     const normalizedRequest = normalizeDesktopPinActionRequest(
       normalizedEntityId,
       normalizedAction,
@@ -7252,11 +7255,7 @@ function snapLayerPinPosition(drag) {
   layerShellRaiser.place(drag.window.getTitle(), snapped);
 }
 ipcRoutes.handle('begin-layer-drag', async (sender) => {
-  if (
-    !isLayerShellChildProcess ||
-    !isHyprland() ||
-    (sender.role === 'desktop-pin' && !desktopPinEditMode)
-  )
+  if (!isLayerShellChildProcess || !isHyprland() || (sender.role !== 'main' && !desktopPinEditMode))
     return { success: false };
   if (layerDrag) return { success: false };
   const cursor = await readHyprlandCursor();
