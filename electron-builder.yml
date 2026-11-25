@@ -1,6 +1,6 @@
 # electron-builder configuration, formerly the "build" key of package.json.
 productName: HA Desktop Widget
-# Keep in sync with the top-level "appId" in package.json: src/windows-startup.cjs and
+# Keep in sync with the top-level "appId" in package.json: src/login-item.cjs and
 # src/linux-startup.cjs read it at runtime to name the Windows Run-key value and the
 # Linux autostart .desktop file, and a mismatch orphans existing users' autostart entries.
 appId: com.github.robertg761.hadesktopwidget

@@ -394,18 +394,7 @@ const {
   normalizeDesktopPinActionRequest,
   normalizeHaUnitSystem,
 } = require('./src/desktop-pin-ipc.cjs');
-const {
-  getWindowsStartupRegistryName,
-  isWindowsLoginItemEnabled,
-  quoteWindowsExecutablePath,
-} = require('./src/windows-startup.cjs');
-const {
-  getLinuxStartupExecutablePath,
-  isLinuxLoginItemEnabled,
-  migrateLegacyLinuxAutostartEntry,
-  setLinuxLoginItemSettings,
-  syncLinuxAutostartExecutablePath,
-} = require('./src/linux-startup.cjs');
+const { createLoginItem } = require('./src/login-item.cjs');
 const {
   isAllowedHlsProxyPath,
   isPathInsideDirectory,
@@ -1875,53 +1864,6 @@ function isPortableBuild() {
     env.PORTABLE_EXECUTABLE_FILE ||
     env.PORTABLE_EXECUTABLE_APP_FILENAME
   );
-}
-
-/**
- * Resolve the executable path/options used for Windows startup registration.
- *
- * Portable builds run from a temporary extracted executable, so we must use
- * PORTABLE_EXECUTABLE_FILE to register the launcher that actually exists
- * across reboots.
- * @param {{quotePath?: boolean}} [options]
- * @returns {{path: string, args: string[], name: string, executablePath: string}}
- */
-function getWindowsStartupRegistrationTarget(options = {}) {
-  const env = process.env || {};
-  const portableExecutable = env.PORTABLE_EXECUTABLE_FILE;
-  const portableBuild = isPortableBuild();
-  const quotePath = options.quotePath !== false;
-
-  if (portableBuild && portableExecutable) {
-    const executablePath = portableExecutable;
-    return {
-      path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
-      args: [],
-      name: getWindowsStartupRegistryName(pkg, app.getName()),
-      executablePath,
-    };
-  }
-
-  if (portableBuild && !portableExecutable) {
-    log.warn(
-      "Portable build detected but PORTABLE_EXECUTABLE_FILE is not set; startup registration will use app.getPath('exe') which may be an ephemeral path."
-    );
-  }
-
-  const executablePath = app.getPath('exe');
-  return {
-    path: quotePath ? quoteWindowsExecutablePath(executablePath) : executablePath,
-    args: [],
-    name: getWindowsStartupRegistryName(pkg, app.getName()),
-    executablePath,
-  };
-}
-
-function getWindowsStartupLookupOptions(target) {
-  return {
-    path: target.path,
-    args: target.args,
-  };
 }
 
 function generateProfileSyncDeviceId() {
@@ -12216,121 +12158,27 @@ ipcMain.handle(
 );
 
 // Start at login IPC handlers
+const loginItem = createLoginItem({
+  app,
+  platform: process.platform,
+  pkg,
+  appName: APP_DISPLAY_NAME,
+  env: process.env,
+  log,
+  isPortableBuild,
+  isolated: IS_ISOLATED_PROFILE,
+});
+
 ipcMain.handle('get-login-item-settings', (event) => {
   const sender = authorizeIpcSender(event, 'get-login-item-settings');
   if (!sender) return rejectUnauthorizedIpc('get-login-item-settings');
-  if (IS_ISOLATED_PROFILE) return { openAtLogin: false, supported: false };
-  try {
-    if (process.platform === 'win32') {
-      const startupTarget = getWindowsStartupRegistrationTarget();
-      const legacyStartupTarget = getWindowsStartupRegistrationTarget({ quotePath: false });
-      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
-      let openAtLogin = isWindowsLoginItemEnabled(settings, startupTarget.executablePath);
-      let legacySettings = null;
-
-      if (!openAtLogin && legacyStartupTarget.path !== startupTarget.path) {
-        legacySettings = app.getLoginItemSettings(
-          getWindowsStartupLookupOptions(legacyStartupTarget)
-        );
-        openAtLogin = isWindowsLoginItemEnabled(legacySettings, startupTarget.executablePath);
-      }
-
-      log.debug('Login item settings:', { settings, legacySettings });
-      return { openAtLogin, supported: true };
-    }
-
-    if (process.platform === 'linux') {
-      const executablePath = getLinuxStartupExecutablePath(app, process.env);
-      const openAtLogin = isLinuxLoginItemEnabled({
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      return { openAtLogin, supported: true };
-    }
-
-    const settings = app.getLoginItemSettings();
-    const openAtLogin = Boolean(settings.openAtLogin);
-    log.debug('Login item settings:', settings);
-    return { openAtLogin, supported: true };
-  } catch (error) {
-    log.error('Failed to get login item settings:', error);
-    return { openAtLogin: false, supported: false, error: error.message };
-  }
+  return loginItem.getSettings();
 });
 
 ipcMain.handle('set-login-item-settings', (event, openAtLogin) => {
   const sender = authorizeIpcSender(event, 'set-login-item-settings');
   if (!sender) return rejectUnauthorizedIpc('set-login-item-settings');
-  if (IS_ISOLATED_PROFILE)
-    return {
-      success: false,
-      supported: false,
-      error: 'Startup is disabled for an isolated profile',
-    };
-  try {
-    const normalizedOpenAtLogin = !!openAtLogin;
-    if (process.platform === 'linux') {
-      const executablePath = getLinuxStartupExecutablePath(app, process.env);
-      setLinuxLoginItemSettings(normalizedOpenAtLogin, {
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      const confirmedOpenAtLogin = isLinuxLoginItemEnabled({
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath,
-        env: process.env,
-      });
-      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
-    }
-
-    const startupTarget = process.platform === 'win32' ? getWindowsStartupRegistrationTarget() : {};
-    const loginItemSettings = {
-      openAtLogin: normalizedOpenAtLogin,
-      ...(process.platform === 'win32'
-        ? {
-            path: startupTarget.path,
-            args: startupTarget.args,
-            name: startupTarget.name,
-          }
-        : startupTarget),
-    };
-
-    if (process.platform === 'win32') {
-      // Keep Windows startup approval in sync with the toggle state.
-      loginItemSettings.enabled = normalizedOpenAtLogin;
-    }
-
-    const withWindowsSuffix = process.platform === 'win32' ? ' with Windows' : '';
-    log.info(
-      `Setting app to ${normalizedOpenAtLogin ? 'start' : 'not start'}${withWindowsSuffix}`,
-      loginItemSettings
-    );
-    app.setLoginItemSettings(loginItemSettings);
-
-    if (process.platform === 'win32') {
-      const settings = app.getLoginItemSettings(getWindowsStartupLookupOptions(startupTarget));
-      const confirmedOpenAtLogin = isWindowsLoginItemEnabled(
-        settings,
-        startupTarget.executablePath
-      );
-      if (confirmedOpenAtLogin !== normalizedOpenAtLogin) {
-        const error = `Windows startup setting did not persist as ${normalizedOpenAtLogin ? 'enabled' : 'disabled'}`;
-        log.warn(error, settings);
-        return { success: false, error, openAtLogin: confirmedOpenAtLogin };
-      }
-      return { success: true, openAtLogin: confirmedOpenAtLogin, supported: true };
-    }
-
-    return { success: true, openAtLogin: normalizedOpenAtLogin, supported: true };
-  } catch (error) {
-    log.error('Failed to set login item settings:', error);
-    return { success: false, error: error.message, supported: false };
-  }
+  return loginItem.setOpenAtLogin(openAtLogin);
 });
 
 async function restartApplication() {
@@ -14884,44 +14732,8 @@ app
       } catch (error) {
         log.warn('Could not scan AppImage launchers:', error?.message || error);
       }
-      const linuxStartupOptions = {
-        pkg,
-        appName: APP_DISPLAY_NAME,
-        executablePath: getLinuxStartupExecutablePath(app, process.env),
-        env: process.env,
-      };
-
-      try {
-        // The autostart file is named after the app id, which package.json has not always
-        // carried. An entry written before it was added sits under the older name where nothing
-        // can see it, so the setting reads as off, ticking the box adds a second entry, and the
-        // repair below never reaches it. Adopt it first, then repair whatever we now own.
-        const { adopted, removedDuplicate, legacyPath } =
-          migrateLegacyLinuxAutostartEntry(linuxStartupOptions);
-        if (adopted) {
-          log.info(
-            `Adopted the start-at-login entry left behind under an older file name (${legacyPath})`
-          );
-        } else if (removedDuplicate) {
-          log.info(
-            `Removed a duplicate start-at-login entry left behind under an older file name (${legacyPath})`
-          );
-        }
-      } catch (error) {
-        log.warn('Could not migrate the Linux autostart entry:', error?.message || error);
-      }
-      try {
-        const { repaired, autostartPath } = syncLinuxAutostartExecutablePath(linuxStartupOptions);
-        if (repaired) {
-          log.info(
-            `Start-at-login pointed at an executable that no longer exists (likely a previous update); repointed ${autostartPath} at this build`
-          );
-        }
-      } catch (error) {
-        // Start-at-login is a convenience; a read-only or unwritable autostart directory must
-        // never stop the widget from starting.
-        log.warn('Could not refresh the Linux autostart entry:', error?.message || error);
-      }
+      // Also adopts an entry left under an older file name; see src/login-item.cjs.
+      loginItem.repairOnStartup();
     }
 
     installApplicationMenu(Menu, process.platform, {

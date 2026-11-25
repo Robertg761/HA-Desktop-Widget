@@ -16,8 +16,7 @@ describe('main-process wiring safeguards', () => {
   ])(
     'limits autostart maintenance for %s',
     (_label, platform, isPackaged, dev, smoke, expected, isolated = false) => {
-      const migrate = jest.fn(() => ({}));
-      const repair = jest.fn(() => ({}));
+      const repair = jest.fn();
       const repairLaunchers = jest.fn(() => []);
       const linkCommand = jest.fn(() => false);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
@@ -36,13 +35,9 @@ describe('main-process wiring safeguards', () => {
         path,
         __dirname,
         IS_SMOKE_TEST_MODE: smoke,
-        pkg: {},
-        getLinuxStartupExecutablePath: () => '/installed/widget',
-        migrateLegacyLinuxAutostartEntry: migrate,
-        syncLinuxAutostartExecutablePath: repair,
+        loginItem: { repairOnStartup: repair },
         log: { info: jest.fn(), warn: jest.fn() },
       });
-      expect(migrate).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repair).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repairLaunchers).toHaveBeenCalledTimes(expected ? 1 : 0);
       // A throwaway profile or a run from source leaves the user's command alone.

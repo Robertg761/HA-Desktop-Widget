@@ -698,8 +698,8 @@ describe('the app name', () => {
   it('is HA Desktop Widget wherever the app names itself, and never the package name', () => {
     expect(mainSource).toContain("const APP_DISPLAY_NAME = 'HA Desktop Widget';");
     expect(mainSource).not.toMatch(/appName:\s*app\.getName\(\)/);
-    // The four Linux startup helpers, and the download notification.
-    expect(mainSource.match(/appName:\s*APP_DISPLAY_NAME/g)).toHaveLength(5);
+    // Start at login, and the download notification.
+    expect(mainSource.match(/appName:\s*APP_DISPLAY_NAME/g)).toHaveLength(2);
     expect(mainSource).toContain('tray.setToolTip(APP_DISPLAY_NAME)');
   });
 

@@ -37,12 +37,12 @@ module.exports = [
       'src/i18n-main.cjs',
       'src/layer-shell.cjs',
       'src/linux-startup.cjs',
+      'src/login-item.cjs',
       'src/main-logging.cjs',
       'src/net-fetch.cjs',
       'src/platform.cjs',
       'src/preload-api.cjs',
       'src/usage-ping.cjs',
-      'src/windows-startup.cjs',
     ],
     languageOptions: {
       ecmaVersion: 2021,
