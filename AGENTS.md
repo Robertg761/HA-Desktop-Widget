@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Notes for Claude and other coding agents working in this repo. Start with `README.md` for what the app is, `CONTRIBUTING.md` for how to build and test it, and `GLOSSARY.md` for the words the code uses.
 
