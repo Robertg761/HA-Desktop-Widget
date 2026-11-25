@@ -12,6 +12,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
   let mockState;
   let mockWebsocket;
   let mockUiUtils;
+  let mockDialogs;
   let mockAlerts;
   let mockLog;
   let mockUi;
@@ -47,6 +48,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       state: mockState,
       websocket: mockWebsocket,
       uiUtils: mockUiUtils,
+      dialogs: mockDialogs,
       alerts: mockAlerts,
       log: mockLog,
       ui: mockUi,
@@ -87,7 +89,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       expect(mockElectronAPI.refreshHomeAssistantOAuth).toHaveBeenCalledTimes(1);
       expect(mockWebsocket.connect).toHaveBeenCalledTimes(2);
-      expect(JSON.stringify(mockUiUtils.showToast.mock.calls)).not.toMatch(/token/i);
+      expect(JSON.stringify(mockDialogs.showToast.mock.calls)).not.toMatch(/token/i);
     });
 
     it('closes the connection when main says the authorization is gone while connected', async () => {
@@ -405,7 +407,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
   describe('reconnect requests without a usable authorization', () => {
     const tokenToasts = () =>
-      mockUiUtils.showToast.mock.calls.filter(([message]) => /token/i.test(String(message)));
+      mockDialogs.showToast.mock.calls.filter(([message]) => /token/i.test(String(message)));
 
     it('keeps the reconnect prompt when main asks to reconnect after sleep', async () => {
       await loadRenderer({
@@ -516,7 +518,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       expect(mockElectronAPI.cancelHomeAssistantOAuth).toHaveBeenCalledTimes(1);
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
       expect(document.getElementById('ha-url').value).toBe('http://ha.local:8123');
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
     });
   });
 
@@ -582,7 +584,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       mockWebsocket.emit('close', { intentional: false });
     };
     const unreachableToasts = () =>
-      mockUiUtils.showToast.mock.calls.filter(([message]) =>
+      mockDialogs.showToast.mock.calls.filter(([message]) =>
         message.startsWith('Unable to reach Home Assistant')
       );
 
@@ -642,7 +644,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       now.mockRestore();
 
       expect(unreachableToasts()).toHaveLength(1);
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringMatching(/^Unable to reach Home Assistant/),
         'error',
         15000,
@@ -661,20 +663,20 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       findButton('Open Settings').click();
 
-      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('connection');
-      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('startup-warning');
+      expect(mockDialogs.dismissToasts).toHaveBeenCalledWith('connection');
+      expect(mockDialogs.dismissToasts).toHaveBeenCalledWith('startup-warning');
       expect(document.getElementById('settings-modal').classList).not.toContain('hidden');
     });
 
     it('takes the connection toasts down once the connection is back, so none outlives the recovery', async () => {
       await loadRenderer({ config: tokenConfig() });
       failAttempt();
-      mockUiUtils.dismissToasts.mockClear();
+      mockDialogs.dismissToasts.mockClear();
 
       connectSuccessfully();
 
-      expect(mockUiUtils.dismissToasts).toHaveBeenCalledWith('connection');
-      expect(mockUiUtils.dismissToasts).not.toHaveBeenCalledWith('startup-warning');
+      expect(mockDialogs.dismissToasts).toHaveBeenCalledWith('connection');
+      expect(mockDialogs.dismissToasts).not.toHaveBeenCalledWith('startup-warning');
     });
 
     it('says an authentication failure once, however many times Home Assistant rejects the token', async () => {
@@ -685,7 +687,7 @@ describe('Renderer Home Assistant connection lifecycle', () => {
       }
 
       expect(
-        mockUiUtils.showToast.mock.calls.filter(([message]) =>
+        mockDialogs.showToast.mock.calls.filter(([message]) =>
           /authentication failed/i.test(message)
         )
       ).toHaveLength(1);

@@ -1,7 +1,7 @@
 import state from './state.js';
 import configStore from './config-store.js';
 import { createAlertEvaluator } from './alert-rules.js';
-import { showToast } from './ui-utils.js';
+import { showToast } from './dialogs.js';
 import {
   getEntityDisplayName,
   getEntityDisplayState,

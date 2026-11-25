@@ -13,6 +13,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
   let mockState;
   let mockWebsocket;
   let mockUiUtils;
+  let mockDialogs;
   let mockHotkeys;
   let mockAlerts;
   let mockSettings;
@@ -95,7 +96,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
       configureApi,
       shellHtml: bodyHtml,
       ui: { openEntityControls: jest.fn() },
-      uiUtils: { showToast: jest.fn(), suspendSeasonalColors: jest.fn() },
+      uiUtils: { suspendSeasonalColors: jest.fn() },
+      dialogs: { showToast: jest.fn() },
       settings: {
         closeSettings: jest.fn(() => jest.requireActual('../../src/settings.js').closeSettings()),
         reapplySettingsPreviews: jest.fn(),
@@ -113,6 +115,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       state: mockState,
       websocket: mockWebsocket,
       uiUtils: mockUiUtils,
+      dialogs: mockDialogs,
       hotkeys: mockHotkeys,
       alerts: mockAlerts,
       settings: mockSettings,
@@ -930,7 +933,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
     expect(status.getAttribute('role')).toBe('alert');
     expect(status.getAttribute('aria-live')).toBe('assertive');
     // The wizard says it in its own status line, so a toast would say it twice.
-    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    expect(mockDialogs.showToast).not.toHaveBeenCalled();
     expect(mockWebsocket.connect).not.toHaveBeenCalled();
     expect(mockState.CONFIG.homeAssistant.token).toBe('YOUR_LONG_LIVED_ACCESS_TOKEN');
   });
@@ -1113,7 +1116,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     const status = document.querySelector('.first-run-status');
     expect(status.dataset.status).not.toBe('error');
-    expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+    expect(mockDialogs.showToast).not.toHaveBeenCalled();
   });
 
   it('recovers the Connect button when preparing the request throws', async () => {
@@ -1168,7 +1171,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       },
     });
 
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+    expect(mockDialogs.showToast).toHaveBeenCalledWith(
       expect.stringContaining('/tmp/config.corrupt.2026-07-27.json'),
       'warning',
       20000
@@ -1184,17 +1187,17 @@ describe('Renderer first-run Home Assistant authorization', () => {
     });
     await flushAsync();
     expect(mockState.CONFIG).not.toHaveProperty('configRecovery');
-    expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+    expect(mockDialogs.showToast).toHaveBeenCalledTimes(1);
   });
 
   it('shows and strips token persistence warnings delivered after a save', async () => {
     await loadRenderer({ config: tokenConfig() });
-    mockUiUtils.showToast.mockClear();
+    mockDialogs.showToast.mockClear();
 
     triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
     await flushAsync();
 
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+    expect(mockDialogs.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Token encryption is not available'),
       'warning',
       10000,
@@ -1212,7 +1215,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
 
     it('is said once when a sync starts waiting or failing, wherever the person is', async () => {
       await loadRenderer({ bodyHtml: '<div id="settings-modal" class="hidden"></div>' });
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       triggerMockEvent('profileSyncStatus', { enabled: true, needsResolution: true });
       triggerMockEvent('profileSyncStatus', { enabled: true, needsResolution: true });
@@ -1221,38 +1224,38 @@ describe('Renderer first-run Home Assistant authorization', () => {
         needsResolution: true,
         inFlight: true,
       });
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(...attentionToast);
+      expect(mockDialogs.showToast).toHaveBeenCalledTimes(1);
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(...attentionToast);
 
       // Once it is healthy again, the next trouble is news again.
       triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'success' });
       triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'error' });
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(2);
+      expect(mockDialogs.showToast).toHaveBeenCalledTimes(2);
     });
 
     it('stays quiet while Settings is open, where the state is on screen', async () => {
       await loadRenderer({ bodyHtml: '<div id="settings-modal"></div>' });
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'error' });
 
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
     });
 
     it('stays quiet for a healthy or switched-off sync', async () => {
       await loadRenderer({ bodyHtml: '<div id="settings-modal" class="hidden"></div>' });
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       triggerMockEvent('profileSyncStatus', { enabled: true, lastSyncStatus: 'success' });
       triggerMockEvent('profileSyncStatus', { enabled: false, lastSyncStatus: 'error' });
 
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
     });
   });
 
   it('says the token was not saved once per session, however often settings are saved', async () => {
     await loadRenderer({ config: tokenConfig() });
-    mockUiUtils.showToast.mockClear();
+    mockDialogs.showToast.mockClear();
 
     for (let save = 0; save < 3; save += 1) {
       triggerMockEvent('configPersistenceWarning', [
@@ -1261,7 +1264,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       await flushAsync();
     }
 
-    expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
+    expect(mockDialogs.showToast).toHaveBeenCalledTimes(1);
   });
 
   it('names the missing keyring on Linux instead of telling the user to re-enter the token', async () => {
@@ -1271,12 +1274,12 @@ describe('Renderer first-run Home Assistant authorization', () => {
         api.platform = 'linux';
       },
     });
-    mockUiUtils.showToast.mockClear();
+    mockDialogs.showToast.mockClear();
 
     triggerMockEvent('configPersistenceWarning', [{ code: 'home_assistant_token_not_persisted' }]);
     await flushAsync();
 
-    expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+    expect(mockDialogs.showToast).toHaveBeenCalledWith(
       expect.stringContaining('No unlocked system keyring (Secret Service) was found'),
       'warning',
       10000,
@@ -1382,7 +1385,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       !!document.querySelector('#first-run-onboarding:not(.hidden)') ||
       document.body.classList.contains('first-run-active');
     const everythingSaid = () => [
-      ...mockUiUtils.showToast.mock.calls.map(([message]) => message),
+      ...mockDialogs.showToast.mock.calls.map(([message]) => message),
       ...mockUiUtils.setStatus.mock.calls.map(([, detail]) => detail),
       panel()?.textContent || '',
     ];
@@ -1405,7 +1408,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       );
       expect(mockElectronAPI.clearTokenResetReason).toHaveBeenCalledTimes(1);
       // The panel says it; a toast over it would say it twice.
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
     });
 
     it('never points at a gear icon, which the wizard hides and desktop pins do not have', async () => {
@@ -1560,7 +1563,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
       await flushAsync();
 
       // The panel names the keyring; a toast with another remedy beside it would say it twice.
-      expect(mockUiUtils.showToast).not.toHaveBeenCalled();
+      expect(mockDialogs.showToast).not.toHaveBeenCalled();
       expect(panel().textContent).toContain('System keyring is unavailable');
     });
 
@@ -1573,7 +1576,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
           api.platform = 'linux';
         },
       });
-      mockUiUtils.showToast.mockClear();
+      mockDialogs.showToast.mockClear();
 
       // Main says so as it saves, before the config with the token reaches the window, and again
       // with that config.
@@ -1586,8 +1589,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
       });
       await flushAsync();
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledTimes(1);
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledTimes(1);
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('this token will not be remembered after you quit'),
         'warning',
         10000,
@@ -1603,7 +1606,7 @@ describe('Renderer first-run Home Assistant authorization', () => {
         },
       });
 
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('config is read-only'),
         'error',
         10000

@@ -8,7 +8,7 @@
  * profile sync would otherwise carry one computer's update over to another that has not updated.
  */
 
-import { showToast } from './ui-utils.js';
+import { showToast } from './dialogs.js';
 import { t } from './i18n.js';
 
 const LAST_RUN_VERSION_KEY = 'ha-widget:last-run-version';

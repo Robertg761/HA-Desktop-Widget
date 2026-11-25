@@ -10,7 +10,7 @@ import {
 } from './ui.js';
 import websocket from './websocket.js';
 import entityActions from './entity-actions.cjs';
-import { closeDialog, openDialog, showToast } from './ui-utils.js';
+import { closeDialog, openDialog, showToast } from './dialogs.js';
 import { formatNumber, t } from './i18n.js';
 import { compareNames, getCloseMatchScore, normalizeSearchText } from './format.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';

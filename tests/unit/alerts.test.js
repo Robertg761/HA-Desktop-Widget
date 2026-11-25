@@ -13,7 +13,8 @@ const { sampleStates } = require('../fixtures/ha-data.js');
 let mockElectronAPI;
 
 // Mock dependencies
-jest.mock('../../src/ui-utils.js', () => ({
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 
@@ -117,7 +118,7 @@ describe('the Specific State field in the alert dialog', () => {
 describe('alerts module', () => {
   // Require modules once
   const alerts = require('../../src/alerts.js');
-  const showToast = require('../../src/ui-utils.js').showToast;
+  const showToast = require('../../src/dialogs.js').showToast;
 
   beforeEach(() => alerts.resetEntityAlerts());
 

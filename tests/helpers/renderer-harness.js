@@ -183,6 +183,7 @@ function createRendererHarness() {
      * @param {Object} [options.messages] - Translations t() should answer with.
      * @param {Object} [options.ui] - Extra members for the mocked src/ui.js.
      * @param {Object} [options.uiUtils] - Extra members for the mocked src/ui-utils.js.
+     * @param {Object} [options.dialogs] - Extra members for src/dialogs.js, whose dialogs are real.
      * @param {Object} [options.settings] - Extra members for the mocked src/settings.js.
      * @param {Object} [options.utils] - Extra members for the mocked src/utils.js.
      * @param {string} [options.shellHtml] - The page the renderer boots into, in place of the
@@ -196,6 +197,7 @@ function createRendererHarness() {
       messages = {},
       ui = {},
       uiUtils = {},
+      dialogs = {},
       settings = {},
       utils = {},
       shellHtml = DASHBOARD_SHELL,
@@ -329,7 +331,6 @@ function createRendererHarness() {
       const mockUiUtils = {
         __esModule: true,
         showLoading: jest.fn(),
-        showToast: jest.fn(() => ({ dismiss: jest.fn() })),
         setStatus: jest.fn(),
         initializeConnectionStatusTooltip: jest.fn(),
         applyTheme: jest.fn(),
@@ -338,13 +339,21 @@ function createRendererHarness() {
         applyBackgroundTheme: jest.fn(),
         applyUiPreferences: jest.fn(),
         applyWindowEffects: jest.fn(),
-        dismissToast: jest.fn(),
-        dismissToasts: jest.fn(),
         copyTextToClipboard: jest.fn(async () => true),
-        ...require('./ui-utils-dialogs').realDialogHelpers(),
         ...uiUtils,
       };
       jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
+      // The real dialogs, so a test sees what a person opening and closing one gets; the toasts
+      // are watched instead of shown.
+      const mockDialogs = {
+        __esModule: true,
+        ...jest.requireActual('../../src/dialogs.js'),
+        showToast: jest.fn(() => ({ dismiss: jest.fn() })),
+        dismissToast: jest.fn(),
+        dismissToasts: jest.fn(),
+        ...dialogs,
+      };
+      jest.doMock('../../src/dialogs.js', () => mockDialogs);
       jest.doMock('../../src/utils.js', () => ({
         __esModule: true,
         reconcileConfigEntityIds: jest.fn((nextConfig) => ({ changed: false, config: nextConfig })),
@@ -413,6 +422,7 @@ function createRendererHarness() {
         log,
         ui: mockUi,
         uiUtils: mockUiUtils,
+        dialogs: mockDialogs,
         settings: mockSettings,
         alerts: mockAlerts,
         hotkeys: mockHotkeys,

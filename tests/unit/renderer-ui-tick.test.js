@@ -137,10 +137,10 @@ describe('Renderer UI tick scheduler', () => {
       openSettings: jest.fn(),
       renderAlertsListInline: jest.fn(),
     }));
+    jest.doMock('../../src/dialogs.js', () => ({ __esModule: true, showToast: jest.fn() }));
     jest.doMock('../../src/ui-utils.js', () => ({
       __esModule: true,
       showLoading: jest.fn(),
-      showToast: jest.fn(),
       setStatus: jest.fn(),
       initializeConnectionStatusTooltip: jest.fn(),
       applyTheme: jest.fn(),

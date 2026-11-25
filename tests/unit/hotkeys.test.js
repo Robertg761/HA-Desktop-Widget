@@ -10,8 +10,8 @@ const {
 const { sampleStates } = require('../fixtures/ha-data.js');
 
 // Mock dependencies
-jest.mock('../../src/ui-utils.js', () => ({
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 
@@ -65,7 +65,7 @@ beforeEach(() => {
 describe('hotkeys module', () => {
   // Require modules once
   const hotkeys = require('../../src/hotkeys.js');
-  const showToast = require('../../src/ui-utils.js').showToast;
+  const showToast = require('../../src/dialogs.js').showToast;
 
   describe('initializeHotkeys', () => {
     it('should load hotkey configuration from state.CONFIG', () => {
@@ -571,13 +571,13 @@ describe('hotkeys module', () => {
     });
 
     it('cancels itself, not the Settings dialog under it, on Escape with focus on the page', async () => {
-      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const dialogs = jest.requireActual('../../src/dialogs.js');
       const settings = document.createElement('div');
       settings.className = 'modal';
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
+      dialogs.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const capture = hotkeys.captureHotkey();
       // A click on the overlay's text leaves focus on <body>.
@@ -595,7 +595,7 @@ describe('hotkeys module', () => {
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
       );
       expect(settingsEscape).toHaveBeenCalledTimes(1);
-      uiUtils.releaseFocusTrap(settings);
+      dialogs.releaseFocusTrap(settings);
       settings.remove();
     });
 
@@ -861,7 +861,7 @@ describe('hotkeys module', () => {
     });
 
     it('says it waits for a hotkey, where a saved row says it was updated', async () => {
-      const showToast = require('../../src/ui-utils.js').showToast;
+      const showToast = require('../../src/dialogs.js').showToast;
       showToast.mockClear();
 
       choose('light.desk', 'turn_off');

@@ -22,6 +22,7 @@ import * as ui from './src/ui.js';
 import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
+import * as dialogs from './src/dialogs.js';
 import * as utils from './src/utils.js';
 import {
   formatNumber,
@@ -146,7 +147,7 @@ async function persistEntityRegistryRename(eventData = {}) {
     }
     if (configuredRuntimeStarted) alerts.initializeEntityAlerts();
     renderCurrentMode();
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Updated saved references from {{oldEntityId}} to {{newEntityId}}', {
         oldEntityId,
         newEntityId,
@@ -163,7 +164,7 @@ async function persistEntityRegistryRename(eventData = {}) {
       `Failed to persist Home Assistant entity rename ${oldEntityId} -> ${newEntityId}:`,
       error
     );
-    uiUtils.showToast(
+    dialogs.showToast(
       t(
         'Could not update saved references for {{oldEntityId}}. Click its unavailable tile to repair it.',
         {
@@ -415,7 +416,7 @@ function noteTokenRecoveryReason() {
     log.warn('Saved Home Assistant token cannot be used:', reason);
     void window.electronAPI.clearTokenResetReason?.().catch((error) => {
       log.error('Failed to acknowledge token recovery notice:', error);
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Could not save the token recovery acknowledgement. {{error}}', {
           error: error?.message || t('Unknown error'),
         }),
@@ -812,7 +813,7 @@ function openQuickAccessModal() {
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
   // The search is where a visit here starts; without it focus would land on the Close button.
-  uiUtils.openDialog(modal, { initialFocus: '#quick-controls-search' });
+  dialogs.openDialog(modal, { initialFocus: '#quick-controls-search' });
 }
 
 function createTextElement(tagName, className, text) {
@@ -968,7 +969,7 @@ function renderWidgetStatePanel({
   else panel.removeAttribute('aria-busy');
 
   if (isNew || JSON.stringify(labels) !== panel.dataset.actionLabels) {
-    uiUtils.renderKeepingFocus(panel, () => {
+    dialogs.renderKeepingFocus(panel, () => {
       panel.querySelector('.widget-state-actions')?.remove();
       if (labels.length) panel.appendChild(createWidgetStateActions(actions));
     });
@@ -1309,7 +1310,7 @@ function setFirstRunWizardVisible(visible) {
         `${Math.ceil(header.getBoundingClientRect().bottom)}px`
       );
     }
-    uiUtils.openDialog(firstRunWizard.overlay, {
+    dialogs.openDialog(firstRunWizard.overlay, {
       display: null,
       labelledBy: 'first-run-title',
       describedBy: 'first-run-copy',
@@ -1317,7 +1318,7 @@ function setFirstRunWizardVisible(visible) {
       dismiss: null,
     });
   } else if (!visible && wasVisible) {
-    void uiUtils.closeDialog(firstRunWizard.overlay, { animate: false });
+    void dialogs.closeDialog(firstRunWizard.overlay, { animate: false });
   } else {
     firstRunWizard.overlay.classList.toggle('hidden', !visible);
   }
@@ -1716,7 +1717,7 @@ async function finishFirstRunWizard() {
       );
       setWizardStatus(message, 'error');
       // The wizard is up and says the same thing in its status line; a toast would say it twice.
-      if (!firstRunWizard?.visible) uiUtils.showToast(message, 'error', 6000);
+      if (!firstRunWizard?.visible) dialogs.showToast(message, 'error', 6000);
     }
   } finally {
     window.clearTimeout(waitNoticeTimer);
@@ -2018,7 +2019,7 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
 
   if (tokenPersistenceWarningShown || !isConfigured(state.CONFIG)) return;
   tokenPersistenceWarningShown = true;
-  uiUtils.showToast(
+  dialogs.showToast(
     window.electronAPI?.platform === 'linux'
       ? t(
           'No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.'
@@ -2149,7 +2150,7 @@ function applyRendererConfig(nextConfig) {
 
   showConfigPersistenceWarnings(persistenceWarnings);
   runtimeWarnings.forEach((warning) => {
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Error: {{error}}', {
         error: warning?.error || t('Unknown error'),
       }),
@@ -2168,7 +2169,7 @@ function showConfigRecoveryNotice(recovery) {
       'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
       { path: isolateLtr(recovery.backupPath || '-') }
     );
-    uiUtils.showToast(message, 'warning', 20000);
+    dialogs.showToast(message, 'warning', 20000);
     return;
   }
 
@@ -2179,7 +2180,7 @@ function showConfigRecoveryNotice(recovery) {
       error: String(recovery.error || t('Unknown error')),
     }
   );
-  uiUtils.showToast(message, 'error', 20000);
+  dialogs.showToast(message, 'error', 20000);
 }
 
 // Text in index.html that names keys names them as this platform's keyboard prints them, as the
@@ -2399,14 +2400,14 @@ function showConnectionToast(message, timeout) {
   // with Retry and Open Settings right under it. A toast on the same spot would cover those
   // buttons, and the first click on them would dismiss the toast instead.
   if (document.body.classList.contains('widget-state-active')) return;
-  uiUtils.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
+  dialogs.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
 }
 
 // Connection toasts point the user at Settings. Once Settings is open they have done their job,
 // and left up they cover its footer, Save button included.
 function dismissConnectionToasts({ includeStartupWarnings = false } = {}) {
-  uiUtils.dismissToasts?.(CONNECTION_TOAST_SOURCE);
-  if (includeStartupWarnings) uiUtils.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
+  dialogs.dismissToasts?.(CONNECTION_TOAST_SOURCE);
+  if (includeStartupWarnings) dialogs.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
 }
 
 function showClassifiedConnectionToast(error) {
@@ -2938,7 +2939,7 @@ window.electronAPI.onProfileSyncStatus((status) => {
   const needsAttention = settings.profileSyncNeedsAttention?.(status) === true;
   const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
   if (needsAttention && !profileSyncNeededAttention && !settingsOpen) {
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Profile sync needs attention. Open Settings > Advanced.'),
       'warning',
       8000
@@ -3398,7 +3399,7 @@ function wireUI() {
             log.info('Log file opened successfully');
             // The file manager opens somewhere else on the screen, or behind the widget; this says
             // that something happened, and where the file is.
-            uiUtils.showToast(
+            dialogs.showToast(
               t('Showing the log file: {{path}}', { path: isolateLtr(result.path) }),
               'info',
               5000
@@ -3407,7 +3408,7 @@ function wireUI() {
             log.error('Failed to open log file:', result.error);
             // No file manager answered (a bare window manager), so hand over the path instead.
             const copied = result.path ? await uiUtils.copyTextToClipboard(result.path) : false;
-            uiUtils.showToast(
+            dialogs.showToast(
               copied
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
                     path: isolateLtr(result.path),
@@ -3419,7 +3420,7 @@ function wireUI() {
           }
         } catch (error) {
           log.error('Error opening log file:', error);
-          uiUtils.showToast(
+          dialogs.showToast(
             t('Error opening log file: {{error}}', { error: error.message }),
             'error'
           );
@@ -3506,7 +3507,7 @@ function wireUI() {
       const modal = document.getElementById('quick-controls-modal');
       if (!modal) return Promise.resolve();
       // Releases the focus trap and restores previous focus once the exit animation finishes.
-      return uiUtils.closeDialog(modal);
+      return dialogs.closeDialog(modal);
     };
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
@@ -3537,7 +3538,7 @@ function wireUI() {
       const modal = document.getElementById('weather-config-modal');
       if (!modal) return;
       ui.populateWeatherEntitiesList();
-      uiUtils.openDialog(modal);
+      dialogs.openDialog(modal);
     };
     statusCards.forEach((card) => {
       if (!card) return;
@@ -3604,7 +3605,7 @@ function wireUI() {
     const closeWeatherConfig = () => {
       const modal = document.getElementById('weather-config-modal');
       if (modal) {
-        void uiUtils.closeDialog(modal);
+        void dialogs.closeDialog(modal);
       }
     };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
@@ -3630,10 +3631,10 @@ function wireUI() {
           // Refresh the list
           ui.populateWeatherEntitiesList();
 
-          uiUtils.showToast(t('Weather entity cleared (using first available)'), 'success', 2000);
+          dialogs.showToast(t('Weather entity cleared (using first available)'), 'success', 2000);
         } catch (error) {
           console.error('Error clearing weather entity:', error);
-          uiUtils.showToast(t('Failed to clear weather entity'), 'error', 3000);
+          dialogs.showToast(t('Failed to clear weather entity'), 'error', 3000);
         }
       };
     }
@@ -3707,12 +3708,12 @@ function wireUI() {
             );
           } else {
             e.target.checked = previous;
-            uiUtils.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
+            dialogs.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
           }
         } catch (error) {
           log.error('Failed to save the Home Assistant notifications setting:', error);
           e.target.checked = previous;
-          uiUtils.showToast(t('Error toggling alerts'), 'error', 2000);
+          dialogs.showToast(t('Error toggling alerts'), 'error', 2000);
         } finally {
           reenableSettingsToggle(e.target, hadFocus);
         }

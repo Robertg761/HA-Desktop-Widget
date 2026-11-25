@@ -6582,7 +6582,7 @@ body[data-accent-warm]:not(.high-contrast) {
   --dash-tile-wash-hover: var(--dash-tile-wash-warm-hover);
 }
 
-/* A Quick Access tile with a colour of its own (Tile settings > Tile color). ui-utils solves the
+/* A Quick Access tile with a colour of its own (Tile settings > Tile color). color-math.js solves the
    colour's accent values for both themes as --tile-* properties on the tile (getTileColorStyle),
    and here they become the tile's accent, so its lit wash and edge, its icon and the controls in it
    follow the colour as they follow the window's accent, with the same contrast. The Readable preset
@@ -10190,7 +10190,7 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   /* The stack itself must not eat clicks on the widget behind it; individual
      toasts opt back in below so they can be click-dismissed. */
   pointer-events: none;
-  /* layoutToasts (src/ui-utils.js) takes the stack back to where it rests and measures it there
+  /* layoutToasts (src/dialogs.js) takes the stack back to where it rests and measures it there
      at once. Under reduced motion the stylesheet gives every transition 0.01ms instead of none,
      which still starts one: the measurement read the place it was moved to before, and the stack
      was left over the connection panel it had been lifted clear of. It is placed, not animated. */
@@ -10400,7 +10400,7 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
   color: #1565c0;
 }
 
-/* Exit state. Applied by dismissToast() in src/ui-utils.js, which then waits
+/* Exit state. Applied by dismissToast() in src/dialogs.js, which then waits
    for animationend before removing the node. Under prefers-reduced-motion the
    global rule near the bottom of this file collapses the duration to 0.01ms,
    so the animationend still fires and the toast still leaves — it just does
@@ -10412,7 +10412,7 @@ body.ha-offline :is(#quick-controls .control-item, .weather-card, .media-tile) {
 }
 
 /* An older toast with no room beside the connection panel waits out of sight (layoutToasts in
-   src/ui-utils.js) and comes back once there is room. */
+   src/dialogs.js) and comes back once there is room. */
 .toast.toast-held {
   display: none;
 }

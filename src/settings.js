@@ -26,14 +26,16 @@ import {
   suspendSeasonalColors,
   applyWindowEffects,
   isFrostedGlassAvailable,
+  copyTextToClipboard,
+} from './ui-utils.js';
+import {
   openDialog,
   closeDialog,
   disableControlsKeepingFocus,
   findFocusKey,
   showToast,
   showConfirm,
-  copyTextToClipboard,
-} from './ui-utils.js';
+} from './dialogs.js';
 import {
   cleanupHotkeyEventListeners,
   describeHotkeyFailure,

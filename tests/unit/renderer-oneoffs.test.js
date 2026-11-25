@@ -16,6 +16,7 @@ describe('Renderer one-off behaviours', () => {
   let mockElectronAPI;
   let mockState;
   let mockUiUtils;
+  let mockDialogs;
   let mockUi;
   let companionOptions;
 
@@ -150,7 +151,6 @@ describe('Renderer one-off behaviours', () => {
     mockUiUtils = {
       __esModule: true,
       showLoading: jest.fn(),
-      showToast: jest.fn(),
       setStatus: jest.fn(),
       initializeConnectionStatusTooltip: jest.fn(),
       applyTheme: jest.fn(),
@@ -160,9 +160,14 @@ describe('Renderer one-off behaviours', () => {
       applyUiPreferences: jest.fn(),
       suspendSeasonalColors: jest.fn(),
       applyWindowEffects: jest.fn(),
-      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
+    mockDialogs = {
+      __esModule: true,
+      ...jest.requireActual('../../src/dialogs.js'),
+      showToast: jest.fn(),
+    };
+    jest.doMock('../../src/dialogs.js', () => mockDialogs);
     jest.doMock('../../src/utils.js', () => ({
       getEntityDisplayName: (entity) => entity.attributes?.friendly_name || entity.entity_id,
       __esModule: true,
@@ -325,7 +330,7 @@ describe('Renderer one-off behaviours', () => {
       await flushAsync();
 
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         'Weather entity cleared (using first available)',
         expect.anything(),
         expect.anything()
@@ -345,7 +350,7 @@ describe('Renderer one-off behaviours', () => {
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({ selectedWeatherEntity: null });
       expect(mockUi.populateWeatherEntitiesList).toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Weather entity cleared (using first available)',
         'success',
         2000

@@ -1,6 +1,6 @@
-jest.mock('../../src/ui-utils.js', () => ({ showConfirm: jest.fn(), showToast: jest.fn() }));
+jest.mock('../../src/dialogs.js', () => ({ showConfirm: jest.fn(), showToast: jest.fn() }));
 const { initializeSettingsFiles } = require('../../src/settings-files-ui.js');
-const { showConfirm, showToast } = require('../../src/ui-utils.js');
+const { showConfirm, showToast } = require('../../src/dialogs.js');
 const state = require('../../src/state.js').default;
 
 describe('settings file controls', () => {

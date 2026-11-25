@@ -324,10 +324,10 @@ describe('command palette over another dialog', () => {
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     global.requestAnimationFrame = (callback) => callback();
     let palette;
-    let uiUtils;
+    let dialogs;
     jest.isolateModules(() => {
       palette = require('../../src/command-palette.js');
-      uiUtils = require('../../src/ui-utils.js');
+      dialogs = require('../../src/dialogs.js');
     });
     const settings = document.createElement('div');
     settings.className = 'modal';
@@ -337,7 +337,7 @@ describe('command palette over another dialog', () => {
 
     try {
       document.activeElement?.blur();
-      uiUtils.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
+      dialogs.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
       palette.openCommandPalette();
       const overlay = document.querySelector('.command-palette-overlay:not(.hidden)');
       expect(overlay).toBeTruthy();
@@ -356,7 +356,7 @@ describe('command palette over another dialog', () => {
       expect(settingsEscape).toHaveBeenCalledTimes(1);
     } finally {
       global.requestAnimationFrame = originalRequestAnimationFrame;
-      uiUtils.closeDialog(settings, { remove: true });
+      dialogs.closeDialog(settings, { remove: true });
       document.querySelectorAll('.command-palette-overlay').forEach((node) => node.remove());
       settings.remove();
     }
@@ -984,9 +984,9 @@ describe('command palette recents', () => {
     });
     const toastsFor = async (error) => {
       const { palette, paletteState } = load();
-      const uiUtils = require('../../src/ui-utils.js');
+      const dialogs = require('../../src/dialogs.js');
       const websocket = require('../../src/websocket.js').default;
-      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      const toast = jest.spyOn(dialogs, 'showToast').mockImplementation(() => {});
       paletteState.setStates({ 'light.desk': lamp() });
       palette.openCommandPalette();
       const input = document.querySelector('.command-palette-input');
@@ -1027,8 +1027,8 @@ describe('command palette recents', () => {
 
     it('says an entity that went unavailable is unavailable', async () => {
       const { palette, paletteState } = load();
-      const uiUtils = require('../../src/ui-utils.js');
-      const toast = jest.spyOn(uiUtils, 'showToast').mockImplementation(() => {});
+      const dialogs = require('../../src/dialogs.js');
+      const toast = jest.spyOn(dialogs, 'showToast').mockImplementation(() => {});
       paletteState.setStates({ 'light.desk': lamp() });
       palette.openCommandPalette();
       const input = document.querySelector('.command-palette-input');

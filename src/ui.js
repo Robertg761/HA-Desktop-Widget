@@ -22,6 +22,8 @@ import {
   subscribeToUpdateState,
 } from './update-status.js';
 import * as uiUtils from './ui-utils.js';
+import * as dialogs from './dialogs.js';
+import { getTileColorStyle, hexToRgb, miredsToKelvin } from './color-math.js';
 import {
   formatDate,
   formatNumber,
@@ -409,7 +411,7 @@ function handleServiceError(error, entityName = null) {
     code: error?.code || null,
     details: error?.details || null,
   });
-  uiUtils.showToast(displayMessage, 'error', 4000);
+  dialogs.showToast(displayMessage, 'error', 4000);
 }
 
 function callServiceWithUiRollback(entity, domain, service, serviceData, rollback = null) {
@@ -560,7 +562,7 @@ function showConfigPersistenceError(error) {
   const message = t('Error: {{error}}', {
     error: error?.message || t('Unknown error'),
   });
-  uiUtils.showToast(message, 'error', 4000);
+  dialogs.showToast(message, 'error', 4000);
 }
 
 function isQuickAccessManageModalOpen() {
@@ -1011,7 +1013,7 @@ function beginInlineTabRename(tabId, buttonEl) {
       const nextConfig = renameQuickAccessView(state.CONFIG, tabId, value);
       void setQuickAccessConfig(nextConfig).then((result) => {
         if (result.success) {
-          uiUtils.showToast(t('Page renamed'), 'success', 1600);
+          dialogs.showToast(t('Page renamed'), 'success', 1600);
         }
       });
     } else {
@@ -1045,7 +1047,7 @@ function beginInlineTabRename(tabId, buttonEl) {
 
 async function duplicateQuickAccessPage(tabId) {
   if (configStore.isWriting()) {
-    uiUtils.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
+    dialogs.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
     return;
   }
   const config = ensureQuickAccessConfig();
@@ -1054,7 +1056,7 @@ async function duplicateQuickAccessPage(tabId) {
   focusActiveQuickAccessPage();
   const result = await pending;
   if (result.success) {
-    uiUtils.showToast(t('Page duplicated'), 'success', 1600);
+    dialogs.showToast(t('Page duplicated'), 'success', 1600);
     window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
   }
   // Keep focus on the authoritative page after saving or rolling back a failed save.
@@ -1068,7 +1070,7 @@ async function deleteQuickAccessPage(tabId) {
   const tab = config.customTabs.find((view) => view.id === tabId);
   if (!tab) return;
 
-  const confirmed = await uiUtils.showConfirm(
+  const confirmed = await dialogs.showConfirm(
     t('Delete page'),
     // The page itself goes, with its tiles; the entities are still in Home Assistant, and on any other
     // page that shows them.
@@ -1086,7 +1088,7 @@ async function deleteQuickAccessPage(tabId) {
   focusActiveQuickAccessPage();
   const result = await pending;
   if (result.success) {
-    uiUtils.showToast(t('Page deleted'), 'info', 1600);
+    dialogs.showToast(t('Page deleted'), 'info', 1600);
     if (state.CONFIG?.activeTabId !== previousActiveTabId) {
       window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
     }
@@ -1120,7 +1122,7 @@ function createQuickAccessPage(name, entityIds = [], { fillEmptyPage = false } =
   nextConfig.customTabs.find((tab) => tab.id === nextConfig.activeTabId).entityIds = entityIds;
   return setQuickAccessConfig(nextConfig).then((result) => {
     if (result.success) {
-      uiUtils.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
+      dialogs.showToast(fillsActivePage ? t('Page updated') : t('Page added'), 'success', 1600);
       // Adding a page switches to it; filling the empty active page keeps the same page.
       if (!fillsActivePage) {
         window.dispatchEvent(new CustomEvent('desktop-companion-page-changed'));
@@ -1152,7 +1154,7 @@ function filterEntityRows(rows, query, getName, getEntityId) {
 // reorganize mode exits, so it detaches immediately instead of animating out over a replacement.
 function closeAddPageModal() {
   const modal = document.getElementById('add-page-modal');
-  if (modal) void uiUtils.closeDialog(modal, { remove: true, animate: false });
+  if (modal) void dialogs.closeDialog(modal, { remove: true, animate: false });
 }
 
 function showAddPageModal({ starter = false } = {}) {
@@ -1360,7 +1362,7 @@ function showAddPageModal({ starter = false } = {}) {
     // Pressed from the keyboard, the button is about to be disabled, which drops focus to <body>.
     // It gets focus back if it is still there (as Retry), and the room picker it filled if not.
     const pressedWithFocus = document.activeElement === loadRooms;
-    const enableControls = uiUtils.disableControlsKeepingFocus([
+    const enableControls = dialogs.disableControlsKeepingFocus([
       loadRooms,
       starter ? saveBtn : null,
     ]);
@@ -1529,7 +1531,7 @@ function showAddPageModal({ starter = false } = {}) {
     },
   };
   const close = () => {
-    if (!submissionInFlight) void uiUtils.closeDialog(modal, closeOptions);
+    if (!submissionInFlight) void dialogs.closeDialog(modal, closeOptions);
   };
   const submit = async () => {
     if (submissionInFlight || saveBtn.disabled) return;
@@ -1545,7 +1547,7 @@ function showAddPageModal({ starter = false } = {}) {
     setSubmissionInFlight(true);
     const result = await createQuickAccessPage(name, selectedIds(), { fillEmptyPage: starter });
     if (result.success) {
-      void uiUtils.closeDialog(modal, closeOptions);
+      void dialogs.closeDialog(modal, closeOptions);
       return;
     }
     if (modal.isConnected) {
@@ -1584,7 +1586,7 @@ function showAddPageModal({ starter = false } = {}) {
   if (input) input.addEventListener('input', clearNameError);
 
   // The page name is where typing starts; Enter in it (or in the device search) adds the page.
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     initialFocus: input,
     dismiss: close,
@@ -2125,7 +2127,7 @@ function toggleReorganizeMode() {
       });
       // A notice, not a question: passive, so it cannot swallow the first drag it sits over. The
       // Alt key is named as this keyboard prints it: Option on a Mac.
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Reorganize mode on. Drag or press {{modifier}}+arrow keys to reorder. Esc to finish.', {
           modifier: accelerators.formatAccelerator('Alt', window.electronAPI?.platform),
         }),
@@ -2156,7 +2158,7 @@ function toggleReorganizeMode() {
         console.error('Failed to disable desktop pin edit mode:', error);
       });
       if (quickAccessOrderChanged) {
-        uiUtils.showToast(t('Quick Access order saved'), 'success', 2000);
+        dialogs.showToast(t('Quick Access order saved'), 'success', 2000);
       }
       quickAccessOrderChanged = false;
     }
@@ -2304,11 +2306,11 @@ function addButtonsToElement(item) {
           // editor's own Delete. Any other tile is named as the tile shows itself: its custom
           // name, or the name a missing entity's placeholder carries, never a bare id.
           const confirmed = await (isComparisonGraphId(entityId)
-            ? uiUtils.showConfirm(t('Delete graph'), t('This removes the graph and its tile.'), {
+            ? dialogs.showConfirm(t('Delete graph'), t('This removes the graph and its tile.'), {
                 confirmText: t('Delete'),
                 confirmClass: 'btn-danger',
               })
-            : uiUtils.showConfirm(
+            : dialogs.showConfirm(
                 // The question below names the page; the title does not claim a wider scope.
                 t('Remove tile'),
                 // Removing a tile takes it off the page it is on; the same entity on another page stays.
@@ -2419,7 +2421,7 @@ function showRenameModal(entityId) {
     // The tile keeps the hex colour itself, so a custom colour deleted later stays on the tile.
     const tileColorChoices = [];
     (uiUtils.getAccentThemes?.() || []).forEach((theme) => {
-      const color = uiUtils.getTileColorStyle(theme.color)?.color;
+      const color = getTileColorStyle(theme.color)?.color;
       if (color && !tileColorChoices.some((choice) => choice.color === color)) {
         tileColorChoices.push({ color, name: theme.name });
       }
@@ -2560,7 +2562,7 @@ function showRenameModal(entityId) {
       });
     });
     tileColorCustomInput?.addEventListener('input', () => {
-      const color = uiUtils.getTileColorStyle(tileColorCustomInput.value)?.color;
+      const color = getTileColorStyle(tileColorCustomInput.value)?.color;
       if (color) showSelectedTileColor(color);
     });
     const syncTrayOptionsVisibility = () => {
@@ -2601,7 +2603,7 @@ function showRenameModal(entityId) {
     const closeTileSettingsModal = () => {
       if (tileSettingsModalClosing) return;
       tileSettingsModalClosing = true;
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     let reenableTileSettings = null;
     const setTileSettingsMutationInFlight = (inFlight) => {
@@ -2612,7 +2614,7 @@ function showRenameModal(entityId) {
         return;
       }
       // A save that fails puts the form back for another try, with the keyboard where it was.
-      reenableTileSettings = uiUtils.disableControlsKeepingFocus([
+      reenableTileSettings = dialogs.disableControlsKeepingFocus([
         input,
         ...tileColorRadios,
         tileColorCustomInput,
@@ -2749,7 +2751,7 @@ function showRenameModal(entityId) {
           nextGaugeRange.max !== null &&
           nextGaugeRange.min >= nextGaugeRange.max
         ) {
-          uiUtils.showToast(t('Gauge minimum must be less than the maximum.'), 'error', 3000);
+          dialogs.showToast(t('Gauge minimum must be less than the maximum.'), 'error', 3000);
           return;
         }
         if (hasChartControl && !gaugeRangesEqual(nextGaugeRange, currentGaugeRange)) {
@@ -2789,7 +2791,7 @@ function showRenameModal(entityId) {
           const toastMessage = renamed
             ? t('Renamed to “{{name}}”', { name: newName })
             : t('Tile settings saved');
-          uiUtils.showToast(toastMessage, 'success', 2000);
+          dialogs.showToast(toastMessage, 'success', 2000);
           closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to save Quick Access tile settings:', error);
@@ -2863,7 +2865,7 @@ function showRenameModal(entityId) {
 
         // The reset drops every saved setting of the tile at once, and discards what was typed
         // here and not yet saved, so it asks first.
-        const confirmed = await uiUtils.showConfirm(
+        const confirmed = await dialogs.showConfirm(
           t('Reset tile settings to defaults'),
           t('Are you sure?'),
           { confirmText: t('Reset'), confirmClass: 'btn-danger' }
@@ -2884,7 +2886,7 @@ function showRenameModal(entityId) {
             ...(resetTrayOptions ? { trayEntities: nextConfig.trayEntities } : {}),
           });
           refreshQuickAccessAfterTileSettingsChange();
-          uiUtils.showToast(t('Reset tile settings to defaults'), 'info', 2000);
+          dialogs.showToast(t('Reset tile settings to defaults'), 'info', 2000);
           closeTileSettingsModal();
         } catch (error) {
           console.error('Failed to reset Quick Access tile settings:', error);
@@ -2911,7 +2913,7 @@ function showRenameModal(entityId) {
     }
 
     // The name is what people come here to change, so typing starts there with it selected.
-    uiUtils.openDialog(modal, {
+    dialogs.openDialog(modal, {
       display: null,
       initialFocus: input,
       dismiss: () => {
@@ -2950,7 +2952,7 @@ async function removeFromQuickAccess(entityId) {
       addRemoveButtons();
     }
 
-    uiUtils.showToast(t('Removed from “{{page}}”', { page: pageName }), 'success', 2000);
+    dialogs.showToast(t('Removed from “{{page}}”', { page: pageName }), 'success', 2000);
     return result;
   } catch (error) {
     console.error('Error removing from quick access:', error);
@@ -3509,7 +3511,7 @@ function executeQuickAccessControl(entity, command, value) {
       return true;
     }
     case 'light:color': {
-      const rgb = controls.colors.length ? uiUtils.hexToRgb(String(value)) : null;
+      const rgb = controls.colors.length ? hexToRgb(String(value)) : null;
       if (!rgb) return false;
       runEntityAction(liveEntity, 'color', [rgb.r, rgb.g, rgb.b]);
       return true;
@@ -5391,7 +5393,7 @@ function showComparisonGraphModal(graphId) {
     // keyboard follows it, or goes to the search field when that sensor is no longer listed, and
     // the list stays scrolled where it was.
     const scrollTop = list.scrollTop;
-    uiUtils.renderKeepingFocus(
+    dialogs.renderKeepingFocus(
       list,
       () => {
         list.textContent = '';
@@ -5488,7 +5490,7 @@ function showComparisonGraphModal(graphId) {
             current.entityIds.map((id) => getGraphSeriesUnitFor(state.STATES?.[id])).filter(Boolean)
           );
           if (unit && units.size && !units.has(unit)) {
-            uiUtils.showToast(
+            dialogs.showToast(
               t('{{unit}} does not match the other sensors — it will be scaled on its own.', {
                 unit,
               }),
@@ -5519,7 +5521,7 @@ function showComparisonGraphModal(graphId) {
 
   deleteBtn.addEventListener('click', async () => {
     if (graphMutationInFlight) return;
-    const confirmed = await uiUtils.showConfirm(
+    const confirmed = await dialogs.showConfirm(
       t('Delete graph'),
       t('This removes the graph and its tile.'),
       { confirmText: t('Delete'), confirmClass: 'btn-danger' }
@@ -5615,11 +5617,11 @@ function setQuickAccessCameraPreviewRefresh(entityId, refreshValue, targetConfig
 function getQuickAccessTileColor(entityId) {
   const color = getQuickAccessTileOptions(entityId).color;
   if (!color) return '';
-  return uiUtils.getTileColorStyle(color)?.color || '';
+  return getTileColorStyle(color)?.color || '';
 }
 
 function setQuickAccessTileColor(entityId, color, targetConfig = state.CONFIG) {
-  const normalized = color ? uiUtils.getTileColorStyle(color)?.color || '' : '';
+  const normalized = color ? getTileColorStyle(color)?.color || '' : '';
   const tileOptions = ensureQuickAccessTileOptionsConfig(targetConfig);
   if (!normalized) {
     if (tileOptions[entityId]) {
@@ -5640,9 +5642,9 @@ function setQuickAccessTileColor(entityId, color, targetConfig = state.CONFIG) {
  */
 function applyQuickAccessTileColor(div, entityId, enabled = true) {
   const color = enabled ? getQuickAccessTileOptions(entityId).color : '';
-  const style = color ? uiUtils.getTileColorStyle(color) : null;
+  const style = color ? getTileColorStyle(color) : null;
   if (div.dataset.tileColor) {
-    const previous = uiUtils.getTileColorStyle(div.dataset.tileColor);
+    const previous = getTileColorStyle(div.dataset.tileColor);
     Object.keys(previous?.properties || {}).forEach((name) => div.style.removeProperty(name));
   }
   if (!style) {
@@ -9199,7 +9201,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     document.activeElement?.dataset?.desktopPinQuickToggle === entityId &&
     !!document.activeElement.closest('#quick-controls');
   if (!isPinned && !supportInfo.supported) {
-    uiUtils.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
+    dialogs.showToast(getDesktopPinUnsupportedMessage(resolvedEntityId), 'error', 2600);
     return { success: false, error: supportInfo.reason || 'Desktop pin not supported yet' };
   }
   try {
@@ -9222,7 +9224,7 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
         addRemoveButtons();
       }
       if (hadFocus) focusQuickAccessPinToggle(entityId);
-      uiUtils.showToast(t('Removed desktop pin'), 'info', 1800);
+      dialogs.showToast(t('Removed desktop pin'), 'info', 1800);
       return { success: true, pinned: false, result };
     }
 
@@ -9245,11 +9247,11 @@ async function toggleDesktopPinFromQuickAccess(entityId) {
     }
     if (hadFocus) focusQuickAccessPinToggle(entityId);
 
-    uiUtils.showToast(t('Pinned to desktop'), 'success', 1800);
+    dialogs.showToast(t('Pinned to desktop'), 'success', 1800);
     return { success: true, pinned: true, result };
   } catch (error) {
     console.error('Error toggling desktop pin from quick access:', error);
-    uiUtils.showToast(
+    dialogs.showToast(
       isPinned ? t('Could not remove desktop pin') : t('Could not pin tile to desktop'),
       'error',
       2600
@@ -10199,7 +10201,7 @@ function createControlElement(entity, options = {}) {
     } else if (click === 'hint') {
       div.onclick = () => {
         if (!shouldBlockInteraction(div))
-          uiUtils.showToast(
+          dialogs.showToast(
             getAlarmPanelHint(state.STATES?.[entity.entity_id] || entity),
             'info',
             4000
@@ -10633,19 +10635,19 @@ function openEntityRepairModal(staleEntityId) {
   let repairInFlight = false;
   const close = () => {
     if (repairInFlight) return;
-    void uiUtils.closeDialog(modal, { remove: true });
+    void dialogs.closeDialog(modal, { remove: true });
   };
 
   const persistReplacement = async (replacementEntityId) => {
     repairInFlight = true;
-    const reenable = uiUtils.disableControlsKeepingFocus(modal.querySelectorAll('button, input'));
+    const reenable = dialogs.disableControlsKeepingFocus(modal.querySelectorAll('button, input'));
     try {
       await persistAuthoritativeEntityIdReplacement(staleEntityId, replacementEntityId);
       renderActiveTab();
       renderPrimaryCards();
       updateWeatherFromHA();
       updateMediaTile();
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Replaced {{oldEntityId}} with {{newEntityId}}', {
           oldEntityId: staleEntityId,
           newEntityId: replacementEntityId,
@@ -10751,7 +10753,7 @@ function openEntityRepairModal(staleEntityId) {
   });
   renderCandidates();
   // The search is the first thing to do here; without it focus would start on the close button.
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     initialFocus: search,
     describedBy: explanation,
@@ -10946,7 +10948,7 @@ function updateExistingQuickAccessControl(div, entity, options = {}) {
   if (click === 'hint') {
     div.onclick = () => {
       if (!shouldBlockInteraction(div))
-        uiUtils.showToast(getAlarmPanelHint(liveEntity()), 'info', 4000);
+        dialogs.showToast(getAlarmPanelHint(liveEntity()), 'info', 4000);
     };
     div.title = getAlarmPanelHint(displayEntity);
     return true;
@@ -11086,7 +11088,7 @@ function showSensorDetails(entity) {
       return;
     }
 
-    uiUtils.showToast(
+    dialogs.showToast(
       t('{{name}}: {{state}}', {
         name: utils.getEntityDisplayName(entity),
         state: utils.getEntityDisplayState(entity),
@@ -11129,7 +11131,7 @@ function activateAccessibleDialogModal(
   if (titleElement && !titleElement.id) {
     titleElement.id = `${titleIdPrefix}-${dialogModalIdCounter}`;
   }
-  uiUtils.openDialog(modal, {
+  dialogs.openDialog(modal, {
     display: null,
     labelledBy: titleElement || undefined,
     initialFocus,
@@ -11266,7 +11268,7 @@ function createEntityDetailModal({ className, title, onClose = null, beforeClose
     closing = true;
     entityDetailClosers.delete(closeModal);
     onClose?.();
-    void uiUtils.closeDialog(modal, { remove: true });
+    void dialogs.closeDialog(modal, { remove: true });
   };
   entityDetailClosers.add(closeModal);
   entityDetailModalClosers.set(modal, closeModal);
@@ -11431,7 +11433,7 @@ function showHelperControls(entity) {
       // The field says why (too high, not a step it allows), where a toast could only say no.
       input?.focus();
       if (input && !input.checkValidity()) input.reportValidity();
-      else uiUtils.showToast(t('Invalid value'), 'error');
+      else dialogs.showToast(t('Invalid value'), 'error');
       return;
     }
     busy = true;
@@ -11442,7 +11444,7 @@ function showHelperControls(entity) {
     refresh();
     try {
       await websocket.callService(domain, service, data);
-      if (!closed) uiUtils.showToast(t('Command sent'), 'success');
+      if (!closed) dialogs.showToast(t('Command sent'), 'success');
     } catch (error) {
       // Names the cause Home Assistant gave, where there is one, and stays up long enough to read.
       if (!closed) handleServiceError(error, utils.getEntityDisplayName(entity));
@@ -12379,8 +12381,8 @@ function getLightColorTempRange(attributes = {}) {
     };
   }
 
-  const minFromMireds = uiUtils.miredsToKelvin(attributes.max_mireds);
-  const maxFromMireds = uiUtils.miredsToKelvin(attributes.min_mireds);
+  const minFromMireds = miredsToKelvin(attributes.max_mireds);
+  const maxFromMireds = miredsToKelvin(attributes.min_mireds);
   if (minFromMireds && maxFromMireds) {
     return {
       min: Math.min(minFromMireds, maxFromMireds),
@@ -12399,7 +12401,7 @@ function getInitialLightColorTempKelvin(attributes = {}, range) {
     return clampRange(Math.round(kelvinValue), range.min, range.max);
   }
 
-  const kelvinFromMireds = uiUtils.miredsToKelvin(attributes.color_temp);
+  const kelvinFromMireds = miredsToKelvin(attributes.color_temp);
   if (kelvinFromMireds) {
     return clampRange(kelvinFromMireds, range.min, range.max);
   }
@@ -12870,7 +12872,7 @@ function showMediaDetail(entity, { replaces = null, focusSelector = null } = {})
       isClosing = true;
       entityDetailClosers.delete(closeModal);
       stopUpdates();
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     entityDetailClosers.add(closeModal);
     closeBtns.forEach((b) => b && (b.onclick = closeModal));
@@ -12951,7 +12953,7 @@ function callMediaPlayerService(entityId, action, options = {}) {
     });
   } catch (error) {
     console.error('Error calling media player service:', error);
-    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
+    dialogs.showToast(t('Failed to control media player'), 'error', 3000);
     return undefined;
   }
 }
@@ -12960,7 +12962,7 @@ function callMediaPlayerService(entityId, action, options = {}) {
 // a tile asks first, and so does an Unlock hotkey (executeHotkeyAction). Locking stays one click.
 async function confirmThenUnlock(entity) {
   const name = utils.getEntityDisplayName(entity);
-  const confirmed = await uiUtils.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
+  const confirmed = await dialogs.showConfirm(t('Unlock {{name}}', { name }), t('Are you sure?'), {
     confirmText: t('Unlock'),
     confirmClass: 'btn-primary',
   });
@@ -12999,7 +13001,7 @@ function toggleEntity(entity, { confirmUnlock = false } = {}) {
       entityId: entity?.entity_id || null,
       error: error?.message || String(error),
     });
-    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+    dialogs.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
 }
 
@@ -13032,7 +13034,7 @@ function executeEntityPrimaryAction(entity, options = {}) {
     toggleEntity(liveEntity, { confirmUnlock: true });
   } catch (error) {
     console.error('Error executing entity primary action:', error);
-    uiUtils.showToast(t('Failed to toggle entity'), 'error', 3000);
+    dialogs.showToast(t('Failed to toggle entity'), 'error', 3000);
   }
 }
 
@@ -13148,7 +13150,7 @@ function openEntityDetailModal(entity, options = {}) {
     if (['lock', 'alarm_control_panel'].includes(getEntityDomain(liveEntity?.entity_id))) return;
     if (!liveEntity?.entity_id) return;
     if (options.source === 'command-palette' && options.hasCommand) {
-      uiUtils.showToast(
+      dialogs.showToast(
         t('{{name}}: {{state}}', {
           name: utils.getEntityDisplayName(liveEntity),
           state: utils.getEntityDisplayState(liveEntity),
@@ -13204,7 +13206,7 @@ function executeHotkeyAction(entity, action) {
       `Error executing hotkey action '${action}' for entity ${entity.entity_id}:`,
       error
     );
-    uiUtils.showToast(t('Failed to execute hotkey action'), 'error', 3000);
+    dialogs.showToast(t('Failed to execute hotkey action'), 'error', 3000);
   }
 }
 
@@ -13516,7 +13518,7 @@ async function selectWeatherEntity(entityId) {
     // Show success toast
     const entity = state.STATES[entityId];
     if (entity) {
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Weather entity set to {{name}}', { name: utils.getEntityDisplayName(entity) }),
         'success',
         2000
@@ -13529,7 +13531,7 @@ async function selectWeatherEntity(entityId) {
       updateWeatherFromHA();
       populateWeatherEntitiesList();
     }
-    uiUtils.showToast(t('Failed to save weather entity selection'), 'error', 3000);
+    dialogs.showToast(t('Failed to save weather entity selection'), 'error', 3000);
   }
 }
 
@@ -13773,7 +13775,7 @@ function callMediaTileService(action) {
     if (mapped[action]) return callMediaPlayerService(primaryPlayer, mapped[action]);
   } catch (error) {
     console.error('Error calling media tile service:', error);
-    uiUtils.showToast(t('Failed to control media player'), 'error', 3000);
+    dialogs.showToast(t('Failed to control media player'), 'error', 3000);
   }
 }
 
@@ -14218,7 +14220,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
       if (brightnessDebounceTimer) clearTimeout(brightnessDebounceTimer);
       if (colorTempDebounceTimer) clearTimeout(colorTempDebounceTimer);
       if (colorDebounceTimer) clearTimeout(colorDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -14330,7 +14332,7 @@ function showBrightnessSlider(light, { replaces = null, focusSelector = null } =
     }
 
     const applyColor = (hexColor) => {
-      const rgb = uiUtils.hexToRgb(hexColor);
+      const rgb = hexToRgb(hexColor);
       if (!rgb) return;
       if (colorPicker) colorPicker.value = rgbToHex([rgb.r, rgb.g, rgb.b]);
       clearTimeout(colorDebounceTimer);
@@ -14921,7 +14923,7 @@ function showClimateControls(climateEntity, { replaces = null, focusSelector = n
       unsubscribe();
       if (temperatureDebounceTimer) clearTimeout(temperatureDebounceTimer);
       rangeController?.cancel();
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -15267,7 +15269,7 @@ function showFanControls(fanEntity, { replaces = null, focusSelector = null } = 
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (speedDebounceTimer) clearTimeout(speedDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -15557,7 +15559,7 @@ function showCoverControls(coverEntity, { replaces = null, focusSelector = null 
       entityDetailClosers.delete(closeModal);
       unsubscribe();
       if (positionDebounceTimer) clearTimeout(positionDebounceTimer);
-      void uiUtils.closeDialog(modal, { remove: true });
+      void dialogs.closeDialog(modal, { remove: true });
     };
     // An account or server change closes this dialog with its timers and subscription.
     entityDetailClosers.add(closeModal);
@@ -15935,7 +15937,7 @@ function renderUpdateStatus() {
       if (checkUpdatesFocusGuard?.button !== checkBtn) {
         checkUpdatesFocusGuard = {
           button: checkBtn,
-          reenable: uiUtils.disableControlsKeepingFocus([checkBtn]),
+          reenable: dialogs.disableControlsKeepingFocus([checkBtn]),
         };
       }
     } else {
@@ -16043,7 +16045,7 @@ function handleEscapeKey(e) {
   // Escape belongs to whatever is on top of the dashboard: a key a control or dialog already used,
   // an open dialog (the dialog helper closes it and stops the key, but a dialog opened any other
   // way would still reach here), or an inline rename in the page tabs.
-  if (e.defaultPrevented || uiUtils.hasOpenDialog()) return;
+  if (e.defaultPrevented || dialogs.hasOpenDialog()) return;
   if (document.querySelector('#quick-access-tabs .qa-tab-rename-input')) return;
   if (pickedUpTile?.isConnected) {
     e.preventDefault();

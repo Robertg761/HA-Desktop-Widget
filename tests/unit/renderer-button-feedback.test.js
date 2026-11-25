@@ -25,7 +25,7 @@ describe('Show log file', () => {
     await harness.flushAsync();
   };
 
-  const toasts = () => harness.uiUtils.showToast.mock.calls;
+  const toasts = () => harness.dialogs.showToast.mock.calls;
 
   it('says where the log file is once it has been shown', async () => {
     await loadWithButton(async () => ({ success: true, path: '/home/me/logs/main.log' }));
@@ -124,7 +124,7 @@ describe('the Home Assistant notifications switch', () => {
 
     expect(box.checked).toBe(true);
     expect(harness.state.CONFIG.entityAlerts.persistentNotifications).toBe(true);
-    expect(harness.uiUtils.showToast).toHaveBeenCalledWith('disk full', 'error', 3000);
+    expect(harness.dialogs.showToast).toHaveBeenCalledWith('disk full', 'error', 3000);
   });
 
   it('puts the switch back when the request itself fails', async () => {

@@ -1,6 +1,6 @@
 import state from './state.js';
 import configStore from './config-store.js';
-import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
+import { closeDialog, openDialog, renderKeepingFocus, showToast } from './dialogs.js';
 import { filterSearchMatches, getEntityDisplayName, getSearchScore } from './utils.js';
 import { lineIconMarkup } from './entity-icons.js';
 import { t } from './i18n.js';

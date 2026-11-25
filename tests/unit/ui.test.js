@@ -49,46 +49,20 @@ jest.mock('../../src/camera.js', () => ({
 
 jest.mock('../../src/ui-utils.js', () => {
   return {
-    showToast: jest.fn(),
-    showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     isFrostedGlassAvailable: jest.fn(() => true),
     getAccentThemes: jest.requireActual('../../src/ui-utils.js').getAccentThemes,
-    getTileColorStyle: jest.requireActual('../../src/ui-utils.js').getTileColorStyle,
-    hexToRgb: jest.fn((hex) => {
-      if (!hex || typeof hex !== 'string') return null;
-      const normalized = hex.replace('#', '').trim();
-      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-      const value =
-        normalized.length === 3
-          ? normalized
-              .split('')
-              .map((ch) => ch + ch)
-              .join('')
-          : normalized;
-      return {
-        r: Number.parseInt(value.slice(0, 2), 16),
-        g: Number.parseInt(value.slice(2, 4), 16),
-        b: Number.parseInt(value.slice(4, 6), 16),
-      };
-    }),
-    miredsToKelvin: jest.fn((mireds) => {
-      const value = Number(mireds);
-      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-    }),
-    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-      const features = Number(supportedFeatures);
-      const flag = Number(featureFlag);
-      return (
-        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-      );
-    }),
   };
 });
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
@@ -159,6 +133,7 @@ const reportResize = (target) => {
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const camera = require('../../src/camera.js');
 const desktopPinSupport = require('../../src/desktop-pin-support.cjs');
 const {
@@ -611,8 +586,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
-      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
+      expect(dialogs.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
       // The launcher (the empty-dashboard button) is gone; focus lands on the new page's tile.
       expect(document.activeElement).not.toBe(document.body);
       expect(
@@ -1646,7 +1621,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(tileState).toBeTruthy();
       expect(tileState.textContent).toContain('%');
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Failed to control'),
         'error',
         4000
@@ -1700,7 +1675,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flushAsync();
       await flushAsync();
 
-      const [message] = uiUtils.showToast.mock.calls.at(-1);
+      const [message] = dialogs.showToast.mock.calls.at(-1);
       expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
       expect(message).not.toContain('WebSocket');
     });
@@ -1730,7 +1705,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         await flushAsync();
         await flushAsync();
 
-        const [message] = uiUtils.showToast.mock.calls.at(-1);
+        const [message] = dialogs.showToast.mock.calls.at(-1);
         expect(message).toBe(
           'تعذّر التحكم في \u2068Bedroom Light\u2069: \u2068The device did not respond.\u2069'
         );
@@ -1923,7 +1898,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.desktopPins['light.desk_lamp']).toBeDefined();
       expect(state.CONFIG.globalHotkeys.hotkeys['light.desk_lamp']).toBeDefined();
       expect(document.getElementById('entity-repair-modal')).toBeNull();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('light.desk_lamp'),
         'success',
         4000
@@ -2440,12 +2415,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
       expect(state.CONFIG.opacity).toBe(0.68);
       expect(document.getElementById('weather-condition').textContent).toBe('Rainy');
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         'Failed to save weather entity selection',
         'error',
         3000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('should show success toast when entity exists', async () => {
@@ -2460,7 +2435,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       await ui.selectWeatherEntity('weather.home');
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Home Weather'),
         'success',
         2000
@@ -3838,7 +3813,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ui.renderActiveTab();
         ui.toggleReorganizeMode();
 
-        expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect(dialogs.showToast).toHaveBeenCalledWith(
           `Reorganize mode on. Drag or press ${key}+arrow keys to reorder. Esc to finish.`,
           'info',
           4500,
@@ -3917,7 +3892,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -4121,7 +4096,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal).toBeTruthy();
       expect(modal.querySelector('#tile-value-size-select')).toBeNull();
 
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -4293,12 +4268,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       it('ends Reorganize mode on the first Escape when a toast was already up before it began', () => {
-        const actualUiUtils = jest.requireActual('../../src/ui-utils.js');
+        const actualDialogs = jest.requireActual('../../src/dialogs.js');
         document.body.insertAdjacentHTML('beforeend', '<div id="toast-container"></div>');
         // Any toast installs the toast manager's Escape handler, which then runs before the one
         // Reorganize mode adds. The mode's own notice is a toast too, and so was this.
-        actualUiUtils.showToast('Layout saved', 'success', 60000);
-        uiUtils.showToast.mockImplementationOnce(actualUiUtils.showToast);
+        actualDialogs.showToast('Layout saved', 'success', 60000);
+        dialogs.showToast.mockImplementationOnce(actualDialogs.showToast);
         state.CONFIG.favoriteEntities = ['sensor.office_temperature'];
         ui.renderActiveTab();
 
@@ -4315,7 +4290,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           // Their clocks are real timers, which must not outlive the test.
           document
             .querySelectorAll('#toast-container .toast')
-            .forEach((toast) => actualUiUtils.dismissToast(toast));
+            .forEach((toast) => actualDialogs.dismissToast(toast));
         }
       });
 
@@ -4493,7 +4468,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
         officeTile().querySelector('.rename-btn').click();
         modal = document.querySelector('.rename-modal');
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         modal.querySelector('#reset-rename-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
         await Promise.resolve();
@@ -4687,7 +4662,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const reopened = document.querySelector('.rename-modal');
         expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
         expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         reopened.querySelector('#reset-rename-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
@@ -4756,12 +4731,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(nameInput.value).toBe('Desk Temperature');
       expect(sizeSelect.value).toBe('extra-large');
       expect(modal.querySelector('#save-rename-btn').disabled).toBe(false);
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('disk full'),
         'error',
         4000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('locks every Tile Settings action until a deferred save settles', async () => {
@@ -4871,7 +4846,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
       expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -5476,7 +5451,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         await Promise.resolve();
 
         expect(slider.value).toBe('22');
-        expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect(dialogs.showToast).toHaveBeenCalledWith(
           expect.stringContaining('Permission denied'),
           'error',
           4000
@@ -8884,7 +8859,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       await flushMicrotasks();
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Service failed'),
         'error',
         4000
@@ -9270,7 +9245,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       ui.renderActiveTab();
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       document
         .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
         .click();
@@ -9302,12 +9277,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'bedroom'
       );
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(false);
+      dialogs.showConfirm.mockResolvedValueOnce(false);
 
       tabBar.querySelector('.qa-tab-delete').click();
       await Promise.resolve();
 
-      expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
+      expect(dialogs.showConfirm).toHaveBeenLastCalledWith(
         'Delete page',
         'Delete “Bedroom” and its tiles?',
         expect.objectContaining({ confirmText: 'Delete' })
@@ -9332,8 +9307,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       ui.renderActiveTab();
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
-      uiUtils.showToast.mockClear();
+      dialogs.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showToast.mockClear();
 
       document
         .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
@@ -9341,9 +9316,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const [, message] = uiUtils.showConfirm.mock.calls.at(-1);
+      const [, message] = dialogs.showConfirm.mock.calls.at(-1);
       expect(message).toMatch(/^Remove “.+” from “Night”\?$/);
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from “Night”', 'success', 2000);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Removed from “Night”', 'success', 2000);
     });
 
     it('moves focus to the page now shown after deleting a page', async () => {
@@ -9359,7 +9334,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const confirmation = document.createElement('div');
       confirmation.className = 'modal modal-closing';
       confirmation.innerHTML = '<button>Delete</button>';
-      uiUtils.showConfirm.mockImplementationOnce(async () => {
+      dialogs.showConfirm.mockImplementationOnce(async () => {
         document.body.appendChild(confirmation);
         confirmation.querySelector('button').focus();
         return true;
@@ -9398,7 +9373,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       };
       state.setConfig(before);
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       tabBar.querySelector('.qa-tab-delete').click();
       for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -9464,7 +9439,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           jest.setSystemTime(Date.now() + seconds * 1000);
           // Only the page on screen has a Delete button; going to it changes no layout.
           await ui.switchQuickAccessPage(id);
-          uiUtils.showConfirm.mockResolvedValueOnce(true);
+          dialogs.showConfirm.mockResolvedValueOnce(true);
           tabBar.querySelector(`.quick-access-tab[data-tab="${id}"] .qa-tab-delete`).click();
           for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -9565,7 +9540,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.opacity).toBe(0.71);
       expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
       expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(2);
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
     });
 
     it('rolls page state and tabs back to the authoritative config after rejection', async () => {
@@ -9611,12 +9586,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(retainedModal).not.toBeNull();
       expect(retainedModal.querySelector('#add-page-name').value).toBe('Bedroom');
       expect(retainedModal.querySelector('#add-page-save-btn').disabled).toBe(false);
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('profile changed elsewhere'),
         'error',
         4000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('sends complete Quick Access slices so a later write can carry an earlier optimistic edit', async () => {
@@ -9770,7 +9745,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.comparisonGraphs).toEqual([]);
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
       expect(document.querySelector('.comparison-graph-tile')).toBeNull();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('graph write failed'),
         'error',
         4000
@@ -9827,13 +9802,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.comparison-graph-modal');
       expect(modal).not.toBeNull();
 
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('.comparison-graph-modal-footer button').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
 
       // A connection change closes open detail dialogs; the deleted editor must not be among them.
-      const closeDialog = jest.spyOn(uiUtils, 'closeDialog');
+      const closeDialog = jest.spyOn(dialogs, 'closeDialog');
       ui.ensureEntityCacheScope({ force: true });
       expect(closeDialog).not.toHaveBeenCalledWith(modal, expect.anything());
       closeDialog.mockRestore();
