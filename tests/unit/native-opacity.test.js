@@ -41,7 +41,7 @@ function runtime(platform = 'darwin', opaquePanels = false, wayland = false) {
   vm.runInContext(
     source.slice(
       source.indexOf('function windowsAreAlwaysTransparent('),
-      source.indexOf('function refreshProfileSyncRuntimeTracking(')
+      source.indexOf('function mainT(')
     ),
     context
   );

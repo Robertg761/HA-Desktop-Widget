@@ -93,7 +93,6 @@ function createMemoryFs() {
 }
 
 const EFFECT_FUNCTIONS = [
-  'scheduleDebouncedProfileSyncPush',
   'applyMainWindowSettingSideEffects',
   'applyRuntimeConfigSideEffects',
   'createTray',
@@ -102,15 +101,15 @@ const EFFECT_FUNCTIONS = [
   'syncTrayEntitiesWithConfig',
   'pushConfigToRenderer',
   'broadcastDesktopPinConfigUpdate',
-  'emitProfileSyncStatus',
-  // What a Settings save that turns sync on or off calls.
-  'clearProfileSyncTimers',
-  'setupProfileSyncInterval',
-  'prepareProfileSyncFirstEnableResolution',
-  'completeProfileSyncFirstEnablePreparation',
-  'updateProfileSyncStatus',
-  'getActiveProfileSyncPassphrase',
-  'updateLocalProfileSyncTracking',
+];
+
+// What the effects call on the profile sync engine. A test that runs the real engine passes it
+// as `profileSyncEngine`.
+const SYNC_ENGINE_CALLS = [
+  'trackConfigWrite',
+  'pushAfterWrite',
+  'applySettingsChange',
+  'emitStatus',
 ];
 
 /**
@@ -130,7 +129,7 @@ function createMainConfigStore(config, stubs = {}, { encode } = {}) {
   const context = {
     configStore,
     config,
-    profileSyncRuntime: { localProfileHash: null },
+    profileSyncEngine: Object.fromEntries(SYNC_ENGINE_CALLS.map((name) => [name, jest.fn()])),
     tray: null,
     autoUpdaterInstance: null,
     omarchyBarPublisher: null,

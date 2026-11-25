@@ -67,10 +67,12 @@ function loadInstall({ verify = async () => {}, hashFile = async () => undefined
     CONFIG_STORE_CLOSED: 'CONFIG_STORE_CLOSED',
     freezePendingWindowBoundsForShutdown() {},
     capturePendingWindowBoundsForShutdown() {},
-    clearProfileSyncTimers: () => (syncRunning = false),
-    setupProfileSyncInterval: () => {
-      syncRunning = true;
-      syncRestarts++;
+    profileSyncEngine: {
+      pause: () => (syncRunning = false),
+      resume: () => {
+        syncRunning = true;
+        syncRestarts++;
+      },
     },
     autoUpdateDownloaded: false,
     quitFinalized: false,

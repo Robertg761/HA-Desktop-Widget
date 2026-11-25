@@ -29,7 +29,7 @@ describe('main-process Home Assistant authorization recovery', () => {
       HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS: 5 * 60 * 1000,
       powerMonitor: { on: (event, handler) => (handlers[event] = handler) },
       ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-      requestOpportunisticProfileSync: jest.fn(),
+      profileSyncEngine: { requestSync: jest.fn() },
       invalidateHaConnectionState: jest.fn(),
       scheduleHomeAssistantOAuthRefresh: jest.fn(),
       runSerializedConfigMutation: (task) => Promise.resolve().then(task),

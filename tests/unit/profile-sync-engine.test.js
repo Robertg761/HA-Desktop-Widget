@@ -1,13 +1,14 @@
 /**
  * @jest-environment node
  *
- * Runs the real profile sync engine from main.js for several simulated devices
- * sharing one sync folder. See tests/helpers/profile-sync-devices.js.
+ * Runs the profile sync engine for several simulated devices sharing one sync
+ * folder or one Cloud Sync account. See tests/helpers/profile-sync-devices.js.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { createProfileSyncHarness, profileSyncCore } = require('../helpers/profile-sync-devices.js');
+const { appendPendingPull, isSameCloudSyncAccount } = require('../../src/profile-sync-engine.cjs');
 const {
   DAY,
   createSignedInClient,
@@ -19,6 +20,34 @@ const { syncFilePath, readSyncFile, baseContent, createDevice, createSyncedPair 
 
 beforeEach(() => harness.setup());
 afterEach(() => harness.teardown());
+
+/**
+ * Has another computer write the sync file just after `device` first reads it during a run, so
+ * the file is no longer the one the run merged with when it comes to write. Returns what the
+ * other computer wrote.
+ */
+function changeFileAfterFirstRead(device) {
+  let written = null;
+  device.fs = {
+    ...fs,
+    promises: {
+      ...fs.promises,
+      readFile: async (file, ...rest) => {
+        const text = await fs.promises.readFile(file, ...rest);
+        if (file === syncFilePath() && written === null) {
+          const envelope = JSON.parse(text);
+          envelope.updatedAt = new Date(Date.parse(envelope.updatedAt) + 1).toISOString();
+          written = JSON.stringify(envelope);
+          fs.writeFileSync(syncFilePath(), written);
+        }
+        return text;
+      },
+    },
+  };
+  return () => written;
+}
+
+const listBackups = async (device) => (await device.invoke('list-profile-sync-backups')).backups;
 
 describe('profile sync engine', () => {
   test('keeps edits two devices made to different sections', async () => {
@@ -90,14 +119,12 @@ describe('profile sync engine', () => {
     laptop.edit((config) => {
       config.opacity = 0.4;
     });
-    const before = fs.readFileSync(syncFilePath(), 'utf8');
-    const realCheck = laptop.context.hasRemoteSyncEnvelopeChanged;
-    laptop.context.hasRemoteSyncEnvelopeChanged = async () => true;
+    const otherWrite = changeFileAfterFirstRead(laptop);
     await expect(laptop.sync('push', 'manual')).rejects.toThrow(
       'Sync file kept changing on the other device; try again'
     );
-    laptop.context.hasRemoteSyncEnvelopeChanged = realCheck;
-    expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(before);
+    laptop.fs = fs;
+    expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(otherWrite());
     expect(laptop.config.opacity).toBe(0.4);
   });
 
@@ -127,13 +154,15 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
 
-    const backups = await laptop.context.listProfileSyncBackups();
+    const backups = await listBackups(laptop);
     const replacedRemote = backups.find((backup) => backup.kind === 'remote');
     expect(replacedRemote.sections).toContain('visualPersonalization');
 
-    await laptop.context.restoreProfileSyncBackup(replacedRemote.id);
+    const restored = await laptop.invoke('restore-profile-sync-backup', replacedRemote.id);
+    expect(restored).toMatchObject({ success: true, restored: ['visualPersonalization'] });
+    expect(restored.config.opacity).toBe(0.6);
     expect(laptop.config.opacity).toBe(0.6);
-    expect(laptop.context.pushes).toContain('config_change');
+    expect(laptop.pushQueued()).toBe(true);
     // The settings the restore replaced are backed up too, so it can be undone.
     expect(laptop.backups('local-profile').length).toBeGreaterThan(0);
 
@@ -141,9 +170,10 @@ describe('profile sync engine', () => {
     await desktop.sync();
     expect(desktop.config.opacity).toBe(0.6);
 
-    await expect(laptop.context.restoreProfileSyncBackup('../config.json')).rejects.toThrow(
-      'That backup is no longer available'
-    );
+    await expect(laptop.invoke('restore-profile-sync-backup', '../config.json')).resolves.toEqual({
+      success: false,
+      error: 'That backup is no longer available',
+    });
   });
 
   test('restoring the backup a pull just made syncs it instead of reading as a stale echo', async () => {
@@ -156,9 +186,9 @@ describe('profile sync engine', () => {
     expect(laptop.config.opacity).toBe(0.6);
 
     // Restoring what that pull replaced reproduces the pre-pull profile exactly.
-    const [pullBackup] = await laptop.context.listProfileSyncBackups();
+    const [pullBackup] = await listBackups(laptop);
     expect(pullBackup.kind).toBe('local');
-    await laptop.context.restoreProfileSyncBackup(pullBackup.id);
+    await laptop.invoke('restore-profile-sync-backup', pullBackup.id);
     expect(laptop.config.opacity).toBe(0.9);
 
     await laptop.sync();
@@ -255,10 +285,9 @@ describe('profile sync engine', () => {
     expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
 
     // Use Remote for the section the prompt named.
-    await laptop.context.runProfileSyncInternal('pull', 'first_enable_resolution', {
-      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
-      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
-    });
+    await expect(
+      laptop.invoke('resolve-profile-sync-first-enable', 'use_remote')
+    ).resolves.toMatchObject({ success: true });
 
     expect(laptop.config.favoriteEntities).toEqual(['light.kitchen']);
     expect(laptop.config.opacity).toBe(0.5);
@@ -286,52 +315,58 @@ describe('profile sync engine', () => {
       config.favoriteEntities = ['switch.fan'];
     });
     await desktop.sync();
-    await expect(laptop.context.verifyPendingRemoteEnvelopeUnchanged()).rejects.toThrow(
-      'The remote profile changed while waiting for conflict resolution'
-    );
-    expect(laptop.context.profileSyncRuntime.conflictSections).toEqual([]);
-
-    // Retrying Use Remote, as the resolve handler does, keeps the unrelated local edit.
-    await laptop.context.runProfileSyncInternal('pull', 'first_enable_resolution', {
-      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
-      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
+    await expect(
+      laptop.invoke('resolve-profile-sync-first-enable', 'use_remote')
+    ).resolves.toMatchObject({
+      success: false,
+      error: 'The remote profile changed while waiting for conflict resolution',
     });
+    expect(laptop.status()).toMatchObject({ needsResolution: true, conflictSections: [] });
+
+    // Choosing Use Remote again keeps the unrelated local edit.
+    await expect(
+      laptop.invoke('resolve-profile-sync-first-enable', 'use_remote')
+    ).resolves.toMatchObject({ success: true });
     expect(laptop.config.opacity).toBe(0.5);
   });
 
   test('keeps one profileSync object, so writes made across helper calls are saved', async () => {
-    const { context } = createDevice('desktop');
-    const held = context.getProfileSyncConfig();
-    await context.readConfiguredSyncEnvelope();
-    held.remoteRewritePending = true;
-    expect(context.getProfileSyncConfig()).toBe(held);
-    expect(context.config.profileSync.remoteRewritePending).toBe(true);
+    const desktop = createDevice('desktop');
+    const held = desktop.config.profileSync;
+    desktop.status();
+    await desktop.sync();
+    desktop.engine.normalizeSettings(desktop.config);
+    expect(desktop.config.profileSync).toBe(held);
+    expect(held.lastSyncStatus).toBe('success');
   });
 
   test('an edit made while an encryption change awaited recovery is not lost', async () => {
     const desktop = createDevice('desktop');
     await desktop.sync();
-    const { context } = desktop;
 
-    // Encryption is staged, but the rewrite does not run yet (crash, folder offline).
-    await context.stageProfileSyncRewrite({
-      oldPassphrase: '',
-      newPassphrase: 'new passphrase',
-      rememberNewPassphrase: false,
-      targetEncryptionEnabled: true,
-      changeCredential: true,
-      baselineConfig: context.config,
-      targetConfig: {
-        ...context.config,
-        profileSync: { ...context.config.profileSync, encryptionEnabled: true },
+    // Encryption is staged, but the rewrite cannot run yet (the folder went offline).
+    desktop.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        rename: async () => {
+          throw Object.assign(new Error('gone'), { code: 'ENOENT' });
+        },
       },
-      reason: 'encryption_transition',
+    };
+    const staged = await desktop.saveSettings({
+      profileSync: { encryptionEnabled: true },
+      passphrase: 'new passphrase',
     });
+    expect(staged.passphrase.success).toBe(false);
+    expect(desktop.config.profileSync.passphraseTransition).toBeTruthy();
     desktop.edit((config) => {
       config.opacity = 0.42;
     });
 
-    await context.executePendingProfileSyncRewrite();
+    // Back online, Sync now finishes the rewrite.
+    desktop.fs = fs;
+    await desktop.sync('auto', 'manual');
     const result = await desktop.sync();
 
     expect(result.pushed).toEqual(['visualPersonalization']);
@@ -490,10 +525,7 @@ describe('profile sync engine', () => {
       });
 
       // The Import button: the file's null means "back to the default".
-      await desktop.context.applyLocalProfileSections(
-        { visualPersonalization: { ui: { accent: null } } },
-        { clearNullUiKeys: true }
-      );
+      await desktop.engine.importSections({ visualPersonalization: { ui: { accent: null } } });
       await desktop.sync();
       await laptop.sync();
       await desktop.sync();
@@ -516,8 +548,8 @@ describe('profile sync engine', () => {
       await desktop.sync();
       expect(desktop.config.ui.highContrast).toBe(true);
 
-      const [pullBackup] = await desktop.context.listProfileSyncBackups();
-      await desktop.context.restoreProfileSyncBackup(pullBackup.id);
+      const [pullBackup] = await listBackups(desktop);
+      await desktop.invoke('restore-profile-sync-backup', pullBackup.id);
 
       expect(desktop.config.ui).not.toHaveProperty('highContrast');
       await desktop.sync();
@@ -571,7 +603,7 @@ describe('profile sync engine', () => {
     expect(backup.sections.quickAccessLayout.data.favoriteEntities).toEqual({
       'light.kitchen': true,
     });
-    const listed = await desktop.context.listProfileSyncBackups();
+    const listed = await listBackups(desktop);
     expect(listed.flatMap((entry) => entry.sections)).not.toContain('quickAccessLayout');
   });
 
@@ -588,11 +620,9 @@ describe('profile sync engine', () => {
     expect(laptop.status().conflictSections).toEqual(['visualPersonalization']);
     expect(laptop.status().damagedConflictSections).toEqual(['visualPersonalization']);
 
-    // Keep Local, as the resolve handler runs it.
-    await laptop.context.runProfileSyncInternal('push', 'first_enable_resolution', {
-      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
-      forceSections: [...laptop.context.profileSyncRuntime.conflictSections],
-    });
+    await expect(
+      laptop.invoke('resolve-profile-sync-first-enable', 'upload_local')
+    ).resolves.toMatchObject({ success: true });
     expect(laptop.backups('remote-profile')[0].sections.visualPersonalization.data).toBe('garbage');
     expect((await profileSyncCore.decodeEnvelopeSections(readSyncFile())).malformed).toEqual({});
   });
@@ -604,14 +634,11 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const { context } = desktop;
 
     // Settings saves opacity 0.9 again, and says the user set it.
-    const pulled = desktop.configCopy();
-    desktop.replaceConfig({ ...pulled, opacity: 0.9 });
-    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
-    expect(context.config.opacity).toBe(0.9);
-    desktop.save();
+    const pulled = desktop.rendererConfig();
+    await desktop.updateFromRenderer({ ...pulled, opacity: 0.9 }, { touchedKeys: ['opacity'] });
+    expect(desktop.config.opacity).toBe(0.9);
     await desktop.sync();
     await laptop.sync();
     expect(laptop.config.opacity).toBe(0.9);
@@ -622,10 +649,9 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const again = desktop.configCopy();
-    desktop.replaceConfig({ ...again, opacity: 0.9 });
-    context.restoreProfileFromStalePullEcho(again);
-    expect(context.config.opacity).toBe(0.5);
+    const again = desktop.rendererConfig();
+    await desktop.updateFromRenderer({ ...again, opacity: 0.9 });
+    expect(desktop.config.opacity).toBe(0.5);
   });
 
   test('repairing a damaged section leaves a valid conflict for its own choice', async () => {
@@ -645,19 +671,16 @@ describe('profile sync engine', () => {
     ]);
     expect(laptop.status().damagedConflictSections).toEqual(['visualPersonalization']);
 
-    // Keep Local repairs only the damaged section, as the resolve handler runs it.
-    const damaged = [...laptop.context.profileSyncRuntime.damagedConflictSections];
-    await laptop.context.runProfileSyncInternal('push', 'first_enable_resolution', {
-      expectedRemoteIdentity: laptop.context.profileSyncRuntime.pendingRemoteIdentity,
-      forceSections: damaged,
-      onlySections: damaged,
-    });
+    // Keep Local repairs only the damaged section.
+    await expect(
+      laptop.invoke('resolve-profile-sync-first-enable', 'upload_local')
+    ).resolves.toMatchObject({ success: true });
     const written = await profileSyncCore.decodeEnvelopeSections(readSyncFile());
     expect(written.malformed).toEqual({});
     expect(written.sections.quickAccessLayout.data.favoriteEntities).toEqual(['light.kitchen']);
 
     // The valid conflict comes back as its own choice.
-    expect((await laptop.firstEnable()).needsResolution).toBe(true);
+    expect(laptop.status().needsResolution).toBe(true);
     expect(laptop.status().conflictSections).toEqual(['quickAccessLayout']);
     expect(laptop.status().damagedConflictSections).toEqual([]);
   });
@@ -671,9 +694,8 @@ describe('profile sync engine', () => {
 
     const laptop = createDevice('laptop', { profileSync: { syncScope: { preset: 'visual' } } });
     // Not a first-sync conflict for this device...
-    expect((await laptop.context.findProfileSyncConflictSections(readSyncFile())).sections).toEqual(
-      []
-    );
+    expect((await laptop.firstEnable()).needsResolution).toBe(false);
+    expect(laptop.status().conflictSections).toEqual([]);
     // ...and not a reason to stop syncing.
     laptop.edit((config) => {
       config.opacity = 0.4;
@@ -692,42 +714,51 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const { context } = desktop;
-    expect(context.config.ui.accent).toBe('teal');
+    expect(desktop.config.ui.accent).toBe('teal');
 
-    const pulled = desktop.configCopy();
     // A save made after the pull (accent already teal), changing only opacity, is not stale.
-    desktop.replaceConfig({ ...pulled, opacity: 0.6 });
-    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(false);
+    const pulled = desktop.rendererConfig();
+    await desktop.updateFromRenderer({ ...pulled, opacity: 0.6 }, { touchedKeys: ['opacity'] });
+    expect(desktop.config).toMatchObject({ opacity: 0.6, ui: { accent: 'teal' } });
 
-    // A Settings save built before the pull arrived: old accent, new opacity.
-    desktop.replaceConfig({ ...pulled, opacity: 0.5, ui: { ...pulled.ui, accent: 'original' } });
-    expect(context.restoreProfileFromStalePullEcho(pulled, ['opacity'])).toBe(true);
-    expect(context.config.ui.accent).toBe('teal');
-    expect(context.config.opacity).toBe(0.5);
+    // A Settings save built before the next pull arrived: old accent, new opacity.
+    await desktop.sync();
+    laptop.edit((config) => {
+      config.ui = { ...config.ui, accent: 'violet' };
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const again = desktop.rendererConfig();
+    await desktop.updateFromRenderer(
+      { ...again, opacity: 0.5, ui: { ...again.ui, accent: 'teal' } },
+      { touchedKeys: ['opacity'] }
+    );
+    expect(desktop.config.ui.accent).toBe('violet');
+    expect(desktop.config.opacity).toBe(0.5);
   });
 
   test('any update built before a pull keeps only what it changed', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     const beforePull = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
 
     // An alert save built from the pre-pull snapshot: old accent, new alert, and
     // favorites set back to what they were, which is no change at all for it.
-    desktop.replaceConfig({
-      ...pulled,
-      ui: { ...pulled.ui, accent: 'original' },
-      entityAlerts: { enabled: true, alerts: { 'light.kitchen': { onStateChange: true } } },
-    });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
-    expect(context.config.ui.accent).toBe('teal');
-    expect(context.config.entityAlerts.enabled).toBe(true);
+    await desktop.updateFromRenderer(
+      {
+        ...pulled,
+        ui: { ...pulled.ui, accent: 'original' },
+        entityAlerts: { enabled: true, alerts: { 'light.kitchen': { onStateChange: true } } },
+      },
+      { baseRevision: beforePull }
+    );
+    expect(desktop.config.ui.accent).toBe('teal');
+    expect(desktop.config.entityAlerts.enabled).toBe(true);
   });
 
   test('a setting cleared by a pull stays cleared when an older update arrives', async () => {
@@ -735,25 +766,25 @@ describe('profile sync engine', () => {
       desktop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
       laptop: { content: { ...baseContent(), selectedWeatherEntity: 'weather.home' } },
     });
-    const { context } = desktop;
     const beforePull = desktop.revision();
     laptop.edit((config) => {
       delete config.selectedWeatherEntity;
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
     expect(pulled.selectedWeatherEntity).toBeUndefined();
 
-    desktop.replaceConfig({ ...pulled, selectedWeatherEntity: 'weather.home', alwaysOnTop: false });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
-    expect(context.config).not.toHaveProperty('selectedWeatherEntity');
-    expect(context.config.alwaysOnTop).toBe(false);
+    await desktop.updateFromRenderer(
+      { ...pulled, selectedWeatherEntity: 'weather.home', alwaysOnTop: false },
+      { baseRevision: beforePull }
+    );
+    expect(desktop.config).not.toHaveProperty('selectedWeatherEntity');
+    expect(desktop.config.alwaysOnTop).toBe(false);
   });
 
   test('an update that predates two pulls keeps both of them', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     const beforePulls = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
@@ -765,65 +796,69 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
     expect(pulled.ui.accent).toBe('teal');
     expect(pulled.opacity).toBe(0.7);
 
     // An alert save built before either pull.
-    desktop.replaceConfig({
-      ...pulled,
-      opacity: 0.9,
-      ui: { ...pulled.ui, accent: 'original' },
-      entityAlerts: { enabled: true, alerts: {} },
-    });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
-    expect(context.config.ui.accent).toBe('teal');
-    expect(context.config.opacity).toBe(0.7);
-    expect(context.config.entityAlerts.enabled).toBe(true);
+    await desktop.updateFromRenderer(
+      {
+        ...pulled,
+        opacity: 0.9,
+        ui: { ...pulled.ui, accent: 'original' },
+        entityAlerts: { enabled: true, alerts: {} },
+      },
+      { baseRevision: beforePulls }
+    );
+    expect(desktop.config.ui.accent).toBe('teal');
+    expect(desktop.config.opacity).toBe(0.7);
+    expect(desktop.config.entityAlerts.enabled).toBe(true);
   });
 
   test('every queued update built before a pull is repaired, not just the first', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     const beforePull = desktop.revision();
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
 
-    desktop.replaceConfig({ ...pulled, ui: { ...pulled.ui, accent: 'original' }, opacity: 0.8 });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePull)).toBe(true);
-    desktop.save();
-    const afterFirst = desktop.configCopy();
+    await desktop.updateFromRenderer(
+      { ...pulled, ui: { ...pulled.ui, accent: 'original' }, opacity: 0.8 },
+      { baseRevision: beforePull }
+    );
+    const afterFirst = desktop.rendererConfig();
     expect(afterFirst.ui.accent).toBe('teal');
 
     // An update made after the pull does not end it for older ones still to come,
     // such as a rollback snapshot.
-    desktop.replaceConfig({ ...afterFirst, alwaysOnTop: false });
-    expect(context.restoreProfileFromStalePullEcho(afterFirst, [], desktop.revision())).toBe(false);
-    desktop.save();
-    const afterSecond = desktop.configCopy();
+    await desktop.updateFromRenderer(
+      { ...afterFirst, alwaysOnTop: false },
+      { baseRevision: desktop.revision() }
+    );
+    expect(desktop.config.alwaysOnTop).toBe(false);
+    const afterSecond = desktop.rendererConfig();
 
-    desktop.replaceConfig({
-      ...afterSecond,
-      ui: { ...afterSecond.ui, accent: 'original' },
-      entityAlerts: { enabled: true, alerts: {} },
-    });
-    expect(context.restoreProfileFromStalePullEcho(afterSecond, [], beforePull)).toBe(true);
-    expect(context.config.ui.accent).toBe('teal');
-    expect(context.config.opacity).toBe(0.8);
-    expect(context.config.alwaysOnTop).toBe(false);
-    expect(context.config.entityAlerts.enabled).toBe(true);
+    await desktop.updateFromRenderer(
+      {
+        ...afterSecond,
+        ui: { ...afterSecond.ui, accent: 'original' },
+        entityAlerts: { enabled: true, alerts: {} },
+      },
+      { baseRevision: beforePull }
+    );
+    expect(desktop.config.ui.accent).toBe('teal');
+    expect(desktop.config.opacity).toBe(0.8);
+    expect(desktop.config.alwaysOnTop).toBe(false);
+    expect(desktop.config.entityAlerts.enabled).toBe(true);
   });
 
   test('remembers a bounded number of pulls', () => {
-    const desktop = createDevice('desktop');
-    const { context } = desktop;
     let pulls = [];
     for (let revision = 1; revision <= 20; revision += 1) {
-      pulls = context.appendPendingPull(pulls, { profile: { opacity: revision / 100 }, revision });
+      pulls = appendPendingPull(pulls, { profile: { opacity: revision / 100 }, revision });
     }
     expect(pulls).toHaveLength(16);
     // The oldest state survives; merged entries answer to the later revision and
@@ -834,45 +869,40 @@ describe('profile sync engine', () => {
 
   test('an update built inside a compacted stretch of pulls keeps only what was touched', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     const beforePulls = desktop.revision();
-    laptop.edit((config) => {
-      config.opacity = 0.8;
-    });
-    await laptop.sync();
-    await desktop.sync();
-    const afterFirstPull = desktop.revision();
-    laptop.edit((config) => {
-      config.opacity = 0.7;
-    });
-    await laptop.sync();
-    await desktop.sync();
-    const pulled = desktop.configCopy();
-    // Squeeze the history so both pulls share one entry, as a full history would.
-    const [first, second] = context.profileSyncRuntime.pendingPulls;
-    context.profileSyncRuntime.pendingPulls = [
-      { profile: first.profile, revision: second.revision, compactedFrom: first.revision },
-    ];
+    // One pull more than the history holds, so the first two share one entry.
+    let afterFirstPull = null;
+    for (let pull = 1; pull <= 17; pull += 1) {
+      laptop.edit((config) => {
+        config.opacity = 0.5 + pull / 100;
+      });
+      await laptop.sync();
+      await desktop.sync();
+      afterFirstPull ??= desktop.revision();
+    }
+    const pulled = desktop.rendererConfig();
+    expect(pulled.opacity).toBe(0.67);
 
     // Built after the first pull, it carries that pull's opacity. The state it
     // started from is gone, so only the setting the user touched is kept.
-    desktop.replaceConfig({ ...pulled, opacity: 0.8, alwaysOnTop: false });
-    expect(context.restoreProfileFromStalePullEcho(pulled, ['alwaysOnTop'], afterFirstPull)).toBe(
-      true
+    await desktop.updateFromRenderer(
+      { ...pulled, opacity: 0.51, alwaysOnTop: false },
+      { touchedKeys: ['alwaysOnTop'], baseRevision: afterFirstPull }
     );
-    expect(context.config.opacity).toBe(0.7);
-    expect(context.config.alwaysOnTop).toBe(false);
+    expect(desktop.config.opacity).toBe(0.67);
+    expect(desktop.config.alwaysOnTop).toBe(false);
 
     // One built before the whole stretch is still compared exactly.
-    desktop.replaceConfig({ ...pulled, opacity: 0.9, entityAlerts: { enabled: true, alerts: {} } });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], beforePulls)).toBe(true);
-    expect(context.config.entityAlerts.enabled).toBe(true);
-    expect(context.config.opacity).toBe(0.7);
+    await desktop.updateFromRenderer(
+      { ...pulled, opacity: 0.9, entityAlerts: { enabled: true, alerts: {} } },
+      { baseRevision: beforePulls }
+    );
+    expect(desktop.config.entityAlerts.enabled).toBe(true);
+    expect(desktop.config.opacity).toBe(0.67);
   });
 
   test('an update built between two pulls is compared with the state it saw', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     laptop.edit((config) => {
       config.ui = { ...config.ui, accent: 'teal' };
     });
@@ -884,31 +914,33 @@ describe('profile sync engine', () => {
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
 
     // Built after the first pull: setting the accent back is deliberate, the
     // opacity is simply stale.
-    desktop.replaceConfig({ ...pulled, opacity: 0.9, ui: { ...pulled.ui, accent: 'original' } });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], betweenPulls)).toBe(true);
-    expect(context.config.ui.accent).toBe('original');
-    expect(context.config.opacity).toBe(0.7);
+    await desktop.updateFromRenderer(
+      { ...pulled, opacity: 0.9, ui: { ...pulled.ui, accent: 'original' } },
+      { baseRevision: betweenPulls }
+    );
+    expect(desktop.config.ui.accent).toBe('original');
+    expect(desktop.config.opacity).toBe(0.7);
   });
 
   test('an update built after the pull is taken as it is, even a revert to the old value', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const { context } = desktop;
     laptop.edit((config) => {
       config.favoriteEntities = ['light.kitchen', 'light.porch'];
     });
     await laptop.sync();
     await desktop.sync();
-    const pulled = desktop.configCopy();
+    const pulled = desktop.rendererConfig();
 
     // The user removes the favorite that just arrived.
-    desktop.replaceConfig({ ...pulled, favoriteEntities: ['light.kitchen'] });
-    expect(context.restoreProfileFromStalePullEcho(pulled, [], desktop.revision())).toBe(false);
-    expect(context.config.favoriteEntities).toEqual(['light.kitchen']);
-    desktop.save();
+    await desktop.updateFromRenderer(
+      { ...pulled, favoriteEntities: ['light.kitchen'] },
+      { baseRevision: desktop.revision() }
+    );
+    expect(desktop.config.favoriteEntities).toEqual(['light.kitchen']);
     expect((await desktop.sync()).pushed).toEqual(['quickAccessLayout']);
   });
 
@@ -1040,7 +1072,7 @@ describe('profile sync engine', () => {
 
   test('a settings snapshot from before a sync cannot roll back its result', async () => {
     const { desktop, laptop } = await createSyncedPair();
-    const staleSnapshot = JSON.parse(JSON.stringify(desktop.config.profileSync));
+    const staleSnapshot = desktop.rendererConfig().profileSync;
     staleSnapshot.lastSyncStatus = 'error';
     staleSnapshot.lastSyncError = 'Old failure';
     staleSnapshot.lastSuccessfulSyncAt = null;
@@ -1051,10 +1083,13 @@ describe('profile sync engine', () => {
     await desktop.sync();
     const current = desktop.config.profileSync;
 
-    const next = desktop.context.keepMainOwnedProfileSyncResults(
-      { ...current, ...staleSnapshot },
-      current
-    );
+    // Settings saves the snapshot it held from before the sync.
+    const saved = desktop.rendererConfig();
+    await desktop.updateFromRenderer({
+      ...saved,
+      profileSync: { ...saved.profileSync, ...staleSnapshot },
+    });
+    const next = desktop.config.profileSync;
     expect(next.lastSyncStatus).toBe('success');
     expect(next.lastSyncError).toBe('');
     expect(next.lastSuccessfulSyncAt).toBe(current.lastSuccessfulSyncAt);
@@ -1081,11 +1116,12 @@ describe('profile sync engine', () => {
     laptop.edit((config) => {
       config.opacity = 0.4;
     });
-    const realCheck = laptop.context.hasRemoteSyncEnvelopeChanged;
-    laptop.context.hasRemoteSyncEnvelopeChanged = async () => true;
+    changeFileAfterFirstRead(laptop);
     const recheck = await laptop.sync('auto', 'manual');
-    laptop.context.hasRemoteSyncEnvelopeChanged = realCheck;
+    laptop.fs = fs;
     expect(recheck.reason).toBe('remote_changed');
+    // The merge it queued again finishes too.
+    await laptop.settle();
     expect(recheck.status.inFlight).toBe(false);
     expect(laptop.emittedStatuses.at(-1).inFlight).toBe(false);
 
@@ -1179,20 +1215,17 @@ describe('profile sync through Cloud Sync', () => {
     });
     // The laptop's push lands between the desktop's last read and its write.
     const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    let writes = 0;
     desktopClient.writeProfile = async (...args) => {
-      desktopClient.writeProfile = realWrite;
-      await laptop.sync();
+      writes += 1;
+      if (writes === 1) await laptop.sync();
       return realWrite(...args);
     };
-    const queued = [];
-    desktop.context.runProfileSync = async (...args) => queued.push(args);
-    await expect(desktop.sync()).resolves.toMatchObject({ ok: true, reason: 'remote_changed' });
-    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+    await expect(desktop.sync()).resolves.toMatchObject({ ok: true });
     expect(desktop.status().lastSyncStatus).not.toBe('error');
 
-    // The re-check it queued merges both edits.
-    expect(queued).toEqual([['auto', 'conflict_recheck']]);
-    await desktop.sync(...queued[0]);
+    // The first write was refused, and the re-check it queued merged both edits.
+    expect(writes).toBe(2);
     const { sections } = stored().envelope.payload;
     expect(sections.visualPersonalization.data.opacity).toBe(0.6);
     expect(sections.quickAccessLayout.data.favoriteEntities).toEqual([
@@ -1202,78 +1235,105 @@ describe('profile sync through Cloud Sync', () => {
     expect(desktop.config.opacity).toBe(0.6);
   });
 
-  test('the synced profile is bound to the account id, not its email', async () => {
+  test('a sign-in is the same account by id, or by email when it has no id', () => {
+    // Two accounts without an email (GitHub with none verified) are not one account.
+    expect(isSameCloudSyncAccount({ id: 'user-a', email: '' }, { id: 'user-b', email: '' })).toBe(
+      false
+    );
+    expect(isSameCloudSyncAccount({ id: 'user-a', email: 'me@x.io' }, { id: 'user-a' })).toBe(true);
+    expect(
+      isSameCloudSyncAccount({ id: 'user-a', email: 'me@x.io' }, { id: 'user-b', email: 'me@x.io' })
+    ).toBe(false);
+    // Sign-ins saved before ids were kept are named by email.
+    expect(isSameCloudSyncAccount({ email: 'me@x.io' }, { id: 'user-a', email: 'me@x.io' })).toBe(
+      true
+    );
+    expect(isSameCloudSyncAccount({ email: '' }, { email: '' })).toBe(false);
+    expect(isSameCloudSyncAccount(null, { id: 'user-a' })).toBe(false);
+  });
+
+  test('a staged key change is bound to the account id, not its email', async () => {
     const { world, desktop, desktopClient } = await createCloudPair();
     const userId = world.env.DB.raw.prepare('SELECT id FROM users').get().id;
-    const endpoint = `cloud-sync:https://sync.test:${userId}`;
-    expect(desktop.context.getProfileSyncEndpoint()).toBe(endpoint);
+    // The account cannot be reached while the change is saved, so it waits to be recovered.
+    const realWrite = desktopClient.writeProfile.bind(desktopClient);
+    desktopClient.writeProfile = async () => {
+      throw Object.assign(new Error('offline'), { code: 'CLOUD_SYNC_NETWORK' });
+    };
+    const staged = await desktop.saveSettings({
+      profileSync: { encryptionEnabled: true },
+      passphrase: 'new passphrase',
+    });
+    expect(staged.passphrase.success).toBe(false);
+    desktopClient.writeProfile = realWrite;
+    const transition = desktop.config.profileSync.passphraseTransition;
+    expect(transition.cloudFilePath).toBe(`cloud-sync:https://sync.test:${userId}`);
 
-    // Two accounts without an email (GitHub with none verified) are not one account.
-    const signIn = desktop.context.startHostedProfileSyncAfterSignIn;
-    await expect(
-      signIn({ id: 'user-a', email: '', provider: 'github' }, { id: 'user-b', email: '' })
-    ).resolves.toBe('prepared');
-    expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
-    await expect(
-      signIn({ id: userId, email: 'me@x.io', provider: 'google' }, { id: userId, email: '' })
-    ).resolves.toBe('resume');
+    // It recovers only for that account. One staged before ids were kept names it by email,
+    // and still recovers once signing in again has saved the id.
+    const recover = (cloudFilePath) => {
+      desktop.config.profileSync.passphraseTransition = { ...transition, cloudFilePath };
+      return desktop.sync('auto', 'manual');
+    };
+    const elsewhere =
+      'The sync provider or file changed during key recovery. Restore the original target before retrying.';
+    await expect(recover('cloud-sync:https://sync.test:other@x.io')).rejects.toThrow(elsewhere);
+    await expect(recover('cloud-sync:https://sync.test:another-user')).rejects.toThrow(elsewhere);
+    await expect(recover('cloud-sync:https://sync.test:me@x.io')).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(desktop.config.profileSync.passphraseTransition).toBeNull();
+  });
 
-    // A key rewrite staged before ids were kept names the account by email. It still
-    // recovers once signing in again has saved the id, and only for that account.
-    const transactionFor = (cloudFilePath) =>
-      desktop.context.createProfileSyncRewriteTransaction({
-        provider: 'hostedAccount',
-        cloudFilePath,
-        expectedRemoteIdentity: 'a',
-        targetRemoteIdentity: 'b',
-        targetEnvelopeSerialized: '{}',
-        oldPassphraseEncrypted: 'x',
-        newPassphraseEncrypted: 'y',
-      });
-    const matches = (transaction) => desktop.context.profileSyncRewriteTargetMatches(transaction);
-    expect(matches(transactionFor(endpoint))).toBe(true);
-    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
-    expect(matches(transactionFor('cloud-sync:https://sync.test:other@x.io'))).toBe(false);
-    expect(matches(transactionFor('cloud-sync:https://sync.test:another-user'))).toBe(false);
-
-    // Sign-ins saved before ids were kept are still named by email.
+  test('a sign-in saved before ids were kept names the account by email', async () => {
+    const { desktop, desktopClient } = await createCloudPair();
     const file = path.join(desktopClient.userDataPath, 'cloud-sync-account.json');
     const { userId: omitted, ...older } = JSON.parse(fs.readFileSync(file, 'utf8'));
-    expect(omitted).toBe(userId);
+    expect(omitted).toEqual(expect.any(String));
     fs.writeFileSync(file, JSON.stringify(older));
-    expect(desktop.context.getProfileSyncEndpoint()).toBe('cloud-sync:https://sync.test:me@x.io');
-    expect(matches(transactionFor('cloud-sync:https://sync.test:me@x.io'))).toBe(true);
+
+    desktopClient.writeProfile = async () => {
+      throw Object.assign(new Error('offline'), { code: 'CLOUD_SYNC_NETWORK' });
+    };
+    await desktop.saveSettings({
+      profileSync: { encryptionEnabled: true },
+      passphrase: 'new passphrase',
+    });
+    expect(desktop.config.profileSync.passphraseTransition.cloudFilePath).toBe(
+      'cloud-sync:https://sync.test:me@x.io'
+    );
   });
 
   test('signing back in to the same account carries on from its sync history', async () => {
-    const { desktop } = await createCloudPair();
+    const { desktop, stored } = await createCloudPair();
     const baseline = { ...desktop.config.profileSync.syncBaseline };
     expect(Object.keys(baseline).length).toBeGreaterThan(0);
     await desktop.invoke('cloud-sync-sign-out');
     expect(desktop.status().cloudSync.signedIn).toBe(false);
+    // An edit made while signed out is still this computer's to send, not a conflict.
+    desktop.edit((config) => {
+      config.opacity = 0.35;
+    });
 
-    let comparisons = 0;
-    const prepare = desktop.context.prepareProfileSyncFirstEnableResolution;
-    desktop.context.prepareProfileSyncFirstEnableResolution = (...args) => {
-      comparisons += 1;
-      return prepare(...args);
-    };
-    const runs = [];
-    desktop.context.runProfileSync = async (...args) => runs.push(args);
     await expect(desktop.invoke('cloud-sync-sign-in', 'google')).resolves.toMatchObject({
       success: true,
     });
-    expect(comparisons).toBe(0);
-    expect(runs).toEqual([['auto', 'cloud_sign_in']]);
+    await desktop.settle();
+    expect(desktop.status()).toMatchObject({ conflictSections: [], lastSyncStatus: 'success' });
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.35);
     expect(desktop.config.profileSync).toMatchObject({
-      syncBaseline: baseline,
+      syncBaseline: { quickAccessLayout: baseline.quickAccessLayout },
       firstEnableResolutionPending: false,
     });
 
-    // A deleted account is forgotten: the next sign-in compares again.
+    // A deleted account is forgotten: the next sign-in compares again, so the settings
+    // go up to the new account instead of being reported missing from it.
     await desktop.invoke('cloud-sync-delete-account');
+    expect(stored()).toBeNull();
     await desktop.invoke('cloud-sync-sign-in', 'google');
-    expect(comparisons).toBe(1);
+    await desktop.settle();
+    expect(desktop.status()).toMatchObject({ lastSyncStatus: 'success', lastSyncError: '' });
+    expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.35);
   });
 
   test('signing in again leaves a pending sync-key change to its recovery', async () => {
@@ -1285,9 +1345,10 @@ describe('profile sync through Cloud Sync', () => {
       // Signing out said to sign in again; that no longer holds once signed in.
       await desktop.invoke('cloud-sync-sign-out');
       expect(desktop.status().lastSyncError).toBe('Sign in to Cloud Sync to keep syncing');
-      await expect(
-        desktop.context.startHostedProfileSyncAfterSignIn(account, account)
-      ).resolves.toBe('recovery_pending');
+      await expect(desktop.invoke('cloud-sync-sign-in', 'google')).resolves.toMatchObject({
+        success: true,
+        account: { id: account.id },
+      });
       expect(desktop.config.profileSync).toMatchObject({
         syncBaseline: baseline,
         firstEnableResolutionPending: false,
@@ -1300,24 +1361,24 @@ describe('profile sync through Cloud Sync', () => {
 
   test("a different account does not inherit the last one's pending sync-key change", async () => {
     const { desktop, desktopClient } = await createCloudPair();
-    const previousAccount = desktopClient.getStoredAccount();
-    const other = { id: 'someone-else', email: 'else@x.io' };
-    let comparisons = 0;
-    const prepare = desktop.context.prepareProfileSyncFirstEnableResolution;
-    desktop.context.prepareProfileSyncFirstEnableResolution = (...args) => {
-      comparisons += 1;
-      return prepare(...args);
+    // Signing in again picks another account the service knows.
+    const storedAccount = desktopClient.getStoredAccount.bind(desktopClient);
+    let other = null;
+    desktopClient.getStoredAccount = () => other || storedAccount();
+    desktopClient.signIn = async () => {
+      other = { id: 'someone-else', email: 'else@x.io' };
+      return other;
     };
     Object.assign(desktop.config.profileSync, {
       encryptionChangePending: true,
       remoteRewritePending: true,
       passphraseTransitionInvalid: true,
     });
-    await expect(
-      desktop.context.startHostedProfileSyncAfterSignIn(previousAccount, other)
-    ).resolves.toBe('prepared');
+    await expect(desktop.invoke('cloud-sync-sign-in', 'google')).resolves.toMatchObject({
+      success: true,
+    });
     // Compared afresh like a first sign-in, with nothing left pending from the old account.
-    expect(comparisons).toBe(1);
+    expect(desktop.status()).toMatchObject({ lastSyncStatus: 'success', conflictSections: [] });
     expect(desktop.config.profileSync).toMatchObject({
       encryptionChangePending: null,
       remoteRewritePending: false,
@@ -1329,15 +1390,13 @@ describe('profile sync through Cloud Sync', () => {
 
   test('a first sync held back by a pending change says so in words', async () => {
     const { desktop } = await createCloudPair();
-    const complete = () => desktop.context.completeProfileSyncFirstEnablePreparation('test');
-    desktop.config.profileSync.encryptionChangePending = true;
-    await expect(complete()).rejects.toThrow(
-      'Finish or cancel the pending encryption change first.'
-    );
-    desktop.config.profileSync.encryptionChangePending = null;
-    desktop.config.profileSync.remoteRewritePending = true;
-    await expect(complete()).rejects.toThrow(
-      'The remote profile still needs its encryption update. Use Sync up to retry.'
+    Object.assign(desktop.config.profileSync, {
+      firstEnableResolutionPending: true,
+      encryptionChangePending: true,
+    });
+    await desktop.engine.start();
+    expect(desktop.warnings).toContain(
+      'Profile sync startup run failed: Finish or cancel the pending encryption change first.'
     );
   });
 
@@ -1355,13 +1414,13 @@ describe('profile sync through Cloud Sync', () => {
       await laptop.sync();
       return realWrite(...args);
     };
-    const queued = [];
-    desktop.context.runProfileSync = async (...args) => queued.push(args);
     await expect(desktop.sync('push', 'manual')).rejects.toThrow(
       'Sync file kept changing on the other device; try again'
     );
-    expect(queued).toEqual([]);
+    // Nothing merges in its place: the laptop's write stands and this edit waits.
+    await desktop.settle();
     expect(stored().envelope.payload.sections.visualPersonalization.data.opacity).toBe(0.6);
+    expect(desktop.config.opacity).toBe(0.3);
   });
 
   test('a signed-out computer stops syncing and says why', async () => {
@@ -1439,12 +1498,13 @@ describe('profile sync through Cloud Sync', () => {
     desktop.edit((config) => {
       config.opacity = 0.45;
     });
-    // As signing in again does: compare with the account, then finish first sync.
-    const resolution = await desktop.firstEnable();
-    expect(resolution.needsResolution).toBe(false);
-    const result = await desktop.context.completeProfileSyncFirstEnablePreparation('cloud_sign_in');
-    expect(result.reason).toBe('subscription_required');
+    // First sync was still to finish when the app last closed.
+    desktop.config.profileSync.firstEnableResolutionPending = true;
+    await desktop.engine.start();
     expect(desktop.config.profileSync.firstEnableResolutionPending).toBe(false);
+    expect(desktop.status().lastSyncError).toBe(
+      'Cloud Sync needs a subscription to save changes. Changes from your other computers still download.'
+    );
   });
 
   test('settings missing from the account after syncing are only saved again by Sync up', async () => {

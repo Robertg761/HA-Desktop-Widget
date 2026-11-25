@@ -2,98 +2,109 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const profileSyncCore = require('../../profile-sync-core.js');
 const { createMainConfigStore } = require('../helpers/main-config-store.js');
+const { createProfileSyncHarness } = require('../helpers/profile-sync-devices.js');
 const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
+const copy = (value) => JSON.parse(JSON.stringify(value));
 const slice = (start, end) =>
   source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
 describe('settings file main-process application', () => {
-  let context, original, store;
-  const copy = (value) => JSON.parse(JSON.stringify(value));
-  beforeEach(() => {
-    original = {
-      homeAssistant: { token: 'secret' },
-      profileSync: { enabled: false },
-      desktopPins: { 'light.desk': {} },
-      globalHotkeys: { enabled: true },
-      activeTabId: 'home',
-      ui: { theme: 'dark', scale: 1.3, followOmarchy: true },
-    };
-    context = {
-      config: original,
-      profileSyncCore,
-      profileSyncRuntime: { pendingPullEchoHash: 'old', pendingPullEchoProfile: {} },
-      backupLocalProfileBeforePullApply: jest.fn().mockResolvedValue(),
-      mainT: (key, data) => key.replace('{{error}}', data?.error || ''),
-    };
-    store = createMainConfigStore(original, {
-      profileSyncRuntime: context.profileSyncRuntime,
-    });
-    context.configStore = store.configStore;
-    context.replaceConfigContents = store.replaceConfigContents;
-    for (const name of [
-      'pruneConfig',
-      'ensureDateTimeFormatConfigDefaults',
-      'ensureProfileSyncConfigDefaults',
-      'ensureEntityAlertsConfigDefaults',
-      'normalizeDesktopPinsConfig',
-      'normalizeTrayEntitiesConfigInPlace',
-    ])
-      context[name] = jest.fn();
-    vm.createContext(context);
-    vm.runInContext(
-      slice('async function applyLocalProfileSections(', 'function clearProfileSyncTimers('),
-      context
-    );
-  });
+  const harness = createProfileSyncHarness();
+  beforeEach(() => harness.setup());
+  afterEach(() => harness.teardown());
+
+  const localSetup = {
+    homeAssistant: { token: 'secret' },
+    desktopPins: { 'light.desk': {} },
+    globalHotkeys: { enabled: true },
+    activeTabId: 'home',
+    entityAlerts: { enabled: false, alerts: {} },
+    ui: { theme: 'dark', scale: 1.3, followOmarchy: true },
+  };
+  const importBackups = (device) => {
+    const dir = path.join(device.userData, 'profile-sync-backups');
+    return fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+  };
+  const visualTheme = { visualPersonalization: { ui: { theme: 'light' } } };
+
   test('backs up before writing and preserves local setup', async () => {
-    const before = copy(original);
-    const written = jest.fn();
-    store.interceptNextWrite(written);
-    await context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } });
+    const device = harness.createDevice('desktop', { syncing: false, content: localSetup });
+    let backedUpFirst = null;
+    device.interceptNextConfigWrite(async () => {
+      backedUpFirst = importBackups(device).length === 1;
+    });
+
+    await device.engine.importSections(visualTheme);
+
+    expect(backedUpFirst).toBe(true);
     // The incoming sections let the backup record ui keys the apply adds, so restore undoes them.
-    expect(context.backupLocalProfileBeforePullApply).toHaveBeenCalledWith(
-      ['visualPersonalization'],
-      { visualPersonalization: { ui: { theme: 'light' } } },
-      'import'
-    );
-    expect(context.backupLocalProfileBeforePullApply.mock.invocationCallOrder[0]).toBeLessThan(
-      written.mock.invocationCallOrder[0]
-    );
-    expect(context.config).toEqual({ ...before, ui: { ...before.ui, theme: 'light' } });
-    expect(store.written()).toEqual(context.config);
-    expect(store.context.pushConfigToRenderer).toHaveBeenCalledTimes(1);
+    const [backup] = (await device.invoke('list-profile-sync-backups')).backups;
+    expect(backup).toMatchObject({ reason: 'import', sections: ['visualPersonalization'] });
+    // Only the sync bookkeeping (when each section last changed) moves besides the section.
+    const { profileSync, ...settings } = device.config;
+    expect(settings).toEqual({ ...localSetup, ui: { ...localSetup.ui, theme: 'light' } });
+    expect(profileSync.sectionUpdatedAt).toHaveProperty('visualPersonalization');
+    expect(device.writtenConfig()).toEqual(device.config);
+    expect(device.main.pushConfigToRenderer).toHaveBeenCalledTimes(1);
   });
-  test('clears the shared ui keys a section sets to null, and other nulls only when asked to', async () => {
-    const sections = {
+
+  test('clears the shared ui keys a section sets to null, and keys a later version added', async () => {
+    const device = harness.createDevice('desktop', {
+      syncing: false,
+      content: {
+        ...localSetup,
+        ui: { ...localSetup.ui, accent: 'violet', aKeyFromALaterVersion: 1 },
+      },
+    });
+    await device.engine.importSections({
       visualPersonalization: { ui: { theme: 'light', accent: null, aKeyFromALaterVersion: null } },
-    };
-    await context.applyLocalProfileSections(sections);
-    // A shared key reset on the other side is reset here too; a later version's key stays as sent.
-    expect(context.config.ui).not.toHaveProperty('accent');
-    expect(context.config.ui.aKeyFromALaterVersion).toBeNull();
-    await context.applyLocalProfileSections(sections, { clearNullUiKeys: true });
-    expect(context.config.ui).not.toHaveProperty('aKeyFromALaterVersion');
+    });
+    // A file says "back to the default" with null; a pull keeps a later version's null as sent.
+    expect(device.config.ui).not.toHaveProperty('accent');
+    expect(device.config.ui).not.toHaveProperty('aKeyFromALaterVersion');
   });
+
   test('a failed backup never writes or changes config', async () => {
-    const before = copy(original);
-    context.backupLocalProfileBeforePullApply.mockRejectedValue(new Error('Disk full'));
-    await expect(
-      context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } })
-    ).rejects.toThrow('Disk full');
-    expect(context.config).toEqual(before);
-    expect(store.writeCount()).toBe(0);
+    const device = harness.createDevice('desktop', { syncing: false, content: localSetup });
+    const before = copy(device.config);
+    const writtenBefore = device.writtenConfig();
+    device.fs = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        writeFile: async () => {
+          throw new Error('Disk full');
+        },
+      },
+    };
+    await expect(device.engine.importSections(visualTheme)).rejects.toThrow('Disk full');
+    expect(device.config).toEqual(before);
+    expect(device.writtenConfig()).toEqual(writtenBefore);
   });
+
   test('a failed durable save restores config and sync tracking', async () => {
-    const before = copy(original);
-    store.failNextWrite('Disk full');
-    await expect(
-      context.applyLocalProfileSections({ visualPersonalization: { ui: { theme: 'light' } } })
-    ).rejects.toThrow('Disk full');
-    expect(context.config).toEqual(before);
-    expect(context.profileSyncRuntime.pendingPullEchoHash).toBe('old');
-    expect(store.context.pushConfigToRenderer).not.toHaveBeenCalled();
+    const { desktop, laptop } = await harness.createSyncedPair();
+    // A pull, after which a stale echo of the pre-pull settings is recognised.
+    const prePull = desktop.rendererConfig();
+    laptop.edit((config) => {
+      config.opacity = 0.7;
+    });
+    await laptop.sync();
+    await desktop.sync();
+    const before = copy(desktop.config);
+    desktop.main.pushConfigToRenderer.mockClear();
+
+    desktop.interceptNextConfigWrite(async () => {
+      throw new Error('Disk full');
+    });
+    await expect(desktop.engine.importSections(visualTheme)).rejects.toThrow('Disk full');
+    expect(desktop.config).toEqual(before);
+    expect(desktop.main.pushConfigToRenderer).not.toHaveBeenCalled();
+
+    // The import gave up on recognising that echo only for the change it did not make.
+    await desktop.updateFromRenderer({ ...prePull, configRevision: undefined });
+    expect(desktop.config.opacity).toBe(0.7);
   });
 });
 

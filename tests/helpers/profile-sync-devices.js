@@ -1,85 +1,26 @@
 /**
- * Runs the real profile sync engine from main.js for several simulated devices
- * sharing one sync folder. Each device is its own vm context with its own
- * config, runtime state, app data folder and clock; only the Electron-facing
- * side effects are stubbed.
+ * Runs the profile sync engine (src/profile-sync-engine.cjs) for several simulated devices
+ * sharing one sync folder. Each device has its own config store, engine, app data folder, clock
+ * and OS keyring; the folder target writes real files in a temp folder, and a device signed in to
+ * a test Cloud Sync service (tests/helpers/cloud-sync-world.js) syncs through it instead.
  *
- * Besides the engine, each device runs the real update-config and profile sync
- * IPC handlers, so a test can drive a Settings save the way the renderer does
- * (see `saveSettings`) and watch what the main process does with it.
+ * Each device wires its engine the way main.js does: main's config change effects run on its
+ * config store (see tests/helpers/main-config-store.js), and `invoke` stands in for main's IPC
+ * handlers, which are thin calls into the engine. A test can drive a Settings save the way the
+ * renderer does (see `saveSettings`) and watch what the engine does with it.
  */
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const vm = require('vm');
-const nodeCrypto = require('crypto');
 const profileSyncCore = require('../../profile-sync-core.js');
-const { requireExistingSyncParentDirectory } = require('../../src/cloud-sync-path.cjs');
-const rewriteTransaction = require('../../src/profile-sync-rewrite-transaction.cjs');
+const {
+  createProfileSyncEngine,
+  describeKnownProfileSyncFailure,
+} = require('../../src/profile-sync-engine.cjs');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
-const { toStoredPages } = require('../../src/page-names.cjs');
-const {
-  createSettingsFileController,
-  settingsFileErrorCode,
-} = require('../../src/settings-file-controller.cjs');
-const {
-  isPathInsideDirectory,
-  validateProfileSyncCopyPaths,
-} = require('../../src/main-security.cjs');
-const { createConfigStore, replaceConfigContents } = require('../../src/main-config-store.cjs');
-const { createMemoryFs } = require('./main-config-store.js');
-
-const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-
-function sliceMain(startMarker, endMarker) {
-  const start = mainSource.indexOf(startMarker);
-  const end = mainSource.indexOf(endMarker, start);
-  if (start < 0 || end <= start) {
-    throw new Error(`Could not slice main.js from ${startMarker}`);
-  }
-  return mainSource.slice(start, end);
-}
-
-const ENGINE_SOURCE = [
-  sliceMain('function describeKnownProfileSyncFailure(', '// Hotkey changes roll back on failure'),
-  sliceMain('function getRendererSyncFilePath(', 'function isPlainObject('),
-  sliceMain('function isProfileSyncProviderSupported(', 'function isPortableBuild('),
-  sliceMain('function generateProfileSyncDeviceId(', 'function ensureUpdateConfigDefaults('),
-  sliceMain('function ensureUpdateConfigDefaults(', 'function ensureHaProfileConfigDefaults('),
-  sliceMain('function getProfileSyncConfig(', 'function hasDeferredSecureConfigWork('),
-  sliceMain('function buildProfileSyncStatus(', 'async function readCloudFileEnvelope('),
-  sliceMain(
-    'async function readCloudFileEnvelope(',
-    '/**\n * Selects and returns an appropriate tray icon'
-  ),
-  sliceMain(
-    'async function findProfileSyncConflictSections(',
-    'function scheduleDebouncedProfileSyncPush('
-  ),
-  sliceMain(
-    'async function runProfileSyncInternal(',
-    '/**\n * Runs a sync triggered by something other than the interval timer'
-  ),
-].join('\n');
-
-// What a config change sets off once it is written, with the store's sync tracking.
-const CONFIG_CHANGE_EFFECTS_SOURCE = sliceMain(
-  '// Config change effects.',
-  '// End of config change effects.'
-);
-
-// The IPC handlers that make up a Settings save and the sync controls beside it.
-const HANDLER_SOURCE = [
-  sliceMain("ipcMain.handle(\n  'update-config'", "ipcMain.handle(\n  'clear-token-reset-reason'"),
-  sliceMain("ipcMain.handle('choose-profile-sync-folder'", '// Start at login IPC handlers'),
-].join('\n');
-
-// The sync constants and the runtime state object that follows them. The runtime is a var
-// so tests can reach it as a property of the device's context.
-const PROFILE_SYNC_CONSTANTS = (
-  sliceMain('const PROFILE_SYNC_PUSH_DEBOUNCE_MS', '\n};\n') + '\n};\n'
-).replace('const profileSyncRuntime', 'var profileSyncRuntime');
+const { createSettingsFileController } = require('../../src/settings-file-controller.cjs');
+const { createMainConfigStore, replaceConfigContents } = require('./main-config-store.js');
 
 /**
  * Stands in for Electron's safeStorage. `keyring: 'libsecret'` behaves like
@@ -103,9 +44,43 @@ function createSafeStorage({ keyring = 'libsecret' } = {}) {
   };
 }
 
+// A Cloud Sync client for a build without the service.
+const NO_CLOUD_SYNC = {
+  isAvailable: () => false,
+  getStoredAccount: () => null,
+  serviceUrl: '',
+  signInController: null,
+};
+
+/**
+ * Timers that never fire on their own: a test sees what the engine scheduled (a debounced push,
+ * the interval) without a sync starting behind its back.
+ */
+function createHeldTimers() {
+  const pending = new Set();
+  const add = (kind) => (fn, ms) => {
+    const timer = { kind, fn, ms };
+    pending.add(timer);
+    return timer;
+  };
+  return {
+    pending,
+    setTimeout: add('timeout'),
+    setInterval: add('interval'),
+    clearTimeout: (timer) => pending.delete(timer),
+    clearInterval: (timer) => pending.delete(timer),
+  };
+}
+
+const translate = (key, vars) => formatTemplate(key, vars);
+// main.js's mainTError, for the engine's error wording.
+const translateError = (error) =>
+  describeKnownProfileSyncFailure(error, translate) ||
+  translate(typeof error === 'string' ? error : error?.message || String(error ?? ''));
+
 /**
  * @param {object} [defaults]
- * @param {() => object} [defaults.createSafeStorage] credential store for devices that bring none
+ * @param {() => object} [defaults.createDefaultSafeStorage] credential store for devices that bring none
  */
 function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeStorage() } = {}) {
   let sharedFolder;
@@ -150,11 +125,14 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
    * @param {string} name used for the device's app data folder
    * @param {object} [options]
    * @param {object} [options.content] config content, defaults to baseContent()
-   * @param {object} [options.profileSync] profileSync overrides
+   * @param {object} [options.profileSync] profileSync overrides; `__passphrase` is a passphrase
+   *   this device remembers
    * @param {number} [options.clockOffsetMs] how far this device's clock is ahead
    * @param {object} [options.safeStorage] OS credential store, see createSafeStorage
    * @param {boolean} [options.syncing] whether the device starts with sync on (default true)
    * @param {object} [options.cloudClient] a Cloud Sync client signed in to a test service
+   * @param {Function} [options.t] main's translator (English by default)
+   * @param {Function} [options.tError] main's error wording, with `t`
    */
   function createDevice(
     name,
@@ -165,6 +143,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       safeStorage = createDefaultSafeStorage(),
       syncing = true,
       cloudClient = null,
+      t = translate,
+      tError = translateError,
     } = {}
   ) {
     const userData = path.join(tempRoot, `${name}-userData`);
@@ -179,66 +159,127 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       }
     }
 
-    const handlers = {};
-    // The device's config store, writing its config.json to memory.
-    const configFile = createMemoryFs();
-    const configStore = createConfigStore({
-      filePath: path.join(userData, 'config.json'),
-      fs: configFile.fs,
-    });
+    const { __passphrase: sessionPassphrase = '', ...profileSyncOverrides } = profileSync;
+    const config = {
+      ...JSON.parse(JSON.stringify(content)),
+      profileSync: {
+        enabled: syncing,
+        provider: 'dropbox',
+        cloudFilePath: syncFilePath(),
+        ...profileSyncOverrides,
+        ...(sessionPassphrase
+          ? { rememberPassphrase: true, storedPassphrase: sessionPassphrase }
+          : {}),
+      },
+    };
+    // The config store with main.js's config change effects; the engine is set below.
+    const store = createMainConfigStore(config);
+    const { configStore } = store;
+
+    const timers = createHeldTimers();
+    let deviceFs = fs;
+    const platform = { platform: 'linux', env: {} };
     const dialogResults = [];
     const dialogCalls = [];
     // The window each dialog was parented to, in the same order; null when it had none.
     const dialogParents = [];
-    const context = {
-      Date: DeviceDate,
-      Buffer,
-      console,
-      // Sealing secrets only needs a keyring on Linux, so every device pretends to be one.
-      process: Object.create(process, { platform: { value: 'linux' } }),
-      fs,
-      path,
-      nodeCrypto,
-      configStore,
-      replaceConfigContents,
-      profileSyncCore,
-      requireExistingSyncParentDirectory,
-      ...rewriteTransaction,
-      createSettingsFileController,
-      settingsFileErrorCode,
-      validateProfileSyncCopyPaths,
-      app: { getPath: (key) => (key === 'home' ? tempRoot : userData) },
-      log: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
-      // Stands in for the OS credential store the rewrite transaction seals secrets with.
-      safeStorage,
-      mainT: (key, vars) => formatTemplate(key, vars),
-      isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
-      toStoredPages,
-      // The real check: path.relative alone calls a path on another Windows drive inside.
-      isPathInsideDirectory,
-      preservedEncryptedTokenForRecovery: null,
-      // Cloud Sync: a real client against the test service, or a build without it.
-      getCloudSyncClient: () =>
-        cloudClient || {
-          isAvailable: () => false,
-          getStoredAccount: () => null,
-          serviceUrl: '',
-          signInController: null,
+    const emittedStatuses = [];
+    const warnings = [];
+    const hooks = { beforeReread: async () => {} };
+
+    const startEngine = () =>
+      createProfileSyncEngine({
+        configStore,
+        // Swappable, so a test can make the folder fail as a real disk or sync client would.
+        fs: new Proxy({}, { get: (_target, key) => deviceFs[key] }),
+        app: { getPath: (key) => (key === 'home' ? tempRoot : userData) },
+        // Sealing secrets only needs a keyring on Linux, so every device pretends to be one.
+        process: platform,
+        safeStorage,
+        Date: DeviceDate,
+        getCloudSyncClient: () => cloudClient || NO_CLOUD_SYNC,
+        dialog: {
+          showOpenDialog: async (...args) => {
+            dialogCalls.push(args.at(-1));
+            dialogParents.push(args.length > 1 ? args[0] : null);
+            return dialogResults.shift() || { canceled: true, filePaths: [] };
+          },
         },
-      mainWindow: null,
-      tray: null,
-      autoUpdaterInstance: null,
-      pushes: [],
-      emittedStatuses: [],
-      ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-      serializeConfigMutationHandler: (handler) => handler,
-      authorizeIpcSender: () => ({ type: 'main', window: {} }),
-      rejectUnauthorizedIpc: () => ({ success: false, error: 'Unauthorized' }),
-      windowAutoHide: { suspend: () => () => {} },
+        suspendAutoHide: () => () => {},
+        t,
+        tError,
+        log: {
+          warn: (...args) => warnings.push(args.join(' ')),
+          info: () => {},
+          debug: () => {},
+          error: () => {},
+        },
+        sendStatus: (buildStatus) => emittedStatuses.push(buildStatus()),
+        rendererConfig: () => rendererConfig(),
+        normalizeConfig: () => {},
+        snapshotMainState: () => () => {},
+        ...timers,
+        // No pause before reading a damaged file again; a test can set one that changes the file.
+        sleep: () => hooks.beforeReread(),
+      });
+    let engine = startEngine();
+    store.context.profileSyncEngine = engine;
+
+    // Seeded at startup, as loading the config does, from this device's clock.
+    engine.normalizeSettings(config);
+    config.profileSync.profileUpdatedAt =
+      config.profileSync.profileUpdatedAt || new DeviceDate().toISOString();
+    engine.configLoaded();
+
+    /** The config as the Settings window holds it, as main's sanitizeConfigForRenderer gives it. */
+    function rendererConfig() {
+      const copy = JSON.parse(JSON.stringify(config));
+      if (copy.profileSync) engine.redactForRenderer(copy.profileSync);
+      copy.configRevision = configStore.revision();
+      return copy;
+    }
+
+    /** The sync half of main.js's update-config handler, run the same way around the engine. */
+    async function updateConfig(newConfig) {
+      return configStore.serialize(async () => {
+        delete newConfig.configRevision;
+        const syncSettings = engine.receiveSettings(newConfig);
+        if (syncSettings.error) {
+          return { success: false, error: syncSettings.error, config: rendererConfig() };
+        }
+        const persistence = await configStore.apply(
+          (current) => {
+            const prevConfig = JSON.parse(JSON.stringify(current));
+            replaceConfigContents(current, {
+              ...current,
+              ...newConfig,
+              profileSync: syncSettings.profileSync,
+            });
+            engine.normalizeSettings(current);
+            syncSettings.merged(current, prevConfig);
+          },
+          {
+            origin: 'settings',
+            requiresInitialPreparation: syncSettings.requiresInitialPreparation,
+          }
+        );
+        if (!persistence.success) {
+          syncSettings.notSaved();
+          return {
+            success: false,
+            error: `Failed to save settings: ${persistence.error}`,
+            config: rendererConfig(),
+          };
+        }
+        return { success: true, config: rendererConfig() };
+      });
+    }
+
+    const settingsFile = createSettingsFileController({
+      fs,
       dialog: {
         showOpenDialog: async (...args) => {
           dialogCalls.push(args.at(-1));
-          dialogParents.push(args.length > 1 ? args[0] : null);
           return dialogResults.shift() || { canceled: true, filePaths: [] };
         },
         showSaveDialog: async (...args) => {
@@ -246,83 +287,73 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
           return dialogResults.shift() || { canceled: true };
         },
       },
-    };
-    vm.createContext(context);
-    vm.runInContext(
-      `${PROFILE_SYNC_CONSTANTS}
-     ${ENGINE_SOURCE}
-     ${CONFIG_CHANGE_EFFECTS_SOURCE}
-     function scheduleDebouncedProfileSyncPush(source) { pushes.push(source); }
-     function runProfileSync(direction, source) { return runProfileSyncInternal(direction, source); }
-     function runSerializedConfigMutation(task) { return configStore.serialize(task); }
-     function emitProfileSyncStatus(extra = {}) { emittedStatuses.push(buildProfileSyncStatus(extra)); }
-     function setupProfileSyncInterval() {}
-     // No pause before reading a damaged file again; a test can replace it to change the file.
-     async function waitForSyncFileToSettle() {}
-     async function runPostSaveSideEffect(warnings, label, fn) { await fn(); }
-     function applyMainWindowSettingSideEffects() {}
-     function applyRuntimeConfigSideEffects() {}
-     function syncDesktopPinWindowsWithConfig() {}
-     function syncTrayEntitiesWithConfig() {}
-     function broadcastDesktopPinConfigUpdate() {}
-     function pushConfigToRenderer() {}
-     function createTray() {}
-     function configureAutoUpdaterChannel() {}
-     function pruneConfig() {}
-     function ensureDateTimeFormatConfigDefaults() {}
-     function ensureHaProfileConfigDefaults() {}
-     function normalizeDesktopPinsConfig() {}
-     function normalizeTrayEntitiesConfigInPlace() {}
-     function isPlaceholderOrEmptyToken(token) { return !token || token === HOME_ASSISTANT_TOKEN_PLACEHOLDER; }
-     // What the real sanitizeConfigForRenderer reads besides the config.
-     var IS_CLIMATE_DEMO_MODE = false, IS_CLIMATE_DEMO_OVERLAY_MODE = false;
-     var IS_ISOLATED_PROFILE = false, isLayerShellChildProcess = false, configRecoveryNotice = null;
-     var NATIVE_GLASS_SUPPORTED = true;
-     var omarchyThemeWatcher = null, omarchyBarPublisher = null;
-     function getOmarchyBarEntities() { return { all: [] }; }
-     function isHyprland() { return false; }
-     function windowsAreAlwaysTransparent() { return false; }
-     function getSystemColorScheme() { return null; }
-     function rendersInSoftware() { return false; }
-     function hasDeferredSecureConfigWork() { return false; }
-     function getDefaultProfileSyncFilePath() { return path.join(app.getPath('userData'), PROFILE_SYNC_DEFAULT_FILE_NAME); }
-     var config = null;
-     ${HANDLER_SOURCE}`,
-      context
-    );
-
-    context.config = {
-      ...JSON.parse(JSON.stringify(content)),
-      profileSync: {
-        enabled: syncing,
-        provider: 'dropbox',
-        cloudFilePath: syncFilePath(),
-        ...profileSync,
+      suspendAutoHide: () => () => {},
+      getConfig: () => config,
+      translate: (key) => translate(key),
+      applySections: async (sections) => {
+        await engine.importSections(sections);
+        return { config: rendererConfig() };
       },
+    });
+
+    // main.js's IPC handlers for sync, each a call into the engine. Those that change the config
+    // run in its queue, as serializeConfigMutationHandler runs them.
+    const settingsWindow = {};
+    const serialized =
+      (method) =>
+      (...args) =>
+        configStore.serialize(() => engine[method](...args));
+    const handlers = {
+      'update-config': (newConfig) => updateConfig(newConfig),
+      'get-profile-sync-status': () => engine.status(),
+      'run-profile-sync': (direction) => engine.syncNow(direction),
+      // Main hands over the Settings window the request came from, to parent the dialog.
+      'choose-profile-sync-folder': (provider, currentFolder) =>
+        engine.chooseFolder(provider, currentFolder, settingsWindow),
+      'copy-profile-sync-file': (fromPath, toPath) => engine.copySyncFile(fromPath, toPath),
+      'set-profile-sync-passphrase': serialized('setPassphrase'),
+      'clear-profile-sync-passphrase': serialized('clearPassphrase'),
+      'resolve-profile-sync-first-enable': serialized('resolveFirstEnable'),
+      'list-profile-sync-backups': () => engine.listBackups(),
+      'restore-profile-sync-backup': serialized('restoreBackup'),
+      'get-cloud-sync-account': () => engine.cloudAccount(),
+      'cloud-sync-sign-in': (provider) => engine.cloudSignIn(provider),
+      'cloud-sync-sign-out': () => engine.cloudSignOut(),
+      'cloud-sync-open-billing': () => engine.cloudOpenBilling(),
+      'cloud-sync-delete-account': () => engine.cloudDeleteAccount(),
+      'preview-settings-import': async () => ({
+        success: true,
+        ...(await settingsFile.previewImport(null, 1)),
+      }),
+      'apply-settings-import': (id) =>
+        configStore.serialize(async () => ({
+          success: true,
+          ...(await settingsFile.applyImport(1, id)),
+        })),
     };
-    configStore.load(context.config);
-    vm.runInContext(
-      `ensureProfileSyncConfigDefaults(config);
-     // Seeded at startup, as refreshProfileSyncRuntimeTracking does, from this device's clock.
-     config.profileSync.profileUpdatedAt = config.profileSync.profileUpdatedAt || new Date().toISOString();
-     profileSyncRuntime.passphraseSession = config.profileSync.__passphrase || '';
-     delete config.profileSync.__passphrase;
-     profileSyncRuntime.localProfileHash = computeScopedProfileHash(
-       profileSyncCore.projectSyncProfile(config, getActiveProfileSyncScope()),
-       getActiveProfileSyncScope()
-     );
-     profileSyncRuntime.localSectionHashes = computeLocalSectionHashes();`,
-      context
-    );
 
     const device = {
-      context,
+      get engine() {
+        return engine;
+      },
+      /**
+       * The app closes and opens again: a new engine over the config as it was last saved. What
+       * was held only for the session, such as a passphrase not remembered, is gone.
+       */
+      restart() {
+        engine.pause();
+        replaceConfigContents(config, device.writtenConfig() || config);
+        engine = startEngine();
+        store.context.profileSyncEngine = engine;
+        engine.normalizeSettings(config);
+        engine.configLoaded();
+      },
       get config() {
-        return context.config;
+        return config;
       },
       /** Makes a local edit and saves it, as the window geometry and status fields are saved. */
       edit(mutate) {
-        mutate(context.config);
+        mutate(config);
         device.save();
       },
       /** Saves the config as it stands, through the store's sync tracking. */
@@ -331,11 +362,11 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       },
       /** Puts `next` in place of the config, as a change that builds a new config does. */
       replaceConfig(next) {
-        replaceConfigContents(context.config, next);
+        replaceConfigContents(config, next);
       },
       /** A copy of the config as it stands now. */
       configCopy() {
-        return JSON.parse(JSON.stringify(context.config));
+        return JSON.parse(JSON.stringify(config));
       },
       /** The revision of the last config written: what the renderer's copy carries. */
       revision() {
@@ -343,30 +374,59 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       },
       /** The config as this device's config.json holds it, or null before the first write. */
       writtenConfig() {
-        const text = configFile.files.get(path.join(userData, 'config.json'));
-        return text === undefined ? null : JSON.parse(text);
+        return store.written();
       },
       /** Makes the next config writes fail, as a full disk would. */
       failConfigWrites(message = 'disk full') {
-        configFile.failWrites(message);
+        store.failWrites(message);
       },
       /** Runs `interceptor` while the next config write is under way; it fails if that throws. */
       interceptNextConfigWrite(interceptor) {
-        configFile.interceptNextWrite(interceptor);
+        store.interceptNextWrite(interceptor);
       },
+      /** Waits for everything queued behind the last change, such as a re-check a run queued. */
+      settle() {
+        return configStore.serialize(() => {});
+      },
+      /**
+       * An update-config call carrying `next`, as a renderer sends it: `touchedKeys` are the synced
+       * settings it says the user changed, and `baseRevision` the config revision it was built
+       * from (none from an older renderer).
+       */
+      updateFromRenderer(next, { touchedKeys, baseRevision } = {}) {
+        return device.invoke('update-config', {
+          ...JSON.parse(JSON.stringify(next)),
+          ...(touchedKeys ? { profileSyncTouchedKeys: touchedKeys } : {}),
+          ...(baseRevision !== undefined ? { configBaseRevision: baseRevision } : {}),
+        });
+      },
+      /** A sync run, as the interval timer starts one unless a `source` is given. */
       sync(direction = 'auto', source = 'interval') {
-        return context.runProfileSyncInternal(direction, source);
+        return engine.sync(direction, source);
       },
-      firstEnable() {
-        context.config.profileSync.firstEnableResolutionPending = true;
-        return context.prepareProfileSyncFirstEnableResolution();
+      /**
+       * Treats sync as just enabled (a Settings save turning it on or moving it), and runs it the
+       * way Sync now does then: the file is compared with this device first.
+       */
+      async firstEnable() {
+        config.profileSync.firstEnableResolutionPending = true;
+        const result = await engine.sync('auto', 'manual');
+        return { ...result, needsResolution: result?.reason === 'needs_resolution' };
       },
       status() {
-        return context.buildProfileSyncStatus();
+        return engine.status();
       },
       /** What the renderer was sent, in order, as each run started and ended. */
-      get emittedStatuses() {
-        return context.emittedStatuses;
+      emittedStatuses,
+      /** What the engine logged as warnings, such as why a run at startup stopped. */
+      warnings,
+      /** Whether a debounced push is waiting to run. */
+      pushQueued() {
+        return [...timers.pending].some((timer) => timer.kind === 'timeout');
+      },
+      /** Whether the sync interval is running. */
+      intervalRunning() {
+        return [...timers.pending].some((timer) => timer.kind === 'interval');
       },
       backups(prefix) {
         const dir = path.join(userData, 'profile-sync-backups');
@@ -381,10 +441,30 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       advanceClock(ms) {
         clockOffsetMs += ms;
       },
+      /** The fs this device's engine uses from now on: a stand-in that fails some calls. */
+      set fs(next) {
+        deviceFs = next;
+      },
+      /** The operating system this device reports from now on. */
+      set platform(next) {
+        platform.platform = next;
+      },
+      /** Runs instead of the pause before a damaged sync file is read again. */
+      set beforeReread(hook) {
+        hooks.beforeReread = hook;
+      },
       /** Calls an IPC handler as the renderer would. */
       invoke(channel, ...args) {
         if (!handlers[channel]) throw new Error(`No handler registered for ${channel}`);
-        return handlers[channel]({ sender: {} }, ...args);
+        return handlers[channel](...args);
+      },
+      /** Answers `channel` with `handler` instead, as a test running main.js's own handler does. */
+      handle(channel, handler) {
+        handlers[channel] = handler;
+      },
+      /** The vm context main.js's config change effects run in, for a test running more of main. */
+      get main() {
+        return store.context;
       },
       /** The options each native dialog was opened with. */
       dialogCalls,
@@ -393,10 +473,7 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
       queueDialogResult(result) {
         dialogResults.push(result);
       },
-      /** The config as the Settings window holds it. */
-      rendererConfig() {
-        return context.sanitizeConfigForRenderer(context.config);
-      },
+      rendererConfig,
       /**
        * A Settings save, as saveSettings in src/settings.js performs it: the whole
        * config goes through update-config, then the passphrase IPC runs when a
@@ -409,8 +486,8 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
        * @param {boolean} [options.remember] the "Remember passphrase" switch
        */
       async saveSettings({ edit, profileSync: form = {}, passphrase = '', remember = false } = {}) {
-        const previous = context.config.profileSync;
-        const next = device.rendererConfig();
+        const previous = config.profileSync;
+        const next = rendererConfig();
         if (edit) edit(next);
         next.profileSync = {
           ...next.profileSync,
@@ -462,4 +539,9 @@ function createProfileSyncHarness({ createDefaultSafeStorage = () => createSafeS
   };
 }
 
-module.exports = { createProfileSyncHarness, createSafeStorage, profileSyncCore };
+module.exports = {
+  createProfileSyncHarness,
+  createSafeStorage,
+  describeError: translateError,
+  profileSyncCore,
+};

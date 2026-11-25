@@ -6,7 +6,7 @@ const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'ut
 
 function loadEnsure() {
   const start = mainSource.indexOf('function ensureFollowOmarchyDefault');
-  const end = mainSource.indexOf('function getProfileSyncConfig', start);
+  const end = mainSource.indexOf('function hasDeferredSecureConfigWork', start);
   const context = {};
   vm.runInNewContext(mainSource.slice(start, end), context);
   return context.ensureFollowOmarchyDefault;

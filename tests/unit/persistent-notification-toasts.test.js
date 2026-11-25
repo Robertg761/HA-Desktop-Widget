@@ -66,19 +66,16 @@ describe('the Home Assistant notifications switch in the main process', () => {
   });
 
   test('is carried by an exported settings file, and absent (meaning on) until somebody turns it off', () => {
-    const start = mainSource.indexOf('function ensureEntityAlertsConfigDefaults');
-    const source = mainSource.slice(start, mainSource.indexOf('\n}\n', start) + 3);
-    const context = { isPlainObject: (v) => !!v && typeof v === 'object' && !Array.isArray(v) };
-    vm.runInNewContext(source, context);
+    const { ensureEntityAlertsConfigDefaults } = require('../../src/profile-sync-engine.cjs');
 
     // The shape a sync pull fills in does not grow a key of its own: devices that never touched
     // the switch keep hashing the same.
-    expect(context.ensureEntityAlertsConfigDefaults({}).entityAlerts).toEqual({
+    expect(ensureEntityAlertsConfigDefaults({}).entityAlerts).toEqual({
       enabled: false,
       alerts: {},
     });
     expect(
-      context.ensureEntityAlertsConfigDefaults({ entityAlerts: { persistentNotifications: false } })
+      ensureEntityAlertsConfigDefaults({ entityAlerts: { persistentNotifications: false } })
         .entityAlerts.persistentNotifications
     ).toBe(false);
 
