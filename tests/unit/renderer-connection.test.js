@@ -939,85 +939,9 @@ describe('Renderer Home Assistant connection lifecycle', () => {
     });
   });
 
-  describe('the first snapshot of states', () => {
-    it('is given far longer than a usual request, so a large instance is not torn down', async () => {
-      await loadRenderer({ config: tokenConfig() });
-      mockWebsocket.request.mockImplementation(() => {
-        const request = new Promise(() => {});
-        request.id = 10;
-        return request;
-      });
-
-      mockWebsocket.emit('message', { type: 'auth_ok' });
-
-      const call = mockWebsocket.request.mock.calls.find(
-        ([payload]) => payload.type === 'get_states'
-      );
-      expect(call[1]).toEqual({ timeoutMs: 90000 });
-      // Every other request keeps the default.
-      const others = mockWebsocket.request.mock.calls.filter(
-        ([payload]) => payload.type !== 'get_states'
-      );
-      expect(others.length).toBeGreaterThan(0);
-      others.forEach(([, options]) => expect(options).toBeUndefined());
-    });
-
-    it('is asked for after the state changes are subscribed, so none falls between the two', async () => {
-      await loadRenderer({ config: tokenConfig() });
-      connectSuccessfully();
-
-      const types = mockWebsocket.request.mock.calls.map(([payload]) => payload);
-      const subscription = types.findIndex(
-        (payload) => payload.type === 'subscribe_events' && payload.event_type === 'state_changed'
-      );
-      const snapshot = types.findIndex((payload) => payload.type === 'get_states');
-      expect(subscription).toBeGreaterThanOrEqual(0);
-      expect(subscription).toBeLessThan(snapshot);
-    });
-
-    const stateChanged = (entity) =>
-      mockWebsocket.emit('message', {
-        type: 'event',
-        event: {
-          event_type: 'state_changed',
-          data: { entity_id: entity.entity_id, new_state: entity },
-        },
-      });
-
-    it('wins over a change that arrived before it, which it already includes', async () => {
-      await loadRenderer({ config: tokenConfig() });
-      mockWebsocket.request.mockImplementation((payload) => {
-        const request = new Promise(() => {});
-        request.id = payload.type === 'get_states' ? 10 : 20;
-        return request;
-      });
-      mockWebsocket.emit('message', { type: 'auth_ok' });
-
-      stateChanged({ entity_id: 'light.desk', state: 'off', attributes: {} });
-      mockWebsocket.emit('message', {
-        type: 'result',
-        id: 10,
-        success: true,
-        result: [{ entity_id: 'light.desk', state: 'on', attributes: {} }],
-      });
-      // Long enough for a queued change to be flushed (the frame, or its 250 ms fallback).
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      expect(mockState.STATES['light.desk'].state).toBe('on');
-      // Nothing drew or announced the older state after the snapshot.
-      expect(mockAlerts.checkEntityAlerts).not.toHaveBeenCalledWith('light.desk', 'off');
-
-      // A change after the snapshot is newer than it.
-      stateChanged({ entity_id: 'light.desk', state: 'off', attributes: {} });
-      expect(mockState.STATES['light.desk'].state).toBe('off');
-    });
-  });
-
+  // How long each snapshot is given, and the 'snapshot-timeout' close it ends in, are the session's
+  // (tests/unit/ha-session.test.js); what the widget says and when it retries are wired here.
   describe('a first snapshot that runs out of time', () => {
-    const snapshotTimeouts = () =>
-      mockWebsocket.request.mock.calls
-        .filter(([payload]) => payload.type === 'get_states')
-        .map(([, options]) => options.timeoutMs);
     // The reconnect backoff in this test's constants: 1 s doubling to 8 s, with no jitter.
     const reconnectDelays = () =>
       timerSpy.mock.calls
@@ -1063,32 +987,24 @@ describe('Renderer Home Assistant connection lifecycle', () => {
 
       await loginThenTimeOut();
 
-      expect(mockWebsocket.failConnection).toHaveBeenCalledWith(
-        expect.anything(),
-        'snapshot-timeout'
-      );
       const copy = document.querySelector('#widget-state-panel .widget-state-copy').textContent;
       expect(copy).toBe('Home Assistant is slow to send its states. Retrying automatically.');
       expect(copy).not.toMatch(/URL/);
     });
 
-    it('waits longer each time, and backs off between attempts, until the states arrive', async () => {
+    it('backs off between attempts, though each login succeeds, until the states arrive', async () => {
       await loadRenderer({ config: tokenConfig() });
       mockWebsocket.ws = {};
       mockWebsocket.failConnection = jest.fn();
 
       for (let attempt = 0; attempt < 4; attempt += 1) await loginThenTimeOut();
 
-      // Twice as long after each timeout, up to four times the first wait.
-      expect(snapshotTimeouts()).toEqual([90000, 180000, 360000, 360000]);
-      // The login succeeding each time no longer puts the retry back to its shortest delay.
+      // The login succeeding each time does not put the retry back to its shortest delay.
       expect(reconnectDelays()).toEqual([1000, 2000, 4000, 8000]);
 
-      // Once the states arrive, both start over.
+      // Once the states arrive, it starts over.
       connectSuccessfully();
       mockWebsocket.emit('close', { intentional: false });
-      mockWebsocket.emit('message', { type: 'auth_ok' });
-      expect(snapshotTimeouts().at(-1)).toBe(90000);
       expect(reconnectDelays().at(-1)).toBe(1000);
     });
   });

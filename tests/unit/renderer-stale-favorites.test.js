@@ -14,7 +14,6 @@ describe('Renderer stale favorite state handling', () => {
   // Stops what each test's renderer started (its timers and window and document listeners), so it
   // does not act on the next test's page. See tests/helpers/renderer-harness.js.
   const lifetime = createRendererLifetime();
-  const STALE_PRESERVE_MS = 15 * 60 * 1000;
   const favoriteEntity = {
     entity_id: 'light.favorite',
     state: 'on',
@@ -261,61 +260,10 @@ describe('Renderer stale favorite state handling', () => {
   warmUpRenderer(() => loadRenderer(), cleanup);
   afterEach(cleanup);
 
-  it('preserves a missing favorite during the stale grace window', async () => {
-    await loadRenderer();
-
-    receiveStates([favoriteEntity, otherEntity]);
-    now += 60 * 1000;
-    receiveStates([otherEntity]);
-
-    expect(mockState.STATES).toEqual({
-      [favoriteEntity.entity_id]: favoriteEntity,
-      [otherEntity.entity_id]: otherEntity,
-    });
-    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        [favoriteEntity.entity_id]: favoriteEntity,
-      })
-    );
-  });
-
-  it('drops a missing favorite after the stale grace window expires', async () => {
-    await loadRenderer();
-
-    receiveStates([favoriteEntity, otherEntity]);
-    now += 60 * 1000;
-    receiveStates([otherEntity]);
-    now += STALE_PRESERVE_MS + 1;
-    receiveStates([otherEntity]);
-
-    expect(mockState.STATES).toEqual({
-      [otherEntity.entity_id]: otherEntity,
-    });
-    // Pin windows read only their own entity, so the snapshot is no longer the whole map.
-    expect(mockElectronAPI.publishHaSnapshot).toHaveBeenLastCalledWith({});
-  });
-
-  it('resets stale tracking when Home Assistant returns the favorite again', async () => {
-    await loadRenderer();
-
-    receiveStates([favoriteEntity, otherEntity]);
-    now += 60 * 1000;
-    receiveStates([otherEntity]);
-    now += STALE_PRESERVE_MS + 1;
-    receiveStates([favoriteEntity, otherEntity]);
-    now += 60 * 1000;
-    receiveStates([otherEntity]);
-
-    expect(mockState.STATES).toEqual({
-      [favoriteEntity.entity_id]: favoriteEntity,
-      [otherEntity.entity_id]: otherEntity,
-    });
-  });
-
+  // When a kept favorite is marked unavailable is the session's (tests/unit/ha-session.test.js);
+  // what the widget does with that mark is wired here.
   describe('a favorite kept through a reconnect that Home Assistant does not report', () => {
-    const keptFavorite = () => mockState.STATES[favoriteEntity.entity_id];
-
-    it('shows it as unavailable once the minute of grace has passed', async () => {
+    it('reaches the pins as unavailable but not the alert rules, since Home Assistant never reported an outage', async () => {
       await loadRenderer();
       receiveStates([favoriteEntity, otherEntity]);
       now += 60 * 1000;
@@ -323,29 +271,11 @@ describe('Renderer stale favorite state handling', () => {
       mockElectronAPI.publishHaEntityUpdate.mockClear();
       mockAlerts.checkEntityAlerts.mockClear();
 
-      // Still its last state while integrations load after a Home Assistant restart.
-      await jest.advanceTimersByTimeAsync(59 * 1000);
-      expect(keptFavorite().state).toBe('on');
-
-      await jest.advanceTimersByTimeAsync(2 * 1000);
-      expect(keptFavorite()).toEqual({ ...favoriteEntity, state: 'unavailable' });
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(mockState.STATES[favoriteEntity.entity_id].state).toBe('unavailable');
       expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'unavailable' })
       );
-      expect(mockUi.updateEntityInUI).not.toHaveBeenCalledWith(
-        expect.objectContaining({ state: 'on' })
-      );
-    });
-
-    it('does not tell the alert rules about it, since Home Assistant never reported an outage', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-      mockAlerts.checkEntityAlerts.mockClear();
-
-      await jest.advanceTimersByTimeAsync(61 * 1000);
-      expect(keptFavorite().state).toBe('unavailable');
       expect(mockAlerts.checkEntityAlerts).not.toHaveBeenCalled();
 
       // What Home Assistant reports after that is news again, whatever it is.
@@ -361,136 +291,6 @@ describe('Renderer stale favorite state handling', () => {
       });
       await jest.advanceTimersByTimeAsync(20);
       expect(mockAlerts.checkEntityAlerts).toHaveBeenCalledWith(favoriteEntity.entity_id, 'off');
-    });
-
-    it('leaves it alone when Home Assistant reports it within the grace', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-
-      // The integration finished loading and sent its state.
-      const reported = { ...favoriteEntity, state: 'off' };
-      mockWebsocket.emit('message', {
-        type: 'event',
-        event: {
-          event_type: 'state_changed',
-          data: { entity_id: favoriteEntity.entity_id, new_state: reported },
-        },
-      });
-      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
-
-      expect(keptFavorite()).toEqual(reported);
-    });
-
-    const reportFavorite = (reported) =>
-      mockWebsocket.emit('message', {
-        type: 'event',
-        event: {
-          event_type: 'state_changed',
-          data: { entity_id: favoriteEntity.entity_id, new_state: reported },
-        },
-      });
-
-    it('gives it a fresh grace at a later reconnect once Home Assistant has reported it', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-
-      // The reconnect left it out, and a live event brought it back.
-      const reported = { ...favoriteEntity, state: 'off' };
-      reportFavorite(reported);
-      await jest.advanceTimersByTimeAsync(2 * 60 * 1000);
-
-      // A second reconnect omits it again, long after the first one did. Counting from the first
-      // would put it past the 15 minutes at once and drop a favorite that has been live since.
-      now += STALE_PRESERVE_MS + 1;
-      receiveStates([otherEntity]);
-
-      expect(keptFavorite()).toEqual(reported);
-    });
-
-    it('forgets the first omission as soon as the live event arrives, not at the minute check', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-
-      // A connection that keeps dropping reconnects before the minute is up, so the check that
-      // looks at the record never gets to run between two reconnects.
-      const reported = { ...favoriteEntity, state: 'off' };
-      reportFavorite(reported);
-      await jest.advanceTimersByTimeAsync(1000);
-      now += STALE_PRESERVE_MS + 1;
-      receiveStates([otherEntity]);
-
-      expect(keptFavorite()).toEqual(reported);
-    });
-
-    it('stops tracking a favorite whose state was replaced by anything else before the check', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-
-      // Not a state_changed event (a seek the widget applied to the player, say), but the check
-      // finds the object is no longer the one it kept and must not hold the old omission against it.
-      const replaced = { ...favoriteEntity, state: 'off' };
-      mockState.setEntityState(replaced);
-      await jest.advanceTimersByTimeAsync(61 * 1000);
-      expect(keptFavorite()).toEqual(replaced);
-
-      now += STALE_PRESERVE_MS + 1;
-      receiveStates([otherEntity]);
-
-      expect(keptFavorite()).toEqual(replaced);
-    });
-
-    it('does not take the state it marks unavailable itself for news from Home Assistant', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-      await jest.advanceTimersByTimeAsync(61 * 1000);
-      expect(keptFavorite().state).toBe('unavailable');
-
-      // Still never reported by Home Assistant, so the 15 minutes run from the first omission.
-      now += STALE_PRESERVE_MS + 1;
-      receiveStates([otherEntity]);
-
-      expect(mockState.STATES).toEqual({ [otherEntity.entity_id]: otherEntity });
-    });
-
-    it('starts the minute again at the next reconnect', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-      await jest.advanceTimersByTimeAsync(40 * 1000);
-      now += 40 * 1000;
-      receiveStates([otherEntity]);
-
-      await jest.advanceTimersByTimeAsync(40 * 1000);
-      expect(keptFavorite().state).toBe('on');
-      await jest.advanceTimersByTimeAsync(21 * 1000);
-      expect(keptFavorite().state).toBe('unavailable');
-    });
-
-    it('keeps it unavailable through a later reconnect, until the grace for dropping it ends', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      now += 60 * 1000;
-      receiveStates([otherEntity]);
-      await jest.advanceTimersByTimeAsync(61 * 1000);
-      now += 61 * 1000;
-
-      receiveStates([otherEntity]);
-      expect(keptFavorite().state).toBe('unavailable');
-
-      now += STALE_PRESERVE_MS + 1;
-      receiveStates([otherEntity]);
-      expect(mockState.STATES).toEqual({ [otherEntity.entity_id]: otherEntity });
     });
   });
 
@@ -522,12 +322,6 @@ describe('Renderer stale favorite state handling', () => {
     // The favorite is the pinned entity, so main's cache loses it and holds nothing else.
     expect(mockElectronAPI.publishHaSnapshot).toHaveBeenCalledWith({});
     expect(mockUi.renderActiveTab).toHaveBeenCalled();
-
-    now += 60 * 1000;
-    receiveStates([otherEntity]);
-    expect(mockState.STATES).toEqual({
-      [otherEntity.entity_id]: otherEntity,
-    });
   });
 
   it('does not publish entity state to main while no desktop pins are configured', async () => {
@@ -770,86 +564,6 @@ describe('Renderer stale favorite state handling', () => {
     });
   });
 
-  describe('flushing state changes', () => {
-    const hideDocument = () =>
-      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
-
-    afterEach(() => {
-      delete document.hidden;
-    });
-
-    it('still runs when the window hides after the animation frame was requested', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      await flushPromises();
-      mockElectronAPI.publishHaEntityUpdate.mockClear();
-      // Chromium does not run frames for a hidden window: this one is requested and never fires.
-      window.requestAnimationFrame = jest.fn(() => 42);
-      window.cancelAnimationFrame = jest.fn();
-
-      mockWebsocket.emit(
-        'message',
-        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
-      );
-      expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
-      hideDocument();
-      await jest.advanceTimersByTimeAsync(300);
-
-      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'off' })
-      );
-      expect(mockAlerts.checkEntityAlerts).toHaveBeenLastCalledWith(
-        favoriteEntity.entity_id,
-        'off'
-      );
-      expect(window.cancelAnimationFrame).toHaveBeenCalledWith(42);
-
-      // And the flush is not left pending: the next event gets through too.
-      mockElectronAPI.publishHaEntityUpdate.mockClear();
-      mockWebsocket.emit(
-        'message',
-        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'on' })
-      );
-      await jest.advanceTimersByTimeAsync(100);
-      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ entity_id: favoriteEntity.entity_id, state: 'on' })
-      );
-    });
-
-    it('flushes once when the frame and the timer both could run', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      await flushPromises();
-      mockElectronAPI.publishHaEntityUpdate.mockClear();
-
-      mockWebsocket.emit(
-        'message',
-        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
-      );
-      await jest.advanceTimersByTimeAsync(1000);
-
-      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledTimes(1);
-    });
-
-    it('does not wait for a frame while the window is hidden', async () => {
-      await loadRenderer();
-      receiveStates([favoriteEntity, otherEntity]);
-      await flushPromises();
-      mockElectronAPI.publishHaEntityUpdate.mockClear();
-      window.requestAnimationFrame = jest.fn(() => 7);
-      hideDocument();
-
-      mockWebsocket.emit(
-        'message',
-        stateChanged(favoriteEntity, { ...favoriteEntity, state: 'off' })
-      );
-      expect(window.requestAnimationFrame).not.toHaveBeenCalled();
-      await jest.advanceTimersByTimeAsync(60);
-
-      expect(mockElectronAPI.publishHaEntityUpdate).toHaveBeenCalledTimes(1);
-    });
-  });
-
   it('ignores a snapshot request before entity states have arrived', async () => {
     await loadRenderer();
 
@@ -889,7 +603,7 @@ describe('Renderer stale favorite state handling', () => {
     expect(mockAlerts.initializeEntityAlerts).toHaveBeenCalledTimes(1);
   });
 
-  it('subscribes to entity-registry updates and persists exact rename mappings', async () => {
+  it('persists exact entity-registry rename mappings', async () => {
     await loadRenderer();
     const renamedConfig = {
       ...createConfig(),
@@ -899,13 +613,6 @@ describe('Renderer stale favorite state handling', () => {
       success: true,
       changed: true,
       config: renamedConfig,
-    });
-
-    mockWebsocket.emit('message', { type: 'auth_ok' });
-
-    expect(requestLog.map(({ payload }) => payload)).toContainEqual({
-      type: 'subscribe_events',
-      event_type: 'entity_registry_updated',
     });
 
     mockWebsocket.emit('message', {
@@ -928,29 +635,5 @@ describe('Renderer stale favorite state handling', () => {
     );
     expect(mockState.CONFIG.favoriteEntities).toEqual(['light.favorite_renamed']);
     expect(mockUi.renderActiveTab).toHaveBeenCalled();
-  });
-
-  it('reports an entity-registry subscription that Home Assistant refuses', async () => {
-    await loadRenderer();
-
-    mockWebsocket.emit('message', { type: 'auth_ok' });
-
-    // Home Assistant answers a non-admin subscription with an unsuccessful result rather than
-    // dropping the connection, so the refusal arrives as a resolution and not a rejection.
-    const subscription = requestLog.find(
-      ({ payload }) =>
-        payload.type === 'subscribe_events' && payload.event_type === 'entity_registry_updated'
-    );
-    subscription.resolveWith({
-      type: 'result',
-      success: false,
-      error: { code: 'unauthorized', message: 'Unauthorized' },
-    });
-    await flushPromises();
-
-    expect(mockLog.info).toHaveBeenCalledWith(
-      'Automatic entity rename tracking is unavailable for this account:',
-      expect.objectContaining({ code: 'unauthorized' })
-    );
   });
 });
