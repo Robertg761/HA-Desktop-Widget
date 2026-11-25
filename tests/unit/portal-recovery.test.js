@@ -78,19 +78,15 @@ test('startup repairs continue after each independent operation fails', () => {
     'ensureAppImageDesktopEntry',
     'ensureAppImageCommandLink',
     'repairStaleAppImageLaunchers',
-    'migrateLegacyLinuxAutostartEntry',
-    'syncLinuxAutostartExecutablePath',
   ];
-  for (const failing of names.slice(0, -1)) {
+  // Start at login's repair catches its own failures; tests/unit/login-item.test.js covers them.
+  for (const failing of names) {
     const context = {
       path,
       __dirname: '/app',
-      pkg: {},
-      app: { getName: () => 'widget' },
-      APP_DISPLAY_NAME: 'HA Desktop Widget',
       process: { env: {} },
       log: { info: jest.fn(), warn: jest.fn() },
-      getLinuxStartupExecutablePath: () => '/widget',
+      loginItem: { repairOnStartup: jest.fn() },
       getAppIconPath: () => '/app/build/icons/512x512.png',
     };
     names.forEach((name) => {
@@ -105,6 +101,7 @@ test('startup repairs continue after each independent operation fails', () => {
     // Exclude the enclosing packaged-startup condition's closing brace.
     vm.runInContext(source.slice(start, end).replace(/\n {4}}\s*$/, ''), context);
     names.forEach((name) => expect(context[name]).toHaveBeenCalledTimes(1));
+    expect(context.loginItem.repairOnStartup).toHaveBeenCalledTimes(1);
     expect(context.log.warn).toHaveBeenCalledTimes(1);
   }
 });

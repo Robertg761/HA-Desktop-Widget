@@ -1,4 +1,5 @@
 import { t } from './i18n.js';
+import entityActions from './entity-actions.cjs';
 
 // HA 2026.9 returns child devices alongside regular ones. A child device with no area
 // of its own belongs to its parent's area, and children cannot nest, so one hop is enough.
@@ -43,7 +44,8 @@ function defaultPageEntityIds(entityIds, registryEntities, states, limit = Infin
   const ready = entityIds.filter(
     (id) => !deviceSettings.has(id) && !UNREADY_STATES.has(states[id]?.state)
   );
-  const inDomains = (domains) => ready.filter((id) => domains.includes(id.split('.')[0]));
+  const inDomains = (domains) =>
+    ready.filter((id) => domains.includes(entityActions.getEntityDomain(id)));
   return [...inDomains(PAGE_DEVICE_DOMAINS), ...inDomains(PAGE_APPLIANCE_DOMAINS)].slice(0, limit);
 }
 
@@ -110,6 +112,7 @@ async function waitForRoomConnection(websocket, isActive, timeoutMs = 15000) {
 }
 
 export {
+  PAGE_DEVICE_DOMAINS,
   defaultPageEntityIds,
   entitiesForArea,
   loadRoomRegistry,

@@ -12,7 +12,9 @@ import {
   refreshDashboardUndoState,
 } from './src/dashboard-tools.js';
 import state from './src/state.js';
+import configStore from './src/config-store.js';
 import websocket from './src/websocket.js';
+import { createHaSession } from './src/ha-session.js';
 import * as hotkeys from './src/hotkeys.js';
 import * as alerts from './src/alerts.js';
 import * as notifications from './src/notifications.js';
@@ -20,6 +22,7 @@ import * as ui from './src/ui.js';
 import * as commandPalette from './src/command-palette.js';
 import * as settings from './src/settings.js';
 import * as uiUtils from './src/ui-utils.js';
+import * as dialogs from './src/dialogs.js';
 import * as utils from './src/utils.js';
 import {
   formatNumber,
@@ -39,11 +42,7 @@ import {
   bindTabTooltips,
   syncRovingTabIndex,
 } from './src/tab-navigation.js';
-import {
-  BASE_RECONNECT_DELAY_MS,
-  MAX_RECONNECT_DELAY_MS,
-  WS_INITIAL_STATES_TIMEOUT_MS,
-} from './src/constants.js';
+import { BASE_RECONNECT_DELAY_MS, MAX_RECONNECT_DELAY_MS } from './src/constants.js';
 import { startUpdateStatus } from './src/update-status.js';
 import { noteStartedVersion, showUpdateThanks } from './src/update-thanks.js';
 import { WeatherEffectsManager } from './src/weather-effects.js';
@@ -51,7 +50,6 @@ import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
-import { rememberDashboard } from './src/dashboard-history.js';
 import {
   handleTrayEntityStateChange,
   initTrayEntityIcons,
@@ -97,15 +95,7 @@ if (window.electronAPI && !hasRendererHost()) {
 }
 
 const OFFLINE_CONNECTION_ERROR_KEY = 'offline-network';
-const FAVORITE_STALE_ENTITY_PRESERVE_MS = 15 * 60 * 1000;
-// How long a favorite that a reconnect left out of get_states keeps showing its last state as if
-// it were live. After this it shows as unavailable until Home Assistant reports it again.
-const FAVORITE_STALE_LIVE_MS = 60 * 1000;
-const STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS = 50;
 const WIZARD_WAIT_NOTICE_DELAY_MS = 4000;
-// A frame callback is skipped while the window is hidden, minimised or covered, and the window can
-// go hidden after the callback was requested; this timer is what flushes then.
-const STATE_CHANGED_FRAME_FALLBACK_MS = 250;
 const WINDOW_QUERY = new URLSearchParams(window.location.search);
 const WINDOW_MODE = WINDOW_QUERY.get('mode') || '';
 const IS_DESKTOP_PIN_MODE = WINDOW_MODE === 'desktop-pin';
@@ -127,8 +117,6 @@ let desktopPinBounds = null;
 let desktopPinHasSnapshot = false;
 let desktopPinSupportsWindowPositioning = true;
 let desktopPinConnectionIssue = '';
-const favoriteStalePreservation = new Map();
-let staleFavoriteTimerId = null;
 let entityRenameMigrationQueue = Promise.resolve();
 
 async function persistEntityRegistryRename(eventData = {}) {
@@ -147,7 +135,7 @@ async function persistEntityRegistryRename(eventData = {}) {
   try {
     const replacement = await window.electronAPI.replaceConfigEntityId(oldEntityId, newEntityId);
     const authoritativeConfig = replacement?.config;
-    favoriteStalePreservation.delete(oldEntityId);
+    haSession.forgetKeptFavorite(oldEntityId);
     if (authoritativeConfig?.homeAssistant) {
       applyRendererConfig(authoritativeConfig);
     }
@@ -160,7 +148,7 @@ async function persistEntityRegistryRename(eventData = {}) {
     }
     if (configuredRuntimeStarted) alerts.initializeEntityAlerts();
     renderCurrentMode();
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Updated saved references from {{oldEntityId}} to {{newEntityId}}', {
         oldEntityId,
         newEntityId,
@@ -177,7 +165,7 @@ async function persistEntityRegistryRename(eventData = {}) {
       `Failed to persist Home Assistant entity rename ${oldEntityId} -> ${newEntityId}:`,
       error
     );
-    uiUtils.showToast(
+    dialogs.showToast(
       t(
         'Could not update saved references for {{oldEntityId}}. Click its unavailable tile to repair it.',
         {
@@ -229,35 +217,15 @@ if (log?.transports?.console) {
 // Log renderer process startup
 log.info('Renderer process started.');
 
-// --- WebSocket Event Handlers ---
-websocket.on('open', () => {
-  try {
-    log.debug('WebSocket connection opened');
-    if (websocket.ws && websocket.ws.readyState === WebSocket.OPEN) {
-      const authMessage = {
-        type: 'auth',
-        access_token: state.CONFIG.homeAssistant.token,
-      };
-      websocket.ws.send(JSON.stringify(authMessage));
-    }
-  } catch (error) {
-    log.error('Error handling WebSocket open:', error);
-  }
-});
-
-// Track request IDs for proper result handling
-let getStatesId, getServicesId, getAreasId, getConfigId;
+// --- Home Assistant session ---
+// What is said to Home Assistant and what its answers mean live in src/ha-session.js. This file
+// decides when to connect and reconnect, and wires what the widget does with what the session
+// reports: its change feed to the consumers after publishOmarchyBarTiles, and its lifecycle events
+// beside the socket's close and error handlers.
+const haSession = createHaSession({ transport: websocket, debug: emitRendererDebug });
 
 // WebSocket reconnection state
 let reconnectAttempts = 0;
-// First snapshots in a row that ran out of time. Each one gives the next twice as long (up to
-// four times the first wait): a server that answers the login but needs longer than that to send
-// every entity would otherwise be asked again, from the start, forever.
-let snapshotTimeoutsInARow = 0;
-const MAX_SNAPSHOT_TIMEOUT_GROWTH = 4;
-// True from a login until that connection's get_states result arrives. State changes received in
-// between happened before Home Assistant took the snapshot, which already includes them.
-let awaitingStatesSnapshot = false;
 let reconnectTimerId = null;
 let uiTickTimerId = null;
 let uiTickSchedulerStarted = false;
@@ -303,9 +271,6 @@ let firstRunSettingsObserver = null;
 let configuredRuntimeStarted = false;
 let climateDemoController = null;
 let desktopCompanionClient = null;
-const pendingStateChangedEntities = new Map();
-let pendingStateChangedFrameId = null;
-let pendingStateChangedTimerId = null;
 let desktopPinStatePublishingActive = false;
 // The pinned entities whose state main was sent, so a pin added later is sent too.
 let desktopPinPublishedIds = new Set();
@@ -439,13 +404,20 @@ function needsTokenReentry() {
 // works or the setup moved to browser authorization.
 function noteTokenRecoveryReason() {
   const reason = state.CONFIG?.tokenResetReason;
-  if (reason) delete state.CONFIG.tokenResetReason;
+  if (reason) {
+    void configStore.update(
+      (config) => {
+        delete config.tokenResetReason;
+      },
+      { persist: false }
+    );
+  }
   // Main sends 'not_persisted' with every config until a token is saved; it is news only once.
   if (reason && reason !== tokenRecoveryReason) {
     log.warn('Saved Home Assistant token cannot be used:', reason);
     void window.electronAPI.clearTokenResetReason?.().catch((error) => {
       log.error('Failed to acknowledge token recovery notice:', error);
-      uiUtils.showToast(
+      dialogs.showToast(
         t('Could not save the token recovery acknowledgement. {{error}}', {
           error: error?.message || t('Unknown error'),
         }),
@@ -695,71 +667,62 @@ function publishOmarchyBarTiles({ force = false } = {}) {
   });
 }
 
-function flushPendingStateChangedEntities() {
-  cancelPendingStateChangedFlush();
-  // Whether anything visible counts down is decided inside ui.updateEntityInUI, from the entity it
-  // is given, so it is read on both sides of the updates below.
-  const hadVisibleTimers = hasVisibleTimersToTick();
-  const changedEntityIds = Array.from(pendingStateChangedEntities.keys());
-  const changes = Array.from(pendingStateChangedEntities.values());
-  pendingStateChangedEntities.clear();
-  const hasDeletion = changes.some(({ entity }) => !entity);
-  const publishForDesktopPins = hasDesktopPinsConfigured();
-  // Only a removed pin changes what main holds; the rest of the home is not published.
-  const hasPinDeletion =
-    publishForDesktopPins &&
-    changes.some(({ entity }, index) => !entity && isDesktopPinEntity(changedEntityIds[index]));
+// --- What the widget does with each batch of state changes ---
+// The session's feed (src/ha-session.js) delivers them once a frame, or within 50 ms while the
+// window is hidden; each consumer below subscribes to it, in this order.
+
+// The Omarchy bar shows some of the Quick Access tiles; it is sent their set when one of them changed.
+function publishChangedOmarchyBarTiles(changes) {
   const omarchyBarEntities = state.CONFIG?.omarchyBarEntities;
   if (
     Array.isArray(omarchyBarEntities) &&
-    changedEntityIds.some((entityId) => omarchyBarEntities.includes(entityId))
+    changes.some(({ entityId }) => omarchyBarEntities.includes(entityId))
   ) {
     publishOmarchyBarTiles();
   }
+}
 
-  if (hasPinDeletion) {
+function publishChangedDesktopPins(changes) {
+  if (!hasDesktopPinsConfigured()) return;
+  // Only a removed pin changes what main holds; the rest of the home is not published.
+  if (changes.some(({ entityId, entity }) => !entity && isDesktopPinEntity(entityId))) {
     // A full snapshot is the only renderer-to-main IPC operation that can remove
     // an entity from the desktop-pin cache. It also carries every coalesced update
     // in this flush, avoiding an update/snapshot ordering race. No coalescing: the
     // map just lost an entity that an in-flight publish still carries.
     void publishDesktopPinSnapshot();
+    return;
   }
+  changes.forEach(({ entity }) => {
+    if (!entity || !isDesktopPinEntity(entity.entity_id)) return;
+    window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
+      log.warn('Failed to publish HA entity update to main process:', error);
+    });
+  });
+}
 
-  changes.forEach(({ entity, local }) => {
+function drawStateChanges(changes) {
+  // Whether anything visible counts down is decided inside ui.updateEntityInUI, from the entity it
+  // is given, so it is read on both sides of the updates below.
+  const hadVisibleTimers = hasVisibleTimersToTick();
+  changes.forEach(({ entity }) => {
     if (!entity) return;
-    if (!hasPinDeletion && publishForDesktopPins && isDesktopPinEntity(entity.entity_id)) {
-      window.electronAPI.publishHaEntityUpdate(entity).catch((error) => {
-        log.warn('Failed to publish HA entity update to main process:', error);
-      });
-    }
     if (IS_SPECIAL_PIN_MODE && entity.entity_id === DESKTOP_PIN_ENTITY_ID) {
       renderCurrentMode();
     } else if (ui.isEntityVisible(entity.entity_id)) {
       ui.updateEntityInUI(entity);
     }
-    // A state the widget put there itself is not news from Home Assistant, so no alert rule hears it.
-    if (!local) alerts.checkEntityAlerts(entity.entity_id, entity.state);
   });
-
-  if (!IS_DESKTOP_PIN_MODE) {
-    changedEntityIds.forEach((entityId) => handleTrayEntityStateChange(entityId));
-  }
 
   // A removal only changes what is drawn when the entity is drawn: a burst of removals while Home
   // Assistant reloads an integration would otherwise rebuild the whole page every frame.
-  let redrawn = false;
-  if (hasDeletion) {
-    const removedFromView = changes.some(
-      ({ entity }, index) => !entity && ui.isEntityVisible(changedEntityIds[index])
-    );
-    if (removedFromView) {
-      redrawn = true;
-      if (IS_SPECIAL_PIN_MODE) {
-        renderCurrentMode();
-      } else {
-        ui.renderActiveTab();
-        renderMainWidgetState();
-      }
+  const redrawn = changes.some(({ entityId, entity }) => !entity && ui.isEntityVisible(entityId));
+  if (redrawn) {
+    if (IS_SPECIAL_PIN_MODE) {
+      renderCurrentMode();
+    } else {
+      ui.renderActiveTab();
+      renderMainWidgetState();
     }
   }
 
@@ -770,158 +733,40 @@ function flushPendingStateChangedEntities() {
   const primaryMediaPlayer = state.CONFIG?.primaryMediaPlayer;
   if (
     redrawn ||
-    (primaryMediaPlayer && changedEntityIds.includes(primaryMediaPlayer)) ||
+    (primaryMediaPlayer && changes.some(({ entityId }) => entityId === primaryMediaPlayer)) ||
     hasVisibleTimersToTick() !== hadVisibleTimers
   ) {
     nudgeUiTickScheduler();
   }
 }
 
+// A state the widget put there itself is not news from Home Assistant, so no alert rule hears it.
+function checkAlertsForStateChanges(changes) {
+  changes.forEach(({ entity, local }) => {
+    if (entity && !local) alerts.checkEntityAlerts(entity.entity_id, entity.state);
+  });
+}
+
+function updateTrayForStateChanges(changes) {
+  changes.forEach(({ entityId }) => handleTrayEntityStateChange(entityId));
+}
+
+// Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
+function updateTrayWhileHidden(changes) {
+  if (document.hidden) updateTrayForStateChanges(changes);
+}
+
 function hasVisibleTimersToTick() {
   return Boolean(ui.getTickTargets?.()?.hasVisibleTimers);
 }
 
-function cancelPendingStateChangedFlush() {
-  if (pendingStateChangedFrameId != null) {
-    window.cancelAnimationFrame?.(pendingStateChangedFrameId);
-    pendingStateChangedFrameId = null;
-  }
-  if (pendingStateChangedTimerId != null) {
-    window.clearTimeout(pendingStateChangedTimerId);
-    pendingStateChangedTimerId = null;
-  }
-}
-
-// Chromium does not run animation frames for a window that is hidden or covered. A frame requested
-// just before the window went to the tray never fires, and with only that frame to wait for, the
-// flush stayed "pending" and every later event returned here: alerts, pins and the Omarchy bar
-// stopped until the window was shown. A timer is armed beside the frame, and whichever runs first
-// cancels the other.
-function scheduleStateChangedFlush() {
-  if (pendingStateChangedFrameId != null || pendingStateChangedTimerId != null) return;
-  const canUseRaf = typeof window.requestAnimationFrame === 'function' && !document.hidden;
-  if (canUseRaf) {
-    pendingStateChangedFrameId = window.requestAnimationFrame(flushPendingStateChangedEntities);
-  }
-  pendingStateChangedTimerId = window.setTimeout(
-    flushPendingStateChangedEntities,
-    canUseRaf ? STATE_CHANGED_FRAME_FALLBACK_MS : STATE_CHANGED_HIDDEN_FLUSH_DELAY_MS
-  );
-}
-
-// `local` marks a state the widget derived rather than received (see markStaleFavoritesUnavailable).
-function queueStateChangedEntity(entity, { local = false } = {}) {
-  if (!entity?.entity_id) return;
-  state.setEntityState(entity);
-  // Home Assistant has spoken for it, so a reconnect that leaves it out again starts a new omission
-  // with a fresh grace. The check below only looks a minute after a reconnect, which a connection
-  // that keeps dropping never reaches, and the 15 minutes would run on from the first omission.
-  if (!local) favoriteStalePreservation.delete(entity.entity_id);
-  // Hidden dashboard flushes are throttled; tray updates must follow the live event itself.
-  if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(entity.entity_id);
-  pendingStateChangedEntities.set(entity.entity_id, {
-    entity,
-    local,
-  });
-  scheduleStateChangedFlush();
-}
-
-function queueDeletedEntity(entityId) {
-  const normalizedEntityId = typeof entityId === 'string' ? entityId.trim() : '';
-  if (!normalizedEntityId) return;
-  state.deleteEntityState(normalizedEntityId);
-  if (!IS_DESKTOP_PIN_MODE && document.hidden) handleTrayEntityStateChange(normalizedEntityId);
-  favoriteStalePreservation.delete(normalizedEntityId);
-  pendingStateChangedEntities.set(normalizedEntityId, {
-    entity: null,
-  });
-  scheduleStateChangedFlush();
-}
-
-// A favorite that is kept through a reconnect shows its last state, so that a Home Assistant
-// restart does not flash every tile to Unavailable while its integration loads. One that Home
-// Assistant has still not reported a minute later was probably removed or renamed while this
-// computer was offline, and a tile that says "On, 50%" for it is wrong. It becomes unavailable,
-// through the same path as any state change, so tiles, pins and the tray agree. Alerts do not hear
-// it: Home Assistant never reported an outage, and a State Change alert that tells about devices
-// going unavailable would otherwise announce every entity that was deleted while the app was away.
-function scheduleStaleFavoriteCheck() {
-  window.clearTimeout(staleFavoriteTimerId);
-  staleFavoriteTimerId = null;
-  if (IS_DESKTOP_PIN_MODE || !favoriteStalePreservation.size) return;
-  staleFavoriteTimerId = window.setTimeout(markStaleFavoritesUnavailable, FAVORITE_STALE_LIVE_MS);
-}
-
-function markStaleFavoritesUnavailable() {
-  staleFavoriteTimerId = null;
-  favoriteStalePreservation.forEach((record, entityId) => {
-    const entity = state.STATES?.[entityId];
-    // Any event since the reconnect replaced the object: Home Assistant has spoken for it, so there
-    // is nothing left to track.
-    if (!entity || entity !== record.entity) {
-      favoriteStalePreservation.delete(entityId);
-      return;
-    }
-    if (entity.state === 'unavailable') return;
-    record.entity = { ...entity, state: 'unavailable' };
-    queueStateChangedEntity(record.entity, { local: true });
-  });
-}
-
-function reconcileFavoriteStalePreservation(newStates) {
-  const oldStates = state.STATES || {};
-  const favoriteEntityIds = [
-    ...new Set(
-      Array.isArray(state.CONFIG?.favoriteEntities)
-        ? state.CONFIG.favoriteEntities.filter(
-            (entityId) => typeof entityId === 'string' && entityId
-          )
-        : []
-    ),
-  ];
-  const favoriteEntityIdSet = new Set(favoriteEntityIds);
-
-  Array.from(favoriteStalePreservation.keys()).forEach((entityId) => {
-    if (!favoriteEntityIdSet.has(entityId) || newStates[entityId] || !oldStates[entityId]) {
-      favoriteStalePreservation.delete(entityId);
-    }
-  });
-
-  const preservedFavorites = {};
-  const droppedStaleFavorites = [];
-  const now = Date.now();
-
-  favoriteEntityIds.forEach((entityId) => {
-    if (newStates[entityId] || !oldStates[entityId]) {
-      favoriteStalePreservation.delete(entityId);
-      return;
-    }
-
-    const previousRecord = favoriteStalePreservation.get(entityId);
-    const missingSince = previousRecord?.missingSince || now;
-    const staleAgeMs = Math.max(0, now - missingSince);
-
-    if (staleAgeMs <= FAVORITE_STALE_ENTITY_PRESERVE_MS) {
-      preservedFavorites[entityId] = oldStates[entityId];
-      favoriteStalePreservation.set(entityId, {
-        missingSince,
-        lastPreservedAt: now,
-        entity: oldStates[entityId],
-      });
-      return;
-    }
-
-    droppedStaleFavorites.push(entityId);
-    favoriteStalePreservation.delete(entityId);
-  });
-
-  scheduleStaleFavoriteCheck();
-
-  return {
-    favoriteCount: favoriteEntityIds.length,
-    preservedFavorites,
-    droppedStaleFavorites,
-  };
+haSession.subscribe(publishChangedOmarchyBarTiles);
+haSession.subscribe(publishChangedDesktopPins);
+haSession.subscribe(drawStateChanges);
+haSession.subscribe(checkAlertsForStateChanges);
+if (!IS_DESKTOP_PIN_MODE) {
+  haSession.subscribe(updateTrayForStateChanges);
+  haSession.subscribe(updateTrayWhileHidden, { immediate: true });
 }
 
 function getSettingsUiHooks() {
@@ -969,7 +814,7 @@ function openQuickAccessModal() {
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
   // The search is where a visit here starts; without it focus would land on the Close button.
-  uiUtils.openDialog(modal, { initialFocus: '#quick-controls-search' });
+  dialogs.openDialog(modal, { initialFocus: '#quick-controls-search' });
 }
 
 function createTextElement(tagName, className, text) {
@@ -1125,7 +970,7 @@ function renderWidgetStatePanel({
   else panel.removeAttribute('aria-busy');
 
   if (isNew || JSON.stringify(labels) !== panel.dataset.actionLabels) {
-    uiUtils.renderKeepingFocus(panel, () => {
+    dialogs.renderKeepingFocus(panel, () => {
       panel.querySelector('.widget-state-actions')?.remove();
       if (labels.length) panel.appendChild(createWidgetStateActions(actions));
     });
@@ -1466,7 +1311,7 @@ function setFirstRunWizardVisible(visible) {
         `${Math.ceil(header.getBoundingClientRect().bottom)}px`
       );
     }
-    uiUtils.openDialog(firstRunWizard.overlay, {
+    dialogs.openDialog(firstRunWizard.overlay, {
       display: null,
       labelledBy: 'first-run-title',
       describedBy: 'first-run-copy',
@@ -1474,7 +1319,7 @@ function setFirstRunWizardVisible(visible) {
       dismiss: null,
     });
   } else if (!visible && wasVisible) {
-    void uiUtils.closeDialog(firstRunWizard.overlay, { animate: false });
+    void dialogs.closeDialog(firstRunWizard.overlay, { animate: false });
   } else {
     firstRunWizard.overlay.classList.toggle('hidden', !visible);
   }
@@ -1873,7 +1718,7 @@ async function finishFirstRunWizard() {
       );
       setWizardStatus(message, 'error');
       // The wizard is up and says the same thing in its status line; a toast would say it twice.
-      if (!firstRunWizard?.visible) uiUtils.showToast(message, 'error', 6000);
+      if (!firstRunWizard?.visible) dialogs.showToast(message, 'error', 6000);
     }
   } finally {
     window.clearTimeout(waitNoticeTimer);
@@ -2048,19 +1893,10 @@ function maybeShowFirstRunWizard() {
 async function executeDesktopCompanionCommand({ action, payload }) {
   if (action === 'apply_profile') {
     const patch = buildConfigPatchFromApplyPayload(payload, state.CONFIG);
-    const previousConfig = JSON.parse(JSON.stringify(state.CONFIG || {}));
-    const result = await window.electronAPI.updateConfig(patch);
-    if (result?.success === false) {
-      throw new Error(result?.error || 'Profile could not be saved on this desktop');
-    }
     // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
     // save from Settings does, so Undo and Restore dashboard can bring it back. It is not part of
     // a burst of edits: Restore dashboard keeps that layout however soon after an edit it comes.
-    rememberDashboard(
-      previousConfig,
-      result?.homeAssistant ? result : { ...previousConfig, ...patch },
-      { wholeLayout: true }
-    );
+    await configStore.update(patch, { history: { wholeLayout: true } });
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
       ...mainState,
@@ -2115,7 +1951,6 @@ function startConfiguredRuntime() {
 
   if (shouldInitializeRuntime) {
     ensureDesktopCompanionClient()?.start();
-    hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
     notifications.initializePersistentNotifications();
@@ -2155,7 +1990,7 @@ function startClimateDemoRuntime({ overlay = false } = {}) {
       overlay,
       // The connected overlay stays wholly inside the renderer. In particular,
       // it never publishes its fake entity to the main process or Home Assistant.
-      onEntityUpdated: overlay ? renderCurrentMode : queueStateChangedEntity,
+      onEntityUpdated: overlay ? renderCurrentMode : haSession.receiveEntityState,
     });
   }
   climateDemoController.ensureEntity();
@@ -2184,7 +2019,7 @@ function showConfigPersistenceWarnings(persistenceWarnings = []) {
 
   if (tokenPersistenceWarningShown || !isConfigured(state.CONFIG)) return;
   tokenPersistenceWarningShown = true;
-  uiUtils.showToast(
+  dialogs.showToast(
     window.electronAPI?.platform === 'linux'
       ? t(
           'No unlocked system keyring (Secret Service) was found, so this token will not be remembered after you quit. Start gnome-keyring or KWallet, then restart the widget.'
@@ -2264,7 +2099,7 @@ function applyRendererConfig(nextConfig) {
     withChanged: true,
   });
   const renderedConfig = state.CONFIG;
-  state.setConfig(normalizedGraphs.config);
+  configStore.adopt(normalizedGraphs.config);
   ui.ensureEntityCacheScope();
   publishOmarchyBarTiles();
   // Kept local: the migration write below can echo back synchronously and re-enter this function
@@ -2274,15 +2109,18 @@ function applyRendererConfig(nextConfig) {
     lastAppliedRendererConfig,
     state.CONFIG
   );
-  // Snapshot rather than alias: alerts and hotkeys mutate state.CONFIG in place, and an
-  // aliased reference would hide those changes from the next comparison.
+  // Snapshot rather than alias: changes go through the config store, which never edits a config
+  // in place, but only tests enforce that, and an edit in place would hide from the comparison.
   lastAppliedRendererConfig = JSON.parse(JSON.stringify(state.CONFIG));
   refreshDashboardUndoState();
   refreshDesktopPinStatePublishing();
   if ((normalizedQuickAccess.changed || normalizedGraphs.changed) && !IS_DESKTOP_PIN_MODE) {
-    window.electronAPI.updateConfig(normalizedGraphs.config).catch((error) => {
-      log.error('Failed to persist Quick Access view migration:', error);
-    });
+    // Kept as normalized even if it cannot be saved; the next start migrates it again.
+    configStore
+      .update(normalizedGraphs.config, { optimistic: true, rollbackOnFailure: false })
+      .catch((error) => {
+        log.error('Failed to persist Quick Access view migration:', error);
+      });
   }
   // Re-applying window effects repaints the whole blurred window, so skip the appearance pass
   // when the echo only carries a Quick Access change the renderer already drew.
@@ -2312,7 +2150,7 @@ function applyRendererConfig(nextConfig) {
 
   showConfigPersistenceWarnings(persistenceWarnings);
   runtimeWarnings.forEach((warning) => {
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Error: {{error}}', {
         error: warning?.error || t('Unknown error'),
       }),
@@ -2331,7 +2169,7 @@ function showConfigRecoveryNotice(recovery) {
       'The previous configuration was invalid, so the app recovered with safe defaults. Backup: {{path}}',
       { path: isolateLtr(recovery.backupPath || '-') }
     );
-    uiUtils.showToast(message, 'warning', 20000);
+    dialogs.showToast(message, 'warning', 20000);
     return;
   }
 
@@ -2342,7 +2180,7 @@ function showConfigRecoveryNotice(recovery) {
       error: String(recovery.error || t('Unknown error')),
     }
   );
-  uiUtils.showToast(message, 'error', 20000);
+  dialogs.showToast(message, 'error', 20000);
 }
 
 // Text in index.html that names keys names them as this platform's keyboard prints them, as the
@@ -2562,14 +2400,14 @@ function showConnectionToast(message, timeout) {
   // with Retry and Open Settings right under it. A toast on the same spot would cover those
   // buttons, and the first click on them would dismiss the toast instead.
   if (document.body.classList.contains('widget-state-active')) return;
-  uiUtils.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
+  dialogs.showToast(message, 'error', timeout, { source: CONNECTION_TOAST_SOURCE });
 }
 
 // Connection toasts point the user at Settings. Once Settings is open they have done their job,
 // and left up they cover its footer, Save button included.
 function dismissConnectionToasts({ includeStartupWarnings = false } = {}) {
-  uiUtils.dismissToasts?.(CONNECTION_TOAST_SOURCE);
-  if (includeStartupWarnings) uiUtils.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
+  dialogs.dismissToasts?.(CONNECTION_TOAST_SOURCE);
+  if (includeStartupWarnings) dialogs.dismissToasts?.(STARTUP_WARNING_TOAST_SOURCE);
 }
 
 function showClassifiedConnectionToast(error) {
@@ -2782,291 +2620,146 @@ window.addEventListener('offline', () => {
   }
 });
 
-websocket.on('message', (msg) => {
-  try {
-    if (msg.type === 'auth_ok') {
-      log.debug('WebSocket authentication successful');
-      // reconnectAttempts is not reset here but once the states arrive: a server that accepts the
-      // login and then cannot send them would otherwise be retried at the shortest delay each time.
-      oauthAuthRecoveryAttempted = false;
-      if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
-      updateMainConnectionState('connecting');
-      browserReportedOffline = false;
-      setDesktopPinConnectionIssue('');
-      resetConnectionToastTracking();
-      clearReconnectTimer();
-      setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
-      // Subscribe before asking for the snapshot. Home Assistant answers each message in turn, so
-      // asking for the states first left a gap between the two in which a change was neither in
-      // the snapshot nor sent as an event, and its tile kept the old state until the next change.
-      // Every reconnect (each wake from sleep) opened that gap.
-      awaitingStatesSnapshot = true;
-      websocket
-        .request({ type: 'subscribe_events', event_type: 'state_changed' })
-        .catch((error) => {
-          log.warn('State change subscription request failed:', error);
-        });
-      // The first snapshot is the one request that can legitimately take a long time. Giving up
-      // at the usual 15 s tore the socket down and asked Home Assistant to serialise every entity
-      // again, so a large instance never finished loading.
-      const statesReq = websocket.request(
-        { type: 'get_states' },
-        {
-          timeoutMs:
-            WS_INITIAL_STATES_TIMEOUT_MS *
-            Math.min(2 ** snapshotTimeoutsInARow, MAX_SNAPSHOT_TIMEOUT_GROWTH),
-        }
+haSession.on('authenticated', () => {
+  // reconnectAttempts is not reset here but once the states arrive: a server that accepts the
+  // login and then cannot send them would otherwise be retried at the shortest delay each time.
+  oauthAuthRecoveryAttempted = false;
+  if (!IS_DESKTOP_PIN_MODE) setTrayEntityConnectionState(false);
+  updateMainConnectionState('connecting');
+  browserReportedOffline = false;
+  setDesktopPinConnectionIssue('');
+  resetConnectionToastTracking();
+  clearReconnectTimer();
+  setDisconnectedStatus(t('Waiting for live Home Assistant data...'));
+});
+
+haSession.on('auth-rejected', () => {
+  clearReconnectTimer();
+  if (usesOAuth() && !oauthAuthRecoveryAttempted) {
+    // Home Assistant rejects an OAuth access token when the authorization was revoked or the
+    // token expired while the machine slept. Refreshing tells the two apart.
+    log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
+    oauthAuthRecoveryAttempted = true;
+    updateMainConnectionState('connecting');
+    closeWebSocket();
+    setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
+    uiUtils.showLoading(false);
+    renderCurrentMode();
+    void recoverOAuthAuthorization();
+    return;
+  }
+  log.error('[WS] Invalid authentication token');
+  updateMainConnectionState('auth-failed');
+  closeWebSocket();
+  const authFailureMessage = getAuthFailureMessage();
+  setDisconnectedStatus(authFailureMessage);
+  setDesktopPinConnectionIssue(authFailureMessage);
+  uiUtils.showLoading(false);
+  // Said once per outage: startup churn and every Retry would otherwise stack the same toast.
+  if (
+    shouldShowConnectionToast({
+      key: 'auth-invalid',
+      message: authFailureMessage,
+      persistUntilOnline: false,
+    })
+  ) {
+    showConnectionToast(authFailureMessage, 15000);
+  }
+  // Render the UI so user can access settings
+  renderCurrentMode();
+});
+
+haSession.on('entity-registry-updated', queueEntityRegistryRename);
+
+haSession.on('snapshot', ({ entityIds }) => {
+  // Home Assistant replaces the full state map after authentication. Restore
+  // the renderer-local overlay immediately; setEntityState writes into the
+  // same map that the snapshot publish below serializes, which is intended —
+  // a pinned demo entity stays in main's pin cache across reconnects.
+  if (isClimateDemoOverlayConfig(state.CONFIG)) {
+    climateDemoController?.ensureEntity();
+  }
+  if (IS_DESKTOP_PIN_MODE) {
+    desktopPinHasSnapshot = true;
+  }
+  setDesktopPinConnectionIssue('');
+  haStatesSnapshotReceived = true;
+  reconnectAttempts = 0;
+  // No coalescing: this map is fresh from get_states and may drop deleted
+  // entities that an in-flight publish still carries.
+  refreshDesktopPinStatePublishing({ force: true, coalesce: false });
+  publishOmarchyBarTiles({ force: true });
+  updateMainConnectionState('connected');
+  setConnectedStatus();
+  // Whatever the failure toasts said is over: a red "unable to reach Home Assistant"
+  // must not outlive the recovery.
+  dismissConnectionToasts();
+  if (!IS_DESKTOP_PIN_MODE) {
+    setTrayEntityConnectionState(true, entityIds);
+    refreshTrayEntityIcons({ force: true });
+  }
+
+  const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, state.STATES);
+  if (reconciliation.changed) {
+    emitRendererDebug('config.entity_id_reconciliation.changed', {
+      previousFavoriteEntities: state.CONFIG?.favoriteEntities || [],
+      nextFavoriteEntities: reconciliation.config?.favoriteEntities || [],
+      previousPrimaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
+      nextPrimaryMediaPlayer: reconciliation.config?.primaryMediaPlayer || null,
+      previousSelectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
+      nextSelectedWeatherEntity: reconciliation.config?.selectedWeatherEntity || null,
+    });
+    if (IS_DESKTOP_PIN_MODE) {
+      void configStore.update(reconciliation.config, { persist: false });
+      log.debug(
+        'Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.'
       );
-      const servicesReq = websocket.request({ type: 'get_services' });
-      const areasReq = websocket.request({ type: 'config/area_registry/list' });
-      const configReq = websocket.request({ type: 'get_config' });
-
-      // Store IDs for matching results
-      getStatesId = statesReq.id;
-      getServicesId = servicesReq.id;
-      getAreasId = areasReq.id;
-      getConfigId = configReq.id;
-
-      log.debug(`Sent get_config request with ID: ${getConfigId}`);
-      emitRendererDebug('ws.auth_ok', {
-        getStatesId,
-        getServicesId,
-        getAreasId,
-        getConfigId,
+      emitRendererDebug('config.entity_id_reconciliation.skip_pin_persist', {
+        reason: 'desktop-pin-mode',
       });
-
-      // Prevent unhandled rejections from surfacing as global errors
-      const snapshotSocket = websocket.ws;
-      statesReq
-        .then((response) => {
-          if (!response.success || !Array.isArray(response.result)) {
-            websocket.failConnection(snapshotSocket);
-          }
-        })
+    } else {
+      configStore
+        .update(reconciliation.config, { optimistic: true, rollbackOnFailure: false })
         .catch((error) => {
-          // Home Assistant answered the login, so it is running and the address is right; it is
-          // the states that are slow. That is said in its own words, not as a server that is down.
-          if (error?.code !== 'timeout') {
-            websocket.failConnection(snapshotSocket);
-            return;
-          }
-          snapshotTimeoutsInARow += 1;
-          websocket.failConnection(snapshotSocket, 'snapshot-timeout');
-        });
-      servicesReq.catch(() => {});
-      areasReq.catch(() => {});
-      configReq.catch((err) => {
-        log.error('get_config request failed:', err);
-      });
-      if (!IS_SPECIAL_PIN_MODE) {
-        websocket
-          .request({ type: 'subscribe_events', event_type: 'entity_registry_updated' })
-          .then((response) => {
-            // Home Assistant answers an unauthorized subscription with a `success: false` result
-            // rather than dropping the connection, so the failure arrives here and not in catch().
-            // Home Assistant limits this event to administrators. Non-admin users can repair
-            // an unavailable Quick Access tile through the explicit replacement picker.
-            if (response?.success === false) {
-              log.info(
-                'Automatic entity rename tracking is unavailable for this account:',
-                response.error || response
-              );
-            }
-          })
-          .catch((error) => {
-            log.info('Automatic entity rename tracking is unavailable for this account:', error);
+          log.error('Failed to persist reconciled entity IDs:', error);
+          emitRendererDebug('config.entity_id_reconciliation.persist_error', {
+            error: error?.message || String(error),
           });
-      }
-    } else if (msg.type === 'auth_invalid') {
-      clearReconnectTimer();
-      if (usesOAuth() && !oauthAuthRecoveryAttempted) {
-        // Home Assistant rejects an OAuth access token when the authorization was revoked or the
-        // token expired while the machine slept. Refreshing tells the two apart.
-        log.warn('[WS] Home Assistant rejected the access token; refreshing authorization');
-        oauthAuthRecoveryAttempted = true;
-        updateMainConnectionState('connecting');
-        closeWebSocket();
-        setDisconnectedStatus(t('Refreshing Home Assistant authorization...'));
-        uiUtils.showLoading(false);
-        renderCurrentMode();
-        void recoverOAuthAuthorization();
-        return;
-      }
-      log.error('[WS] Invalid authentication token');
-      updateMainConnectionState('auth-failed');
-      closeWebSocket();
-      const authFailureMessage = getAuthFailureMessage();
-      setDisconnectedStatus(authFailureMessage);
-      setDesktopPinConnectionIssue(authFailureMessage);
-      uiUtils.showLoading(false);
-      // Said once per outage: startup churn and every Retry would otherwise stack the same toast.
-      if (
-        shouldShowConnectionToast({
-          key: 'auth-invalid',
-          message: authFailureMessage,
-          persistUntilOnline: false,
-        })
-      ) {
-        showConnectionToast(authFailureMessage, 15000);
-      }
-      // Render the UI so user can access settings
-      renderCurrentMode();
-    } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
-      queueEntityRegistryRename(msg.event.data);
-    } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
-      // Older than the snapshot on its way: queued, it would be drawn over the newer state.
-      if (awaitingStatesSnapshot) return;
-      const entity = msg.event.data?.new_state;
-      if (entity) {
-        queueStateChangedEntity(entity);
-      } else {
-        queueDeletedEntity(msg.event.data?.entity_id || msg.event.data?.old_state?.entity_id);
-      }
-    } else if (msg.type === 'result') {
-      log.debug(`Received result for message ID: ${msg.id}`);
-      if (msg.result) {
-        if (msg.id === getStatesId) {
-          // get_states response
-          awaitingStatesSnapshot = false;
-          const newStates = {};
-          if (Array.isArray(msg.result)) {
-            log.debug(`Successfully fetched ${msg.result.length} entities from Home Assistant`);
-            msg.result.forEach((entity) => {
-              newStates[entity.entity_id] = entity;
-            });
-
-            const { favoriteCount, preservedFavorites, droppedStaleFavorites } =
-              reconcileFavoriteStalePreservation(newStates);
-
-            const mergedStates = { ...newStates, ...preservedFavorites };
-            log.debug(
-              `State update: ${Object.keys(newStates).length} from HA + ${Object.keys(preservedFavorites).length} preserved favorites - ${droppedStaleFavorites.length} stale favorites = ${Object.keys(mergedStates).length} total`
-            );
-            emitRendererDebug('ws.get_states.received', {
-              fetchedEntities: Object.keys(newStates).length,
-              preservedFavorites: Object.keys(preservedFavorites),
-              droppedStaleFavorites,
-              mergedTotal: Object.keys(mergedStates).length,
-              favoriteCount,
-            });
-            state.setStates(mergedStates);
-            // Home Assistant replaces the full state map after authentication. Restore
-            // the renderer-local overlay immediately; setEntityState writes into the
-            // same map that the snapshot publish below serializes, which is intended —
-            // a pinned demo entity stays in main's pin cache across reconnects.
-            if (isClimateDemoOverlayConfig(state.CONFIG)) {
-              climateDemoController?.ensureEntity();
-            }
-            if (IS_DESKTOP_PIN_MODE) {
-              desktopPinHasSnapshot = true;
-            }
-            setDesktopPinConnectionIssue('');
-            haStatesSnapshotReceived = true;
-            reconnectAttempts = 0;
-            snapshotTimeoutsInARow = 0;
-            // No coalescing: this map is fresh from get_states and may drop deleted
-            // entities that an in-flight publish still carries.
-            refreshDesktopPinStatePublishing({ force: true, coalesce: false });
-            publishOmarchyBarTiles({ force: true });
-            updateMainConnectionState('connected');
-            setConnectedStatus();
-            // Whatever the failure toasts said is over: a red "unable to reach Home Assistant"
-            // must not outlive the recovery.
-            dismissConnectionToasts();
-            if (!IS_DESKTOP_PIN_MODE) {
-              setTrayEntityConnectionState(true, Object.keys(newStates));
-              refreshTrayEntityIcons({ force: true });
-            }
-
-            const reconciliation = utils.reconcileConfigEntityIds(state.CONFIG, mergedStates);
-            if (reconciliation.changed) {
-              emitRendererDebug('config.entity_id_reconciliation.changed', {
-                previousFavoriteEntities: state.CONFIG?.favoriteEntities || [],
-                nextFavoriteEntities: reconciliation.config?.favoriteEntities || [],
-                previousPrimaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
-                nextPrimaryMediaPlayer: reconciliation.config?.primaryMediaPlayer || null,
-                previousSelectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
-                nextSelectedWeatherEntity: reconciliation.config?.selectedWeatherEntity || null,
-              });
-              state.setConfig(reconciliation.config);
-              if (IS_DESKTOP_PIN_MODE) {
-                log.debug(
-                  'Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.'
-                );
-                emitRendererDebug('config.entity_id_reconciliation.skip_pin_persist', {
-                  reason: 'desktop-pin-mode',
-                });
-              } else {
-                window.electronAPI.updateConfig(reconciliation.config).catch((error) => {
-                  log.error('Failed to persist reconciled entity IDs:', error);
-                  emitRendererDebug('config.entity_id_reconciliation.persist_error', {
-                    error: error?.message || String(error),
-                  });
-                });
-              }
-            } else {
-              emitRendererDebug('config.entity_id_reconciliation.no_change', {
-                favoriteEntities: state.CONFIG?.favoriteEntities || [],
-                primaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
-                selectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
-              });
-            }
-
-            // This is the correct place to render and hide loading
-            if (IS_SPECIAL_PIN_MODE) {
-              renderCurrentMode();
-            } else {
-              ui.renderActiveTab();
-              renderMainWidgetState();
-            }
-            uiUtils.showLoading(false);
-
-            if (!IS_SPECIAL_PIN_MODE) {
-              alerts.initializeEntityAlerts();
-            }
-          }
-        } else if (msg.id === getServicesId) {
-          // get_services response
-          state.setServices(msg.result);
-        } else if (msg.id === getAreasId) {
-          // get_areas response
-          const newAreas = {};
-          if (Array.isArray(msg.result)) {
-            msg.result.forEach((area) => {
-              newAreas[area.area_id] = area;
-            });
-            state.setAreas(newAreas);
-          }
-        } else if (msg.id === getConfigId) {
-          // get_config response
-          log.debug('Received config from Home Assistant:', JSON.stringify(msg.result, null, 2));
-          const previousTimeZone = state.TIME_ZONE;
-          state.setTimeZone(msg.result?.time_zone);
-          // Calendar tiles read Home Assistant's offset-less times in its zone.
-          if (state.TIME_ZONE !== previousTimeZone && !IS_SPECIAL_PIN_MODE) ui.renderActiveTab();
-          if (msg.result && msg.result.unit_system) {
-            log.debug('Unit system found:', JSON.stringify(msg.result.unit_system, null, 2));
-            state.setUnitSystem(msg.result.unit_system);
-            // Desktop pin windows have no websocket of their own, so main relays this to them.
-            window.electronAPI.publishHaUnitSystem?.(msg.result.unit_system)?.catch((error) => {
-              log.warn('Failed to publish the Home Assistant unit system to main process:', error);
-            });
-            // Re-render weather card with correct units
-            if (ui.updateWeatherFromHA) {
-              ui.updateWeatherFromHA();
-            }
-          } else {
-            log.warn('No unit_system found in config response');
-          }
-        } else {
-          log.debug(`Unhandled result message ID: ${msg.id}`);
-        }
-      } else {
-        log.debug(`Result message with no result data: ${msg.id}`);
-      }
+        });
     }
-  } catch (error) {
-    log.error('[WS] Error handling message:', error);
+  } else {
+    emitRendererDebug('config.entity_id_reconciliation.no_change', {
+      favoriteEntities: state.CONFIG?.favoriteEntities || [],
+      primaryMediaPlayer: state.CONFIG?.primaryMediaPlayer || null,
+      selectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
+    });
+  }
+
+  // This is the correct place to render and hide loading
+  if (IS_SPECIAL_PIN_MODE) {
+    renderCurrentMode();
+  } else {
+    ui.renderActiveTab();
+    renderMainWidgetState();
+  }
+  uiUtils.showLoading(false);
+
+  if (!IS_SPECIAL_PIN_MODE) {
+    alerts.initializeEntityAlerts();
+  }
+});
+
+haSession.on('ha-config', ({ timeZoneChanged, unitSystem }) => {
+  // Calendar tiles read Home Assistant's offset-less times in its zone.
+  if (timeZoneChanged && !IS_SPECIAL_PIN_MODE) ui.renderActiveTab();
+  if (!unitSystem) return;
+  // Desktop pin windows have no websocket of their own, so main relays this to them.
+  window.electronAPI.publishHaUnitSystem?.(unitSystem)?.catch((error) => {
+    log.warn('Failed to publish the Home Assistant unit system to main process:', error);
+  });
+  // Re-render weather card with correct units
+  if (ui.updateWeatherFromHA) {
+    ui.updateWeatherFromHA();
   }
 });
 
@@ -3246,7 +2939,7 @@ window.electronAPI.onProfileSyncStatus((status) => {
   const needsAttention = settings.profileSyncNeedsAttention?.(status) === true;
   const settingsOpen = !document.getElementById('settings-modal')?.classList.contains('hidden');
   if (needsAttention && !profileSyncNeededAttention && !settingsOpen) {
-    uiUtils.showToast(
+    dialogs.showToast(
       t('Profile sync needs attention. Open Settings > Advanced.'),
       'warning',
       8000
@@ -3706,7 +3399,7 @@ function wireUI() {
             log.info('Log file opened successfully');
             // The file manager opens somewhere else on the screen, or behind the widget; this says
             // that something happened, and where the file is.
-            uiUtils.showToast(
+            dialogs.showToast(
               t('Showing the log file: {{path}}', { path: isolateLtr(result.path) }),
               'info',
               5000
@@ -3715,7 +3408,7 @@ function wireUI() {
             log.error('Failed to open log file:', result.error);
             // No file manager answered (a bare window manager), so hand over the path instead.
             const copied = result.path ? await uiUtils.copyTextToClipboard(result.path) : false;
-            uiUtils.showToast(
+            dialogs.showToast(
               copied
                 ? t('No file manager opened. The path of the log file was copied: {{path}}', {
                     path: isolateLtr(result.path),
@@ -3727,7 +3420,7 @@ function wireUI() {
           }
         } catch (error) {
           log.error('Error opening log file:', error);
-          uiUtils.showToast(
+          dialogs.showToast(
             t('Error opening log file: {{error}}', { error: error.message }),
             'error'
           );
@@ -3814,7 +3507,7 @@ function wireUI() {
       const modal = document.getElementById('quick-controls-modal');
       if (!modal) return Promise.resolve();
       // Releases the focus trap and restores previous focus once the exit animation finishes.
-      return uiUtils.closeDialog(modal);
+      return dialogs.closeDialog(modal);
     };
     if (closeQuickControlsBtn) {
       closeQuickControlsBtn.onclick = closeQuickControlsModal;
@@ -3845,7 +3538,7 @@ function wireUI() {
       const modal = document.getElementById('weather-config-modal');
       if (!modal) return;
       ui.populateWeatherEntitiesList();
-      uiUtils.openDialog(modal);
+      dialogs.openDialog(modal);
     };
     statusCards.forEach((card) => {
       if (!card) return;
@@ -3912,7 +3605,7 @@ function wireUI() {
     const closeWeatherConfig = () => {
       const modal = document.getElementById('weather-config-modal');
       if (modal) {
-        void uiUtils.closeDialog(modal);
+        void dialogs.closeDialog(modal);
       }
     };
     const closeWeatherConfigBtn = document.getElementById('close-weather-config');
@@ -3929,10 +3622,10 @@ function wireUI() {
         try {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.
-          const persistedConfig = await window.electronAPI.updateConfig({
-            selectedWeatherEntity: null,
-          });
-          applyRendererConfig(persistedConfig);
+          const persistedConfig = await configStore.update({ selectedWeatherEntity: null });
+          // The store's answer carries no revision for applyRendererConfig to check, so it is
+          // applied only while the store holds it: a config main sent since is newer.
+          if (persistedConfig === state.CONFIG) applyRendererConfig(persistedConfig);
 
           // Refresh weather display
           ui.updateWeatherFromHA();
@@ -3940,10 +3633,10 @@ function wireUI() {
           // Refresh the list
           ui.populateWeatherEntitiesList();
 
-          uiUtils.showToast(t('Weather entity cleared (using first available)'), 'success', 2000);
+          dialogs.showToast(t('Weather entity cleared (using first available)'), 'success', 2000);
         } catch (error) {
           console.error('Error clearing weather entity:', error);
-          uiUtils.showToast(t('Failed to clear weather entity'), 'error', 3000);
+          dialogs.showToast(t('Failed to clear weather entity'), 'error', 3000);
         }
       };
     }
@@ -4005,18 +3698,24 @@ function wireUI() {
         try {
           const result = await window.electronAPI.setPersistentNotificationToasts(requested);
           if (result?.success) {
-            state.CONFIG.entityAlerts = {
-              ...(state.CONFIG.entityAlerts || { enabled: false, alerts: {} }),
-              persistentNotifications: requested,
-            };
+            // Main saved it; the config here says so too.
+            void configStore.update(
+              (config) => {
+                config.entityAlerts = {
+                  ...(config.entityAlerts || { enabled: false, alerts: {} }),
+                  persistentNotifications: requested,
+                };
+              },
+              { persist: false }
+            );
           } else {
             e.target.checked = previous;
-            uiUtils.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
+            dialogs.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);
           }
         } catch (error) {
           log.error('Failed to save the Home Assistant notifications setting:', error);
           e.target.checked = previous;
-          uiUtils.showToast(t('Error toggling alerts'), 'error', 2000);
+          dialogs.showToast(t('Error toggling alerts'), 'error', 2000);
         } finally {
           reenableSettingsToggle(e.target, hadFocus);
         }

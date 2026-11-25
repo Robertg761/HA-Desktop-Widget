@@ -9,7 +9,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createProfileSyncHarness } = require('../helpers/profile-sync-devices.js');
+const { createProfileSyncHarness, describeError } = require('../helpers/profile-sync-devices.js');
+const { createRewriteTransactionError } = require('../../src/profile-sync-rewrite-transaction.cjs');
 
 const harness = createProfileSyncHarness();
 const { syncFilePath, readSyncFile, createDevice, createSyncedPair } = harness;
@@ -23,10 +24,10 @@ beforeEach(() => harness.setup());
 afterEach(() => harness.teardown());
 
 /** What a person is told when a run fails: the error as the app words it for display. */
-const failureMessage = (device, run) =>
+const failureMessage = (run) =>
   run.then(
     () => '',
-    (error) => device.context.mainTError(error)
+    (error) => describeError(error)
   );
 
 const damagedBackups = (device) => {
@@ -47,7 +48,7 @@ describe('a sync file that cannot be read', () => {
     const { laptop } = await createSyncedPair();
     fs.writeFileSync(syncFilePath(), contents);
 
-    expect(await failureMessage(laptop, laptop.sync())).toContain(DAMAGED_SENTENCE);
+    expect(await failureMessage(laptop.sync())).toContain(DAMAGED_SENTENCE);
     expect(laptop.status().lastSyncError).toContain(DAMAGED_SENTENCE);
     expect(laptop.status().lastSyncError).not.toMatch(JARGON);
     // Nothing was overwritten by the failed run.
@@ -58,7 +59,7 @@ describe('a sync file that cannot be read', () => {
     const { laptop } = await createSyncedPair();
     fs.writeFileSync(syncFilePath(), '');
 
-    expect(await failureMessage(laptop, laptop.sync('pull', 'manual'))).toContain(DAMAGED_SENTENCE);
+    expect(await failureMessage(laptop.sync('pull', 'manual'))).toContain(DAMAGED_SENTENCE);
     expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe('');
     expect(damagedBackups(laptop)).toEqual([]);
   });
@@ -101,7 +102,7 @@ describe('a sync file that cannot be read', () => {
     fs.writeFileSync(syncFilePath(), JSON.stringify(newer));
     const before = fs.readFileSync(syncFilePath(), 'utf8');
 
-    expect(await failureMessage(laptop, laptop.sync('push', 'manual'))).toContain('newer version');
+    expect(await failureMessage(laptop.sync('push', 'manual'))).toContain('newer version');
     expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(before);
     expect(damagedBackups(laptop)).toEqual([]);
   });
@@ -140,7 +141,7 @@ describe('a sync file that cannot be read', () => {
     fs.writeFileSync(syncFilePath(), complete.slice(0, 40));
     const laptop = createDevice('laptop', { syncing: false });
     let waits = 0;
-    laptop.context.waitForSyncFileToSettle = async () => {
+    laptop.beforeReread = async () => {
       waits += 1;
       fs.writeFileSync(syncFilePath(), complete);
     };
@@ -191,7 +192,7 @@ describe('an encrypted file with a damaged payload', () => {
     file.payload.iv = 'AAAA';
     fs.writeFileSync(syncFilePath(), JSON.stringify(file));
 
-    expect(await failureMessage(laptop, laptop.sync())).toContain(DAMAGED_SENTENCE);
+    expect(await failureMessage(laptop.sync())).toContain(DAMAGED_SENTENCE);
     expect(laptop.status().lastSyncError).not.toMatch(/passphrase|initialization vector/i);
   });
 
@@ -210,22 +211,24 @@ describe('an encrypted file with a damaged payload', () => {
   });
 
   test('a wrong passphrase is still a passphrase problem, and Sync up does not override it', async () => {
-    const { laptop } = await encryptedPair();
-    laptop.context.profileSyncRuntime.passphraseSession = 'a different passphrase';
+    await encryptedPair();
+    const tablet = createDevice('tablet', {
+      profileSync: { encryptionEnabled: true, __passphrase: 'a different passphrase' },
+    });
     const before = fs.readFileSync(syncFilePath(), 'utf8');
 
-    expect(await failureMessage(laptop, laptop.sync('push', 'manual'))).toContain(
+    expect(await failureMessage(tablet.sync('push', 'manual'))).toContain(
       'passphrase does not match'
     );
     expect(fs.readFileSync(syncFilePath(), 'utf8')).toBe(before);
-    expect(damagedBackups(laptop)).toEqual([]);
+    expect(damagedBackups(tablet)).toEqual([]);
   });
 });
 
 describe('a sync folder that cannot be written', () => {
   function failWritesWith(device, code, message) {
     const failure = Object.assign(new Error(message), { code });
-    device.context.fs = {
+    device.fs = {
       ...fs,
       promises: {
         ...fs.promises,
@@ -269,7 +272,7 @@ describe('a sync folder that cannot be written', () => {
       });
       failWritesWith(desktop, code, message);
 
-      expect(await failureMessage(desktop, desktop.sync())).toContain(wording);
+      expect(await failureMessage(desktop.sync())).toContain(wording);
       expect(desktop.status().lastSyncError).not.toMatch(JARGON);
       expect(desktop.status().lastSyncError).not.toContain('/shared');
       // The failed attempt leaves no half-written file behind.
@@ -289,11 +292,11 @@ describe('a sync file another program has open', () => {
     desktop.edit((config) => {
       config.opacity = 0.5;
     });
-    desktop.context.process = Object.create(process, { platform: { value: platform } });
+    desktop.platform = platform;
     const failure = Object.assign(new Error('EPERM: operation not permitted, rename'), {
       code: 'EPERM',
     });
-    desktop.context.fs = {
+    desktop.fs = {
       ...fs,
       promises: {
         ...fs.promises,
@@ -303,7 +306,7 @@ describe('a sync file another program has open', () => {
       },
     };
 
-    expect(await failureMessage(desktop, desktop.sync())).toContain(wording);
+    expect(await failureMessage(desktop.sync())).toContain(wording);
   });
 });
 
@@ -314,7 +317,7 @@ describe('writing the sync file', () => {
       config.opacity = 0.5;
     });
     const steps = [];
-    desktop.context.fs = {
+    desktop.fs = {
       ...fs,
       promises: {
         ...fs.promises,
@@ -374,7 +377,7 @@ describe('internal recovery failures', () => {
   test('an invalid recovery record is reported as a sentence, not as developer text', async () => {
     const { desktop } = await createSyncedPair();
     desktop.config.profileSync.passphraseTransition = { version: 1, reason: 'broken' };
-    desktop.context.ensureProfileSyncConfigDefaults(desktop.config);
+    desktop.engine.normalizeSettings(desktop.config);
 
     const result = await desktop.invoke('run-profile-sync', 'auto').catch((error) => error);
 
@@ -384,10 +387,7 @@ describe('internal recovery failures', () => {
   });
 
   test('describes the codes the rewrite machinery throws', () => {
-    const { desktop } = { desktop: createDevice('desktop') };
-    const { createRewriteTransactionError } = desktop.context;
-
-    expect(desktop.context.mainTError(createRewriteTransactionError('anything technical'))).toBe(
+    expect(describeError(createRewriteTransactionError('anything technical'))).toBe(
       "Could not update the sync file's encryption. Nothing was changed. Try again."
     );
   });

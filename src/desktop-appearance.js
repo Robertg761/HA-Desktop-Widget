@@ -5,11 +5,9 @@ import {
   applyBackgroundThemeFromColor,
   applyTheme,
   applyWindowEffects,
-  contrastBetween,
   getSeasonalColors,
-  hexToRgb,
-  mixRgb,
 } from './ui-utils.js';
+import { contrastBetween, hexToRgb, mixRgb } from './color-math.js';
 
 let currentConfig = null;
 let paletteApplied = false;

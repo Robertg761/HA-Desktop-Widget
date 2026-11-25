@@ -9,7 +9,9 @@ import { clearFieldError, clearFieldErrors, showFieldError } from './field-error
 import { paginate, renderListPager } from './list-pager.js';
 import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
 import state from './state.js';
+import configStore from './config-store.js';
 import log from './logger.js';
+import settingsFields from '@hadw/renderer/settings-fields.cjs';
 import websocket from './websocket.js';
 import {
   applyTheme,
@@ -24,14 +26,16 @@ import {
   suspendSeasonalColors,
   applyWindowEffects,
   isFrostedGlassAvailable,
+  copyTextToClipboard,
+} from './ui-utils.js';
+import {
   openDialog,
   closeDialog,
   disableControlsKeepingFocus,
   findFocusKey,
   showToast,
   showConfirm,
-  copyTextToClipboard,
-} from './ui-utils.js';
+} from './dialogs.js';
 import {
   cleanupHotkeyEventListeners,
   describeHotkeyFailure,
@@ -180,20 +184,6 @@ const personalizationSectionPersistTimers = new Map();
 const hydratedPersonalizationSections = new Set();
 const CUSTOM_THEME_ID_PREFIX = 'custom-';
 
-function applyPersistedConfigResponse(updatedConfig) {
-  if (!updatedConfig || updatedConfig.success === false || !updatedConfig.homeAssistant) {
-    throw new Error(updatedConfig?.error || t('The main process rejected the settings update'));
-  }
-
-  const persistentConfig = { ...updatedConfig };
-  delete persistentConfig.configRecovery;
-  delete persistentConfig.configRevision;
-  delete persistentConfig.persistenceWarnings;
-  delete persistentConfig.runtimeWarnings;
-  state.setConfig(persistentConfig);
-
-  return persistentConfig;
-}
 const CUSTOM_EDITOR_SCOPE_SELECTOR = [
   '#custom-color-picker',
   '#custom-color-r',
@@ -1345,18 +1335,12 @@ function persistCustomColorsImmediately() {
   if (!state.CONFIG) return;
 
   const customColors = getCustomColorsForSave();
-  state.CONFIG.ui = state.CONFIG.ui || {};
-  state.CONFIG.ui.customColors = customColors;
-
-  if (!window?.electronAPI?.updateConfig) return;
-
-  window.electronAPI
-    .updateConfig({
-      ui: {
-        ...state.CONFIG.ui,
-        customColors,
-      },
-    })
+  // The colors stay in place if they cannot be saved: Save and close tries again.
+  configStore
+    .update(
+      { ui: { ...state.CONFIG.ui, customColors } },
+      { optimistic: true, rollbackOnFailure: false }
+    )
     .catch((error) => {
       log.error('Failed to persist custom colors:', error);
       showToast(
@@ -2543,7 +2527,6 @@ function applyPersonalizationSectionState(section, toggle, isCollapsed, options 
 function persistPersonalizationSectionState(sectionId, isCollapsed) {
   if (!sectionId || !state.CONFIG) return;
 
-  state.CONFIG.ui = state.CONFIG.ui || {};
   const currentStates = getSavedPersonalizationSectionStates();
   const currentlyCollapsed = currentStates[sectionId] === true;
   if (currentlyCollapsed === isCollapsed) return;
@@ -2555,23 +2538,26 @@ function persistPersonalizationSectionState(sectionId, isCollapsed) {
     delete nextStates[sectionId];
   }
 
-  state.CONFIG.ui[PERSONALIZATION_SECTION_STATE_KEY] = nextStates;
+  // Held at once, and saved once the clicks settle.
+  void configStore.update(
+    (config) => {
+      config.ui = { ...config.ui, [PERSONALIZATION_SECTION_STATE_KEY]: nextStates };
+    },
+    { persist: false }
+  );
 
   if (personalizationSectionPersistTimers.has(sectionId)) {
     clearTimeout(personalizationSectionPersistTimers.get(sectionId));
   }
 
-  if (!window?.electronAPI?.updateConfig) return;
   const persistTimer = setTimeout(() => {
     personalizationSectionPersistTimers.delete(sectionId);
     const latestStates = getSavedPersonalizationSectionStates();
-    window.electronAPI
-      .updateConfig({
-        ui: {
-          ...state.CONFIG.ui,
-          [PERSONALIZATION_SECTION_STATE_KEY]: latestStates,
-        },
-      })
+    configStore
+      .update(
+        { ui: { ...state.CONFIG.ui, [PERSONALIZATION_SECTION_STATE_KEY]: latestStates } },
+        { optimistic: true, rollbackOnFailure: false }
+      )
       .catch((error) => {
         log.error('Failed to persist personalization section state:', error);
       });
@@ -3793,15 +3779,29 @@ function buildProfileSyncFilePathFromFolder(folderPath) {
   return `${normalizedFolder}${separator}${PROFILE_SYNC_DEFAULT_FILE_NAME}`;
 }
 
-function ensureProfileSyncConfig(targetConfig = state.CONFIG) {
-  targetConfig.profileSync = {
-    ...getDefaultProfileSyncConfig(),
-    ...(targetConfig.profileSync || {}),
-  };
-  targetConfig.profileSync.syncScope = normalizeProfileSyncScope(
-    targetConfig.profileSync.syncScope
-  );
-  return targetConfig.profileSync;
+function withProfileSyncDefaults(profileSync) {
+  const filled = { ...getDefaultProfileSyncConfig(), ...(profileSync || {}) };
+  filled.syncScope = normalizeProfileSyncScope(filled.syncScope);
+  return filled;
+}
+
+// Fills in profile sync's defaults: in `targetConfig` (a config being built), or else in the config
+// the renderer holds, which goes through the config store like any other change.
+function ensureProfileSyncConfig(targetConfig) {
+  if (targetConfig) {
+    targetConfig.profileSync = withProfileSyncDefaults(targetConfig.profileSync);
+    return targetConfig.profileSync;
+  }
+  const current = state.CONFIG.profileSync;
+  if (JSON.stringify(withProfileSyncDefaults(current)) !== JSON.stringify(current)) {
+    void configStore.update(
+      (config) => {
+        config.profileSync = withProfileSyncDefaults(config.profileSync);
+      },
+      { persist: false }
+    );
+  }
+  return state.CONFIG.profileSync;
 }
 
 function formatProfileSyncTimestamp(isoString) {
@@ -4862,7 +4862,7 @@ async function cancelPendingEncryptionChange() {
       showToast(result?.error || t('Failed to save sync passphrase.'), 'error', 3400);
       return;
     }
-    if (result.config) applyPersistedConfigResponse(result.config);
+    if (result.config) configStore.adopt(result.config);
     applyProfileSyncConfigToForm();
     if (result.status) updateProfileSyncStatusUi(result.status);
     showToast(t('Encryption change canceled.'), 'info', 2400);
@@ -5569,31 +5569,40 @@ function waitForLanguagePackRefresh() {
 
 async function persistLanguageSelection(nextLanguage) {
   const normalizedLanguage = String(nextLanguage || '').trim() || 'auto';
-  if (!window?.electronAPI?.updateConfig) {
-    throw new Error('Language updates are unavailable on this build.');
-  }
+  return configStore.update({ ui: { ...state.CONFIG.ui, language: normalizedLanguage } });
+}
 
-  state.CONFIG.ui = state.CONFIG.ui || {};
-  const nextUiConfig = {
-    ...state.CONFIG.ui,
-    language: normalizedLanguage,
-  };
-
-  const updatedConfig = await window.electronAPI.updateConfig({
-    ui: nextUiConfig,
+// The plain switches and lists the settings field registry binds to a setting: each shows what
+// the setting reads as, and saving stores it back by the registry's rules (a value it does not
+// offer saves the default; one a new config leaves unset stays unset until it is changed).
+function fillSettingControls(config) {
+  settingsFields.SETTING_CONTROLS.forEach(({ path, id, preview }) => {
+    const control = document.getElementById(id);
+    if (!control) return;
+    const value = settingsFields.settingValue(config, path);
+    if (control.type === 'checkbox') control.checked = !!value;
+    else control.value = value === undefined ? '' : String(value);
+    if (preview) control.onchange = previewAppearance;
   });
+}
 
-  if (updatedConfig) {
-    applyPersistedConfigResponse(updatedConfig);
-  } else {
-    state.CONFIG.ui = nextUiConfig;
-  }
-
-  return updatedConfig;
+/** Reads every bound control that is there and enabled into `config`, and returns it. */
+function readSettingControls(config) {
+  settingsFields.SETTING_CONTROLS.forEach(({ path, id }) => {
+    const control = document.getElementById(id);
+    if (!control || control.disabled) return;
+    settingsFields.storeSetting(
+      config,
+      path,
+      control.type === 'checkbox' ? !!control.checked : control.value
+    );
+  });
+  return config;
 }
 
 /**
- * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ * Read the text size, contrast, density and tile glow controls, and every other plain ui control
+ * the settings field registry binds, on top of `ui`.
  *
  * These preview live like the window effects and persist only on Save. The readable preset
  * stands for both contrast flags, so they are left alone unless the preset was toggled.
@@ -5601,23 +5610,14 @@ async function persistLanguageSelection(nextLanguage) {
 function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const density = document.getElementById('density-select');
-  const activeTileGlow = document.getElementById('active-tile-glow');
-  const pinSnap = document.getElementById('desktop-pin-snap');
-  const next = { ...ui };
+  const next = readSettingControls({ ui: { ...ui } }).ui;
   if (scale) next.scale = Number(scale.value) || 1;
   if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
     next.highContrast = preset.checked;
     next.opaquePanels = preset.checked;
   }
-  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
   const pinNameAlign = readPinNameAlignInput(ui);
   if (pinNameAlign) next.desktopPinNameAlign = pinNameAlign;
-  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
-  // Stored once turned off, so an untouched switch keeps following the default (on).
-  if (pinSnap && (!pinSnap.checked || Object.hasOwn(ui, 'desktopPinSnap'))) {
-    next.desktopPinSnap = !!pinSnap.checked;
-  }
   const seasonal = readSeasonalInputs(ui.seasonal);
   if (seasonal) next.seasonal = seasonal;
   return next;
@@ -5846,15 +5846,9 @@ function bindAppearanceSettingsUi() {
   labelUiScaleOptions();
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const activeTileGlow = document.getElementById('active-tile-glow');
-  const densitySelect = document.getElementById('density-select');
   if (scale) scale.value = String(ui.scale || 1);
   if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
-  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
-  const pinSnap = document.getElementById('desktop-pin-snap');
-  // Opt-out, like the glow: pins snap until someone turns it off.
-  if (pinSnap) pinSnap.checked = ui.desktopPinSnap !== false;
-  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  fillSettingControls(state.CONFIG || {});
   const pinNameAlign = document.getElementById('pin-name-align-select');
   pinNameAlignTouched = false;
   if (pinNameAlign) {
@@ -5862,7 +5856,7 @@ function bindAppearanceSettingsUi() {
     pinNameAlign.value = ui.desktopPinNameAlign || '';
     if (!pinNameAlign.value) pinNameAlign.value = getDefaultPinNameAlign();
   }
-  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+  for (const control of [scale, preset].filter(Boolean)) {
     control.onchange = previewAppearance;
   }
   if (pinNameAlign) {
@@ -6111,24 +6105,9 @@ function observeSettingsLocale() {
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
  */
 // Settings profile sync can change on another computer while this form is open.
-const PROFILE_SYNCED_SETTINGS = [
-  'alwaysOnTop',
-  'hideOnBlur',
-  'opacity',
-  'frostedGlass',
-  'favoriteEntities',
-  'trayEntities',
-  'customEntityNames',
-  'customEntityIcons',
-  'tileSpans',
-  'quickAccessTileOptions',
-  'primaryCards',
-  'customTabs',
-  'comparisonGraphs',
-  'entityAlerts',
-  'selectedWeatherEntity',
-  'primaryMediaPlayer',
-];
+const PROFILE_SYNCED_SETTINGS = Object.values(settingsFields.SYNC_SECTION_FIELDS)
+  .flat()
+  .filter((key) => key !== 'ui');
 // The config the open form was filled from.
 let settingsFormBaseConfig = null;
 let windowDisplaySettings = null;
@@ -6142,6 +6121,7 @@ export function refreshWindowDisplaySettings() {
 // they change their pending value, so merely opening a picker counts as nothing.
 let settingsTouchedKeys = new Set();
 const SETTINGS_CONTROL_KEYS = [
+  ...settingsFields.SETTING_CONTROLS.map(({ id, path }) => [`#${id}`, [path]]),
   ['#always-on-top', ['alwaysOnTop']],
   ['#hide-on-blur', ['hideOnBlur']],
   ['#opacity-slider', ['opacity']],
@@ -6152,10 +6132,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#weather-override-select', ['ui.weatherOverride']],
   ['#language-select', ['ui.language']],
   ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
-  ['#density-select', ['ui.density']],
   ['#pin-name-align-select', ['ui.desktopPinNameAlign']],
-  ['#desktop-pin-snap', ['ui.desktopPinSnap']],
-  ['#active-tile-glow', ['ui.activeTileGlow']],
   ['#seasonal-settings', ['ui.seasonal']],
   ['#ui-scale-select', ['ui.scale']],
   ['#follow-omarchy', ['ui.followOmarchy']],
@@ -6246,7 +6223,6 @@ async function openSettings(uiHooks) {
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
-    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
@@ -6362,11 +6338,7 @@ async function openSettings(uiHooks) {
     syncWeatherEffectsAvailability();
     hasDraftColorPreview = false;
 
-    state.CONFIG.ui = state.CONFIG.ui || {};
-    if (enableInteractionDebugLogs) {
-      enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
-    }
-    setPendingCustomColorList(state.CONFIG.ui.customColors || []);
+    setPendingCustomColorList(state.CONFIG.ui?.customColors || []);
     // Settings opens on the saved name, whatever the rename field held before.
     activeCustomManagementThemeId = null;
 
@@ -6840,7 +6812,7 @@ async function startHomeAssistantOAuthFromSettings() {
   setHomeAssistantOAuthStatus(t('Waiting for you to approve in your browser...'), 'pending');
   try {
     const result = await startHomeAssistantPairing(window.electronAPI, validation.url);
-    applyPersistedConfigResponse(result.config);
+    configStore.adopt(result.config);
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || validation.url;
     updateHomeAssistantAuthUi();
     showToast(t('Home Assistant authorization connected'), 'success', 2600);
@@ -6887,7 +6859,7 @@ async function disconnectHomeAssistantOAuthFromSettings() {
   setHomeAssistantOAuthBusy(true);
   try {
     const result = await window.electronAPI.disconnectHomeAssistantOAuth();
-    applyPersistedConfigResponse(result.config);
+    configStore.adopt(result.config);
     updateHomeAssistantAuthUi();
     // The warning is main-process English; it always means the remote revocation is unconfirmed.
     if (result.warning) {
@@ -7029,7 +7001,6 @@ async function persistSettings() {
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
-    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     const languageSelect = document.getElementById('language-select');
@@ -7140,10 +7111,9 @@ async function persistSettings() {
     }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
+    // Bound controls outside ui are read here; the ui ones are read with the rest of the look.
+    readSettingControls(nextConfig);
     nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
-    if (enableInteractionDebugLogs) {
-      nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
-    }
     nextConfig.updates = nextConfig.updates || {};
     if (allowPrereleaseUpdates) {
       nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;
@@ -7419,8 +7389,7 @@ async function persistSettings() {
     // Read before the touched keys are cleared below: the icons toast is about this save's edits,
     // not about whether any custom icon exists.
     const customIconsEdited = settingsTouchedKeys.has('customEntityIcons');
-    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-    applyPersistedConfigResponse(updatedConfig);
+    await configStore.update(nextConfig);
     configPersisted = true;
     settingsFormBaseConfig = cloneConfigValue(state.CONFIG || {});
     settingsTouchedKeys = new Set();
@@ -7446,7 +7415,7 @@ async function persistSettings() {
           showToast(passphraseResult.warning, 'warning', 5000);
         }
         if (passphraseResult.config) {
-          applyPersistedConfigResponse(passphraseResult.config);
+          configStore.adopt(passphraseResult.config);
         }
         passphraseUpdatedThisSave = true;
 
@@ -7464,19 +7433,13 @@ async function persistSettings() {
           resolvedEncrypted !== persistedProfileSync.passphraseEncrypted
         ) {
           try {
-            const correctedConfig = JSON.parse(JSON.stringify(state.CONFIG));
-            correctedConfig.profileSync = correctedConfig.profileSync || {};
-            correctedConfig.profileSync.rememberPassphrase = resolvedRemembered;
-            correctedConfig.profileSync.passphraseEncrypted = resolvedEncrypted;
-            const correctedResult = await window.electronAPI.updateConfig(correctedConfig);
-            if (
-              !correctedResult ||
-              correctedResult.success === false ||
-              !correctedResult.homeAssistant
-            ) {
-              throw new Error(correctedResult?.error || 'Failed to persist passphrase metadata');
-            }
-            applyPersistedConfigResponse(correctedResult);
+            await configStore.update((config) => {
+              config.profileSync = {
+                ...config.profileSync,
+                rememberPassphrase: resolvedRemembered,
+                passphraseEncrypted: resolvedEncrypted,
+              };
+            });
           } catch (correctiveError) {
             log.error('Failed to persist updated passphrase metadata:', correctiveError);
           }
@@ -7484,7 +7447,7 @@ async function persistSettings() {
       } catch (passphraseError) {
         profileSyncCredentialOperationFailed = true;
         if (passphraseResult?.config) {
-          applyPersistedConfigResponse(passphraseResult.config);
+          configStore.adopt(passphraseResult.config);
         }
         if (passphraseResult?.status) {
           updateProfileSyncStatusUi(passphraseResult.status);
@@ -8295,11 +8258,10 @@ async function saveAlert() {
       );
       return;
     }
-    const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
-    nextConfig.entityAlerts = nextConfig.entityAlerts || { enabled: false, alerts: {} };
-    nextConfig.entityAlerts.alerts[currentAlertEntity] = alertConfig;
-    const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-    applyPersistedConfigResponse(updatedConfig);
+    await configStore.update((config) => {
+      config.entityAlerts = config.entityAlerts || { enabled: false, alerts: {} };
+      config.entityAlerts.alerts[currentAlertEntity] = alertConfig;
+    });
 
     closeAlertConfigModal();
     renderAlertsListInline();
@@ -8334,10 +8296,9 @@ async function removeAlert(entityId) {
     if (!confirmed) return;
 
     if (state.CONFIG.entityAlerts?.alerts[entityId]) {
-      const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
-      delete nextConfig.entityAlerts.alerts[entityId];
-      const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-      applyPersistedConfigResponse(updatedConfig);
+      await configStore.update((config) => {
+        delete config.entityAlerts.alerts[entityId];
+      });
       renderAlertsListInline();
 
       showToast(t('Alert removed'), 'success', 2000);
@@ -8662,24 +8623,29 @@ async function initializePopupHotkey() {
       toggleModeCheckbox.onchange = async () => {
         const previousValue = !!state.CONFIG.popupHotkeyToggleMode;
         const requestedValue = !!toggleModeCheckbox.checked;
-        let updatePersisted = false;
         const reenable = disableControlsKeepingFocus([toggleModeCheckbox]);
 
         try {
-          const updatedConfig = await window.electronAPI.updateConfig({
-            ...state.CONFIG,
-            popupHotkeyToggleMode: requestedValue,
-          });
-          applyPersistedConfigResponse(updatedConfig);
-          updatePersisted = true;
-          if (state.CONFIG.popupHotkey) {
-            const registrationResult = await window.electronAPI.registerPopupHotkey(
-              state.CONFIG.popupHotkey
-            );
-            if (registrationResult?.success !== true) {
-              throw new Error(registrationResult?.error || t('Failed to apply popup hotkey mode'));
+          // Registering the hotkey again puts the new mode in force; if it cannot, the saved
+          // mode goes back too.
+          await configStore.update(
+            (config) => {
+              config.popupHotkeyToggleMode = requestedValue;
+            },
+            {
+              apply: async (config) => {
+                if (!config.popupHotkey) return;
+                const registrationResult = await window.electronAPI.registerPopupHotkey(
+                  config.popupHotkey
+                );
+                if (registrationResult?.success !== true) {
+                  throw new Error(
+                    registrationResult?.error || t('Failed to apply popup hotkey mode')
+                  );
+                }
+              },
             }
-          }
+          );
           toggleModeCheckbox.checked = requestedValue;
           // showToast already imported at top
           showToast(
@@ -8693,16 +8659,8 @@ async function initializePopupHotkey() {
           );
         } catch (error) {
           log.error('Failed to save popup hotkey toggle mode setting:', error);
-          if (updatePersisted) {
-            try {
-              const restoredConfig = await window.electronAPI.updateConfig({
-                ...state.CONFIG,
-                popupHotkeyToggleMode: previousValue,
-              });
-              state.setConfig(restoredConfig);
-            } catch (rollbackError) {
-              log.error('Failed to restore popup hotkey toggle mode:', rollbackError);
-            }
+          if (error?.rollbackError) {
+            log.error('Failed to restore popup hotkey toggle mode:', error.rollbackError);
           }
           toggleModeCheckbox.checked = previousValue;
           const failureMessage = t('Error: {{error}}', {
@@ -8722,26 +8680,27 @@ async function initializePopupHotkey() {
       hideOnReleaseCheckbox.onchange = async () => {
         const previousValue = !!state.CONFIG.popupHotkeyHideOnRelease;
         const requestedValue = !!hideOnReleaseCheckbox.checked;
-        let updatePersisted = false;
         const reenable = disableControlsKeepingFocus([hideOnReleaseCheckbox]);
 
         try {
-          const updatedConfig = await window.electronAPI.updateConfig({
-            ...state.CONFIG,
-            popupHotkeyHideOnRelease: requestedValue,
-          });
-          applyPersistedConfigResponse(updatedConfig);
-          updatePersisted = true;
-          if (state.CONFIG.popupHotkey) {
-            const registrationResult = await window.electronAPI.registerPopupHotkey(
-              state.CONFIG.popupHotkey
-            );
-            if (registrationResult?.success !== true) {
-              throw new Error(
-                registrationResult?.error || t('Failed to apply popup hotkey behavior')
-              );
+          await configStore.update(
+            (config) => {
+              config.popupHotkeyHideOnRelease = requestedValue;
+            },
+            {
+              apply: async (config) => {
+                if (!config.popupHotkey) return;
+                const registrationResult = await window.electronAPI.registerPopupHotkey(
+                  config.popupHotkey
+                );
+                if (registrationResult?.success !== true) {
+                  throw new Error(
+                    registrationResult?.error || t('Failed to apply popup hotkey behavior')
+                  );
+                }
+              },
             }
-          }
+          );
           hideOnReleaseCheckbox.checked = requestedValue;
           // showToast already imported at top
           showToast(
@@ -8753,16 +8712,8 @@ async function initializePopupHotkey() {
           );
         } catch (error) {
           log.error('Failed to save popup hotkey setting:', error);
-          if (updatePersisted) {
-            try {
-              const restoredConfig = await window.electronAPI.updateConfig({
-                ...state.CONFIG,
-                popupHotkeyHideOnRelease: previousValue,
-              });
-              state.setConfig(restoredConfig);
-            } catch (rollbackError) {
-              log.error('Failed to restore popup hotkey release behavior:', rollbackError);
-            }
+          if (error?.rollbackError) {
+            log.error('Failed to restore popup hotkey release behavior:', error.rollbackError);
           }
           hideOnReleaseCheckbox.checked = previousValue;
           const failureMessage = t('Error: {{error}}', {
@@ -8797,7 +8748,12 @@ async function initializePopupHotkey() {
           input.value = '';
           input.placeholder = t('Not set');
           clearBtn.style.display = 'none';
-          state.CONFIG.popupHotkey = '';
+          void configStore.update(
+            (config) => {
+              config.popupHotkey = '';
+            },
+            { persist: false }
+          );
           // showToast already imported at top
           showToast(t('Popup hotkey cleared'), 'success');
           if (result.warning) {
@@ -8828,7 +8784,12 @@ async function initializePopupHotkey() {
             input.value = formatHotkey(hotkey);
             input.placeholder = formatHotkey(hotkey);
             clearBtn.style.display = 'inline-block';
-            state.CONFIG.popupHotkey = hotkey;
+            void configStore.update(
+              (config) => {
+                config.popupHotkey = hotkey;
+              },
+              { persist: false }
+            );
             // showToast already imported at top
             await refreshDesktopIntegration();
             showToast(
@@ -8922,7 +8883,12 @@ function startCapturingPopupHotkey() {
         }
         const clearBtn = document.getElementById('popup-hotkey-clear-btn');
         if (clearBtn) clearBtn.style.display = 'inline-block';
-        state.CONFIG.popupHotkey = hotkey;
+        void configStore.update(
+          (config) => {
+            config.popupHotkey = hotkey;
+          },
+          { persist: false }
+        );
         // showToast already imported at top
         await refreshDesktopIntegration();
         showToast(

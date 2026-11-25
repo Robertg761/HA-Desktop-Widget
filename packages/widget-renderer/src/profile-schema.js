@@ -13,36 +13,16 @@
 import { normalizeQuickAccessConfig } from './quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './comparison-graphs.js';
 import pageNames from '../../../src/page-names.cjs';
+import settingsFields from './settings-fields.cjs';
 
 const { toStoredPages } = pageNames;
 
 const PROFILE_SCHEMA_VERSION = 1;
 
-const PROFILE_SECTION_KEYS = Object.freeze([
-  'ui',
-  'primaryCards',
-  'selectedWeatherEntity',
-  'primaryMediaPlayer',
-  'tileSpans',
-  'favoriteEntities',
-  'customTabs',
-  'activeTabId',
-  'comparisonGraphs',
-  'quickAccessTileOptions',
-  'customEntityIcons',
-  'customEntityNames',
-  'opacity',
-  'frostedGlass',
-]);
-
-// These ui fields describe this machine's session, not the shared look. Profile sync keeps the
-// same list in profile-sync-core.js (a test keeps the two equal).
-const LOCAL_ONLY_UI_KEYS = new Set([
-  'personalizationSectionsCollapsed',
-  'enableInteractionDebugLogs',
-  'scale',
-  'followOmarchy',
-]);
+// The sections a profile carries, and the ui fields that describe this machine's session rather
+// than the shared look, come from the settings field registry, as profile sync's do.
+const PROFILE_SECTION_KEYS = settingsFields.HA_PROFILE_FIELDS;
+const LOCAL_ONLY_UI_KEYS = new Set(settingsFields.LOCAL_ONLY_UI_KEYS);
 
 const MAX_PRIMARY_CARDS = 2;
 const MIN_OPACITY = 0.5;
@@ -260,7 +240,6 @@ function buildProfileDocumentFromConfig(config) {
 export {
   PROFILE_SCHEMA_VERSION,
   PROFILE_SECTION_KEYS,
-  LOCAL_ONLY_UI_KEYS,
   buildConfigPatchFromApplyPayload,
   buildProfileDocumentFromConfig,
   normalizeProfileDocument,

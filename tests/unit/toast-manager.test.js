@@ -14,7 +14,7 @@ Object.defineProperty(window, 'matchMedia', {
   value: jest.fn().mockImplementation((query) => ({ matches: false, media: query })),
 });
 
-const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 
 const container = () => document.getElementById('toast-container');
 const toasts = () => [...container().querySelectorAll('.toast')];
@@ -29,7 +29,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="toast-container" role="status"></div>';
   jest.useFakeTimers();
   // The exit animation is skipped under NODE_ENV=test; the timers are what these tests are about.
-  uiUtils.__forceAnimatedModalTransitions(false);
+  dialogs.__forceAnimatedModalTransitions(false);
 });
 
 afterEach(() => {
@@ -39,8 +39,8 @@ afterEach(() => {
 
 describe('what stays on screen, and for how long', () => {
   it('lets a success or an info toast go after its timeout', () => {
-    uiUtils.showToast('Saved', 'success', 2000);
-    uiUtils.showToast('FYI', 'info', 3000);
+    dialogs.showToast('Saved', 'success', 2000);
+    dialogs.showToast('FYI', 'info', 3000);
 
     jest.advanceTimersByTime(2100);
     expect(messages()).toEqual(['FYI']);
@@ -49,7 +49,7 @@ describe('what stays on screen, and for how long', () => {
   });
 
   it('keeps an error until it is dismissed, whatever timeout the caller gave', () => {
-    const toast = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+    const toast = dialogs.showToast('Failed to toggle Bed Light', 'error', 2000);
 
     jest.advanceTimersByTime(10 * 60 * 1000);
 
@@ -58,7 +58,7 @@ describe('what stays on screen, and for how long', () => {
 
   it('lets an error in a pin window go after a reading time, as a 168px pin cannot hold it', () => {
     document.body.classList.add('desktop-pin-mode');
-    const toast = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+    const toast = dialogs.showToast('Failed to toggle Bed Light', 'error', 2000);
 
     // The same floor as a warning, so the sentence can be read first.
     jest.advanceTimersByTime(5900);
@@ -69,7 +69,7 @@ describe('what stays on screen, and for how long', () => {
 
   it('still holds a pin error while it is under the pointer, then resumes its clock', () => {
     document.body.classList.add('desktop-pin-mode');
-    const toast = uiUtils.showToast('Could not run command', 'error', 2000);
+    const toast = dialogs.showToast('Could not run command', 'error', 2000);
 
     toast.dispatchEvent(new Event('pointerenter'));
     jest.advanceTimersByTime(60 * 1000);
@@ -84,9 +84,9 @@ describe('what stays on screen, and for how long', () => {
 
   it('refreshes the clock of a repeated pin error instead of stacking it', () => {
     document.body.classList.add('desktop-pin-mode');
-    const first = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+    const first = dialogs.showToast('Failed to toggle Bed Light', 'error', 2000);
     jest.advanceTimersByTime(4000);
-    const again = uiUtils.showToast('Failed to toggle Bed Light', 'error', 2000);
+    const again = dialogs.showToast('Failed to toggle Bed Light', 'error', 2000);
 
     expect(again).toBe(first);
     jest.advanceTimersByTime(4000);
@@ -96,9 +96,9 @@ describe('what stays on screen, and for how long', () => {
   });
 
   it('keeps a warning long enough to read, in proportion to its length', () => {
-    uiUtils.showToast('Short', 'warning', 1000);
+    dialogs.showToast('Short', 'warning', 1000);
     const long = 'x'.repeat(300);
-    uiUtils.showToast(long, 'warning', 1000);
+    dialogs.showToast(long, 'warning', 1000);
 
     jest.advanceTimersByTime(5900);
     expect(messages()).toHaveLength(2);
@@ -110,7 +110,7 @@ describe('what stays on screen, and for how long', () => {
   });
 
   it('treats an unknown type as information', () => {
-    const toast = uiUtils.showToast('Hello', 'surprise', 1000);
+    const toast = dialogs.showToast('Hello', 'surprise', 1000);
 
     expect(toast.className).toBe('toast info');
   });
@@ -119,15 +119,15 @@ describe('what stays on screen, and for how long', () => {
 describe('what is announced', () => {
   it('raises errors and warnings as alerts, and leaves the rest to the polite container', () => {
     // Three at a time is all the stack holds.
-    uiUtils.showToast('Broken', 'error');
-    uiUtils.showToast('Careful', 'warning');
-    uiUtils.showToast('Done', 'success');
+    dialogs.showToast('Broken', 'error');
+    dialogs.showToast('Careful', 'warning');
+    dialogs.showToast('Done', 'success');
     expect(toasts().map((toast) => toast.getAttribute('role'))).toEqual(['alert', 'alert', null]);
 
-    uiUtils.dismissToast(toasts()[0]);
-    uiUtils.dismissToast(toasts()[0]);
+    dialogs.dismissToast(toasts()[0]);
+    dialogs.dismissToast(toasts()[0]);
     jest.advanceTimersByTime(300);
-    uiUtils.showToast('FYI', 'info');
+    dialogs.showToast('FYI', 'info');
     expect(toasts().map((toast) => toast.getAttribute('role'))).toEqual([null, null]);
     expect(container().getAttribute('role')).toBe('status');
   });
@@ -135,7 +135,7 @@ describe('what is announced', () => {
   it('draws the status icon from the line icon set, aria-hidden', () => {
     const icon = (type) => {
       document.body.innerHTML = '<div id="toast-container" role="status"></div>';
-      return uiUtils.showToast(`A ${type}`, type).querySelector('.toast-icon');
+      return dialogs.showToast(`A ${type}`, type).querySelector('.toast-icon');
     };
 
     const icons = ['success', 'error', 'warning', 'info'].map(icon);
@@ -155,8 +155,8 @@ describe('dismissing', () => {
   // says nothing about being something to press. The close button is the stop instead, and says
   // which message it closes.
   it('reaches an error or warning by Tab through its close button, named for its message', () => {
-    const error = uiUtils.showToast('Broken', 'error');
-    const warning = uiUtils.showToast('Careful', 'warning');
+    const error = dialogs.showToast('Broken', 'error');
+    const warning = dialogs.showToast('Careful', 'warning');
 
     [error, warning].forEach((toast) => {
       const close = toast.querySelector('.toast-close');
@@ -176,8 +176,8 @@ describe('dismissing', () => {
   });
 
   it('keeps a success or an info toast out of the Tab order, with nothing to press', () => {
-    const info = uiUtils.showToast('FYI', 'info');
-    const success = uiUtils.showToast('Saved', 'success');
+    const info = dialogs.showToast('FYI', 'info');
+    const success = dialogs.showToast('Saved', 'success');
 
     [info, success].forEach((toast) => {
       expect(toast.hasAttribute('tabindex')).toBe(false);
@@ -186,7 +186,7 @@ describe('dismissing', () => {
   });
 
   it('is dismissed by Escape with focus on its close button', () => {
-    const toast = uiUtils.showToast('Broken', 'error');
+    const toast = dialogs.showToast('Broken', 'error');
     const close = toast.querySelector('.toast-close');
     const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
 
@@ -198,7 +198,7 @@ describe('dismissing', () => {
   });
 
   it('leaves Enter and Space to the close button, which presses itself', () => {
-    const toast = uiUtils.showToast('Broken', 'error');
+    const toast = dialogs.showToast('Broken', 'error');
     const close = toast.querySelector('.toast-close');
 
     ['Enter', ' '].forEach((key) => {
@@ -214,21 +214,21 @@ describe('dismissing', () => {
     document.body.insertAdjacentHTML('beforeend', '<button id="work">Work</button>');
     const work = document.getElementById('work');
     work.focus();
-    const toast = uiUtils.showToast('Broken', 'error');
+    const toast = dialogs.showToast('Broken', 'error');
     const close = toast.querySelector('.toast-close');
 
     // Tab to the toast's button (focus comes from the control the user was on), then dismiss it.
     close.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: work }));
     close.focus();
-    uiUtils.dismissToast(toast);
+    dialogs.dismissToast(toast);
 
     expect(document.activeElement).toBe(work);
   });
 
   it('is dismissed newest first by Escape when no dialog is open, but not while typing', () => {
     document.body.insertAdjacentHTML('beforeend', '<input id="field">');
-    uiUtils.showToast('older', 'error');
-    uiUtils.showToast('newer', 'error');
+    dialogs.showToast('older', 'error');
+    dialogs.showToast('newer', 'error');
     const escape = (target) => {
       const event = new KeyboardEvent('keydown', {
         key: 'Escape',
@@ -252,8 +252,8 @@ describe('dismissing', () => {
     const quickControls = document.getElementById('quick-controls');
     // The first toast of a session installs the manager's Escape handler, so the mode's own
     // handler, added when it starts, comes after it: the order in which the manager used to win.
-    const notice = uiUtils.showToast('Reorganize mode on', 'info', 4500, { passive: true });
-    const error = uiUtils.showToast('Could not save', 'error');
+    const notice = dialogs.showToast('Reorganize mode on', 'info', 4500, { passive: true });
+    const error = dialogs.showToast('Could not save', 'error');
     const endMode = jest.fn((event) => {
       if (event.defaultPrevented) return;
       event.preventDefault();
@@ -295,8 +295,8 @@ describe('dismissing', () => {
     modal.innerHTML = '<div class="modal-content"><button id="in">in</button></div>';
     document.body.appendChild(modal);
     const dismiss = jest.fn();
-    uiUtils.openDialog(modal, { dismiss });
-    uiUtils.showToast('stays', 'error');
+    dialogs.openDialog(modal, { dismiss });
+    dialogs.showToast('stays', 'error');
 
     document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
@@ -307,11 +307,11 @@ describe('dismissing', () => {
   });
 
   it('can take down every toast a caller tagged, and none of the others', () => {
-    uiUtils.showToast('offline', 'error', 1000, { source: 'connection' });
-    uiUtils.showToast('keyring', 'warning', 1000, { source: 'startup-warning' });
-    uiUtils.showToast('still offline', 'error', 1000, { source: 'connection' });
+    dialogs.showToast('offline', 'error', 1000, { source: 'connection' });
+    dialogs.showToast('keyring', 'warning', 1000, { source: 'startup-warning' });
+    dialogs.showToast('still offline', 'error', 1000, { source: 'connection' });
 
-    uiUtils.dismissToasts('connection');
+    dialogs.dismissToasts('connection');
     jest.advanceTimersByTime(300);
 
     expect(messages()).toEqual(['keyring']);
@@ -320,7 +320,7 @@ describe('dismissing', () => {
 
 describe('looking at a toast', () => {
   it('stops the clock while the pointer is on it, then gives it a moment more', () => {
-    const toast = uiUtils.showToast('Reading this', 'info', 2000);
+    const toast = dialogs.showToast('Reading this', 'info', 2000);
 
     jest.advanceTimersByTime(1500);
     toast.dispatchEvent(new Event('pointerenter'));
@@ -337,7 +337,7 @@ describe('looking at a toast', () => {
 
   it('stops the clock while it has keyboard focus, and not while only one of the two holds it', () => {
     // A warning, the kind that stays to be read and can be reached by Tab (on its close button).
-    const toast = uiUtils.showToast('Reading this', 'warning', 2000);
+    const toast = dialogs.showToast('Reading this', 'warning', 2000);
     const close = toast.querySelector('.toast-close');
 
     toast.dispatchEvent(new Event('pointerenter'));
@@ -355,7 +355,7 @@ describe('looking at a toast', () => {
   });
 
   it('keeps a notice that asks nothing out of the pointer and the Tab order', () => {
-    const toast = uiUtils.showToast('Reorganize mode on', 'info', 3000, { passive: true });
+    const toast = dialogs.showToast('Reorganize mode on', 'info', 3000, { passive: true });
 
     expect(toast.classList.contains('toast-passive')).toBe(true);
     expect(toast.hasAttribute('tabindex')).toBe(false);
@@ -368,10 +368,10 @@ describe('looking at a toast', () => {
 
 describe('the same toast twice, and too many', () => {
   it('folds an identical toast into the one showing and restarts its clock', () => {
-    const first = uiUtils.showToast('Failed to toggle', 'warning', 1000);
+    const first = dialogs.showToast('Failed to toggle', 'warning', 1000);
     jest.advanceTimersByTime(4000);
 
-    const second = uiUtils.showToast('Failed to toggle', 'warning', 1000);
+    const second = dialogs.showToast('Failed to toggle', 'warning', 1000);
 
     expect(second).toBe(first);
     expect(toasts()).toHaveLength(1);
@@ -381,15 +381,15 @@ describe('the same toast twice, and too many', () => {
   });
 
   it('does not fold a toast of another kind with the same words', () => {
-    uiUtils.showToast('Done', 'success');
-    uiUtils.showToast('Done', 'error');
+    dialogs.showToast('Done', 'success');
+    dialogs.showToast('Done', 'error');
 
     expect(toasts()).toHaveLength(2);
   });
 
   it('keeps at most three, letting go of the oldest first', () => {
     ['one', 'two', 'three', 'four', 'five'].forEach((name) =>
-      uiUtils.showToast(name, 'info', 9999)
+      dialogs.showToast(name, 'info', 9999)
     );
     jest.advanceTimersByTime(300);
 
@@ -397,10 +397,10 @@ describe('the same toast twice, and too many', () => {
   });
 
   it('lets go of a success before an error that may not have been read', () => {
-    uiUtils.showToast('error one', 'error');
-    uiUtils.showToast('saved', 'success', 9999);
-    uiUtils.showToast('error two', 'error');
-    uiUtils.showToast('error three', 'error');
+    dialogs.showToast('error one', 'error');
+    dialogs.showToast('saved', 'success', 9999);
+    dialogs.showToast('error two', 'error');
+    dialogs.showToast('error three', 'error');
     jest.advanceTimersByTime(300);
 
     expect(messages()).toEqual(['error one', 'error two', 'error three']);
@@ -408,8 +408,8 @@ describe('the same toast twice, and too many', () => {
 
   it('holds one toast at a time in a pin window, which is 168px tall', () => {
     document.body.classList.add('desktop-pin-mode');
-    uiUtils.showToast('one', 'info', 9999);
-    uiUtils.showToast('two', 'info', 9999);
+    dialogs.showToast('one', 'info', 9999);
+    dialogs.showToast('two', 'info', 9999);
     jest.advanceTimersByTime(300);
 
     expect(messages()).toEqual(['two']);
@@ -433,11 +433,11 @@ describe('keeping clear of what the toast belongs to', () => {
   };
 
   it('stacks above an open dialog footer, even for a toast that was already showing', () => {
-    uiUtils.showToast('Already up', 'error');
+    dialogs.showToast('Already up', 'error');
     expect(container().style.bottom).toBe('');
 
     const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
+    dialogs.openDialog(modal);
 
     // The dialog opening is what lifts the stack: nothing new was shown.
     expect(container().style.bottom).toBe('68px');
@@ -445,19 +445,19 @@ describe('keeping clear of what the toast belongs to', () => {
 
   it('comes back down when the dialog closes, whether or not another toast is shown', async () => {
     const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the dialog', 'error');
+    dialogs.openDialog(modal);
+    dialogs.showToast('Over the dialog', 'error');
     expect(container().style.bottom).toBe('68px');
 
-    await uiUtils.closeDialog(modal);
+    await dialogs.closeDialog(modal);
 
     expect(container().style.bottom).toBe('');
   });
 
   it('follows a dialog that changes size, on resize', () => {
     const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the dialog', 'error');
+    dialogs.openDialog(modal);
+    dialogs.showToast('Over the dialog', 'error');
 
     setRect(modal.querySelector('.modal-footer'), {
       top: window.innerHeight - 120,
@@ -474,7 +474,7 @@ describe('keeping clear of what the toast belongs to', () => {
     modal.className = 'modal';
     modal.innerHTML = '<div class="modal-content"><div class="modal-body"></div></div>';
     document.body.appendChild(modal);
-    uiUtils.openDialog(modal);
+    dialogs.openDialog(modal);
     return modal;
   };
   const addFooter = (modal, top) => {
@@ -486,7 +486,7 @@ describe('keeping clear of what the toast belongs to', () => {
   };
 
   it('moves above a footer that is built after the dialog opened', async () => {
-    uiUtils.showToast('Already up', 'error');
+    dialogs.showToast('Already up', 'error');
     const modal = openEmptyDialog();
     expect(container().style.bottom).toBe('');
 
@@ -497,7 +497,7 @@ describe('keeping clear of what the toast belongs to', () => {
   });
 
   it('moves above a footer that replaces the dialog contents', async () => {
-    uiUtils.showToast('Already up', 'error');
+    dialogs.showToast('Already up', 'error');
     const modal = openEmptyDialog();
 
     modal.querySelector('.modal-content').replaceChildren();
@@ -509,8 +509,8 @@ describe('keeping clear of what the toast belongs to', () => {
 
   it('comes back down when the footer is taken out of an open dialog', async () => {
     const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the dialog', 'error');
+    dialogs.openDialog(modal);
+    dialogs.showToast('Over the dialog', 'error');
     expect(container().style.bottom).toBe('68px');
 
     modal.querySelector('.modal-footer').remove();
@@ -525,7 +525,7 @@ describe('keeping clear of what the toast belongs to', () => {
       const modal = openEmptyDialog();
       expect(disconnect).not.toHaveBeenCalled();
 
-      await uiUtils.closeDialog(modal, { remove: true });
+      await dialogs.closeDialog(modal, { remove: true });
 
       expect(disconnect).toHaveBeenCalledTimes(1);
     } finally {
@@ -537,7 +537,7 @@ describe('keeping clear of what the toast belongs to', () => {
     const observe = jest.spyOn(MutationObserver.prototype, 'observe');
     try {
       const modal = openEmptyDialog();
-      uiUtils.openDialog(modal);
+      dialogs.openDialog(modal);
       expect(observe).toHaveBeenCalledTimes(1);
     } finally {
       observe.mockRestore();
@@ -547,7 +547,7 @@ describe('keeping clear of what the toast belongs to', () => {
   it('ignores the footer of a dialog that is closing', () => {
     const modal = footer(window.innerHeight - 60);
     modal.classList.add('modal-closing');
-    uiUtils.showToast('After it', 'error');
+    dialogs.showToast('After it', 'error');
 
     expect(container().style.bottom).toBe('');
   });
@@ -561,24 +561,24 @@ describe('keeping clear of what the toast belongs to', () => {
       top: window.innerHeight - 90,
       bottom: window.innerHeight - 50,
     });
-    uiUtils.showToast('Over the wizard', 'error');
+    dialogs.showToast('Over the wizard', 'error');
     expect(container().style.bottom).toBe('98px');
   });
 
   it('stays down below a short dialog whose footer is higher up the window', () => {
     // Under the footer there is only the backdrop; above it, the dialog's own question.
     const modal = footer(window.innerHeight / 2);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the backdrop', 'error');
+    dialogs.openDialog(modal);
+    dialogs.showToast('Over the backdrop', 'error');
 
     expect(container().style.bottom).toBe('');
   });
 
   it('moves above each footer it would meet on the way up, with one dialog over another', () => {
-    uiUtils.openDialog(footer(window.innerHeight - 60));
+    dialogs.openDialog(footer(window.innerHeight - 60));
     // Lifted above the lower footer, the 60px stack would reach this one.
-    uiUtils.openDialog(footer(window.innerHeight - 150));
-    uiUtils.showToast('Over both', 'error');
+    dialogs.openDialog(footer(window.innerHeight - 150));
+    dialogs.showToast('Over both', 'error');
 
     expect(container().style.bottom).toBe('158px');
   });
@@ -586,8 +586,8 @@ describe('keeping clear of what the toast belongs to', () => {
   it('prefers the dialog over what is behind it', () => {
     connectionPanel({ top: 100, bottom: window.innerHeight - 30 });
     const modal = footer(window.innerHeight - 60);
-    uiUtils.openDialog(modal);
-    uiUtils.showToast('Over the dialog', 'error');
+    dialogs.openDialog(modal);
+    dialogs.showToast('Over the dialog', 'error');
 
     expect(container().style.bottom).toBe('68px');
   });
@@ -628,7 +628,7 @@ describe('keeping clear of what the toast belongs to', () => {
   // rests below it, over the dimmed tiles.
   it('stays down, over the dimmed tiles, when the connection panel is higher up the window', () => {
     connectionPanel({ top: 200, bottom: window.innerHeight - 260 });
-    uiUtils.showToast('Could not run command', 'error');
+    dialogs.showToast('Could not run command', 'error');
 
     expect(container().style.bottom).toBe('');
   });
@@ -637,7 +637,7 @@ describe('keeping clear of what the toast belongs to', () => {
   // stays until it is dismissed. The weather and media cards above the panel say nothing new.
   it('goes above the whole connection panel where it would cover it, under the header', () => {
     connectionPanel({ top: window.innerHeight - 200, bottom: window.innerHeight - 30 });
-    uiUtils.showToast('Could not run command', 'error');
+    dialogs.showToast('Could not run command', 'error');
 
     expect(container().style.bottom).toBe('208px');
   });
@@ -645,7 +645,7 @@ describe('keeping clear of what the toast belongs to', () => {
   it('keeps its gap from a panel that ends just above it', () => {
     // The panel ends 4px above the stack: closer than the 8px gap, so it moves.
     connectionPanel({ top: 300, bottom: window.innerHeight - 84 });
-    uiUtils.showToast('Could not run command', 'error');
+    dialogs.showToast('Could not run command', 'error');
 
     expect(container().style.bottom).toBe(`${window.innerHeight - 292}px`);
   });
@@ -657,7 +657,7 @@ describe('keeping clear of what the toast belongs to', () => {
     it('holds back the oldest, and keeps the newest on screen clear of the panel', () => {
       tallPanel();
       stackOfToasts();
-      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['first', 'second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
 
       const held = toasts().filter((toast) => toast.classList.contains('toast-held'));
       expect(held.map((toast) => toast.textContent)).toEqual(['first']);
@@ -669,10 +669,10 @@ describe('keeping clear of what the toast belongs to', () => {
     it('holds back the next oldest instead of one with the keyboard focus in it', () => {
       tallPanel();
       stackOfToasts();
-      ['first', 'second'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['first', 'second'].forEach((name) => dialogs.showToast(name, 'error'));
       const focused = toasts()[0].querySelector('.toast-close');
       focused.focus();
-      uiUtils.showToast('third', 'error');
+      dialogs.showToast('third', 'error');
 
       const held = toasts().filter((toast) => toast.classList.contains('toast-held'));
       expect(held.map((toast) => toast.textContent)).toEqual(['second']);
@@ -682,7 +682,7 @@ describe('keeping clear of what the toast belongs to', () => {
     it('brings them back once the panel has gone', () => {
       tallPanel();
       stackOfToasts();
-      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['first', 'second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
 
       document.querySelector('.widget-state-panel').remove();
       window.dispatchEvent(new Event('resize'));
@@ -694,9 +694,9 @@ describe('keeping clear of what the toast belongs to', () => {
     it('stops the clock of a toast it holds back, and runs the rest of it once it is back', () => {
       tallPanel();
       stackOfToasts();
-      const first = uiUtils.showToast('first', 'success', 4000);
+      const first = dialogs.showToast('first', 'success', 4000);
       jest.advanceTimersByTime(1000);
-      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
       expect(first.classList.contains('toast-held')).toBe(true);
 
       jest.advanceTimersByTime(60 * 1000);
@@ -718,9 +718,9 @@ describe('keeping clear of what the toast belongs to', () => {
     it('keeps the time a toast has left across repeated layouts and a second hold', () => {
       tallPanel();
       stackOfToasts();
-      const first = uiUtils.showToast('first', 'success', 10000);
+      const first = dialogs.showToast('first', 'success', 10000);
       jest.advanceTimersByTime(1000);
-      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
       expect(first.classList.contains('toast-held')).toBe(true);
       for (let pass = 0; pass < 3; pass += 1) window.dispatchEvent(new Event('resize'));
       // Errors never expire, so a running timer could only be the held toast's.
@@ -752,16 +752,16 @@ describe('keeping clear of what the toast belongs to', () => {
     it('keeps the clock of a held toast stopped when the pointer leaves it', () => {
       tallPanel();
       stackOfToasts();
-      const first = uiUtils.showToast('Careful', 'warning');
+      const first = dialogs.showToast('Careful', 'warning');
       first.dispatchEvent(new Event('pointerenter'));
-      ['second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
       first.dispatchEvent(new Event('pointerleave'));
 
       jest.advanceTimersByTime(60 * 1000);
       expect(first.isConnected).toBe(true);
 
       // A newer toast going makes room for it again, with all of its 6 s reading time ahead of it.
-      uiUtils.dismissToast(toasts()[2]);
+      dialogs.dismissToast(toasts()[2]);
       expect(first.classList.contains('toast-held')).toBe(false);
       jest.advanceTimersByTime(5900);
       expect(first.isConnected).toBe(true);
@@ -772,7 +772,7 @@ describe('keeping clear of what the toast belongs to', () => {
     it('goes above the panel with all of them when there is room there', () => {
       connectionPanel({ top: 300, bottom: window.innerHeight - 30 });
       stackOfToasts();
-      ['first', 'second', 'third'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['first', 'second', 'third'].forEach((name) => dialogs.showToast(name, 'error'));
 
       expect(document.querySelectorAll('.toast-held')).toHaveLength(0);
       expect(container().style.bottom).toBe(`${window.innerHeight - 292}px`);
@@ -782,7 +782,7 @@ describe('keeping clear of what the toast belongs to', () => {
     it('keeps a toast with no room anywhere off the panel buttons', () => {
       connectionPanel({ top: 60, bottom: window.innerHeight - 10 });
       stackOfToasts();
-      ['first', 'second'].forEach((name) => uiUtils.showToast(name, 'error'));
+      ['first', 'second'].forEach((name) => dialogs.showToast(name, 'error'));
 
       expect(toasts()[0].classList.contains('toast-held')).toBe(true);
       expect(container().style.bottom).toBe('78px');
@@ -796,7 +796,7 @@ describe('keeping clear of what the toast belongs to', () => {
       top: window.innerHeight + 200,
       bottom: window.innerHeight + 380,
     });
-    uiUtils.showToast('Could not run command', 'error');
+    dialogs.showToast('Could not run command', 'error');
     expect(container().style.bottom).toBe('');
 
     setRect(panel, { top: window.innerHeight - 200, bottom: window.innerHeight - 20 });
@@ -814,7 +814,7 @@ describe('keeping clear of what the toast belongs to', () => {
     });
     // The panel is outside the page that scrolls.
     document.body.appendChild(panel);
-    uiUtils.showToast('Could not run command', 'error');
+    dialogs.showToast('Could not run command', 'error');
 
     setRect(panel, { top: window.innerHeight - 200, bottom: window.innerHeight - 20 });
     document.querySelector('.widget-content').dispatchEvent(new Event('scroll'));
@@ -825,7 +825,7 @@ describe('keeping clear of what the toast belongs to', () => {
 
   it('leaves a surface that has scrolled out of view alone', () => {
     connectionPanel({ top: window.innerHeight + 200, bottom: window.innerHeight + 380 });
-    uiUtils.showToast('Nothing to cover', 'error');
+    dialogs.showToast('Nothing to cover', 'error');
 
     expect(container().style.bottom).toBe('');
   });
@@ -835,7 +835,13 @@ describe('without a toast container', () => {
   it('returns nothing and throws nothing', () => {
     document.body.innerHTML = '';
 
-    expect(uiUtils.showToast('Nowhere', 'error')).toBeUndefined();
-    expect(() => uiUtils.layoutToasts()).not.toThrow();
+    expect(dialogs.showToast('Nowhere', 'error')).toBeUndefined();
+    // Opening and closing a dialog lays the stack out again, which has nothing to lay out.
+    const modal = document.createElement('div');
+    document.body.appendChild(modal);
+    expect(() => {
+      dialogs.openDialog(modal);
+      dialogs.closeDialog(modal);
+    }).not.toThrow();
   });
 });

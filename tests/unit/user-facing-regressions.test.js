@@ -38,43 +38,18 @@ jest.mock('../../src/camera.js', () => ({
 
 jest.mock('../../src/ui-utils.js', () => {
   return {
-    showToast: jest.fn(),
-    showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
-    hexToRgb: jest.fn((hex) => {
-      if (!hex || typeof hex !== 'string') return null;
-      const normalized = hex.replace('#', '').trim();
-      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-      const value =
-        normalized.length === 3
-          ? normalized
-              .split('')
-              .map((ch) => ch + ch)
-              .join('')
-          : normalized;
-      return {
-        r: Number.parseInt(value.slice(0, 2), 16),
-        g: Number.parseInt(value.slice(2, 4), 16),
-        b: Number.parseInt(value.slice(4, 6), 16),
-      };
-    }),
-    miredsToKelvin: jest.fn((mireds) => {
-      const value = Number(mireds);
-      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-    }),
-    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-      const features = Number(supportedFeatures);
-      const flag = Number(featureFlag);
-      return (
-        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-      );
-    }),
   };
 });
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
@@ -113,7 +88,7 @@ jest.mock('../../src/websocket.js', () => ({
 // Import modules after mocks
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
-const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const { sampleConfig } = require('../fixtures/ha-data.js');
 
 const entity = (entity_id, value, attributes = {}) => ({ entity_id, state: value, attributes });
@@ -444,7 +419,7 @@ describe('User-facing audit regressions', () => {
       // Enter on a search result is not a command, so no machine switches; the row beside it
       // ("Turn on ...") is what acts.
       expect(mockCallService).not.toHaveBeenCalled();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
+      expect(dialogs.showToast).toHaveBeenCalledWith(expect.stringContaining(': '), 'info', 3000);
     }
   );
 
@@ -462,7 +437,7 @@ describe('User-facing audit regressions', () => {
       await jest.advanceTimersByTimeAsync(0);
       // Nothing else in the palette reaches these, so the result is their command.
       expect(mockCallService).toHaveBeenCalledWith(domain, service, { entity_id: entityId });
-      expect(uiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(dialogs.showToast).not.toHaveBeenCalledWith(
         expect.stringContaining(': '),
         'info',
         3000
@@ -495,7 +470,7 @@ describe('User-facing audit regressions', () => {
       localStorage.clear();
       jest.isolateModules(() => {
         palette = require('../../src/command-palette.js');
-        paletteToast = require('../../src/ui-utils.js').showToast;
+        paletteToast = require('../../src/dialogs.js').showToast;
         paletteState = require('../../src/state.js').default;
         paletteState.setConfig({
           ...sampleConfig,
@@ -714,7 +689,7 @@ describe('User-facing audit regressions', () => {
     expect(document.querySelector('[data-climate-range="low"]').value).toBe('19');
     expect(document.querySelector('[data-climate-range="high"]').value).toBe('24');
     expect(document.querySelector('#climate-target-value').textContent).toBe('19–24°C');
-    expect(uiUtils.showToast).toHaveBeenCalled();
+    expect(dialogs.showToast).toHaveBeenCalled();
   });
 
   it('switches an open dialog from a single target to a range on a live mode update', () => {
@@ -1010,7 +985,7 @@ describe('User-facing audit regressions', () => {
 
       expect(root.querySelector('.desktop-pin-light-meter-value').textContent).toBe('50%');
       expect(root.querySelector('.desktop-pin-light-slider').value).toBe('50');
-      expect(uiUtils.showToast).toHaveBeenCalled();
+      expect(dialogs.showToast).toHaveBeenCalled();
     });
 
     it('restores the cover to its real position', async () => {

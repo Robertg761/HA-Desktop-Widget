@@ -3,6 +3,18 @@ const path = require('path');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const stylesSource = fs.readFileSync(path.resolve(__dirname, '../../styles.css'), 'utf8');
+// Profile sync lives in its own module; main.js only wires it.
+const engineSource = fs.readFileSync(
+  path.resolve(__dirname, '../../src/profile-sync-engine.cjs'),
+  'utf8'
+);
+
+/** One function of the sync engine, from its declaration to its closing brace. */
+function engineFunction(name) {
+  const start = engineSource.search(new RegExp(`\\n  (async )?function ${name}\\(`));
+  expect(start).toBeGreaterThan(-1);
+  return engineSource.slice(start, engineSource.indexOf('\n  }\n', start) + 4);
+}
 
 describe('main-process wiring safeguards', () => {
   it.each([
@@ -16,8 +28,7 @@ describe('main-process wiring safeguards', () => {
   ])(
     'limits autostart maintenance for %s',
     (_label, platform, isPackaged, dev, smoke, expected, isolated = false) => {
-      const migrate = jest.fn(() => ({}));
-      const repair = jest.fn(() => ({}));
+      const repair = jest.fn();
       const repairLaunchers = jest.fn(() => []);
       const linkCommand = jest.fn(() => false);
       const start = mainSource.indexOf('// An AppImage update writes a new versioned filename');
@@ -36,13 +47,9 @@ describe('main-process wiring safeguards', () => {
         path,
         __dirname,
         IS_SMOKE_TEST_MODE: smoke,
-        pkg: {},
-        getLinuxStartupExecutablePath: () => '/installed/widget',
-        migrateLegacyLinuxAutostartEntry: migrate,
-        syncLinuxAutostartExecutablePath: repair,
+        loginItem: { repairOnStartup: repair },
         log: { info: jest.fn(), warn: jest.fn() },
       });
-      expect(migrate).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repair).toHaveBeenCalledTimes(expected ? 1 : 0);
       expect(repairLaunchers).toHaveBeenCalledTimes(expected ? 1 : 0);
       // A throwaway profile or a run from source leaves the user's command alone.
@@ -194,7 +201,7 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('handles a correlated desktop-pin action response channel', () => {
-    expect(mainSource).toContain("ipcMain.handle('desktop-pin-action-response'");
+    expect(mainSource).toContain("ipcRoutes.handle('desktop-pin-action-response'");
     expect(mainSource).toContain('pendingDesktopPinActionRequests');
     expect(mainSource).toContain("awaitResponse: normalizedAction === 'service-call'");
   });
@@ -334,7 +341,7 @@ describe('main-process wiring safeguards', () => {
     expect(handlerSource).toContain('if (!registrationResult.success)');
     expect(handlerSource).toContain('await Promise.resolve(unregisterPopupHotkey())');
     expect(handlerSource).toContain('config.popupHotkey = previousHotkey');
-    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
+    expect(handlerSource.indexOf("configStore.apply(null, { origin: 'local' })")).toBeGreaterThan(
       handlerSource.indexOf('if (!registrationResult.success)')
     );
   });
@@ -354,7 +361,7 @@ describe('main-process wiring safeguards', () => {
     expect(handlerSource).not.toContain(
       'registrationResult?.success !== false && globalShortcut.isRegistered(hotkey)'
     );
-    expect(handlerSource.indexOf('saveConfigDurably()')).toBeGreaterThan(
+    expect(handlerSource.indexOf("configStore.apply(null, { origin: 'local' })")).toBeGreaterThan(
       handlerSource.indexOf('if (!registered)')
     );
   });
@@ -372,9 +379,9 @@ describe('main-process wiring safeguards', () => {
 
   it('keeps native Wayland minimize and compositor-owned positions recoverable', () => {
     const minimizeStart = mainSource.indexOf('function minimizeMainWindow');
-    const minimizeEnd = mainSource.indexOf("ipcMain.handle('focus-window'", minimizeStart);
+    const minimizeEnd = mainSource.indexOf("ipcRoutes.handle('focus-window'", minimizeStart);
     const minimizeSource = mainSource.slice(minimizeStart, minimizeEnd);
-    expect(mainSource).toContain("ipcMain.handle('minimize-window'");
+    expect(mainSource).toContain("ipcRoutes.handle('minimize-window'");
     expect(minimizeSource).toContain('usesCompositorOwnedPlacement');
     expect(minimizeSource).toContain('hideMainWindowToTray()');
     expect(minimizeSource).toContain('mainWindow.minimize()');
@@ -437,8 +444,11 @@ describe('main-process wiring safeguards', () => {
     const pinUpdateSource = mainSource.slice(pinUpdateStart, pinUpdateEnd);
     expect(pinUpdateSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
 
-    const bootstrapStart = mainSource.indexOf("ipcMain.handle('get-desktop-pin-bootstrap'");
-    const bootstrapEnd = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'", bootstrapStart);
+    const bootstrapStart = mainSource.indexOf("ipcRoutes.handle('get-desktop-pin-bootstrap'");
+    const bootstrapEnd = mainSource.indexOf(
+      "ipcRoutes.handle('publish-ha-snapshot'",
+      bootstrapStart
+    );
     const bootstrapSource = mainSource.slice(bootstrapStart, bootstrapEnd);
     expect(bootstrapSource).toContain('supportsWindowPositioning: !usesCompositorOwnedPlacement');
   });
@@ -452,9 +462,9 @@ describe('main-process wiring safeguards', () => {
     expect(syncSource).toContain('hasPublishedHaSnapshot = false');
 
     // A publish already in flight when the last pin is removed must not rebuild the cache.
-    const publishStart = mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'");
-    const publishBoundary = mainSource.indexOf("ipcMain.handle('publish-ha-entity-update'");
-    const publishEnd = mainSource.indexOf("ipcMain.handle('request-desktop-pin-action'");
+    const publishStart = mainSource.indexOf("ipcRoutes.handle('publish-ha-snapshot'");
+    const publishBoundary = mainSource.indexOf("ipcRoutes.handle('publish-ha-entity-update'");
+    const publishEnd = mainSource.indexOf("ipcRoutes.handle('request-desktop-pin-action'");
     const snapshotSource = mainSource.slice(publishStart, publishBoundary);
     const entityUpdateSource = mainSource.slice(publishBoundary, publishEnd);
     expect(snapshotSource).toContain('if (!hasConfiguredDesktopPins())');
@@ -489,10 +499,8 @@ describe('main-process wiring safeguards', () => {
   it('backs up config before first write and blocks writes only after an unsafe load', () => {
     expect(mainSource).toContain('ensureConfigBackupBeforeFirstWrite');
     expect(mainSource).toContain('configBackupCreatedThisRun');
-    expect(mainSource).toContain('shouldBlockPotentialConfigClobber');
-    expect(mainSource).toContain(
-      'shouldBlockConfigWrite({ blockedReason: configWriteBlockedReason })'
-    );
+    // The store refuses writes while the load left a reason (tests/unit/main-config-store.test.js).
+    expect(mainSource).toContain('configStore.load(next, { writeBlockedReason })');
     expect(mainSource).not.toContain('function hasMeaningfulConfigData');
   });
 
@@ -500,17 +508,15 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('function quarantineCorruptConfig');
     expect(mainSource).toContain('config.corrupt.${timestamp}.json');
     expect(mainSource).toContain('configRecoveryNotice');
-    expect(mainSource).toContain('configWriteBlockedReason');
+    expect(mainSource).toContain('writeBlockedReason');
     expect(mainSource).toContain('Configuration root must be a JSON object');
-    expect(mainSource).toContain('async function saveConfigDurably');
 
     const updateStart = mainSource.indexOf("'update-config'");
     const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
     const updateSource = mainSource.slice(updateStart, updateEnd);
-    expect(updateSource).toContain('const persistence = await saveConfigDurably');
+    expect(updateSource).toContain('const persistence = await configStore.apply(');
     expect(updateSource).toContain('success: false');
-    expect(updateSource).toContain('config = prevConfig');
-    expect(mainSource).toContain('cloned.configRevision = configSnapshotVersion');
+    expect(mainSource).toContain('cloned.configRevision = configStore.revision()');
     expect(mainSource).toContain('delete target.configRevision');
   });
 
@@ -520,9 +526,8 @@ describe('main-process wiring safeguards', () => {
     const pinStart = mainSource.indexOf('async function pinEntityToDesktopInternal');
     const pinEnd = mainSource.indexOf('async function unpinEntityFromDesktopInternal', pinStart);
     const pinSource = mainSource.slice(pinStart, pinEnd);
-    expect(pinSource).toContain(
-      "runPostSaveSideEffect(runtimeWarnings, 'desktop pin window creation'"
-    );
+    // Effects that fail after the write come back as runtime warnings, not a failed change.
+    expect(pinSource).toContain('const { runtimeWarnings } = persistence;');
     expect(pinSource).toContain('...(runtimeWarnings.length ? { runtimeWarnings } : {})');
 
     const deprecatedStart = mainSource.indexOf("'save-config'");
@@ -533,10 +538,8 @@ describe('main-process wiring safeguards', () => {
     );
     expect(deprecatedSource).not.toContain('config =');
 
-    const syncStart = mainSource.indexOf('async function applySyncedProfileToConfig');
-    const syncEnd = mainSource.indexOf('function clearProfileSyncTimers', syncStart);
-    expect(mainSource.slice(syncStart, syncEnd)).toContain(
-      "runPostSaveSideEffect(runtimeWarnings, 'synced runtime settings'"
+    expect(engineFunction('applySyncedProfileToConfig')).toContain(
+      'return { runtimeWarnings: persistence.runtimeWarnings }'
     );
 
     const runtimeStart = mainSource.indexOf('async function applyRuntimeConfigSideEffects');
@@ -564,95 +567,82 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('does not acknowledge passphrase or recovery mutations before durable persistence', () => {
-    const setPassphraseStart = mainSource.indexOf("'set-profile-sync-passphrase'");
-    const clearPassphraseStart = mainSource.indexOf(
-      "'clear-profile-sync-passphrase'",
-      setPassphraseStart
-    );
-    const resolveStart = mainSource.indexOf(
-      "'resolve-profile-sync-first-enable'",
-      clearPassphraseStart
-    );
-    const setPassphraseSource = mainSource.slice(setPassphraseStart, clearPassphraseStart);
-    const clearPassphraseSource = mainSource.slice(clearPassphraseStart, resolveStart);
+    const setPassphraseSource = engineFunction('setProfileSyncPassphrase');
+    const clearPassphraseSource = engineFunction('clearProfileSyncPassphrase');
 
-    expect(setPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(setPassphraseSource).toContain(
+      "const persistence = await configStore.apply(null, { origin: 'local' })"
+    );
     expect(setPassphraseSource).toContain(
       'profileSync.storedPassphrase = previous.storedPassphrase'
     );
-    expect(clearPassphraseSource).toContain('const persistence = await saveConfigDurably()');
+    expect(clearPassphraseSource).toContain(
+      "const persistence = await configStore.apply(null, { origin: 'local' })"
+    );
     expect(clearPassphraseSource).toContain(
       'profileSyncRuntime.passphraseSession = previous.passphraseSession'
     );
   });
 
-  it('only lets the main window drive Cloud Sync accounts', () => {
-    for (const channel of [
-      'get-cloud-sync-account',
-      'cloud-sync-sign-in',
-      'cloud-sync-cancel-sign-in',
-      'cloud-sync-sign-out',
-      'cloud-sync-open-billing',
-      'cloud-sync-delete-account',
-    ]) {
-      const start = mainSource.indexOf(`ipcMain.handle('${channel}'`);
-      expect(start).toBeGreaterThan(-1);
-      const handler = mainSource.slice(start, start + 400);
-      expect(handler).toContain(`authorizeIpcSender(event, '${channel}')`);
-      expect(handler).toContain(`rejectUnauthorizedIpc('${channel}')`);
-    }
-    // The session token never reaches the renderer: only status fields do.
-    const status = mainSource.slice(
-      mainSource.indexOf('function getCloudSyncStatus()'),
-      mainSource.indexOf('// Written by main as syncs run')
-    );
+  it('never hands the Cloud Sync session token to the renderer', () => {
+    // Only status fields reach the renderer.
+    const status = engineFunction('getCloudSyncStatus');
     expect(status).not.toMatch(/token/i);
   });
 
   it('keeps credential metadata main-owned across the config/passphrase IPC boundary', () => {
+    // update-config hands the renderer's sync settings to the engine before merging them.
     const updateStart = mainSource.indexOf("'update-config'");
     const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
     const updateSource = mainSource.slice(updateStart, updateEnd);
+    expect(updateSource).toContain('profileSyncEngine.receiveSettings(newConfig)');
+    expect(updateSource).toContain('profileSync: syncSettings.profileSync');
 
-    expect(updateSource).toContain('const previousPassphraseMetadata = {');
-    expect(updateSource).toContain('Object.assign(profileSync, previousPassphraseMetadata)');
-    expect(updateSource).toContain(
+    const receiveSource = engineFunction('receiveSettings');
+    expect(receiveSource).toContain('const previousPassphraseMetadata = {');
+    expect(receiveSource).toContain('Object.assign(profileSync, previousPassphraseMetadata)');
+    expect(receiveSource).toContain(
       'keepMainOwnedProfileSyncResults(profileSync, config.profileSync)'
     );
-    expect(updateSource).toContain('resolveProfileSyncEncryptionRequest({');
-    expect(mainSource).toContain('encryptionChangePending');
+    expect(receiveSource).toContain('resolveProfileSyncEncryptionRequest({');
+    expect(engineSource).toContain('encryptionChangePending');
   });
 
   it('uses a crash-recoverable exact transaction for active key rewrites', () => {
-    expect(mainSource).toContain('async function stageProfileSyncRewrite');
-    expect(mainSource).toContain('oldPassphraseEncrypted');
-    expect(mainSource).toContain('newPassphraseEncrypted');
-    expect(mainSource).toContain('targetEnvelopeSerialized');
-    expect(mainSource).toContain('targetRemoteIdentity');
-    expect(mainSource).toContain('runProfileSyncRewriteRecovery({');
-    expect(mainSource).toContain('await executePendingProfileSyncRewrite();');
-    expect(mainSource).toContain("source === 'startup_rewrite_recovery'");
-    expect(mainSource).toContain('if (profileSync.passphraseTransition) {');
+    expect(engineSource).toContain('async function stageProfileSyncRewrite');
+    expect(engineSource).toContain('oldPassphraseEncrypted');
+    expect(engineSource).toContain('newPassphraseEncrypted');
+    expect(engineSource).toContain('targetEnvelopeSerialized');
+    expect(engineSource).toContain('targetRemoteIdentity');
+    expect(engineSource).toContain('runProfileSyncRewriteRecovery({');
+    expect(engineSource).toContain('await executePendingProfileSyncRewrite();');
+    expect(engineSource).toContain("source === 'startup_rewrite_recovery'");
+    expect(engineSource).toContain('if (profileSync.passphraseTransition) {');
   });
 
   it('re-arms conflict preparation when an enabled sync target changes', () => {
+    const receiveSource = engineFunction('receiveSettings');
+    expect(receiveSource).toContain('const remoteTargetChanged =');
+    expect(receiveSource).toContain('normalizedNextProvider !== previousProvider');
+    expect(receiveSource).toContain('normalizedNextPath !== previousCloudFilePath');
+    expect(receiveSource).toContain('const requiresInitialPreparation =');
+    expect(receiveSource).toContain('profileSync.firstEnableResolutionPending = true');
+
     const updateStart = mainSource.indexOf("'update-config'");
     const updateEnd = mainSource.indexOf("'clear-token-reset-reason'", updateStart);
-    const updateSource = mainSource.slice(updateStart, updateEnd);
-
-    expect(updateSource).toContain('const remoteTargetChanged =');
-    expect(updateSource).toContain('normalizedNextProvider !== previousProvider');
-    expect(updateSource).toContain('normalizedNextPath !== previousCloudFilePath');
-    expect(updateSource).toContain('const requiresInitialPreparation =');
-    expect(updateSource).toContain('profileSync.firstEnableResolutionPending = true');
-    expect(updateSource).toContain('prepareProfileSyncFirstEnableResolution()');
+    expect(mainSource.slice(updateStart, updateEnd)).toContain(
+      'requiresInitialPreparation: syncSettings.requiresInitialPreparation'
+    );
+    expect(engineFunction('applyProfileSyncSettingsChange')).toContain(
+      'prepareProfileSyncFirstEnableResolution()'
+    );
   });
 
   it('flushes the latest config before restart can bypass before-quit', () => {
     // The restart sequence lives in restartApplication(), shared by the
     // 'restart-app' IPC handler and the tray's monitor selection.
     const restartStart = mainSource.indexOf('async function restartApplication');
-    const restartEnd = mainSource.indexOf("ipcMain.handle('minimize-window'", restartStart);
+    const restartEnd = mainSource.indexOf("ipcRoutes.handle('minimize-window'", restartStart);
     const restartSource = mainSource.slice(restartStart, restartEnd);
     expect(restartSource).toContain("await flushConfigForBoundedExit('restarting')");
     // Through getRelaunchOptions() so an AppImage restarts from the AppImage, not its dead mount.
@@ -670,25 +660,16 @@ describe('main-process wiring safeguards', () => {
     );
     const boundedExitSource = mainSource.slice(boundedExitStart, boundedExitEnd);
     expect(boundedExitSource).toContain('capturePendingWindowBoundsForShutdown()');
-    expect(boundedExitSource.indexOf('saveConfig({ allowDebouncedPush: false })')).toBeLessThan(
-      boundedExitSource.indexOf('flushPendingConfigWriteSync({ shutdown: true })')
+    // The final flush runs as the last task of the closed store, after the queued changes.
+    expect(boundedExitSource).toContain('configStore.close(');
+    expect(boundedExitSource.indexOf('capturePendingWindowBoundsForShutdown()')).toBeLessThan(
+      boundedExitSource.indexOf('configStore.flushSync()')
     );
     expect(boundedExitSource).toContain('QUIT_FINALIZATION_TIMEOUT');
     expect(boundedExitSource).toContain('void finalization');
-    expect(boundedExitSource).toContain('setupProfileSyncInterval()');
+    expect(boundedExitSource).toContain('profileSyncEngine.resume()');
 
-    const asyncWriteStart = mainSource.indexOf('async function writeConfigSnapshotAsync');
-    const asyncWriteEnd = mainSource.indexOf(
-      'function emitConfigPersistenceWarnings',
-      asyncWriteStart
-    );
-    const asyncWriteSource = mainSource.slice(asyncWriteStart, asyncWriteEnd);
-    expect(asyncWriteSource).toContain('canCommitSnapshot(snapshot');
-    expect(asyncWriteSource).toContain('currentEpoch: configWriteEpoch');
-    expect(asyncWriteSource).toContain('fs.renameSync(snapshot.tempPath, snapshot.configPath)');
-    expect(asyncWriteSource).not.toContain(
-      'await fs.promises.rename(snapshot.tempPath, snapshot.configPath)'
-    );
+    // An async write a shutdown flush overtook never lands: tests/unit/main-config-store.test.js.
 
     const quitStart = mainSource.indexOf("app.on('before-quit'");
     const quitEnd = mainSource.indexOf('// Register custom protocol', quitStart);
@@ -706,7 +687,7 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('smokeTestRendererLoaded &&');
     expect(mainSource).toContain('smokeTestRendererReady &&');
     expect(mainSource).toContain('smokeTestTrayReady &&');
-    expect(mainSource).toContain("ipcMain.handle('renderer-ready'");
+    expect(mainSource).toContain("ipcRoutes.handle('renderer-ready'");
     expect(mainSource).toContain('smokeTestRendererReady = true');
     expect(mainSource).toContain('HA_WIDGET_SMOKE_TEST_OK');
     expect(mainSource).toContain('app.exit(success ? 0 : 1)');
@@ -723,19 +704,19 @@ describe('main-process wiring safeguards', () => {
     expect(mainSource).toContain('runSerializedConfigMutation(() =>');
     expect(mainSource).toContain('resolveDeferredSecureConfig({ notifyRenderer: true })');
 
-    const getConfigStart = mainSource.indexOf("ipcMain.handle('get-config'");
+    const getConfigStart = mainSource.indexOf("ipcRoutes.handle('get-config'");
     const getConfigEnd = mainSource.indexOf(
-      "ipcMain.handle('get-locale-bootstrap'",
+      "ipcRoutes.handle('get-locale-bootstrap'",
       getConfigStart
     );
     const getConfigSource = mainSource.slice(getConfigStart, getConfigEnd);
     expect(getConfigSource).not.toContain('resolveDeferredSecureConfig');
 
     const desktopPinBootstrapStart = mainSource.indexOf(
-      "ipcMain.handle('get-desktop-pin-bootstrap'"
+      "ipcRoutes.handle('get-desktop-pin-bootstrap'"
     );
     const desktopPinBootstrapEnd = mainSource.indexOf(
-      "ipcMain.handle('publish-ha-snapshot'",
+      "ipcRoutes.handle('publish-ha-snapshot'",
       desktopPinBootstrapStart
     );
     const desktopPinBootstrapSource = mainSource.slice(
@@ -780,7 +761,7 @@ describe('main-process wiring safeguards', () => {
     const traySource = mainSource.slice(trayStart, trayEnd);
     const updateCheckStart = mainSource.indexOf('async function checkForUpdatesForCurrentPackage');
     const updateCheckEnd = mainSource.indexOf(
-      "ipcMain.handle('quit-and-install'",
+      "ipcRoutes.handle('quit-and-install'",
       updateCheckStart
     );
     const updateCheckSource = mainSource.slice(updateCheckStart, updateCheckEnd);
@@ -806,7 +787,7 @@ describe('main-process wiring safeguards', () => {
   });
 
   it('flushes config and pending window bounds before an update closes windows', () => {
-    const installStart = mainSource.indexOf("ipcMain.handle('quit-and-install'");
+    const installStart = mainSource.indexOf("ipcRoutes.handle('quit-and-install'");
     const installEnd = mainSource.indexOf('// Handle quit request from renderer', installStart);
     const installSource = mainSource.slice(installStart, installEnd);
 
@@ -848,37 +829,24 @@ describe('main-process wiring safeguards', () => {
     const loadMigrationSource = mainSource.slice(loadMigrationStart, loadMigrationEnd);
     const deferredMigrationStart = mainSource.indexOf('Detected plaintext token after startup');
     const deferredMigrationEnd = mainSource.indexOf(
-      'if (deferredProfileSyncPassphraseDecryptPending)',
+      'if (profileSyncEngine.unlockDeferredPassphrase())',
       deferredMigrationStart
     );
     const deferredMigrationSource = mainSource.slice(deferredMigrationStart, deferredMigrationEnd);
     expect(loadMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
     expect(deferredMigrationSource).not.toContain("encryptedBuffer.toString('base64')");
-    expect(loadMigrationSource).toContain('const migrationSnapshot = saveConfig()');
-    expect(deferredMigrationSource).toContain('const migrationSnapshot = saveConfig()');
+    expect(loadMigrationSource).toContain(
+      "const migrationSave = configStore.save({ origin: 'startup' })"
+    );
+    expect(deferredMigrationSource).toContain(
+      "const migrationSave = configStore.save({ origin: 'local' })"
+    );
   });
 
-  it('guards privileged IPC senders and restricts desktop-pin channels', () => {
-    expect(mainSource).toContain('function getAuthorizedIpcSender');
-    expect(mainSource).toContain(
-      "sender.type === 'desktop-pin' && options.allowDesktopPin === true"
-    );
-    expect(mainSource).toContain("authorizeIpcSender(event, 'update-config')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'copy-profile-sync-file')");
-    expect(mainSource).toContain(
-      "authorizeIpcSender(event, 'request-desktop-pin-action', { allowDesktopPin: true })"
-    );
+  it('gives desktop pins a narrowed config and connection state of their own', () => {
+    // Which channels a pin may call is the IPC route table's (tests/unit/ipc-routes.test.js).
     expect(mainSource).toContain('...createDesktopPinRendererConfig(config)');
     expect(mainSource).toContain('connection: createDesktopPinConnectionState(config');
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'get-config', { allowDesktopPin: true })"
-    );
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'publish-ha-snapshot', { allowDesktopPin: true })"
-    );
-    expect(mainSource).not.toContain(
-      "authorizeIpcSender(event, 'publish-ha-entity-update', { allowDesktopPin: true })"
-    );
   });
 
   it('keeps Windows non-glass opacity on renderer background surfaces', () => {
@@ -932,40 +900,44 @@ describe('main-process wiring safeguards', () => {
 
 describe('profile sync runtime safeguards', () => {
   it('reapplies runtime hotkey and alert state after a pulled profile is durable', () => {
-    const applyStart = mainSource.indexOf('async function applySyncedProfileToConfig');
-    const applyEnd = mainSource.indexOf('function clearProfileSyncTimers', applyStart);
-    const applySource = mainSource.slice(applyStart, applyEnd);
+    const applySource = engineFunction('applySyncedProfileToConfig');
 
-    expect(applySource).toContain('await saveConfigDurably({ allowDebouncedPush: false })');
-    expect(applySource).toContain(
-      "applyRuntimeConfigSideEffects(previous, config, 'profile sync pull')"
+    // A pull runs the runtime effect once it is on disk, and is not pushed back.
+    expect(applySource).toContain("{ origin: 'profile-sync-pull' }");
+    const pullEffects = mainSource.slice(
+      mainSource.indexOf("'profile-sync-pull': ["),
+      mainSource.indexOf('],', mainSource.indexOf("'profile-sync-pull': ["))
     );
+    expect(pullEffects).toContain("'runtime'");
+    expect(pullEffects).not.toContain("'syncPush'");
     expect(mainSource).toContain('registerGlobalHotkeys()');
     expect(mainSource).toContain('registerPopupHotkey()');
     expect(mainSource).toContain('setupEntityAlerts()');
   });
 
   it('identifies the post-pull renderer echo by content instead of by timing', () => {
-    expect(mainSource).toContain('pendingPullEchoHash');
-    expect(mainSource).not.toContain('suppressNextAutoPush');
-    expect(mainSource).not.toContain('suppressAutoPushUntil');
-    // No timer may gate auto-push: a genuine edit made moments after a pull
-    // has to push immediately rather than wait for the 5-minute interval.
-    expect(mainSource).not.toContain('PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS');
-    expect(mainSource).toContain('nextHash === profileSyncRuntime.pendingPullEchoHash');
+    expect(engineSource).toContain('pendingPullEchoHash');
+    for (const source of [mainSource, engineSource]) {
+      expect(source).not.toContain('suppressNextAutoPush');
+      expect(source).not.toContain('suppressAutoPushUntil');
+      // No timer may gate auto-push: a genuine edit made moments after a pull
+      // has to push immediately rather than wait for the 5-minute interval.
+      expect(source).not.toContain('PROFILE_SYNC_PULL_ECHO_SUPPRESS_MS');
+    }
+    expect(engineSource).toContain('nextHash === profileSyncRuntime.pendingPullEchoHash');
   });
 
   it('leaves the content timestamp behind when it drops a stale pull echo', () => {
-    const trackingStart = mainSource.indexOf('function updateLocalProfileSyncTracking');
-    const echoBranch = mainSource.indexOf(
+    const trackingStart = engineSource.indexOf('function updateLocalProfileSyncTracking');
+    const echoBranch = engineSource.indexOf(
       'nextHash === profileSyncRuntime.pendingPullEchoHash',
       trackingStart
     );
-    const timestampAdvance = mainSource.indexOf(
+    const timestampAdvance = engineSource.indexOf(
       'profileSyncRuntime.localProfileUpdatedAt = new Date().toISOString();',
       echoBranch
     );
-    const echoReturn = mainSource.indexOf('return;', echoBranch);
+    const echoReturn = engineSource.indexOf('return;', echoBranch);
 
     // The echo branch must return before the timestamp is advanced, otherwise the
     // stale echo looks newer than the remote and the next auto sync pushes it out.
@@ -975,40 +947,41 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('reverses a stale renderer config update before it can overwrite a pulled profile', () => {
-    expect(mainSource).toContain('function restoreProfileFromStalePullEcho');
+    expect(engineSource).toContain('function restoreProfileFromStalePullEcho');
 
     // The guard has to run inside update-config, after the renderer payload is
     // merged and pruned but before the merged config is treated as authoritative.
     const handlerStart = mainSource.indexOf("'update-config'");
-    const merge = mainSource.indexOf('config = { ...config, ...newConfig', handlerStart);
-    const guard = mainSource.indexOf(
-      'restoreProfileFromStalePullEcho(prevConfig, touchedSyncKeys, baseRevision)',
-      handlerStart
-    );
-    const timestampOverride = mainSource.indexOf(
-      'config.profileSync.profileUpdatedAt = prevConfig',
-      handlerStart
-    );
-
+    const merge = mainSource.indexOf('replaceConfigContents(current, {', handlerStart);
+    const prune = mainSource.indexOf('pruneConfig(current);', merge);
+    const merged = mainSource.indexOf('syncSettings.merged(current, prevConfig);', handlerStart);
     expect(handlerStart).toBeGreaterThanOrEqual(0);
-    expect(guard).toBeGreaterThan(merge);
+    expect(merged).toBeGreaterThan(prune);
+    expect(prune).toBeGreaterThan(merge);
+
+    const mergedStart = engineSource.indexOf('merged(current, previous) {');
+    const guard = engineSource.indexOf(
+      'restoreProfileFromStalePullEcho(previous, touchedSyncKeys, baseRevision)',
+      mergedStart
+    );
+    const timestampOverride = engineSource.indexOf(
+      'current.profileSync.profileUpdatedAt = previous',
+      mergedStart
+    );
+    expect(guard).toBeGreaterThan(mergedStart);
     expect(guard).toBeLessThan(timestampOverride);
   });
 
   it('keeps provider folder probing off the synchronous filesystem API', () => {
-    const helperStart = mainSource.indexOf('function getDefaultProfileSyncFolderPath');
-    const helperEnd = mainSource.indexOf('\n}', helperStart);
-    const helper = mainSource.slice(helperStart, helperEnd);
-
-    expect(helperStart).toBeGreaterThanOrEqual(0);
+    const helper = engineFunction('getDefaultProfileSyncFolderPath');
     expect(helper).not.toContain('statSync');
     expect(helper).toContain('await fs.promises.stat');
   });
 
   it('re-checks the remote file before overwriting it on push', () => {
-    const pushBranch = mainSource.indexOf('if (pushKeys.length > 0 || rewriteRequired)');
-    const compare = mainSource.indexOf('hasRemoteSyncEnvelopeChanged(remoteResult)', pushBranch);
-    const write = mainSource.indexOf('writeConfiguredSyncEnvelope(envelopeToWrite)', pushBranch);
+    const pushBranch = engineSource.indexOf('if (pushKeys.length > 0 || rewriteRequired)');
+    const compare = engineSource.indexOf('hasRemoteSyncEnvelopeChanged(remoteResult)', pushBranch);
+    const write = engineSource.indexOf('writeConfiguredSyncEnvelope(envelopeToWrite)', pushBranch);
 
     expect(pushBranch).toBeGreaterThanOrEqual(0);
     expect(compare).toBeGreaterThanOrEqual(0);
@@ -1017,8 +990,7 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('repairs damaged first-sync sections on their own, then asks again about the rest', () => {
-    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
-    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+    const handler = engineFunction('resolveProfileSyncFirstEnable');
     const repair = handler.slice(
       handler.indexOf("if (choice === 'upload_local' && damagedSections.length > 0)"),
       handler.indexOf("if (choice === 'upload_local') {")
@@ -1030,40 +1002,30 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('limits a first-sync choice to the listed sections, even when none remain', () => {
-    const handlerStart = mainSource.indexOf("'resolve-profile-sync-first-enable',");
-    const handler = mainSource.slice(handlerStart, mainSource.indexOf('\n);', handlerStart));
+    const handler = engineFunction('resolveProfileSyncFirstEnable');
 
     expect(handler).toContain('const chosenSections = [...profileSyncRuntime.conflictSections];');
     expect(handler.match(/forceSections: chosenSections/g)).toHaveLength(2);
   });
 
   it('syncs local edits with a merge run instead of a forced push', () => {
-    const fnStart = mainSource.indexOf('function scheduleDebouncedProfileSyncPush');
-    const fn = mainSource.slice(fnStart, mainSource.indexOf('\n}', fnStart));
+    const fn = engineFunction('scheduleDebouncedProfileSyncPush');
 
     expect(fn).toContain("runProfileSync('auto', source)");
     expect(fn).not.toContain("runProfileSync('push'");
   });
 
   it('treats an unreadable remote file as changed rather than overwriting it', () => {
-    const fnStart = mainSource.indexOf('async function hasRemoteSyncEnvelopeChanged');
-    const fnEnd = mainSource.indexOf('\n}', fnStart);
-    const fn = mainSource.slice(fnStart, fnEnd);
-
-    expect(fnStart).toBeGreaterThanOrEqual(0);
+    const fn = engineFunction('hasRemoteSyncEnvelopeChanged');
     // A read failure must fail closed: returning false here would overwrite a
     // file that another device may be midway through replicating.
     expect(fn).toMatch(/catch[\s\S]*?return true;/);
     expect(fn).toContain('getSyncEnvelopeIdentity(currentResult)');
-    expect(mainSource).toContain('profileSyncCore.serializeSyncEnvelope(readResult.envelope)');
+    expect(engineSource).toContain('profileSyncCore.serializeSyncEnvelope(readResult.envelope)');
   });
 
   it('rate-limits focus and resume triggered syncs', () => {
-    const fnStart = mainSource.indexOf('function requestOpportunisticProfileSync');
-    const fnEnd = mainSource.indexOf('\n}', fnStart);
-    const fn = mainSource.slice(fnStart, fnEnd);
-
-    expect(fnStart).toBeGreaterThanOrEqual(0);
+    const fn = engineFunction('requestOpportunisticProfileSync');
     expect(fn).toContain('PROFILE_SYNC_OPPORTUNISTIC_MIN_GAP_MS');
     expect(fn).toContain('profileSyncRuntime.inFlight');
     expect(mainSource).toContain("mainWindow.on('focus'");
@@ -1071,110 +1033,110 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('surfaces setups that report success while sharing nothing', () => {
-    expect(mainSource).toContain('function collectProfileSyncFolderWarnings');
-    expect(mainSource).toContain('unsynced_folder');
-    expect(mainSource).toContain('google_drive_linux');
-    expect(mainSource).toContain('conflict_copies');
+    expect(engineSource).toContain('function collectProfileSyncFolderWarnings');
+    expect(engineSource).toContain('unsynced_folder');
+    expect(engineSource).toContain('google_drive_linux');
+    expect(engineSource).toContain('conflict_copies');
     // Codes, not sentences, so wording stays with the translated renderer text.
-    expect(mainSource).toContain('folderWarnings: collectProfileSyncFolderWarnings()');
+    expect(engineSource).toContain('folderWarnings: collectProfileSyncFolderWarnings()');
   });
 
   it('probes the folder layouts current cloud clients actually use', () => {
     // Drive for Desktop stopped using ~/Google Drive years ago; these are the
     // layouts a real install has today.
-    expect(mainSource).toContain('CloudStorage');
-    expect(mainSource).toContain('GoogleDrive-');
-    expect(mainSource).toContain("'My Drive'");
+    expect(engineSource).toContain('CloudStorage');
+    expect(engineSource).toContain('GoogleDrive-');
+    expect(engineSource).toContain("'My Drive'");
     // Dropbox and OneDrive both publish their real root, which matters when the
     // user moved the folder off its default location.
-    expect(mainSource).toContain("'.dropbox', 'info.json'");
-    expect(mainSource).toContain('process.env.OneDrive');
+    expect(engineSource).toContain("'.dropbox', 'info.json'");
+    expect(engineSource).toContain('process.env.OneDrive');
   });
 
   it('offers the relocated providers in the settings picker', () => {
     const html = fs.readFileSync(path.resolve(__dirname, '../../index.html'), 'utf8');
     ['dropbox', 'oneDrive', 'googleDrive', 'icloudDrive', 'syncthing', 'cloudFile'].forEach(
       (provider) => {
-        expect(mainSource).toContain(`'${provider}'`);
+        expect(engineSource).toContain(`'${provider}'`);
         expect(html).toContain(`value="${provider}"`);
       }
     );
   });
 
   it('tracks profile content changes separately from sync attempt timestamps', () => {
-    expect(mainSource).toContain('profileUpdatedAt: null');
-    expect(mainSource).toContain('config?.profileSync?.profileUpdatedAt ||');
-    expect(mainSource).toContain(
-      'config.profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt'
+    expect(engineSource).toContain('profileUpdatedAt: null');
+    expect(engineSource).toContain('configStore.get()?.profileSync?.profileUpdatedAt ||');
+    expect(engineSource).toContain(
+      'configStore.get().profileSync.profileUpdatedAt = profileSyncRuntime.localProfileUpdatedAt'
     );
-    expect(mainSource).toContain('config.profileSync.profileUpdatedAt = localProfileUpdatedAtSeed');
-    // Tracking must run before the snapshot is built so the timestamp lands in
-    // the same save instead of trailing one save behind.
-    expect(mainSource.indexOf('updateLocalProfileSyncTracking();')).toBeLessThan(
-      mainSource.indexOf('pendingConfigSnapshot = buildConfigSnapshotForSave();')
+    expect(engineSource).toContain(
+      'configStore.get().profileSync.profileUpdatedAt = localProfileUpdatedAtSeed'
     );
+    // Tracking runs as a before-write hook, so the timestamp lands in the same save instead of
+    // trailing one save behind (hooks run before encoding: tests/unit/main-config-store.test.js).
+    const hookStart = mainSource.indexOf('configStore.beforeWrite(');
+    expect(hookStart).toBeGreaterThan(-1);
+    expect(mainSource.indexOf('profileSyncEngine.trackConfigWrite(', hookStart)).toBeGreaterThan(
+      hookStart
+    );
+    expect(engineFunction('trackConfigWrite')).toContain('updateLocalProfileSyncTracking({');
   });
 
   it('resolves startup sync direction from content timestamps instead of forcing a pull', () => {
-    expect(mainSource).toContain("await runProfileSyncInternal('auto', 'startup')");
-    expect(mainSource).not.toContain("runProfileSync('pull', 'startup')");
+    expect(engineSource).toContain("await runProfileSyncInternal('auto', 'startup')");
+    expect(engineSource).not.toContain("runProfileSync('pull', 'startup')");
   });
 
   it('persists and enforces the first-enable conflict gate until preparation succeeds', () => {
-    expect(mainSource).toContain('firstEnableResolutionPending: false');
-    expect(mainSource).toContain('profileSync.firstEnableResolutionPending = true');
-    expect(mainSource).toContain('async function clearProfileSyncFirstEnableResolutionPending');
-    expect(mainSource).toContain(
+    expect(engineSource).toContain('firstEnableResolutionPending: false');
+    expect(engineSource).toContain('profileSync.firstEnableResolutionPending = true');
+    expect(engineSource).toContain('async function clearProfileSyncFirstEnableResolutionPending');
+    expect(engineSource).toContain(
       'profileSyncRuntime.needsResolution || profileSync.firstEnableResolutionPending'
     );
-    expect(mainSource).toContain(
-      'return runSerializedConfigMutation(initializeProfileSyncOnStartupInternal)'
+    expect(engineSource).toContain(
+      'return configStore.serialize(initializeProfileSyncOnStartupInternal)'
     );
   });
 
   it('backs up the local profile before applying a remote profile', () => {
-    expect(mainSource).toContain('async function backupLocalProfileBeforePullApply');
-    const pullApply = mainSource.indexOf(
+    expect(engineSource).toContain('async function backupLocalProfileBeforePullApply');
+    const pullApply = engineSource.indexOf(
       'await applySyncedProfileToConfig(pickSections(remoteSections, plan.pull));'
     );
-    const backup = mainSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull,');
+    const backup = engineSource.indexOf('await backupLocalProfileBeforePullApply(plan.pull,');
     expect(backup).toBeGreaterThanOrEqual(0);
     expect(backup).toBeLessThan(pullApply);
-    expect(mainSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
-    expect(mainSource).toContain(
+    expect(engineSource).toContain("const PROFILE_SYNC_BACKUP_DIR_NAME = 'profile-sync-backups'");
+    expect(engineSource).toContain(
       'Created a profile sync backup, but failed to prune older backups:'
     );
   });
 
   it('enforces a stronger passphrase minimum and random device ids', () => {
-    expect(mainSource).toContain('const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8');
-    expect(mainSource).toContain('candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH');
+    expect(engineSource).toContain('const PROFILE_SYNC_MIN_PASSPHRASE_LENGTH = 8');
+    expect(engineSource).toContain(
+      'candidatePassphrase.length < PROFILE_SYNC_MIN_PASSPHRASE_LENGTH'
+    );
     expect(mainSource).not.toContain('os.hostname');
-    expect(mainSource).toContain('.randomBytes(16)');
+    expect(engineSource).not.toContain('os.hostname');
+    expect(engineSource).toContain('.randomBytes(16)');
   });
 
   it('keeps OAuth and desktop companion authority in the main process', () => {
     expect(mainSource).toContain("require('./src/ha-oauth.cjs')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'start-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'cancel-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'disconnect-home-assistant-oauth')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'get-desktop-companion-registration')");
-    expect(mainSource).toContain("authorizeIpcSender(event, 'apply-desktop-companion-command')");
     expect(mainSource).toContain("!['show', 'hide', 'toggle'].includes(action)");
     expect(mainSource).toContain('config.desktopCompanion.desktopId = nodeCrypto.randomUUID()');
     expect(mainSource).toContain("capabilities: ['visibility', 'switch_page', 'apply_profile']");
     expect(mainSource).not.toContain('os.hostname');
 
-    const snapshotStart = mainSource.indexOf('function buildConfigSnapshotForSave');
-    const snapshotEnd = mainSource.indexOf(
-      'async function writeConfigSnapshotAsync',
-      snapshotStart
-    );
+    const snapshotStart = mainSource.indexOf('function encodeConfigForSave');
+    const snapshotEnd = mainSource.indexOf('function emitConfigPersistenceWarnings', snapshotStart);
     const snapshotSource = mainSource.slice(snapshotStart, snapshotEnd);
     expect(snapshotSource).toContain("homeAssistant?.authMethod === 'oauth'");
     expect(snapshotSource).toContain('delete configToSave.homeAssistant.token');
     expect(snapshotSource.indexOf('delete configToSave.homeAssistant.token')).toBeLessThan(
-      snapshotSource.indexOf('serializedConfig: JSON.stringify(configToSave')
+      snapshotSource.indexOf('text: JSON.stringify(configToSave')
     );
 
     const updateStart = mainSource.indexOf("'update-config'");
@@ -1194,8 +1156,8 @@ describe('profile sync runtime safeguards', () => {
   });
 
   it('cleans up temp sync files and restricts copy sources and destinations', () => {
-    expect(mainSource).toContain('await fs.promises.unlink(tempPath).catch(() => {});');
-    expect(mainSource).toContain('allowedSourceFolders: [configuredSyncFolder');
-    expect(mainSource).toContain('approvedCopyDestinationFolders');
+    expect(engineSource).toContain('await fs.promises.unlink(tempPath).catch(() => {});');
+    expect(engineSource).toContain('allowedSourceFolders: [configuredSyncFolder');
+    expect(engineSource).toContain('approvedCopyDestinationFolders');
   });
 });

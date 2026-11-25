@@ -2,6 +2,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const { createProfileSyncHarness, profileSyncCore } = require('../helpers/profile-sync-devices.js');
+const { useMainUpdateConfig } = require('../helpers/main-update-config.js');
 const helpers = require('../../src/window-display.cjs');
 const source = fs.readFileSync(require.resolve('../../main.js'), 'utf8');
 const harness = createProfileSyncHarness();
@@ -9,7 +10,7 @@ beforeEach(() => harness.setup());
 afterEach(() => harness.teardown());
 
 function device() {
-  const device = harness.createDevice('desktop', { syncing: false });
+  const device = useMainUpdateConfig(harness.createDevice('desktop', { syncing: false }));
   const primary = { id: 1, label: 'Laptop', workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
   const secondary = {
     id: 2,
@@ -20,7 +21,7 @@ function device() {
     windowPosition: { x: 100, y: 100 },
     windowSize: { width: 500, height: 600 },
   });
-  Object.assign(device.context, helpers, {
+  Object.assign(device.main, helpers, {
     usesCompositorOwnedPlacement: false,
     electronScreen: {
       getAllDisplays: () => [primary, secondary],
@@ -31,7 +32,7 @@ function device() {
   const start = source.indexOf('function getWindowDisplaySettings(');
   vm.runInContext(
     source.slice(start, source.indexOf('// Save the monitor choice', start)),
-    device.context
+    device.main
   );
   return device;
 }
@@ -69,7 +70,7 @@ test('an invalid display or a failed save does not partially apply Settings', as
     (await desktop.invoke('update-config', { windowDisplayChoice: 'gone', opacity: 0.5 })).success
   ).toBe(false);
   expect(JSON.stringify(desktop.config)).toBe(before);
-  desktop.context.saveConfigDurably = async () => ({ success: false, error: 'disk full' });
+  desktop.failConfigWrites('disk full');
   expect(
     (await desktop.invoke('update-config', { windowDisplayChoice: '2', opacity: 0.5 })).success
   ).toBe(false);
@@ -78,7 +79,7 @@ test('an invalid display or a failed save does not partially apply Settings', as
 
 test('a compositor-owned window rejects a normal display request', async () => {
   const desktop = device();
-  desktop.context.usesCompositorOwnedPlacement = true;
+  desktop.main.usesCompositorOwnedPlacement = true;
   expect((await desktop.invoke('update-config', { windowDisplayChoice: '2' })).success).toBe(false);
   expect(desktop.config.windowDisplay).toBeUndefined();
 });
@@ -87,7 +88,7 @@ test('Settings preserves a drag made while its display selection is being saved'
   const desktop = device();
   let bounds = { x: 100, y: 100, width: 500, height: 600 };
   let moved;
-  Object.assign(desktop.context, {
+  Object.assign(desktop.main, {
     mainWindow: {
       isDestroyed: () => false,
       getBounds: () => ({ ...bounds }),
@@ -115,14 +116,13 @@ test('Settings preserves a drag made while its display selection is being saved'
     ['function applyMainWindowSettingSideEffects(', 'function configSectionChanged('],
   ]) {
     const start = source.indexOf(startMarker);
-    vm.runInContext(source.slice(start, source.indexOf(endMarker, start)), desktop.context);
+    vm.runInContext(source.slice(start, source.indexOf(endMarker, start)), desktop.main);
   }
-  desktop.context.watchMainWindowBounds(desktop.context.mainWindow);
-  desktop.context.saveConfigDurably = async () => {
+  desktop.main.watchMainWindowBounds(desktop.main.mainWindow);
+  desktop.interceptNextConfigWrite(async () => {
     bounds = { x: 320, y: 190, width: 500, height: 600 };
     moved();
-    return { success: true, persistenceWarnings: [] };
-  };
+  });
   const result = await desktop.invoke('update-config', { windowDisplayChoice: '2' });
   expect(result.success).not.toBe(false);
   expect(bounds).toEqual({ x: 320, y: 190, width: 500, height: 600 });

@@ -12,6 +12,7 @@ const {
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
+const settingsFields = require('../../packages/widget-renderer/src/settings-fields.cjs');
 const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
 const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
@@ -80,7 +81,7 @@ function baseContext(platform) {
     onWindowBoundsChanged,
     setTimeout,
     clearTimeout,
-    saveConfig: jest.fn(),
+    configStore: { save: jest.fn() },
     runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
     log: { warn: jest.fn() },
   };
@@ -132,9 +133,9 @@ describe('main window bounds on Linux', () => {
     mainWindow.setPosition(320, 210);
     mainWindow.setSize(520, 640);
     jest.advanceTimersByTime(399);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     jest.advanceTimersByTime(1);
-    expect(context.saveConfig).toHaveBeenCalledTimes(1);
+    expect(context.configStore.save).toHaveBeenCalledTimes(1);
     expect(context.config.windowPosition).toEqual({ x: 320, y: 210 });
     expect(context.config.windowSize).toEqual({ width: 520, height: 640 });
   });
@@ -165,7 +166,7 @@ describe('main window bounds on Linux', () => {
     // "Show" restores the saved size.
     mainWindow.setSize(500, 600);
     jest.advanceTimersByTime(1000);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     expect(context.pendingWindowBounds).toBeNull();
   });
 
@@ -222,14 +223,14 @@ describe('main window bounds on Linux', () => {
     mainWindow.maximized = true;
     mainWindow.setBounds({ x: 0, y: 0, width: 1920, height: 1080 });
     jest.advanceTimersByTime(1000);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     expect(context.config.windowSize).toEqual({ width: 500, height: 600 });
 
     mainWindow.maximized = false;
     mainWindow.fullScreen = true;
     mainWindow.setBounds({ x: 0, y: 0, width: 1920, height: 1080 });
     jest.advanceTimersByTime(1000);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
 
     // The user's own resize afterwards is saved as usual.
     mainWindow.fullScreen = false;
@@ -247,7 +248,7 @@ describe('main window bounds on Linux', () => {
     const { context, mainWindow } = loadMainWindowRuntime(platform);
     mainWindow.setPosition(300, 200);
     jest.advanceTimersByTime(400);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     mainWindow.emit('moved');
     jest.advanceTimersByTime(400);
     expect(context.config.windowPosition).toEqual({ x: 300, y: 200 });
@@ -282,6 +283,7 @@ describe('desktop pin bounds on Linux', () => {
       getDesktopPinBaseBounds,
       getDesktopPinWindowBoundsInWorkArea: getDesktopPinWindowBounds,
       snapDesktopPinPosition,
+      settingsFields,
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
       normalizeEntityId: (id) => String(id || '').trim(),
       BrowserWindow: function (options) {
@@ -342,9 +344,9 @@ describe('desktop pin bounds on Linux', () => {
     expect(pinWindow.getBounds()).toEqual({ x: 200, y: 120, width: 252, height: 222 });
     pinWindow.setPosition(400, 300);
     jest.advanceTimersByTime(179);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     jest.advanceTimersByTime(1);
-    expect(context.saveConfig).toHaveBeenCalledTimes(1);
+    expect(context.configStore.save).toHaveBeenCalledTimes(1);
     expect(context.config.desktopPins['light.office']).toEqual({
       x: 400,
       y: 300,
@@ -365,7 +367,7 @@ describe('desktop pin bounds on Linux', () => {
     // The window system echoes the applied bounds after the applying flag is cleared.
     pinWindow.emit('move');
     jest.advanceTimersByTime(1000);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     expect(context.config.desktopPins['light.office']).toEqual({
       x: 1100,
       y: 560,
@@ -380,7 +382,7 @@ describe('desktop pin bounds on Linux', () => {
       const { context, pinWindow } = loadPinRuntime(overrides);
       pinWindow.setPosition(400, 300);
       jest.advanceTimersByTime(1000);
-      expect(context.saveConfig).not.toHaveBeenCalled();
+      expect(context.configStore.save).not.toHaveBeenCalled();
     }
   });
 
@@ -439,7 +441,7 @@ describe('desktop pin bounds on Linux', () => {
     jest.advanceTimersByTime(1);
     expect(pinWindow.getBounds()).toMatchObject({ x: 200, y: 120 });
     // The move was not the user's choice, so nothing is saved.
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     expect(context.config.desktopPins['light.office']).toMatchObject({ x: 200, y: 120 });
   });
 
@@ -472,7 +474,7 @@ describe('desktop pin bounds on Linux', () => {
     const { context, pinWindow } = loadPinRuntime({ platform });
     pinWindow.setPosition(400, 300);
     jest.advanceTimersByTime(1000);
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
     pinWindow.emit('moved');
     jest.advanceTimersByTime(180);
     expect(context.config.desktopPins['light.office']).toMatchObject({ x: 400, y: 300 });

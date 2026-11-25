@@ -12,20 +12,18 @@ const indexHtml = fs.readFileSync(path.resolve(__dirname, '../../index.html'), '
 // The title bar's X must mean what Alt+F4 and Cmd+W mean: close the window, which the window's
 // close handler turns into hiding it to the tray, rather than quitting the app.
 describe('title bar close button', () => {
-  function loadHandler({ mainWindow, authorized = true } = {}) {
-    const start = mainSource.indexOf("ipcMain.handle('close-window'");
+  function loadHandler({ mainWindow } = {}) {
+    const start = mainSource.indexOf("ipcRoutes.handle('close-window'");
     const source = mainSource.slice(start, mainSource.indexOf('\n});\n', start) + 4);
     const app = { quit: jest.fn() };
     const context = vm.createContext({
-      ipcMain: { handle: jest.fn() },
-      authorizeIpcSender: jest.fn(() => (authorized ? { type: 'main' } : null)),
-      rejectUnauthorizedIpc: jest.fn(() => ({ success: false })),
+      ipcRoutes: { handle: jest.fn() },
       mainWindow,
       app,
       isQuitting: false,
     });
     vm.runInContext(source, context);
-    const handler = context.ipcMain.handle.mock.calls[0][1];
+    const handler = context.ipcRoutes.handle.mock.calls[0][1];
     return { handler, app, context };
   }
 
@@ -46,14 +44,6 @@ describe('title bar close button', () => {
     const destroyed = { isDestroyed: () => true, close: jest.fn() };
     loadHandler({ mainWindow: destroyed }).handler({});
     expect(destroyed.close).not.toHaveBeenCalled();
-  });
-
-  it('ignores a sender that is not the main window', () => {
-    const mainWindow = { isDestroyed: () => false, close: jest.fn() };
-    const { handler } = loadHandler({ mainWindow, authorized: false });
-
-    expect(handler({})).toEqual({ success: false });
-    expect(mainWindow.close).not.toHaveBeenCalled();
   });
 
   it('is labelled Hide, not Quit, since it hides the widget instead of quitting', () => {

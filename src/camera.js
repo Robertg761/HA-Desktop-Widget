@@ -7,7 +7,7 @@ import {
   getLocalizedStateName,
 } from './utils.js';
 import { applyCloseButtonIcons } from './icons.js';
-import { closeDialog, openDialog, releaseFocusTrap, showToast } from './ui-utils.js';
+import { closeDialog, openDialog, releaseFocusTrap, showToast } from './dialogs.js';
 import { formatClockTime } from './format.js';
 import { t } from './i18n.js';
 import { lineIconMarkup } from './entity-icons.js';

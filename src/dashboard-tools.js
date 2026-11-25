@@ -9,13 +9,8 @@ import {
   sameLayout,
   writeDashboardHistory,
 } from './dashboard-history.js';
-import {
-  closeDialog,
-  copyTextToClipboard,
-  disableControlsKeepingFocus,
-  openDialog,
-  showToast,
-} from './ui-utils.js';
+import { closeDialog, disableControlsKeepingFocus, openDialog, showToast } from './dialogs.js';
+import { copyTextToClipboard } from './ui-utils.js';
 import { formatClockDateTime, formatList } from './format.js';
 import { formatNumber, t } from './i18n.js';
 import { applyCloseButtonIcons, setIconContent } from './icons.js';

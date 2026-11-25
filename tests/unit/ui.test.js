@@ -49,46 +49,20 @@ jest.mock('../../src/camera.js', () => ({
 
 jest.mock('../../src/ui-utils.js', () => {
   return {
-    showToast: jest.fn(),
-    showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
     isFrostedGlassAvailable: jest.fn(() => true),
     getAccentThemes: jest.requireActual('../../src/ui-utils.js').getAccentThemes,
-    getTileColorStyle: jest.requireActual('../../src/ui-utils.js').getTileColorStyle,
-    hexToRgb: jest.fn((hex) => {
-      if (!hex || typeof hex !== 'string') return null;
-      const normalized = hex.replace('#', '').trim();
-      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-      const value =
-        normalized.length === 3
-          ? normalized
-              .split('')
-              .map((ch) => ch + ch)
-              .join('')
-          : normalized;
-      return {
-        r: Number.parseInt(value.slice(0, 2), 16),
-        g: Number.parseInt(value.slice(2, 4), 16),
-        b: Number.parseInt(value.slice(4, 6), 16),
-      };
-    }),
-    miredsToKelvin: jest.fn((mireds) => {
-      const value = Number(mireds);
-      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-    }),
-    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-      const features = Number(supportedFeatures);
-      const flag = Number(featureFlag);
-      return (
-        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-      );
-    }),
   };
 });
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
@@ -159,6 +133,7 @@ const reportResize = (target) => {
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
 const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const camera = require('../../src/camera.js');
 const desktopPinSupport = require('../../src/desktop-pin-support.cjs');
 const {
@@ -256,8 +231,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   });
 
   // ==============================================================================
-  // GROUP 1: Service Routing & Entity Controls (14 tests)
-  // Note: toggleEntity is not exported, tested indirectly through executeHotkeyAction
+  // GROUP 1: Service Routing & Entity Controls
+  // Which call each action makes is tested at Entity Actions' interface (entity-actions.test.js);
+  // these test what ui.js draws and says around it.
   // ==============================================================================
 
   afterEach(() => {
@@ -610,8 +586,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
-      expect(uiUtils.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Page updated', 'success', 1600);
+      expect(dialogs.showToast).not.toHaveBeenCalledWith('Page added', 'success', 1600);
       // The launcher (the empty-dashboard button) is gone; focus lands on the new page's tile.
       expect(document.activeElement).not.toBe(document.body);
       expect(
@@ -1321,6 +1297,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     });
 
+    it('waits for a Quick Access save to finish, but not for other config writes', async () => {
+      const configStore = require('../../src/config-store.js').default;
+      const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+      const answers = [];
+      mockElectronAPI.updateConfig.mockImplementation(
+        (patch) =>
+          new Promise((resolve) => {
+            answers.push(() => resolve({ ...state.CONFIG, ...patch }));
+          })
+      );
+      state.setConfig({ ...state.CONFIG, customTabs: tabs('one', 'two'), activeTabId: 'one' });
+
+      // A section collapsed, say: not a dashboard save, so a restore need not wait for it.
+      const otherWrite = configStore.update({ opacity: 0.5 });
+      const restored = ui.restoreDashboard({ customTabs: tabs('three') });
+      answers.splice(0).forEach((answer) => answer());
+      await Promise.all([otherWrite, restored]);
+      expect(state.CONFIG.customTabs.map((tab) => tab.id)).toEqual(['three']);
+
+      // A Quick Access save is one: the restore would be built on a layout not yet stored.
+      state.setConfig({ ...state.CONFIG, customTabs: tabs('three', 'four'), activeTabId: 'three' });
+      const switched = ui.switchQuickAccessPage('four');
+      await expect(ui.restoreDashboard({ customTabs: tabs('one') })).rejects.toThrow(
+        'Wait for the current dashboard save to finish.'
+      );
+      answers.splice(0).forEach((answer) => answer());
+      await switched;
+      const restoredAfter = ui.restoreDashboard({ customTabs: tabs('one') });
+      answers.splice(0).forEach((answer) => answer());
+      await restoredAfter;
+      expect(state.CONFIG.customTabs.map((tab) => tab.id)).toEqual(['one']);
+    });
+
     it('restores dashboard fields while preserving local authorization and hotkeys', async () => {
       const current = {
         ...state.CONFIG,
@@ -1415,294 +1424,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
         entity_id: 'light.bedroom',
       });
-    });
-
-    it('should execute turn_on action', () => {
-      const entity = {
-        entity_id: 'switch.fan',
-        state: 'off',
-      };
-
-      ui.executeHotkeyAction(entity, 'turn_on');
-
-      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_on', {
-        entity_id: 'switch.fan',
-      });
-    });
-
-    it('should execute turn_off action', () => {
-      const entity = {
-        entity_id: 'switch.fan',
-        state: 'on',
-      };
-
-      ui.executeHotkeyAction(entity, 'turn_off');
-
-      expect(mockCallService).toHaveBeenCalledWith('switch', 'turn_off', {
-        entity_id: 'switch.fan',
-      });
-    });
-
-    it('should increase brightness by 51 (20%)', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { brightness: 100 },
-      };
-
-      ui.executeHotkeyAction(entity, 'brightness_up');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
-        entity_id: 'light.bedroom',
-        brightness: 151,
-      });
-    });
-
-    it('should clamp brightness to 255 max', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { brightness: 220 },
-      };
-
-      ui.executeHotkeyAction(entity, 'brightness_up');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
-        entity_id: 'light.bedroom',
-        brightness: 255,
-      });
-    });
-
-    it('should decrease brightness by 51 (20%)', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { brightness: 200 },
-      };
-
-      ui.executeHotkeyAction(entity, 'brightness_down');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
-        entity_id: 'light.bedroom',
-        brightness: 149,
-      });
-    });
-
-    it('should clamp brightness to 0 min', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { brightness: 30 },
-      };
-
-      ui.executeHotkeyAction(entity, 'brightness_down');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
-        entity_id: 'light.bedroom',
-        brightness: 0,
-      });
-    });
-
-    it('should handle missing brightness attribute', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: {},
-      };
-
-      ui.executeHotkeyAction(entity, 'brightness_up');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_on', {
-        entity_id: 'light.bedroom',
-        brightness: 51, // 0 + 51
-      });
-    });
-
-    it('should increase fan speed by 33%', () => {
-      const entity = {
-        entity_id: 'fan.bedroom',
-        state: 'on',
-        attributes: { percentage: 50 },
-      };
-
-      ui.executeHotkeyAction(entity, 'increase_speed');
-
-      expect(mockCallService).toHaveBeenCalledWith('fan', 'set_percentage', {
-        entity_id: 'fan.bedroom',
-        percentage: 83,
-      });
-    });
-
-    it('should clamp fan speed to 100 max', () => {
-      const entity = {
-        entity_id: 'fan.bedroom',
-        state: 'on',
-        attributes: { percentage: 80 },
-      };
-
-      ui.executeHotkeyAction(entity, 'increase_speed');
-
-      expect(mockCallService).toHaveBeenCalledWith('fan', 'set_percentage', {
-        entity_id: 'fan.bedroom',
-        percentage: 100,
-      });
-    });
-
-    it('should decrease fan speed by 33%', () => {
-      const entity = {
-        entity_id: 'fan.bedroom',
-        state: 'on',
-        attributes: { percentage: 66 },
-      };
-
-      ui.executeHotkeyAction(entity, 'decrease_speed');
-
-      expect(mockCallService).toHaveBeenCalledWith('fan', 'set_percentage', {
-        entity_id: 'fan.bedroom',
-        percentage: 33,
-      });
-    });
-
-    it('should trigger automation', () => {
-      const entity = {
-        entity_id: 'automation.morning_routine',
-        state: 'on',
-      };
-
-      ui.executeHotkeyAction(entity, 'trigger');
-
-      expect(mockCallService).toHaveBeenCalledWith('automation', 'trigger', {
-        entity_id: 'automation.morning_routine',
-      });
-    });
-
-    it('should press input button helpers', () => {
-      const entity = {
-        entity_id: 'input_button.tv_rewind',
-        state: '2025-01-15T10:30:00.000Z',
-        attributes: { friendly_name: 'TV Rewind' },
-      };
-
-      ui.executeHotkeyAction(entity, 'press');
-
-      expect(mockCallService).toHaveBeenCalledWith('input_button', 'press', {
-        entity_id: 'input_button.tv_rewind',
-      });
-    });
-
-    it('should default to toggle for unknown action', () => {
-      const entity = {
-        entity_id: 'light.bedroom',
-        state: 'on',
-        attributes: { friendly_name: 'Bedroom Light' },
-      };
-
-      ui.executeHotkeyAction(entity, 'unknown_action');
-
-      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
-        entity_id: 'light.bedroom',
-      });
-    });
-
-    it('should coalesce rapid toggles while a request is in-flight and apply final state', async () => {
-      let resolveFirstCall;
-      mockCallService
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              resolveFirstCall = resolve;
-            })
-        )
-        .mockResolvedValue({ ...wsMessages.callServiceResponse });
-
-      const entity = getBedroomLightOnState();
-
-      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (in-flight)
-      ui.executeHotkeyAction(entity, 'toggle'); // off -> on (queued)
-
-      expect(mockCallService).toHaveBeenCalledTimes(1);
-      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', {
-        entity_id: 'light.bedroom',
-      });
-
-      resolveFirstCall({});
-      await flushAsync();
-      await flushAsync();
-
-      expect(mockCallService).toHaveBeenCalledTimes(2);
-      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', {
-        entity_id: 'light.bedroom',
-      });
-    });
-
-    it('should keep second toggle queued when state_changed arrives before first call settles', async () => {
-      let resolveFirstCall;
-      mockCallService
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              resolveFirstCall = resolve;
-            })
-        )
-        .mockResolvedValue({ ...wsMessages.callServiceResponse });
-
-      state.setStates({
-        'light.bedroom': getBedroomLightOnState(),
-      });
-
-      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // on -> off (in-flight)
-      expect(mockCallService).toHaveBeenCalledTimes(1);
-      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', {
-        entity_id: 'light.bedroom',
-      });
-
-      // Mirror renderer flow: first commit websocket event into state, then update UI.
-      const serverOffState = getBedroomLightOffState();
-      state.setEntityState(serverOffState);
-      ui.updateEntityInUI(serverOffState);
-
-      // Second toggle should queue while the first request is still unresolved.
-      ui.executeHotkeyAction(state.STATES['light.bedroom'], 'toggle'); // off -> on (queued)
-      expect(mockCallService).toHaveBeenCalledTimes(1);
-
-      resolveFirstCall({});
-      await flushAsync();
-      await flushAsync();
-
-      expect(mockCallService).toHaveBeenCalledTimes(2);
-      expect(mockCallService).toHaveBeenNthCalledWith(2, 'light', 'turn_on', {
-        entity_id: 'light.bedroom',
-      });
-    });
-
-    it('should send only the final intent when rapid taps end on original state', async () => {
-      let resolveFirstCall;
-      mockCallService
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              resolveFirstCall = resolve;
-            })
-        )
-        .mockResolvedValue({ ...wsMessages.callServiceResponse });
-
-      const entity = getBedroomLightOnState();
-
-      ui.executeHotkeyAction(entity, 'toggle'); // on -> off
-      ui.executeHotkeyAction(entity, 'toggle'); // off -> on
-      ui.executeHotkeyAction(entity, 'toggle'); // on -> off (final)
-
-      expect(mockCallService).toHaveBeenCalledTimes(1);
-      expect(mockCallService).toHaveBeenNthCalledWith(1, 'light', 'turn_off', {
-        entity_id: 'light.bedroom',
-      });
-
-      resolveFirstCall({});
-      await flushAsync();
-      await flushAsync();
-
-      // Final desired state equals first request, so no extra call is needed.
-      expect(mockCallService).toHaveBeenCalledTimes(1);
     });
 
     it('opens light controls from the visible button without toggling the light', () => {
@@ -1933,7 +1654,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
       expect(tileState).toBeTruthy();
       expect(tileState.textContent).toContain('%');
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Failed to control'),
         'error',
         4000
@@ -1987,7 +1708,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       await flushAsync();
       await flushAsync();
 
-      const [message] = uiUtils.showToast.mock.calls.at(-1);
+      const [message] = dialogs.showToast.mock.calls.at(-1);
       expect(message).toMatch(new RegExp(`^Failed to control .+: ${shownMessage}$`));
       expect(message).not.toContain('WebSocket');
     });
@@ -2017,7 +1738,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         await flushAsync();
         await flushAsync();
 
-        const [message] = uiUtils.showToast.mock.calls.at(-1);
+        const [message] = dialogs.showToast.mock.calls.at(-1);
         expect(message).toBe(
           'تعذّر التحكم في \u2068Bedroom Light\u2069: \u2068The device did not respond.\u2069'
         );
@@ -2210,7 +1931,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.desktopPins['light.desk_lamp']).toBeDefined();
       expect(state.CONFIG.globalHotkeys.hotkeys['light.desk_lamp']).toBeDefined();
       expect(document.getElementById('entity-repair-modal')).toBeNull();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('light.desk_lamp'),
         'success',
         4000
@@ -2727,12 +2448,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.selectedWeatherEntity).toBe('weather.authoritative');
       expect(state.CONFIG.opacity).toBe(0.68);
       expect(document.getElementById('weather-condition').textContent).toBe('Rainy');
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         'Failed to save weather entity selection',
         'error',
         3000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('should show success toast when entity exists', async () => {
@@ -2747,7 +2468,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       await ui.selectWeatherEntity('weather.home');
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Home Weather'),
         'success',
         2000
@@ -4125,7 +3846,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         ui.renderActiveTab();
         ui.toggleReorganizeMode();
 
-        expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect(dialogs.showToast).toHaveBeenCalledWith(
           `Reorganize mode on. Drag or press ${key}+arrow keys to reorder. Esc to finish.`,
           'info',
           4500,
@@ -4204,7 +3925,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#camera-preview-refresh-select').value).toBe('5s');
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -4408,7 +4129,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(modal).toBeTruthy();
       expect(modal.querySelector('#tile-value-size-select')).toBeNull();
 
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -4580,12 +4301,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
 
       it('ends Reorganize mode on the first Escape when a toast was already up before it began', () => {
-        const actualUiUtils = jest.requireActual('../../src/ui-utils.js');
+        const actualDialogs = jest.requireActual('../../src/dialogs.js');
         document.body.insertAdjacentHTML('beforeend', '<div id="toast-container"></div>');
         // Any toast installs the toast manager's Escape handler, which then runs before the one
         // Reorganize mode adds. The mode's own notice is a toast too, and so was this.
-        actualUiUtils.showToast('Layout saved', 'success', 60000);
-        uiUtils.showToast.mockImplementationOnce(actualUiUtils.showToast);
+        actualDialogs.showToast('Layout saved', 'success', 60000);
+        dialogs.showToast.mockImplementationOnce(actualDialogs.showToast);
         state.CONFIG.favoriteEntities = ['sensor.office_temperature'];
         ui.renderActiveTab();
 
@@ -4602,7 +4323,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           // Their clocks are real timers, which must not outlive the test.
           document
             .querySelectorAll('#toast-container .toast')
-            .forEach((toast) => actualUiUtils.dismissToast(toast));
+            .forEach((toast) => actualDialogs.dismissToast(toast));
         }
       });
 
@@ -4780,7 +4501,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
         officeTile().querySelector('.rename-btn').click();
         modal = document.querySelector('.rename-modal');
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         modal.querySelector('#reset-rename-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
         await Promise.resolve();
@@ -4974,7 +4695,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         const reopened = document.querySelector('.rename-modal');
         expect(reopened.querySelector('#tile-tray-label').value).toBe('Office');
         expect(reopened.querySelector('#tile-tray-color').value).toBe('purple');
-        uiUtils.showConfirm.mockResolvedValueOnce(true);
+        dialogs.showConfirm.mockResolvedValueOnce(true);
         reopened.querySelector('#reset-rename-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(state.CONFIG.trayEntities['sensor.office_temperature']).toEqual({});
@@ -5043,12 +4764,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(nameInput.value).toBe('Desk Temperature');
       expect(sizeSelect.value).toBe('extra-large');
       expect(modal.querySelector('#save-rename-btn').disabled).toBe(false);
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('disk full'),
         'error',
         4000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('locks every Tile Settings action until a deferred save settles', async () => {
@@ -5158,7 +4879,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.rename-modal');
       expect(modal.querySelector('#rename-input').value).toBe('Desk "Temp"');
       expect(modal.querySelector('#tile-value-size-select').value).toBe('large');
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('#reset-rename-btn').click();
 
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -5763,7 +5484,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         await Promise.resolve();
 
         expect(slider.value).toBe('22');
-        expect(uiUtils.showToast).toHaveBeenCalledWith(
+        expect(dialogs.showToast).toHaveBeenCalledWith(
           expect.stringContaining('Permission denied'),
           'error',
           4000
@@ -6079,39 +5800,6 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           })
         );
       });
-    });
-
-    it('does not derive desktop-pin controls from null or blank numeric attributes', () => {
-      expect(
-        desktopPinSupport.getDesktopPinCapabilities({
-          entity_id: 'light.null_brightness',
-          attributes: { brightness: null, supported_color_modes: ['onoff'] },
-        }).canSetBrightness
-      ).toBe(false);
-      expect(
-        desktopPinSupport.getDesktopPinCapabilities({
-          entity_id: 'fan.null_percentage',
-          attributes: { percentage: '' },
-        }).canSetPercentage
-      ).toBe(false);
-      expect(
-        desktopPinSupport.getDesktopPinCapabilities({
-          entity_id: 'cover.null_position',
-          attributes: { current_position: null, supported_features: '   ' },
-        }).canSetPosition
-      ).toBe(false);
-      expect(
-        desktopPinSupport.getDesktopPinCapabilities({
-          entity_id: 'cover.legacy_position',
-          attributes: { current_position: 45, supported_features: '   ' },
-        }).canSetPosition
-      ).toBe(true);
-      expect(
-        desktopPinSupport.getDesktopPinCapabilities({
-          entity_id: 'climate.null_target',
-          attributes: { temperature: null, min_temp: 7, max_temp: 35 },
-        }).canSetTemperature
-      ).toBe(false);
     });
 
     const setDesktopPinViewport = (width, height) => {
@@ -9204,7 +8892,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
 
       await flushMicrotasks();
 
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('Service failed'),
         'error',
         4000
@@ -9590,7 +9278,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       ui.renderActiveTab();
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       document
         .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
         .click();
@@ -9622,12 +9310,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
         'bedroom'
       );
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(false);
+      dialogs.showConfirm.mockResolvedValueOnce(false);
 
       tabBar.querySelector('.qa-tab-delete').click();
       await Promise.resolve();
 
-      expect(uiUtils.showConfirm).toHaveBeenLastCalledWith(
+      expect(dialogs.showConfirm).toHaveBeenLastCalledWith(
         'Delete page',
         'Delete “Bedroom” and its tiles?',
         expect.objectContaining({ confirmText: 'Delete' })
@@ -9652,8 +9340,8 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       });
       ui.renderActiveTab();
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
-      uiUtils.showToast.mockClear();
+      dialogs.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showToast.mockClear();
 
       document
         .querySelector('#quick-controls [data-entity-id="light.bedroom"] .remove-btn')
@@ -9661,9 +9349,9 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      const [, message] = uiUtils.showConfirm.mock.calls.at(-1);
+      const [, message] = dialogs.showConfirm.mock.calls.at(-1);
       expect(message).toMatch(/^Remove “.+” from “Night”\?$/);
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Removed from “Night”', 'success', 2000);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Removed from “Night”', 'success', 2000);
     });
 
     it('moves focus to the page now shown after deleting a page', async () => {
@@ -9679,7 +9367,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const confirmation = document.createElement('div');
       confirmation.className = 'modal modal-closing';
       confirmation.innerHTML = '<button>Delete</button>';
-      uiUtils.showConfirm.mockImplementationOnce(async () => {
+      dialogs.showConfirm.mockImplementationOnce(async () => {
         document.body.appendChild(confirmation);
         confirmation.querySelector('button').focus();
         return true;
@@ -9718,7 +9406,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       };
       state.setConfig(before);
       ui.toggleReorganizeMode();
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       tabBar.querySelector('.qa-tab-delete').click();
       for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -9784,7 +9472,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
           jest.setSystemTime(Date.now() + seconds * 1000);
           // Only the page on screen has a Delete button; going to it changes no layout.
           await ui.switchQuickAccessPage(id);
-          uiUtils.showConfirm.mockResolvedValueOnce(true);
+          dialogs.showConfirm.mockResolvedValueOnce(true);
           tabBar.querySelector(`.quick-access-tab[data-tab="${id}"] .qa-tab-delete`).click();
           for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
           await new Promise((resolve) => setTimeout(resolve, 0));
@@ -9885,7 +9573,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.opacity).toBe(0.71);
       expect(state.CONFIG.profileSync.lastSyncStatus).toBe('success');
       expect(tabBar.querySelectorAll('.quick-access-tab')).toHaveLength(2);
-      expect(uiUtils.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
+      expect(dialogs.showToast).toHaveBeenCalledWith('Page added', 'success', 1600);
     });
 
     it('rolls page state and tabs back to the authoritative config after rejection', async () => {
@@ -9931,12 +9619,12 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(retainedModal).not.toBeNull();
       expect(retainedModal.querySelector('#add-page-name').value).toBe('Bedroom');
       expect(retainedModal.querySelector('#add-page-save-btn').disabled).toBe(false);
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('profile changed elsewhere'),
         'error',
         4000
       );
-      expect(uiUtils.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
+      expect(dialogs.showToast.mock.calls.some((call) => call[1] === 'success')).toBe(false);
     });
 
     it('sends complete Quick Access slices so a later write can carry an earlier optimistic edit', async () => {
@@ -10090,7 +9778,7 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       expect(state.CONFIG.comparisonGraphs).toEqual([]);
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
       expect(document.querySelector('.comparison-graph-tile')).toBeNull();
-      expect(uiUtils.showToast).toHaveBeenCalledWith(
+      expect(dialogs.showToast).toHaveBeenCalledWith(
         expect.stringContaining('graph write failed'),
         'error',
         4000
@@ -10147,13 +9835,13 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       const modal = document.querySelector('.comparison-graph-modal');
       expect(modal).not.toBeNull();
 
-      uiUtils.showConfirm.mockResolvedValueOnce(true);
+      dialogs.showConfirm.mockResolvedValueOnce(true);
       modal.querySelector('.comparison-graph-modal-footer button').click();
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.querySelector('.comparison-graph-modal')).toBeNull();
 
       // A connection change closes open detail dialogs; the deleted editor must not be among them.
-      const closeDialog = jest.spyOn(uiUtils, 'closeDialog');
+      const closeDialog = jest.spyOn(dialogs, 'closeDialog');
       ui.ensureEntityCacheScope({ force: true });
       expect(closeDialog).not.toHaveBeenCalledWith(modal, expect.anything());
       closeDialog.mockRestore();
@@ -11558,80 +11246,14 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
     });
   });
 
-  describe('hasEntityAction, for what the command palette can do with a row', () => {
+  describe('executeEntityPrimaryAction', () => {
     const entity = (id, entityState = 'on') => ({
       entity_id: id,
       state: entityState,
       attributes: { friendly_name: id },
     });
 
-    it.each([
-      'sun.sun',
-      'person.sam',
-      'weather.home',
-      'device_tracker.phone',
-      'update.core',
-      'zone.home',
-      'binary_sensor.door',
-    ])('is false for %s, which has no controls and nothing to run', (id) => {
-      expect(ui.hasEntityAction(entity(id))).toBe(false);
-    });
-
-    it.each([
-      'light.desk',
-      'switch.plug',
-      'fan.attic',
-      'cover.garage',
-      'climate.hall',
-      'media_player.tv',
-      'camera.porch',
-      'sensor.temperature',
-      'timer.kitchen',
-      'todo.shopping',
-      'calendar.family',
-      'number.volume',
-      'input_number.level',
-      'select.mode',
-      'input_select.mode',
-      'vacuum.robot',
-      'scene.movie',
-      'script.goodnight',
-      'button.restart',
-      'input_button.ring',
-      'input_boolean.guest',
-      'automation.sunset',
-    ])('is true for %s', (id) => {
-      expect(ui.hasEntityAction(entity(id))).toBe(true);
-    });
-
-    it('is false for locks and alarm panels, which the palette runs only by named command', () => {
-      expect(ui.hasEntityAction(entity('lock.front', 'locked'))).toBe(false);
-      expect(ui.hasEntityAction(entity('alarm_control_panel.home', 'disarmed'))).toBe(false);
-    });
-
-    it('is false for what only toggles or runs while it is unavailable, and true for what opens a dialog', () => {
-      for (const id of ['switch.plug', 'scene.movie', 'button.restart', 'automation.sunset']) {
-        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(false);
-      }
-      for (const id of ['light.desk', 'sensor.temperature', 'climate.hall']) {
-        expect(ui.hasEntityAction(entity(id, 'unavailable'))).toBe(true);
-      }
-    });
-
-    it('reads the live entity, not the one the row was built from', () => {
-      state.setStates({ 'switch.plug': entity('switch.plug', 'unavailable') });
-      expect(ui.hasEntityAction(entity('switch.plug', 'on'))).toBe(false);
-      state.setStates({ 'switch.plug': entity('switch.plug', 'on') });
-      expect(ui.hasEntityAction(entity('switch.plug', 'unavailable'))).toBe(true);
-    });
-
-    it('is false for nothing at all', () => {
-      expect(ui.hasEntityAction(undefined)).toBe(false);
-      expect(ui.hasEntityAction({})).toBe(false);
-    });
-
-    it('agrees with what Enter really does for the domains it says have an action', () => {
-      // Whatever it says is runnable must reach Home Assistant or open a dialog, never nothing.
+    it('runs what a click runs, and nothing for what has no action', () => {
       state.setStates({ 'switch.plug': entity('switch.plug', 'off') });
       mockCallService.mockClear();
       ui.executeEntityPrimaryAction(entity('scene.movie', 'scening'));

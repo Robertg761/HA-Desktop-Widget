@@ -27,7 +27,7 @@ describe('profile sync settings transition safeguards', () => {
 
   it('applies authoritative config and status even when the credential operation fails', () => {
     expect(settingsSource).toContain('if (passphraseResult?.config)');
-    expect(settingsSource).toContain('applyPersistedConfigResponse(passphraseResult.config)');
+    expect(settingsSource).toContain('configStore.adopt(passphraseResult.config)');
     expect(settingsSource).toContain('if (passphraseResult?.status)');
     expect(settingsSource).toContain('updateProfileSyncStatusUi(passphraseResult.status)');
   });

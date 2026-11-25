@@ -1,4 +1,3 @@
-const { getClimateControlCapabilities } = require('./climate-controls.cjs');
 const { isTimerLikeSensor } = require('../packages/widget-renderer/src/timer-sensors.cjs');
 
 const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
@@ -20,160 +19,6 @@ const DESKTOP_PIN_SUPPORTED_FAMILIES = new Set([
   'vacuum',
   'unsupported',
 ]);
-
-const DESKTOP_PIN_FEATURES = Object.freeze({
-  fan: Object.freeze({
-    setPercentage: 1,
-    presetMode: 8,
-  }),
-  cover: Object.freeze({
-    open: 1,
-    close: 2,
-    setPosition: 4,
-    stop: 8,
-  }),
-  media: Object.freeze({
-    pause: 1,
-    previousTrack: 16,
-    nextTrack: 32,
-    play: 16384,
-  }),
-  // Home Assistant's VacuumEntityFeature flags.
-  vacuum: Object.freeze({
-    turnOn: 1,
-    turnOff: 2,
-    pause: 4,
-    stop: 8,
-    returnHome: 16,
-    start: 8192,
-  }),
-});
-
-function hasFeature(attributes, feature) {
-  const supportedFeatures = Number(attributes?.supported_features);
-  return (
-    Number.isFinite(supportedFeatures) &&
-    Number.isFinite(feature) &&
-    feature > 0 &&
-    (supportedFeatures & feature) === feature
-  );
-}
-
-function hasFiniteAttribute(attributes, attributeName) {
-  const rawValue = attributes?.[attributeName];
-  if (
-    rawValue === null ||
-    rawValue === undefined ||
-    (typeof rawValue === 'string' && rawValue.trim() === '')
-  ) {
-    return false;
-  }
-  const value = Number(rawValue);
-  return Number.isFinite(value);
-}
-
-function hasSupportedFeatureDeclaration(attributes) {
-  const rawValue = attributes?.supported_features;
-  if (
-    rawValue === null ||
-    rawValue === undefined ||
-    (typeof rawValue === 'string' && rawValue.trim() === '')
-  ) {
-    return false;
-  }
-  return Number.isFinite(Number(rawValue));
-}
-
-function getDesktopPinCapabilities(entity = null) {
-  const domain = getDesktopPinDomain(entity);
-  const attributes = entity?.attributes || {};
-  const colorModes = Array.isArray(attributes.supported_color_modes)
-    ? attributes.supported_color_modes
-    : [];
-  const hvacModes = Array.isArray(attributes.hvac_modes)
-    ? attributes.hvac_modes.filter(Boolean)
-    : [];
-
-  switch (domain) {
-    case 'light':
-      return {
-        canToggle: true,
-        canSetBrightness:
-          hasFeature(attributes, 1) ||
-          hasFiniteAttribute(attributes, 'brightness') ||
-          colorModes.some((mode) => mode && mode !== 'onoff' && mode !== 'unknown'),
-      };
-    case 'climate': {
-      const capabilities = getClimateControlCapabilities(entity);
-      return {
-        canSetTemperature: capabilities.canSetTemperature,
-        canSetRange: capabilities.canSetRange,
-        hvacModes,
-      };
-    }
-    case 'fan':
-      return {
-        canToggle: true,
-        canSetPercentage:
-          hasFeature(attributes, DESKTOP_PIN_FEATURES.fan.setPercentage) ||
-          (!hasSupportedFeatureDeclaration(attributes) &&
-            hasFiniteAttribute(attributes, 'percentage')),
-        canSetPreset:
-          hasFeature(attributes, DESKTOP_PIN_FEATURES.fan.presetMode) &&
-          Array.isArray(attributes.preset_modes) &&
-          attributes.preset_modes.length > 0,
-      };
-    case 'cover':
-      return {
-        canOpen: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.open),
-        canClose: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.close),
-        canSetPosition:
-          hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.setPosition) ||
-          (!hasSupportedFeatureDeclaration(attributes) &&
-            hasFiniteAttribute(attributes, 'current_position')),
-        canStop: hasFeature(attributes, DESKTOP_PIN_FEATURES.cover.stop),
-      };
-    case 'media_player':
-      return {
-        canPause: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.pause),
-        canPreviousTrack: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.previousTrack),
-        canNextTrack: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.nextTrack),
-        canPlay: hasFeature(attributes, DESKTOP_PIN_FEATURES.media.play),
-      };
-    default:
-      return {};
-  }
-}
-
-/**
- * The services a vacuum offers, read from its supported_features. A pin window never asks Home
- * Assistant for its service list, so this is what tells it that Start, Pause or Return exist. A
- * vacuum that publishes no feature flags is assumed to take the usual commands.
- */
-function getDesktopPinVacuumServices(entity = null) {
-  const supportedFeatures = Number(entity?.attributes?.supported_features);
-  if (!Number.isFinite(supportedFeatures) || supportedFeatures <= 0) {
-    return {
-      start: true,
-      turn_on: false,
-      pause: true,
-      return_to_base: true,
-      stop: false,
-      turn_off: false,
-    };
-  }
-  const features = DESKTOP_PIN_FEATURES.vacuum;
-  const has = (feature) => (supportedFeatures & feature) === feature;
-  return {
-    start: has(features.start),
-    // Vacuums written before START existed are switched on and off instead.
-    turn_on: has(features.turnOn),
-    pause: has(features.pause),
-    return_to_base: has(features.returnHome),
-    stop: has(features.stop),
-    turn_off: has(features.turnOff),
-  };
-}
 
 function normalizeEntityId(entityId) {
   if (typeof entityId !== 'string') return '';
@@ -367,10 +212,7 @@ function isDesktopPinSupported(entityOrEntityId = null) {
 }
 
 module.exports = {
-  DESKTOP_PIN_FEATURES,
   DESKTOP_PIN_SUPPORTED_FAMILIES,
-  getDesktopPinCapabilities,
-  getDesktopPinVacuumServices,
   normalizeEntityId,
   getDesktopPinDomain,
   isTimerSensorEntity,

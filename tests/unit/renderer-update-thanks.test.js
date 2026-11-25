@@ -34,7 +34,7 @@ describe('the after-update notice at startup', () => {
   afterEach(() => harness.cleanup());
 
   const noticeCalls = () =>
-    harness.uiUtils.showToast.mock.calls.filter(
+    harness.dialogs.showToast.mock.calls.filter(
       ([message]) => message === 'Updated to version 4.3.0'
     );
 

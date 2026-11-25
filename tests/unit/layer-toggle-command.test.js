@@ -512,7 +512,8 @@ describe('an APPIMAGE inherited from another AppImage', () => {
       'ensureAppImageDesktopEntry(',
       'ensureAppImageCommandLink(',
       'repairStaleAppImageLaunchers(',
-      'getLinuxStartupExecutablePath(app, process.env)',
+      // Start at login names the AppImage it reads from the env it is given.
+      'createLoginItem({',
       'getRelaunchOptions(',
       'supportsAutoUpdater(process.platform, process.env)',
     ]) {

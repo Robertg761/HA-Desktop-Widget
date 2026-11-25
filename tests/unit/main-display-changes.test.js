@@ -17,6 +17,7 @@ const {
 } = require('../../src/window-placement.cjs');
 
 const { onWindowBoundsChanged } = require('../../src/window-bounds-events.cjs');
+const { createMainConfigStore } = require('../helpers/main-config-store.js');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 const {
@@ -213,12 +214,17 @@ describe('the widget after the monitors change', () => {
       findPreferredWindowDisplay,
       getMainWindowMinimumSizeForConfig: () => ({ width: 320, height: 360 }),
       runBackgroundConfigMutation: jest.fn((mutation) => mutation()),
-      saveConfig: jest.fn(),
       setTimeout,
       clearTimeout,
       log: { info: jest.fn(), warn: jest.fn() },
       ...overrides,
     };
+    const store = createMainConfigStore(context.config, {
+      pushConfigToRenderer: context.pushConfigToRenderer,
+    });
+    context.configStore = store.configStore;
+    // A debounced save is only asked for here; what it would write is the config itself.
+    jest.spyOn(context.configStore, 'save').mockImplementation(() => {});
     vm.runInNewContext(
       sliceMain(
         'const DISPLAY_CHANGE_RECOVERY_DELAY_MS',
@@ -226,7 +232,7 @@ describe('the widget after the monitors change', () => {
       ) + sliceMain('function moveMainWindowToPosition(', 'function getWindowDisplaySettings('),
       context
     );
-    return { context, electronScreen, mainWindow, pinWindow };
+    return { context, electronScreen, mainWindow, pinWindow, store };
   }
 
   it('moves a widget that was on the unplugged monitor to the one that is left, and saves that', () => {
@@ -237,7 +243,7 @@ describe('the widget after the monitors change', () => {
     expect(mainWindow.setPosition).toHaveBeenCalledWith(1420, 100);
     // A programmatic move is not always reported as one, so it is saved directly.
     expect(context.config.windowPosition).toEqual({ x: 1420, y: 100 });
-    expect(context.saveConfig).toHaveBeenCalledTimes(1);
+    expect(context.configStore.save).toHaveBeenCalledTimes(1);
   });
 
   it('leaves a widget that is already on a connected monitor where the user put it', () => {
@@ -249,7 +255,7 @@ describe('the widget after the monitors change', () => {
 
     // Hanging slightly off the edge is the user's choice.
     expect(mainWindow.setPosition).not.toHaveBeenCalled();
-    expect(context.saveConfig).not.toHaveBeenCalled();
+    expect(context.configStore.save).not.toHaveBeenCalled();
   });
 
   it('returns to the selected monitor when it reconnects, retaining its saved offset', () => {
@@ -383,7 +389,7 @@ describe('the widget after the monitors change', () => {
     }) => {
       let identities = { 1: 'laptop', 2: 'desk' };
       const completions = [];
-      const { context, electronScreen, mainWindow } = loadDisplays({
+      const { context, electronScreen, mainWindow, store } = loadDisplays({
         process: { platform },
         windowStateSaveTimer: null,
         pendingWindowBounds: null,
@@ -403,7 +409,7 @@ describe('the widget after the monitors change', () => {
       });
       const saved = [];
       const rememberSaved = () => saved.push(JSON.parse(JSON.stringify(context.config)));
-      context.saveConfig.mockImplementation(rememberSaved);
+      context.configStore.save.mockImplementation(rememberSaved);
       electronScreen.setDisplays(disconnected ? [PRIMARY] : [PRIMARY, SECONDARY]);
       context.electronScreen = createDisplayIdentityScreen(electronScreen, () => identities);
       context.config.windowDisplay = { id: '2', persistentId: 'desk', offset: { x: 100, y: 100 } };
@@ -448,22 +454,21 @@ describe('the widget after the monitors change', () => {
         Object.assign(context, require('../../src/window-display.cjs'), {
           runSerializedConfigMutation: serialize,
           runBackgroundConfigMutation: serialize,
-          saveConfigDurably: async () => {
-            rememberSaved();
-            if (duringChoice) {
-              const newer =
-                duringChoice === 'move'
-                  ? { x: 400, y: 200, width: 500, height: 600 }
-                  : { x: 250, y: 180, width: 550, height: 600 };
-              mainWindow.emit(duringChoice === 'move' ? 'will-move' : 'will-resize', {}, newer);
-              mainWindow.bounds = newer;
-            }
-            if (recoverDuringSave) {
-              completions.at(-1)();
-              await jest.advanceTimersByTimeAsync(0);
-            }
-            return { success: true };
-          },
+        });
+        store.interceptNextWrite(async () => {
+          rememberSaved();
+          if (duringChoice) {
+            const newer =
+              duringChoice === 'move'
+                ? { x: 400, y: 200, width: 500, height: 600 }
+                : { x: 250, y: 180, width: 550, height: 600 };
+            mainWindow.emit(duringChoice === 'move' ? 'will-move' : 'will-resize', {}, newer);
+            mainWindow.bounds = newer;
+          }
+          if (recoverDuringSave) {
+            completions.at(-1)();
+            await jest.advanceTimersByTimeAsync(0);
+          }
         });
         vm.runInNewContext(
           sliceMain('function getWindowDisplaySettings(', '// Save the monitor choice'),

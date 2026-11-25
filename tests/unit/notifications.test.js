@@ -18,8 +18,8 @@ jest.mock('../../src/i18n.js', () => ({
   formatNumber: require('../../packages/widget-renderer/src/i18n.js').formatNumber,
 }));
 
-jest.mock('../../src/ui-utils.js', () => ({
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
   showConfirm: jest.fn(),
 }));
@@ -151,7 +151,7 @@ describe('persistent notification helpers', () => {
       jest.resetModules();
       document.body.innerHTML = panelHtml;
       websocket = require('../../src/websocket.js').default;
-      showToast = require('../../src/ui-utils.js').showToast;
+      showToast = require('../../src/dialogs.js').showToast;
       require('../../src/notifications.js').initializePersistentNotifications();
       send = websocket.subscribeMessage.mock.calls.at(-1)[1];
     });
@@ -336,7 +336,7 @@ describe('persistent notification helpers', () => {
       let confirm;
 
       beforeEach(() => {
-        confirm = require('../../src/ui-utils.js').showConfirm;
+        confirm = require('../../src/dialogs.js').showConfirm;
         confirm.mockReset();
         websocket.callService.mockReset();
       });

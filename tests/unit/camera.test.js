@@ -33,8 +33,8 @@ mockHls.Events = {
 jest.mock('hls.js', () => mockHls, { virtual: true });
 
 // Mock dependencies
-jest.mock('../../src/ui-utils.js', () => ({
-  ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
   showToast: jest.fn(),
 }));
 
@@ -1247,16 +1247,13 @@ describe('Camera Module', () => {
     });
 
     it('closes the expanded view, not the dialog under it, on Escape with focus on the page', async () => {
-      const uiUtils = jest.requireActual('../../src/ui-utils.js');
+      const dialogs = jest.requireActual('../../src/dialogs.js');
       const settings = document.createElement('div');
       settings.className = 'modal';
       settings.innerHTML = '<div class="modal-content"><button>Save</button></div>';
       document.body.appendChild(settings);
       const settingsEscape = jest.fn();
-      settings.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') settingsEscape();
-      });
-      uiUtils.trapFocus(settings, { initialFocus: false });
+      dialogs.openDialog(settings, { initialFocus: false, dismiss: settingsEscape });
 
       const tile = createPreviewTile();
       mockState.CONFIG = getMockConfig();
@@ -1289,7 +1286,7 @@ describe('Camera Module', () => {
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
       );
       expect(settingsEscape).toHaveBeenCalledTimes(1);
-      uiUtils.releaseFocusTrap(settings);
+      dialogs.releaseFocusTrap(settings);
       settings.remove();
     });
 
@@ -2181,7 +2178,7 @@ describe('Camera Module', () => {
     });
 
     it('should not report an intentional startup cancellation as a viewer failure', async () => {
-      const { showToast } = require('../../src/ui-utils.js');
+      const { showToast } = require('../../src/dialogs.js');
       let rejectStreamRequest;
       mockWebSocketRequest.mockImplementation(
         () =>
@@ -2206,7 +2203,7 @@ describe('Camera Module', () => {
     });
 
     it('should destroy a partially initialized HLS instance when attachment throws', async () => {
-      const { showToast } = require('../../src/ui-utils.js');
+      const { showToast } = require('../../src/dialogs.js');
       mockWebSocketRequest.mockResolvedValue({
         success: true,
         result: { url: '/api/hls/master_playlist.m3u8' },
