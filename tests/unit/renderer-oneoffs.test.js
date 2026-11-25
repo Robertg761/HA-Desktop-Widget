@@ -287,25 +287,13 @@ describe('Renderer one-off behaviours', () => {
       }
     });
 
-    it('remembers the layout even when the save reports no config back', async () => {
-      const { readDashboardHistory } = require('../../src/dashboard-history.js');
-      await loadRenderer();
-      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
-
-      await companionOptions.executeCommand({
-        action: 'apply_profile',
-        payload: profilePayload([{ id: 'kitchen', name: 'Kitchen', entityIds: [] }]),
-      });
-
-      const history = readDashboardHistory(baseConfig());
-      expect(history).toHaveLength(1);
-      expect(history[0].layout.customTabs[0].id).toBe('home');
-    });
-
     it('adds nothing when the profile changes no page, and nothing when the save fails', async () => {
       const { readDashboardHistory } = require('../../src/dashboard-history.js');
       await loadRenderer();
-      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...baseConfig(),
+        ...patch,
+      }));
       await companionOptions.executeCommand({
         action: 'apply_profile',
         payload: profilePayload(baseConfig().customTabs),

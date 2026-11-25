@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { triggerMockEvent } = require('../mocks/electron.js');
+const { setMockConfig, triggerMockEvent } = require('../mocks/electron.js');
 const { createRendererHarness, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer first-run Home Assistant authorization', () => {
@@ -1488,6 +1488,8 @@ describe('Renderer first-run Home Assistant authorization', () => {
       });
       expect(wizardShown()).toBe(false);
 
+      // Main's own config moves on with the config it sends, and answers later writes from it.
+      setMockConfig({ secureStoragePending: false, tokenResetReason: 'encryption_unavailable' });
       triggerMockEvent('configUpdated', recoveryConfig('encryption_unavailable'));
       await flushAsync();
 

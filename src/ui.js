@@ -1,7 +1,8 @@
 import state from './state.js';
 import { getHelperActions, getHelperServiceData } from './helper-controls.js';
 import { mountSensorHistoryDetail, summarizeHistory } from './sensor-history-detail.js';
-import { rememberDashboard, dashboardSnapshot } from './dashboard-history.js';
+import { dashboardSnapshot } from './dashboard-history.js';
+import configStore from './config-store.js';
 import {
   PAGE_DEVICE_DOMAINS,
   defaultPageEntityIds,
@@ -474,10 +475,6 @@ let sortableInstance = null; // SortableJS instance for reorganize mode
 let quickAccessViewIdCounter = 0;
 let quickAccessRovingIndex = 0;
 let dialogModalIdCounter = 0;
-let quickAccessPersistenceRevision = 0;
-let quickAccessPendingWriteCount = 0;
-let quickAccessAuthoritativeFallback = null;
-let quickAccessAuthoritativeFallbackRevision = 0;
 
 const visibleEntityIds = new Set();
 let isTimeCardVisible = false;
@@ -537,37 +534,10 @@ function cloneConfigSnapshot(config = state.CONFIG) {
   return JSON.parse(JSON.stringify(config || {}));
 }
 
-function requireAuthoritativeConfig(response) {
-  if (!response || response.success === false || !response.homeAssistant) {
-    const error = new Error(response?.error || t('The main process rejected the settings update'));
-    if (response && typeof response === 'object') {
-      error.result = response;
-    }
-    throw error;
-  }
-  return response;
-}
-
 // `restorePoint` says how the layout this replaces is kept for Restore dashboard (see
 // rememberDashboard); an ordinary edit leaves it out.
-async function persistAuthoritativeConfig(nextConfig, restorePoint) {
-  const host = getRendererHost();
-  if (!host.canPersistConfig) {
-    throw new Error(t('Configuration updates are unavailable on this build.'));
-  }
-  try {
-    const previousConfig = cloneConfigSnapshot(state.CONFIG);
-    const authoritativeConfig = requireAuthoritativeConfig(await host.updateConfig(nextConfig));
-    rememberDashboard(previousConfig, authoritativeConfig, restorePoint);
-    state.setConfig(authoritativeConfig);
-    return state.CONFIG;
-  } catch (error) {
-    const recoveredConfig = error?.result?.config;
-    if (recoveredConfig?.homeAssistant) {
-      state.setConfig(recoveredConfig);
-    }
-    throw error;
-  }
+function persistAuthoritativeConfig(nextConfig, restorePoint) {
+  return configStore.update(nextConfig, { history: restorePoint || true });
 }
 
 async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId) {
@@ -577,14 +547,11 @@ async function persistAuthoritativeEntityIdReplacement(oldEntityId, newEntityId)
   }
   try {
     const result = await host.replaceConfigEntityId(oldEntityId, newEntityId);
-    const authoritativeConfig = requireAuthoritativeConfig(result?.config);
-    state.setConfig(authoritativeConfig);
-    return { changed: result?.changed === true, config: state.CONFIG };
+    const config = configStore.adopt(result?.config);
+    return { changed: result?.changed === true, config };
   } catch (error) {
     const recoveredConfig = error?.result?.config;
-    if (recoveredConfig?.homeAssistant) {
-      state.setConfig(recoveredConfig);
-    }
+    if (recoveredConfig?.homeAssistant) configStore.adopt(recoveredConfig);
     throw error;
   }
 }
@@ -625,73 +592,40 @@ function getStoredQuickAccessLayout(config) {
   return JSON.stringify({ ...patch, customTabs: pageNameRules.toStoredPages(patch.customTabs) });
 }
 
-async function persistQuickAccessConfigSnapshot(
-  nextConfig,
-  previousConfig,
-  { rollbackOnFailure = true } = {}
-) {
-  const revision = ++quickAccessPersistenceRevision;
-  const host = getRendererHost();
-  if (!host.canPersistConfig) {
-    return { success: true, config: nextConfig, revision, isCurrent: true };
-  }
-
-  if (quickAccessPendingWriteCount === 0) {
-    quickAccessAuthoritativeFallback = cloneConfigSnapshot(previousConfig);
-    quickAccessAuthoritativeFallbackRevision = revision - 1;
-  }
-  quickAccessPendingWriteCount += 1;
-
-  try {
-    const authoritativeConfig = requireAuthoritativeConfig(
-      await host.updateConfig(buildQuickAccessConfigPatch(nextConfig))
-    );
-    rememberDashboard(previousConfig, authoritativeConfig);
-    const isCurrent = revision === quickAccessPersistenceRevision;
-    if (revision >= quickAccessAuthoritativeFallbackRevision) {
-      quickAccessAuthoritativeFallback = cloneConfigSnapshot(authoritativeConfig);
-      quickAccessAuthoritativeFallbackRevision = revision;
-    }
-    if (isCurrent) {
+// Holds a Quick Access layout at once and saves it. Main is sent only the Quick Access keys, so an
+// older snapshot of the rest of the config cannot undo a change made elsewhere meanwhile.
+function persistQuickAccessConfig(nextConfig, { rollbackOnFailure = true } = {}) {
+  const pending = configStore.update(buildQuickAccessConfigPatch(nextConfig), {
+    optimistic: true,
+    rollbackOnFailure,
+    history: true,
+  });
+  const rendered = getStoredQuickAccessLayout(state.CONFIG);
+  return pending.then(
+    (config) => {
+      const isCurrent = config === state.CONFIG;
       // The optimistic render already drew this layout; only redraw when the host changed it.
-      const rendered = getStoredQuickAccessLayout(state.CONFIG);
-      state.setConfig(authoritativeConfig);
-      if (getStoredQuickAccessLayout(state.CONFIG) !== rendered) {
+      if (isCurrent && getStoredQuickAccessLayout(config) !== rendered) {
         renderQuickAccessConfigState();
       }
-    }
-    return { success: true, config: authoritativeConfig, revision, isCurrent };
-  } catch (error) {
-    console.error('Failed to persist Quick Access configuration:', error);
-    const isCurrent = revision === quickAccessPersistenceRevision;
-    if (isCurrent) {
-      if (rollbackOnFailure) {
-        const recoveredConfig = error?.result?.config;
-        state.setConfig(
-          recoveredConfig?.homeAssistant
-            ? recoveredConfig
-            : cloneConfigSnapshot(quickAccessAuthoritativeFallback || previousConfig)
-        );
-        renderQuickAccessConfigState();
+      return { success: true, config, isCurrent };
+    },
+    (error) => {
+      console.error('Failed to persist Quick Access configuration:', error);
+      const isCurrent = error?.superseded !== true;
+      if (isCurrent) {
+        if (rollbackOnFailure) renderQuickAccessConfigState();
+        showConfigPersistenceError(error);
       }
-      showConfigPersistenceError(error);
+      return { success: false, error, isCurrent };
     }
-    return { success: false, error, revision, isCurrent };
-  } finally {
-    quickAccessPendingWriteCount = Math.max(0, quickAccessPendingWriteCount - 1);
-    if (quickAccessPendingWriteCount === 0) {
-      quickAccessAuthoritativeFallback = null;
-      quickAccessAuthoritativeFallbackRevision = 0;
-    }
-  }
+  );
 }
 
 function ensureQuickAccessConfig() {
   const normalized = normalizeQuickAccessConfig(state.CONFIG || {}, { withChanged: true });
   if (!state.CONFIG || normalized.changed) {
-    const previousConfig = cloneConfigSnapshot(state.CONFIG);
-    state.setConfig(normalized.config);
-    void persistQuickAccessConfigSnapshot(normalized.config, previousConfig, {
+    void persistQuickAccessConfig(normalized.config, {
       // Keep the valid in-memory normalization if an automatic migration cannot
       // be written; the app can retry it later without restoring malformed state.
       rollbackOnFailure: false,
@@ -701,10 +635,8 @@ function ensureQuickAccessConfig() {
 }
 
 function setQuickAccessConfig(nextConfig, options = {}) {
-  const previousConfig = cloneConfigSnapshot(state.CONFIG);
   const normalized = normalizeQuickAccessConfig(nextConfig || {});
-  state.setConfig(normalized);
-  const persistence = persistQuickAccessConfigSnapshot(normalized, previousConfig);
+  const persistence = persistQuickAccessConfig(normalized);
   if (options.render !== false) {
     renderQuickAccessConfigState();
   }
@@ -1112,7 +1044,7 @@ function beginInlineTabRename(tabId, buttonEl) {
 }
 
 async function duplicateQuickAccessPage(tabId) {
-  if (quickAccessPendingWriteCount) {
+  if (configStore.isWriting()) {
     uiUtils.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
     return;
   }
@@ -1665,8 +1597,7 @@ function showAddPageModal({ starter = false } = {}) {
 
 // Puts a saved layout back: one picked in Restore dashboard, or the step Undo goes back to (`undo`).
 async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
-  if (quickAccessPendingWriteCount)
-    throw new Error(t('Wait for the current dashboard save to finish.'));
+  if (configStore.isWriting()) throw new Error(t('Wait for the current dashboard save to finish.'));
   const current = normalizeQuickAccessConfig(state.CONFIG);
   const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
   // Return to the page the layout was saved on, else stay put, else land on the page now in the

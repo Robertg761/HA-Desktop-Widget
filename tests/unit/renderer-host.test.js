@@ -55,6 +55,14 @@ describe('renderer host seam', () => {
       success: true,
     });
     expect(host.onConfigUpdated(() => {})()).toBeUndefined();
+    expect(host.getConfigRevision()).toBeNull();
+  });
+
+  test('electron host reports the newest config revision the preload has seen', () => {
+    const { createElectronHost } = require('@hadw/renderer/electron-host.js');
+    expect(createElectronHost({ getConfigRevision: () => 12 }).getConfigRevision()).toBe(12);
+    // An older preload without it: the store then names no revision.
+    expect(createElectronHost({}).getConfigRevision()).toBeNull();
   });
 
   test('electron host resolves media specs to the ha:// protocol', () => {

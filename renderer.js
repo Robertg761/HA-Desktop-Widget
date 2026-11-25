@@ -12,6 +12,7 @@ import {
   refreshDashboardUndoState,
 } from './src/dashboard-tools.js';
 import state from './src/state.js';
+import configStore from './src/config-store.js';
 import websocket from './src/websocket.js';
 import { createHaSession } from './src/ha-session.js';
 import * as hotkeys from './src/hotkeys.js';
@@ -48,7 +49,6 @@ import { bindWeatherCardPicker } from './src/weather-card.js';
 import { SeasonalEffectsManager } from './src/seasonal-effects.js';
 import { normalizeQuickAccessConfig } from './src/quick-access-tabs.js';
 import { normalizeComparisonGraphsConfig } from './src/comparison-graphs.js';
-import { rememberDashboard } from './src/dashboard-history.js';
 import {
   handleTrayEntityStateChange,
   initTrayEntityIcons,
@@ -402,7 +402,14 @@ function needsTokenReentry() {
 // works or the setup moved to browser authorization.
 function noteTokenRecoveryReason() {
   const reason = state.CONFIG?.tokenResetReason;
-  if (reason) delete state.CONFIG.tokenResetReason;
+  if (reason) {
+    void configStore.update(
+      (config) => {
+        delete config.tokenResetReason;
+      },
+      { persist: false }
+    );
+  }
   // Main sends 'not_persisted' with every config until a token is saved; it is news only once.
   if (reason && reason !== tokenRecoveryReason) {
     log.warn('Saved Home Assistant token cannot be used:', reason);
@@ -1884,19 +1891,10 @@ function maybeShowFirstRunWizard() {
 async function executeDesktopCompanionCommand({ action, payload }) {
   if (action === 'apply_profile') {
     const patch = buildConfigPatchFromApplyPayload(payload, state.CONFIG);
-    const previousConfig = JSON.parse(JSON.stringify(state.CONFIG || {}));
-    const result = await window.electronAPI.updateConfig(patch);
-    if (result?.success === false) {
-      throw new Error(result?.error || 'Profile could not be saved on this desktop');
-    }
     // A profile can replace every page, span, name and icon. Keep the layout it replaced, as a
     // save from Settings does, so Undo and Restore dashboard can bring it back. It is not part of
     // a burst of edits: Restore dashboard keeps that layout however soon after an edit it comes.
-    rememberDashboard(
-      previousConfig,
-      result?.homeAssistant ? result : { ...previousConfig, ...patch },
-      { wholeLayout: true }
-    );
+    await configStore.update(patch, { history: { wholeLayout: true } });
     const mainState = await window.electronAPI.getDesktopCompanionState();
     return {
       ...mainState,
@@ -2100,7 +2098,7 @@ function applyRendererConfig(nextConfig) {
     withChanged: true,
   });
   const renderedConfig = state.CONFIG;
-  state.setConfig(normalizedGraphs.config);
+  configStore.adopt(normalizedGraphs.config);
   ui.ensureEntityCacheScope();
   publishOmarchyBarTiles();
   // Kept local: the migration write below can echo back synchronously and re-enter this function
@@ -2110,15 +2108,18 @@ function applyRendererConfig(nextConfig) {
     lastAppliedRendererConfig,
     state.CONFIG
   );
-  // Snapshot rather than alias: alerts and hotkeys mutate state.CONFIG in place, and an
-  // aliased reference would hide those changes from the next comparison.
+  // Snapshot rather than alias: changes go through the config store, which never edits a config
+  // in place, but only tests enforce that, and an edit in place would hide from the comparison.
   lastAppliedRendererConfig = JSON.parse(JSON.stringify(state.CONFIG));
   refreshDashboardUndoState();
   refreshDesktopPinStatePublishing();
   if ((normalizedQuickAccess.changed || normalizedGraphs.changed) && !IS_DESKTOP_PIN_MODE) {
-    window.electronAPI.updateConfig(normalizedGraphs.config).catch((error) => {
-      log.error('Failed to persist Quick Access view migration:', error);
-    });
+    // Kept as normalized even if it cannot be saved; the next start migrates it again.
+    configStore
+      .update(normalizedGraphs.config, { optimistic: true, rollbackOnFailure: false })
+      .catch((error) => {
+        log.error('Failed to persist Quick Access view migration:', error);
+      });
   }
   // Re-applying window effects repaints the whole blurred window, so skip the appearance pass
   // when the echo only carries a Quick Access change the renderer already drew.
@@ -2707,8 +2708,8 @@ haSession.on('snapshot', ({ entityIds }) => {
       previousSelectedWeatherEntity: state.CONFIG?.selectedWeatherEntity || null,
       nextSelectedWeatherEntity: reconciliation.config?.selectedWeatherEntity || null,
     });
-    state.setConfig(reconciliation.config);
     if (IS_DESKTOP_PIN_MODE) {
+      void configStore.update(reconciliation.config, { persist: false });
       log.debug(
         'Skipping entity ID reconciliation config write in desktop pin mode; main window will persist it.'
       );
@@ -2716,12 +2717,14 @@ haSession.on('snapshot', ({ entityIds }) => {
         reason: 'desktop-pin-mode',
       });
     } else {
-      window.electronAPI.updateConfig(reconciliation.config).catch((error) => {
-        log.error('Failed to persist reconciled entity IDs:', error);
-        emitRendererDebug('config.entity_id_reconciliation.persist_error', {
-          error: error?.message || String(error),
+      configStore
+        .update(reconciliation.config, { optimistic: true, rollbackOnFailure: false })
+        .catch((error) => {
+          log.error('Failed to persist reconciled entity IDs:', error);
+          emitRendererDebug('config.entity_id_reconciliation.persist_error', {
+            error: error?.message || String(error),
+          });
         });
-      });
     }
   } else {
     emitRendererDebug('config.entity_id_reconciliation.no_change', {
@@ -3618,9 +3621,7 @@ function wireUI() {
         try {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.
-          const persistedConfig = await window.electronAPI.updateConfig({
-            selectedWeatherEntity: null,
-          });
+          const persistedConfig = await configStore.update({ selectedWeatherEntity: null });
           applyRendererConfig(persistedConfig);
 
           // Refresh weather display
@@ -3694,10 +3695,16 @@ function wireUI() {
         try {
           const result = await window.electronAPI.setPersistentNotificationToasts(requested);
           if (result?.success) {
-            state.CONFIG.entityAlerts = {
-              ...(state.CONFIG.entityAlerts || { enabled: false, alerts: {} }),
-              persistentNotifications: requested,
-            };
+            // Main saved it; the config here says so too.
+            void configStore.update(
+              (config) => {
+                config.entityAlerts = {
+                  ...(config.entityAlerts || { enabled: false, alerts: {} }),
+                  persistentNotifications: requested,
+                };
+              },
+              { persist: false }
+            );
           } else {
             e.target.checked = previous;
             uiUtils.showToast(result?.error || t('Error toggling alerts'), 'error', 3000);

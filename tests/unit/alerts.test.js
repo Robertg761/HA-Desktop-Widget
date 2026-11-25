@@ -46,6 +46,9 @@ jest.mock('../../src/state.js', () => ({
   get STATES() {
     return mockState.STATES;
   },
+  setConfig: (config) => {
+    mockState.CONFIG = config;
+  },
 }));
 
 // Setup global mocks
@@ -1029,6 +1032,7 @@ describe('alerts module', () => {
 
       expect(result).toBe(true);
       expect(mockElectronAPI.toggleAlerts).toHaveBeenCalledWith(true);
+      expect(mockState.CONFIG.entityAlerts.enabled).toBe(true);
       expect(showToast).toHaveBeenCalledWith('Entity alerts enabled', 'success', 2000);
     });
 

@@ -1,4 +1,5 @@
 import state from './state.js';
+import configStore from './config-store.js';
 import { closeDialog, openDialog, renderKeepingFocus, showToast } from './ui-utils.js';
 import { filterSearchMatches, getEntityDisplayName, getSearchScore } from './utils.js';
 import { lineIconMarkup } from './entity-icons.js';
@@ -310,14 +311,7 @@ async function assignHotkeyToEntity(entityId, options = {}) {
       return { success: false, error };
     }
 
-    if (!state.CONFIG.globalHotkeys) {
-      state.CONFIG.globalHotkeys = { enabled: false, hotkeys: {} };
-    }
-    if (!state.CONFIG.globalHotkeys.hotkeys) {
-      state.CONFIG.globalHotkeys.hotkeys = {};
-    }
-
-    const currentConfig = state.CONFIG.globalHotkeys.hotkeys[entityId];
+    const currentConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
     const currentAction =
       typeof currentConfig === 'object' && currentConfig?.action ? currentConfig.action : null;
     const action = entityHotkeys.resolveEntityHotkeyAction(
@@ -334,7 +328,17 @@ async function assignHotkeyToEntity(entityId, options = {}) {
 
     const result = await window.electronAPI.registerHotkey(entityId, hotkey, action);
     if (result?.success) {
-      state.CONFIG.globalHotkeys.hotkeys[entityId] = { hotkey, action };
+      // Main saved it while registering it.
+      void configStore.update(
+        (config) => {
+          const globalHotkeys = config.globalHotkeys || { enabled: false };
+          config.globalHotkeys = {
+            ...globalHotkeys,
+            hotkeys: { ...globalHotkeys.hotkeys, [entityId]: { hotkey, action } },
+          };
+        },
+        { persist: false }
+      );
       pendingActions.delete(entityId);
       renderHotkeysTab();
       // The re-render replaces the field that opened the recorder, so refocus its replacement.
@@ -392,7 +396,14 @@ async function clearEntityHotkey(entityId) {
     if (result?.success !== true) {
       throw new Error(result?.error || t('Failed to clear hotkey'));
     }
-    if (state.CONFIG.globalHotkeys?.hotkeys) delete state.CONFIG.globalHotkeys.hotkeys[entityId];
+    if (state.CONFIG?.globalHotkeys?.hotkeys) {
+      void configStore.update(
+        (config) => {
+          delete config.globalHotkeys?.hotkeys?.[entityId];
+        },
+        { persist: false }
+      );
+    }
     renderHotkeysTab();
     if (result.warning) showToast(result.warning, 'warning', 4000);
     return true;
@@ -442,8 +453,13 @@ async function toggleHotkeys(enabled) {
   try {
     const result = await window.electronAPI.toggleHotkeys(enabled);
     if (result.success) {
-      if (state.CONFIG.globalHotkeys) {
-        state.CONFIG.globalHotkeys.enabled = enabled;
+      if (state.CONFIG?.globalHotkeys) {
+        void configStore.update(
+          (config) => {
+            if (config.globalHotkeys) config.globalHotkeys.enabled = enabled;
+          },
+          { persist: false }
+        );
       }
       globalHotkeys.enabled = enabled;
       // The switch is labelled "Entity hotkeys", and the popup hotkey is not part of it.
@@ -566,57 +582,34 @@ function setupHotkeyEventListenersInternal() {
       // Save to config
       const hotkeyConfig = state.CONFIG.globalHotkeys?.hotkeys?.[entityId];
       if (hotkeyConfig) {
-        const previousConfig = JSON.parse(JSON.stringify(state.CONFIG));
-        // The rollback below may be sent after a profile sync pull has landed, so
-        // it names the revision it was taken at and main keeps the pulled values.
-        const previousRevision = window.electronAPI.getConfigRevision?.();
-        if (Number.isFinite(previousRevision)) previousConfig.configRevision = previousRevision;
-        const nextConfig = JSON.parse(JSON.stringify(state.CONFIG));
-        const nextHotkeyConfig = nextConfig.globalHotkeys.hotkeys[entityId];
-        nextConfig.globalHotkeys.hotkeys[entityId] =
-          typeof nextHotkeyConfig === 'string'
-            ? { hotkey: nextHotkeyConfig, action }
-            : { ...nextHotkeyConfig, action };
-        let updatePersisted = false;
-
+        // Main registers hotkeys from its saved config, so the action is saved first and then
+        // registered; one that cannot be registered is put back, and so is its binding.
+        const registerHotkeys = async (failureMessage) => {
+          const registration = await window.electronAPI.registerHotkeys();
+          if (registration?.success === false) {
+            throw new Error(registration.error || failureMessage);
+          }
+        };
         try {
-          const updatedConfig = await window.electronAPI.updateConfig(nextConfig);
-          if (!updatedConfig?.homeAssistant) {
-            throw new Error(updatedConfig?.error || t('Failed to save hotkey action'));
-          }
-          state.setConfig(updatedConfig);
-          updatePersisted = true;
-
-          const registrationResult = await window.electronAPI.registerHotkeys();
-          if (registrationResult?.success === false) {
-            throw new Error(
-              registrationResult.error || t('Failed to activate the updated hotkey action')
-            );
-          }
-
+          await configStore.update(
+            (config) => {
+              const current = config.globalHotkeys.hotkeys[entityId];
+              config.globalHotkeys.hotkeys[entityId] =
+                typeof current === 'string' ? { hotkey: current, action } : { ...current, action };
+            },
+            {
+              apply: () => registerHotkeys(t('Failed to activate the updated hotkey action')),
+              undo: () =>
+                registerHotkeys(
+                  t('The previous hotkey action was restored, but its runtime binding was not')
+                ),
+            }
+          );
           showToast(t('Action updated to: {{action}}', { action: actionLabel }), 'success', 2000);
         } catch (error) {
           let failureMessage = error?.message || t('Failed to update hotkey action');
-          if (updatePersisted) {
-            try {
-              const restoredConfig = await window.electronAPI.updateConfig(previousConfig);
-              if (!restoredConfig?.homeAssistant) {
-                throw new Error(restoredConfig?.error || t('Failed to restore hotkey action'), {
-                  cause: error,
-                });
-              }
-              state.setConfig(restoredConfig);
-              const rollbackRegistration = await window.electronAPI.registerHotkeys();
-              if (rollbackRegistration?.success === false) {
-                throw new Error(
-                  rollbackRegistration.error ||
-                    t('The previous hotkey action was restored, but its runtime binding was not'),
-                  { cause: error }
-                );
-              }
-            } catch (rollbackError) {
-              failureMessage = `${failureMessage}. ${rollbackError?.message || t('Rollback failed')}`;
-            }
+          if (error?.rollbackError) {
+            failureMessage = `${failureMessage}. ${error.rollbackError.message || t('Rollback failed')}`;
           }
           renderHotkeysTab();
           showToast(failureMessage, 'error', 4000);
