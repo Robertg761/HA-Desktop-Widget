@@ -25,23 +25,27 @@ const ALERT_POPUP_TITLE_LIMIT = 120;
 const ALERT_POPUP_MESSAGE_LIMIT = 300;
 const ALERT_POPUP_LABEL_LIMIT = 40;
 
-// The services a card's button may call, by domain. The card asks for a button by its number and
-// the main process calls what was decided when the card opened, so nothing else can be called
-// through it; this list is the second check, on what the main window asked for.
-const ALERT_POPUP_SERVICES = Object.freeze({
+const { describeEntity } = require('./entity-actions.cjs');
+
+// What a card's button may run, by kind of entity: actions Entity Actions takes (run in
+// src/entity-actions.cjs). The card asks for a button by its number and the main process runs what
+// was decided when the card opened, so nothing else can be run through it; this list is the second
+// check, on what the main window asked for.
+const ON_OFF = Object.freeze(['turn_on', 'turn_off']);
+const ALERT_POPUP_ACTIONS = Object.freeze({
   lock: Object.freeze(['lock', 'unlock']),
-  light: Object.freeze(['turn_on', 'turn_off']),
-  switch: Object.freeze(['turn_on', 'turn_off']),
-  fan: Object.freeze(['turn_on', 'turn_off']),
-  input_boolean: Object.freeze(['turn_on', 'turn_off']),
-  siren: Object.freeze(['turn_on', 'turn_off']),
-  humidifier: Object.freeze(['turn_on', 'turn_off']),
-  remote: Object.freeze(['turn_on', 'turn_off']),
-  automation: Object.freeze(['turn_on', 'turn_off']),
-  climate: Object.freeze(['turn_on', 'turn_off']),
-  water_heater: Object.freeze(['turn_on', 'turn_off']),
-  cover: Object.freeze(['open_cover', 'close_cover']),
-  valve: Object.freeze(['open_valve', 'close_valve']),
+  light: ON_OFF,
+  switch: ON_OFF,
+  fan: ON_OFF,
+  input_boolean: ON_OFF,
+  siren: ON_OFF,
+  humidifier: ON_OFF,
+  remote: ON_OFF,
+  automation: ON_OFF,
+  climate: ON_OFF,
+  water_heater: ON_OFF,
+  cover: Object.freeze(['open', 'close']),
+  valve: Object.freeze(['open', 'close']),
   alarm_control_panel: Object.freeze(['alarm_disarm', 'alarm_arm_away']),
   vacuum: Object.freeze(['start', 'return_to_base']),
   lawn_mower: Object.freeze(['start_mowing', 'dock']),
@@ -50,7 +54,7 @@ const ALERT_POPUP_SERVICES = Object.freeze({
   input_button: Object.freeze(['press']),
   scene: Object.freeze(['turn_on']),
   script: Object.freeze(['turn_on']),
-  media_player: Object.freeze(['media_play', 'media_pause', 'turn_off']),
+  media_player: Object.freeze(['play', 'pause', 'turn_off']),
 });
 
 // Kinds of entity that turn on and off and say so as `on` and `off`.
@@ -92,34 +96,16 @@ function cleanText(value, limit) {
 
 /** Whether an entity of this kind can be a card's button. */
 function isAlertPopupActionDomain(domain) {
-  return Object.prototype.hasOwnProperty.call(ALERT_POPUP_SERVICES, domain);
-}
-
-// Home Assistant's feature flags for the buttons a card offers. An entity that reports no features
-// is offered the button anyway, as its tile does; one that says it cannot is not.
-const FEATURES = Object.freeze({
-  cover: { open: 1, close: 2 },
-  valve: { open: 1, close: 2 },
-  alarm_control_panel: { arm_away: 2 },
-  climate: { turn_off: 128, turn_on: 256 },
-  water_heater: { on_off: 8 },
-  vacuum: { return_home: 16, start: 8192 },
-  lawn_mower: { start: 1, dock: 4 },
-  media_player: { pause: 1, turn_off: 256, play: 16384 },
-});
-
-function supports(attributes, flag) {
-  const features = Number(attributes.supported_features);
-  if (!flag || attributes.supported_features == null || !Number.isFinite(features)) return true;
-  return (features & flag) === flag;
+  return Object.prototype.hasOwnProperty.call(ALERT_POPUP_ACTIONS, domain);
 }
 
 /**
  * The button an entity gets on a card, from its state when the card opens: a locked lock offers
- * Unlock, a light that is on offers Turn off, an open water valve offers Close. `label` is the
- * English text and `context` the translation context, which the renderer translates. Null when the
- * entity offers nothing now: it is offline, it says it cannot, or it wants a code (a lock or an
- * alarm panel with a code), which a card has nowhere to type.
+ * Unlock, a light that is on offers Turn off, an open water valve offers Close. `action` is what
+ * Entity Actions runs, `label` the English text and `context` the translation context, which the
+ * renderer translates. Null when the entity offers nothing now: it is offline, its feature flags
+ * say it cannot (as describeEntity reads them), or it wants a code (a lock or an alarm panel with
+ * a code), which a card has nowhere to type.
  */
 function getAlertPopupAction(entity) {
   const entityId = entity?.entity_id;
@@ -128,17 +114,9 @@ function getAlertPopupAction(entity) {
   const state = typeof entity.state === 'string' ? entity.state : '';
   const attributes = isPlainObject(entity.attributes) ? entity.attributes : {};
   if (!state || NO_READING_STATES.has(state)) return null;
-  const flags = FEATURES[domain] || {};
-  const action = (service, label, context = '', flag = 0) => {
-    if (!supports(attributes, flag)) return null;
-    return {
-      entityId,
-      domain,
-      service,
-      label,
-      ...(context ? { context } : {}),
-    };
-  };
+  const { capabilities: can, commands } = describeEntity(entity);
+  const action = (name, label, context = '', allowed = true) =>
+    allowed ? { entityId, action: name, label, ...(context ? { context } : {}) } : null;
 
   if (domain === 'lock') {
     if (attributes.code_format) return null;
@@ -149,40 +127,36 @@ function getAlertPopupAction(entity) {
   if (ON_OFF_DOMAINS.has(domain)) {
     return state === 'on' ? action('turn_off', 'Turn off') : action('turn_on', 'Turn on');
   }
-  if (domain === 'climate') {
+  if (domain === 'climate' || domain === 'water_heater') {
     return state === 'off'
-      ? action('turn_on', 'Turn on', '', flags.turn_on)
-      : action('turn_off', 'Turn off', '', flags.turn_off);
-  }
-  if (domain === 'water_heater') {
-    return state === 'off'
-      ? action('turn_on', 'Turn on', '', flags.on_off)
-      : action('turn_off', 'Turn off', '', flags.on_off);
+      ? action('turn_on', 'Turn on', '', can.canTurnOn)
+      : action('turn_off', 'Turn off', '', can.canTurnOff);
   }
   if (domain === 'cover' || domain === 'valve') {
-    const suffix = domain === 'cover' ? 'cover' : 'valve';
     return state === 'open' || state === 'opening'
-      ? action(`close_${suffix}`, 'Close', '', flags.close)
-      : action(`open_${suffix}`, 'Open', 'Action: Open', flags.open);
+      ? action('close', 'Close', '', can.canClose)
+      : action('open', 'Open', 'Action: Open', can.canOpen);
   }
   if (domain === 'alarm_control_panel') {
     // A panel that wants a code to disarm wants one for everything a card could offer.
     if (attributes.code_format) {
       if (state !== 'disarmed' || attributes.code_arm_required !== false) return null;
     }
-    if (state === 'disarmed') return action('alarm_arm_away', 'Arm', '', flags.arm_away);
+    if (state === 'disarmed') {
+      return action('alarm_arm_away', 'Arm', '', commands.includes('alarm_arm_away'));
+    }
     if (state === 'disarming') return null;
     return action('alarm_disarm', 'Disarm');
   }
   if (domain === 'vacuum') {
     return state === 'cleaning'
-      ? action('return_to_base', 'Return', '', flags.return_home)
-      : action('start', 'Start', '', flags.start);
+      ? action('return_to_base', 'Return', '', can.canReturnHome)
+      : action('start', 'Start', '', can.canStart);
   }
   if (domain === 'lawn_mower') {
     return state === 'mowing'
-      ? action('dock', 'Return', '', flags.dock)
-      : action('start_mowing', 'Start', '', flags.start);
+      ? action('dock', 'Return', '', can.canDock)
+      : action('start_mowing', 'Start', '', can.canStartMowing);
   }
   if (domain === 'timer') {
     if (state === 'active') return action('cancel', 'Cancel');
@@ -192,9 +166,9 @@ function getAlertPopupAction(entity) {
   if (domain === 'scene') return action('turn_on', 'Activate');
   if (domain === 'script') return action('turn_on', 'Run');
   if (domain === 'media_player') {
-    if (state === 'playing') return action('media_pause', 'Pause', '', flags.pause);
-    if (state === 'paused') return action('media_play', 'Play', '', flags.play);
-    if (state !== 'off') return action('turn_off', 'Turn off', '', flags.turn_off);
+    if (state === 'playing') return action('pause', 'Pause', '', can.canPause);
+    if (state === 'paused') return action('play', 'Play', '', can.canPlay);
+    if (state !== 'off') return action('turn_off', 'Turn off', '', can.canTurnOff);
   }
   return null;
 }
@@ -389,15 +363,13 @@ function sanitizeAlertPopupRequest(request) {
       (action) =>
         isPlainObject(action) &&
         isEntityId(action.entityId) &&
-        action.domain === getDomain(action.entityId) &&
-        (ALERT_POPUP_SERVICES[action.domain] || []).includes(action.service)
+        (ALERT_POPUP_ACTIONS[getDomain(action.entityId)] || []).includes(action.action)
     )
     .slice(0, MAX_ALERT_POPUP_ACTIONS)
     .map((action) => ({
       entityId: action.entityId,
-      domain: action.domain,
-      service: action.service,
-      label: cleanText(action.label, ALERT_POPUP_LABEL_LIMIT) || action.service,
+      action: action.action,
+      label: cleanText(action.label, ALERT_POPUP_LABEL_LIMIT) || action.action,
       name: cleanText(action.name, ALERT_POPUP_TITLE_LIMIT),
       // The button takes its entity's tile colour, as its tile does.
       ...(cleanColor(action.color) ? { color: cleanColor(action.color) } : {}),
@@ -482,7 +454,7 @@ function layoutAlertPopups(sizes, workArea) {
 
 module.exports = {
   ALERT_POPUP_DURATIONS,
-  ALERT_POPUP_SERVICES,
+  ALERT_POPUP_ACTIONS,
   DEFAULT_ALERT_POPUP_SECONDS,
   MAX_ALERT_POPUP_ACTIONS,
   MAX_ALERT_POPUPS,

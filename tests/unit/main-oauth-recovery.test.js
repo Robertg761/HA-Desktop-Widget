@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createMainConfigStore } = require('../helpers/main-config-store');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -27,8 +28,8 @@ describe('main-process Home Assistant authorization recovery', () => {
       Date: { now: () => now },
       HOME_ASSISTANT_OAUTH_REFRESH_SKEW_MS: 5 * 60 * 1000,
       powerMonitor: { on: (event, handler) => (handlers[event] = handler) },
-      ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-      requestOpportunisticProfileSync: jest.fn(),
+      ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
+      profileSyncEngine: { requestSync: jest.fn() },
       invalidateHaConnectionState: jest.fn(),
       scheduleHomeAssistantOAuthRefresh: jest.fn(),
       runSerializedConfigMutation: (task) => Promise.resolve().then(task),
@@ -39,8 +40,6 @@ describe('main-process Home Assistant authorization recovery', () => {
           oauthStatus: 'connected',
         };
       }),
-      authorizeIpcSender: () => ({ type: 'main' }),
-      rejectUnauthorizedIpc: jest.fn(),
       mainWindow: {
         isDestroyed: () => false,
         webContents: { send: (channel, payload) => events.push([channel, payload]) },
@@ -50,7 +49,7 @@ describe('main-process Home Assistant authorization recovery', () => {
     vm.runInNewContext(
       `${staleSource}\n${extractBlock('function setupProfileSyncWakeTriggers')}\n` +
         'setupProfileSyncWakeTriggers();\n' +
-        extractBlock("ipcMain.handle('refresh-home-assistant-oauth'", '\n});\n'),
+        extractBlock("ipcRoutes.handle('refresh-home-assistant-oauth'", '\n});\n'),
       context
     );
     return { context, events, handlers };
@@ -129,24 +128,32 @@ describe('main-process Home Assistant authorization recovery', () => {
       () => Promise.reject(Object.assign(new Error('unreadable'), { code })),
     ]),
   ])('requires reauthorization after %s and stops retrying', async (_label, refresh) => {
-    const context = {
-      config: {
-        homeAssistant: {
-          authMethod: 'oauth',
-          oauthStatus: 'connected',
-          token: 'access',
-          oauthAuthorizationId: 'authorization-1',
-          oauthExpiresAt: 123,
-        },
+    const config = {
+      homeAssistant: {
+        authMethod: 'oauth',
+        oauthStatus: 'connected',
+        token: 'access',
+        oauthAuthorizationId: 'authorization-1',
+        oauthExpiresAt: 123,
       },
+    };
+    const pushConfigToRenderer = jest.fn();
+    const broadcastDesktopPinConfigUpdate = jest.fn();
+    const store = createMainConfigStore(config, {
+      pushConfigToRenderer,
+      broadcastDesktopPinConfigUpdate,
+    });
+    const context = {
+      config,
+      configStore: store.configStore,
       HOME_ASSISTANT_TOKEN_PLACEHOLDER: 'YOUR_LONG_LIVED_ACCESS_TOKEN',
       HOME_ASSISTANT_OAUTH_RETRY_MS: 60_000,
       getHomeAssistantOAuthClient: () => ({ refresh }),
       applyHomeAssistantOAuthSession: jest.fn(),
       clearHomeAssistantOAuthRefreshTimer: jest.fn(),
       scheduleHomeAssistantOAuthRefresh: jest.fn(),
-      pushConfigToRenderer: jest.fn(),
-      broadcastDesktopPinConfigUpdate: jest.fn(),
+      pushConfigToRenderer,
+      broadcastDesktopPinConfigUpdate,
     };
     vm.runInNewContext(
       `const process = { platform: 'linux' };\n` +
@@ -170,11 +177,15 @@ describe('main-process Home Assistant authorization recovery', () => {
     expect(context.scheduleHomeAssistantOAuthRefresh).not.toHaveBeenCalled();
     expect(context.clearHomeAssistantOAuthRefreshTimer).toHaveBeenCalled();
     expect(context.broadcastDesktopPinConfigUpdate).toHaveBeenCalled();
+    // The connection state reaches the windows, not config.json.
+    expect(store.writeCount()).toBe(0);
   });
 
   it('keeps the failure code for the renderer when a refresh fails while offline', async () => {
+    const config = { homeAssistant: { authMethod: 'oauth', oauthStatus: 'connected' } };
     const context = {
-      config: { homeAssistant: { authMethod: 'oauth', oauthStatus: 'connected' } },
+      config,
+      configStore: createMainConfigStore(config).configStore,
       HOME_ASSISTANT_OAUTH_RETRY_MS: 60_000,
       getHomeAssistantOAuthClient: () => ({
         refresh: () =>
@@ -185,8 +196,6 @@ describe('main-process Home Assistant authorization recovery', () => {
           ),
       }),
       scheduleHomeAssistantOAuthRefresh: jest.fn(),
-      pushConfigToRenderer: jest.fn(),
-      broadcastDesktopPinConfigUpdate: jest.fn(),
     };
     vm.runInNewContext(
       `const process = { platform: 'linux' };\n` +
@@ -206,7 +215,7 @@ describe('main-process Home Assistant authorization recovery', () => {
 
   it('never saves the runtime authorization error fields', () => {
     const saveSource = mainSource.slice(
-      mainSource.indexOf('const configToSave = JSON.parse(JSON.stringify(config));'),
+      mainSource.indexOf('const configToSave = JSON.parse(JSON.stringify(currentConfig));'),
       mainSource.indexOf('if (preserveRecoveryToken) {')
     );
     expect(saveSource).toContain('delete configToSave.homeAssistant.oauthLastError;');
@@ -260,9 +269,7 @@ describe('main-process Home Assistant authorization recovery', () => {
     async function pairWithoutKeyring(platform) {
       const handlers = {};
       const context = {
-        ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-        authorizeIpcSender: () => ({ type: 'main' }),
-        rejectUnauthorizedIpc: jest.fn(),
+        ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
         windowAutoHide: { suspend: () => () => {} },
         showMainWindowFromTray: () => {},
         getHomeAssistantOAuthClient: () => ({
@@ -279,7 +286,7 @@ describe('main-process Home Assistant authorization recovery', () => {
         `const process = { platform: ${JSON.stringify(platform)} };\n` +
           extractBlock('function describeLinuxKeyringOAuthError') +
           extractBlock('function describeLinuxKeyringPairingError') +
-          extractBlock("ipcMain.handle('start-home-assistant-oauth'", '\n});\n'),
+          extractBlock("ipcRoutes.handle('start-home-assistant-oauth'", '\n});\n'),
         context
       );
       return handlers['start-home-assistant-oauth']({}, 'http://ha.local:8123');

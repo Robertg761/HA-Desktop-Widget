@@ -1,6 +1,6 @@
 import { formatList } from './format.js';
 import { formatNumber, t } from './i18n.js';
-import { showConfirm, showToast } from './ui-utils.js';
+import { showConfirm, showToast } from './dialogs.js';
 import state from './state.js';
 import pageNameRules from './page-names.cjs';
 

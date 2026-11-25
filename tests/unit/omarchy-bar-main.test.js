@@ -222,13 +222,13 @@ describe('Omarchy bar requests in the main process', () => {
         'getOmarchyBarActionRequest(process.argv)'
       );
       const tilesHandler = mainSource.slice(
-        mainSource.indexOf("ipcMain.handle('publish-omarchy-bar-tiles'"),
-        mainSource.indexOf("ipcMain.handle('publish-ha-snapshot'")
+        mainSource.indexOf("ipcRoutes.handle('publish-omarchy-bar-tiles'"),
+        mainSource.indexOf("ipcRoutes.handle('publish-ha-snapshot'")
       );
       expect(tilesHandler).toContain('deliverPendingOmarchyBarAction();');
       expect(tilesHandler).toContain('cleanOmarchyBarTile(normalizedEntityId, tile)');
       expect(tilesHandler).toContain('cleanLineIconSvg(svg)');
-      const connectionStart = mainSource.indexOf("ipcMain.handle('publish-ha-connection-state'");
+      const connectionStart = mainSource.indexOf("ipcRoutes.handle('publish-ha-connection-state'");
       const connectionHandler = mainSource.slice(
         connectionStart,
         mainSource.indexOf('\n});\n', connectionStart)

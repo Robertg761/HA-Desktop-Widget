@@ -96,7 +96,7 @@ describe('pop-up alert cards on screen', () => {
     const withCamera = (entityId) =>
       request(entityId, {
         camera: 'camera.front_door',
-        actions: [{ entityId: 'light.a', domain: 'light', service: 'turn_on' }],
+        actions: [{ entityId: 'light.a', action: 'turn_on' }],
       });
     manager.show(withCamera('binary_sensor.a'));
     manager.show(withCamera('binary_sensor.b'));
@@ -142,20 +142,18 @@ describe('pop-up alert cards on screen', () => {
   describe('what a card asks for', () => {
     const doorbell = request('binary_sensor.doorbell', {
       camera: 'camera.front_door',
-      actions: [
-        { entityId: 'lock.front_door', domain: 'lock', service: 'unlock', label: 'Unlock' },
-      ],
+      actions: [{ entityId: 'lock.front_door', action: 'unlock', label: 'Unlock' }],
     });
 
-    it('calls the service its button was given, through the widget window', async () => {
+    it("runs the action its button was given, through the widget window's Entity Actions", async () => {
       const { manager, windows, forwardAction } = setup();
       manager.show(doorbell);
       const popup = manager.getBySender(windows[0].webContents);
       await expect(manager.handleAction(popup, 0)).resolves.toEqual({ success: true });
       expect(forwardAction).toHaveBeenCalledWith(
         'lock.front_door',
-        'service-call',
-        { domain: 'lock', service: 'unlock', serviceData: {} },
+        'entity-action',
+        { action: 'unlock' },
         { awaitResponse: true }
       );
     });

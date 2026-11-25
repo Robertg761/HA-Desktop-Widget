@@ -16,7 +16,7 @@ import { formatClockTime } from './format.js';
 import { createLineIcon, renderEntityIcon } from './entity-icons.js';
 import { getRendererHost } from '@hadw/renderer/host.js';
 import { prefersReducedMotion } from './motion.js';
-import { getTileColorStyle } from './ui-utils.js';
+import { getTileColorStyle } from './color-math.js';
 
 // How often a camera that has no live stream gets a new snapshot instead.
 const SNAPSHOT_REFRESH_MS = 3000;
@@ -197,6 +197,9 @@ function buildCard() {
   };
 }
 
+// The names getTileColorStyle sets, asked of it (any colour gives them all).
+const TILE_COLOR_PROPERTIES = Object.keys(getTileColorStyle('#000000')?.properties || {});
+
 /**
  * Wears an entity's tile colour, as its tile in the widget does: the colour's accent values for
  * both themes go on the element and the stylesheet makes them its accent. No colour (the tile
@@ -204,10 +207,7 @@ function buildCard() {
  */
 function applyTileColor(node, color) {
   const style = color ? getTileColorStyle(color) : null;
-  // The names getTileColorStyle sets, asked of it (any colour gives them all).
-  Object.keys(getTileColorStyle('#000000')?.properties || {}).forEach((name) =>
-    node.style.removeProperty(name)
-  );
+  TILE_COLOR_PROPERTIES.forEach((name) => node.style.removeProperty(name));
   if (!style) {
     delete node.dataset.tileColor;
     return;

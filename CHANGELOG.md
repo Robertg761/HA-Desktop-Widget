@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Let an alert open a pop-up card instead of a system notification. Turn on **Show a pop-up card** in an alert's settings, then pick a camera to show live and up to two buttons, such as **Unlock** for the front door or **Turn off** for a light. The card appears in the corner of the screen you are using, above other windows, and fades away after the time you choose, or stays until you close it. Pointing at it holds it on screen. Click the camera for the full viewer, or the title to open the widget. Buttons cover locks, alarm panels, lights and switches, covers and garage doors, water valves, thermostats, water heaters, vacuums, lawn mowers, timers, media players, buttons, scenes and scripts, and the dialog suggests a camera and buttons that fit the alert, such as the front door's lock for its doorbell or the water valve for a leak sensor.
 
+### Changed
+
+- Turn humidifiers and sirens on and off from the command palette, as their tiles already could. Palette on/off commands now update the tile at once, like a tile click.
+- Toggle automations from the Omarchy bar, as the widget already did.
+
+### Fixed
+
+- Keep the last volume change when the media dialog is closed right after moving the slider.
+- Report a Start at login change on Linux that did not stick, as Windows already did, instead of showing it as saved.
+- Keep tray entities when an entity id is repaired after Home Assistant loads.
+- Stop one failing part of the widget from holding up the others when entity states change. An error while drawing tiles no longer stops alerts, the tray and desktop pins from updating.
+- Stop the popup hotkey mode settings from replacing your settings with an error after a failed save.
+- Show an error instead of a success message when clearing the weather override is not saved.
+- Stop an entity rename from saying it updated references to an entity you never used.
+
 ## [4.2.1] - 2026-11-21
 
 ### Added

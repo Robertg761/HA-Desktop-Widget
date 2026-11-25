@@ -2,15 +2,15 @@ import state from './state.js';
 import * as utils from './utils.js';
 import {
   openEntityDetailModal,
-  getEntityDomain,
   switchQuickAccessPage,
   requestAlarmCode,
-  hasEntityAction,
+  runEntityAction,
   describeServiceErrorMessage,
   isConnectionServiceError,
 } from './ui.js';
 import websocket from './websocket.js';
-import { closeDialog, openDialog, showToast } from './ui-utils.js';
+import entityActions from './entity-actions.cjs';
+import { closeDialog, openDialog, showToast } from './dialogs.js';
 import { formatNumber, t } from './i18n.js';
 import { compareNames, getCloseMatchScore, normalizeSearchText } from './format.js';
 import { renderEntityIcon, setLineIconContent } from './entity-icons.js';
@@ -44,11 +44,7 @@ let lastPointerPosition = null;
 const QUERY_ONLY_SERVICES = new Set(['unlock', 'alarm_disarm']);
 // Devices whose result row has no safe default action; Enter looks for their explicit command.
 const COMMAND_ONLY_DOMAINS = new Set(['lock', 'alarm_control_panel']);
-// The kinds of device the palette has named commands for: Turn on and Turn off, Run, Lock and
-// Unlock, Arm and Disarm. buildPaletteCommands reads these, and so does the decision whether Enter
-// on a result may act (hasCommandDomain), so the two cannot drift apart.
-const TOGGLE_COMMAND_DOMAINS = new Set(['light', 'switch', 'fan', 'input_boolean']);
-const RUN_COMMAND_DOMAINS = new Set(['scene', 'script']);
+const { describeEntity, getEntityDomain } = entityActions;
 
 // The same text rules as every other search, keeping dots so an entity id still reads as one.
 function normalizeSearchValue(value) {
@@ -288,37 +284,49 @@ function updateHighlightedResult(nextIndex) {
   });
 }
 
+// The words for each named command Entity Actions offers (describeEntity's commands).
+function getCommandLabel(description, service, name) {
+  switch (service) {
+    case 'turn_on':
+      // A scene or script is run, not turned on.
+      return description.click === 'activate'
+        ? t('Run {{name}}', { name })
+        : t('Turn on {{name}}', { name });
+    case 'turn_off':
+      return t('Turn off {{name}}', { name });
+    case 'lock':
+      return t('Lock {{name}}', { name });
+    case 'unlock':
+      return t('Unlock {{name}}', { name });
+    case 'alarm_arm_home':
+      return t('Arm {{name}} at home', { name });
+    case 'alarm_arm_away':
+      return t('Arm {{name}} away', { name });
+    case 'alarm_arm_night':
+      return t('Arm {{name}} at night', { name });
+    case 'alarm_arm_custom_bypass':
+      return t('Arm {{name}} with bypass', { name });
+    case 'alarm_arm_vacation':
+      return t('Arm {{name}} for vacation', { name });
+    case 'alarm_disarm':
+      return t('Disarm {{name}}', { name });
+    default:
+      return '';
+  }
+}
+
 function buildPaletteCommands(entities, config = state.CONFIG, services = state.SERVICES) {
   const commands = entities.flatMap((entity) => {
-    const domain = getEntityDomain(entity.entity_id);
+    // Only the commands that change something: a device that is on gets "Turn off".
+    const description = describeEntity(entity, { services: services || {} });
     const name = utils.getEntityDisplayName(entity);
-    if (
-      entity.state === 'unavailable' ||
-      (entity.state === 'unknown' && !RUN_COMMAND_DOMAINS.has(domain))
-    )
-      return [];
-    // Only offer the action that changes something: a device that is on gets "Turn off".
-    const actions = TOGGLE_COMMAND_DOMAINS.has(domain)
-      ? [
-          entity.state !== 'on' && ['turn_on', t('Turn on {{name}}', { name })],
-          entity.state !== 'off' && ['turn_off', t('Turn off {{name}}', { name })],
-        ].filter(Boolean)
-      : RUN_COMMAND_DOMAINS.has(domain)
-        ? [['turn_on', t('Run {{name}}', { name })]]
-        : domain === 'lock'
-          ? [
-              entity.state === 'unlocked' && ['lock', t('Lock {{name}}', { name })],
-              entity.state === 'locked' && ['unlock', t('Unlock {{name}}', { name })],
-            ].filter(Boolean)
-          : domain === 'alarm_control_panel'
-            ? getAlarmActions(entity, name)
-            : [];
-    return actions
-      .filter(([service]) => services?.[domain]?.[service])
+    return description.commands
+      .map((service) => [service, getCommandLabel(description, service, name)])
+      .filter(([, displayName]) => displayName)
       .map(([service, displayName]) => ({
         entity,
         displayName,
-        domain,
+        domain: description.domain,
         service,
         // Recency belongs to the device, not the action: after "Turn on" the palette offers
         // "Turn off", and that is the command the user most likely wants next.
@@ -339,22 +347,6 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
   return commands;
 }
 
-// A lock or alarm panel row has no default action. Point at its explicit command instead of
-// closing, or explain why there is none.
-function getAlarmActions(entity, name) {
-  const features = Number(entity.attributes?.supported_features) || 0;
-  return [
-    [1, 'alarm_arm_home', 'armed_home', t('Arm {{name}} at home', { name })],
-    [2, 'alarm_arm_away', 'armed_away', t('Arm {{name}} away', { name })],
-    [4, 'alarm_arm_night', 'armed_night', t('Arm {{name}} at night', { name })],
-    [16, 'alarm_arm_custom_bypass', 'armed_custom_bypass', t('Arm {{name}} with bypass', { name })],
-    [32, 'alarm_arm_vacation', 'armed_vacation', t('Arm {{name}} for vacation', { name })],
-  ]
-    .filter(([flag, , target]) => (features & flag) === flag && entity.state !== target)
-    .map(([, service, , label]) => [service, label])
-    .concat(entity.state !== 'disarmed' ? [['alarm_disarm', t('Disarm {{name}}', { name })]] : []);
-}
-
 // Whether the palette lists a command (turn on, run, lock) for the entity right now.
 function hasCommandFor(entityId) {
   return (paletteCommands || []).some((item) => item.entity?.entity_id === entityId);
@@ -365,11 +357,26 @@ function hasCommandFor(entityId) {
 // Assistant has answered get_services, yet Enter on its result must still only say what it is: the
 // command that acts is the row beside it, when there is one. The list cannot decide this.
 function hasCommandDomain(entityId) {
-  const domain = getEntityDomain(entityId);
+  return describeEntity(entityId).commands.length > 0;
+}
+
+/**
+ * Whether Enter has anything to do for this entity: its controls open, or its primary action runs.
+ * Sun, a person, weather, a device tracker, an update, a zone or a binary sensor have neither, and
+ * locks and alarm panels are never run from a plain row (the palette offers named commands for
+ * them). The same answer as a Quick Access tile's click.
+ * @param {Object} entity - Home Assistant entity state object.
+ * @returns {boolean}
+ */
+function hasEntityAction(entity) {
+  const liveEntity = state.STATES?.[entity?.entity_id] || entity;
+  if (!liveEntity?.entity_id) return false;
+  const description = describeEntity(liveEntity);
+  if (COMMAND_ONLY_DOMAINS.has(description.domain)) return false;
+  // A dialog opens whatever the state; a toggle, a scene or a button does nothing while unavailable.
+  if (description.click === 'dialog' || description.controls) return true;
   return (
-    TOGGLE_COMMAND_DOMAINS.has(domain) ||
-    RUN_COMMAND_DOMAINS.has(domain) ||
-    COMMAND_ONLY_DOMAINS.has(domain)
+    (description.click === 'toggle' || description.click === 'activate') && description.available
   );
 }
 
@@ -457,10 +464,12 @@ async function executeHighlightedResult() {
         if (connection !== JSON.stringify(state.CONFIG.homeAssistant) || !allowed())
           throw new Error(t('Entity is unavailable'));
       }
-      await websocket.callService(selected.domain, selected.service, {
-        entity_id: current.entity_id,
-        ...(code !== null ? { code } : {}),
+      // The palette says how it went itself, in its own words.
+      const outcome = await runEntityAction(current, selected.service, code ?? undefined, {
+        silent: true,
       });
+      if (!outcome.sent) throw new Error(t('Entity is unavailable'));
+      if (!outcome.ok) throw outcome.error;
       showToast(t('Command sent'), 'success', 1600);
     }
     rememberRecentCommand(selected.key);

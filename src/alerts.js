@@ -1,6 +1,7 @@
 import state from './state.js';
+import configStore from './config-store.js';
 import { createAlertEvaluator } from './alert-rules.js';
-import { showToast } from './ui-utils.js';
+import { showToast } from './dialogs.js';
 import {
   getEntityDisplayName,
   getEntityDisplayState,
@@ -321,7 +322,15 @@ async function toggleAlerts(enabled) {
   try {
     const result = await window.electronAPI.toggleAlerts(enabled);
     if (result.success) {
-      if (state.CONFIG?.entityAlerts) state.CONFIG.entityAlerts.enabled = enabled;
+      // Main saved the switch; the config here says so too.
+      if (state.CONFIG?.entityAlerts) {
+        void configStore.update(
+          (config) => {
+            if (config.entityAlerts) config.entityAlerts.enabled = enabled;
+          },
+          { persist: false }
+        );
+      }
       if (!enabled) suspendEntityAlerts();
       showToast(
         enabled ? t('Entity alerts enabled') : t('Entity alerts disabled'),

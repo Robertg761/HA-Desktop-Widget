@@ -38,6 +38,21 @@ async function importSettings(device, settings) {
   expect(applied.success).toBe(true);
 }
 
+const listBackups = async (device) => (await device.invoke('list-profile-sync-backups')).backups;
+
+async function restoreBackup(device, id) {
+  const restored = await device.invoke('restore-profile-sync-backup', id);
+  expect(restored.success).toBe(true);
+  return restored;
+}
+
+/** Picks `folder` in the folder dialog, which is what makes it a valid sync target. */
+async function chooseFolder(device, folder) {
+  device.queueDialogResult({ canceled: false, filePaths: [folder] });
+  const chosen = await device.invoke('choose-profile-sync-folder', 'dropbox');
+  expect(chosen.canceled).not.toBe(true);
+}
+
 // Backups are named by the millisecond, and a Windows clock can tick as slowly as every 16 ms.
 const wait = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -46,7 +61,7 @@ describe('backups taken before settings are replaced', () => {
     const { desktop, laptop } = await createSyncedPair();
     await importSettings(laptop, { opacity: 0.55 });
     await wait();
-    const [importBackup] = (await laptop.context.listProfileSyncBackups()).filter(
+    const [importBackup] = (await listBackups(laptop)).filter(
       (backup) => backup.reason === 'import'
     );
     expect(importBackup).toBeDefined();
@@ -61,7 +76,7 @@ describe('backups taken before settings are replaced', () => {
       await wait();
     }
 
-    const backups = await laptop.context.listProfileSyncBackups();
+    const backups = await listBackups(laptop);
     const pulls = backups.filter((backup) => backup.kind === 'local' && backup.reason === 'pull');
     expect(pulls.length).toBeLessThanOrEqual(5);
     expect(backups.map((backup) => backup.id)).toContain(importBackup.id);
@@ -74,9 +89,7 @@ describe('backups taken before settings are replaced', () => {
       await wait();
     }
 
-    const manual = (await laptop.context.listProfileSyncBackups()).filter(
-      (backup) => backup.reason === 'import'
-    );
+    const manual = (await listBackups(laptop)).filter((backup) => backup.reason === 'import');
     expect(manual).toHaveLength(5);
     expect(backupFiles(laptop, 'local-profile')).toHaveLength(5);
   });
@@ -91,10 +104,8 @@ describe('backups taken before settings are replaced', () => {
     await wait();
     await importSettings(laptop, { opacity: 0.7 });
     await wait();
-    const [toRestore] = (await laptop.context.listProfileSyncBackups()).filter(
-      (backup) => backup.reason === 'pull'
-    );
-    await laptop.context.restoreProfileSyncBackup(toRestore.id);
+    const [toRestore] = (await listBackups(laptop)).filter((backup) => backup.reason === 'pull');
+    await restoreBackup(laptop, toRestore.id);
     laptop.edit((config) => {
       config.opacity = 0.45;
     });
@@ -108,9 +119,7 @@ describe('backups taken before settings are replaced', () => {
       })
     );
 
-    const reasons = (await laptop.context.listProfileSyncBackups()).map(
-      (backup) => `${backup.kind}:${backup.reason}`
-    );
+    const reasons = (await listBackups(laptop)).map((backup) => `${backup.kind}:${backup.reason}`);
     expect(reasons).toEqual(
       expect.arrayContaining(['local:pull', 'local:import', 'local:restore', 'remote:push'])
     );
@@ -131,7 +140,7 @@ describe('backups taken before settings are replaced', () => {
     await laptop.sync();
     expect(laptop.config.opacity).toBe(0.6);
     await wait();
-    const [lost] = await laptop.context.listProfileSyncBackups();
+    const [lost] = await listBackups(laptop);
 
     for (let round = 1; round <= 7; round += 1) {
       desktop.edit((config) => {
@@ -142,15 +151,15 @@ describe('backups taken before settings are replaced', () => {
       await wait();
     }
 
-    const backups = await laptop.context.listProfileSyncBackups();
+    const backups = await listBackups(laptop);
     expect(backups.filter((backup) => backup.kind === 'local')).toHaveLength(6);
     expect(backups.map((backup) => backup.id)).toContain(lost.id);
-    await laptop.context.restoreProfileSyncBackup(lost.id);
+    await restoreBackup(laptop, lost.id);
     expect(laptop.config.opacity).toBe(0.8);
   });
 
   test('backups of discarded edits keep the newest 20 and any from the last 30 days', async () => {
-    const { laptop } = await createSyncedPair();
+    const { desktop, laptop } = await createSyncedPair();
     const day = 24 * 60 * 60 * 1000;
     // One clock reading for every seeded name. Reading Date.now() per file lets the clock move on
     // while the files are written, and a slow disk (Windows CI) then makes `Date.now() - index`
@@ -168,19 +177,30 @@ describe('backups taken before settings are replaced', () => {
     fs.mkdirSync(backupDir(laptop), { recursive: true });
     seed(40, 10);
     seed(10, 15);
-    const backup = (discarded) =>
-      laptop.context.writeProfileSyncBackup('remote-profile', { sections: {} }, 'push', {
-        discarded,
+    // Sync up over an edit the desktop made discards it, and keeps it in a backup.
+    let round = 0;
+    const syncUp = async ({ overEditFromDesktop }) => {
+      round += 1;
+      if (overEditFromDesktop) {
+        desktop.edit((config) => {
+          config.opacity = 0.3 + round / 100;
+        });
+        await desktop.sync();
+      }
+      laptop.edit((config) => {
+        config.opacity = 0.6 + round / 100;
       });
+      await laptop.sync('push', 'manual');
+    };
 
-    await backup(['visualPersonalization']);
+    await syncUp({ overEditFromDesktop: true });
     // Everything younger than 30 days stays; of the older ones, only enough to make 20.
     expect(backupFiles(laptop, 'remote-profile')).toHaveLength(20);
 
     // Routine backups have their own five.
-    for (let round = 0; round < 7; round += 1) {
+    for (let routine = 0; routine < 7; routine += 1) {
       await wait();
-      await backup([]);
+      await syncUp({ overEditFromDesktop: false });
     }
     expect(backupFiles(laptop, 'remote-profile')).toHaveLength(25);
   });
@@ -291,9 +311,7 @@ describe('what Settings is told about the sync folder', () => {
     );
 
     // The folder dialog is what makes a folder a valid sync target.
-    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
-      path.dirname(syncFilePath())
-    );
+    await chooseFolder(desktop, path.dirname(syncFilePath()));
     const chosen = await desktop.saveSettings({
       profileSync: { enabled: true, cloudFilePath: syncFilePath() },
     });
@@ -310,9 +328,7 @@ describe('what Settings is told about the sync folder', () => {
     fs.mkdirSync(outside, { recursive: true });
 
     // A folder nobody picked, and a picked folder with a file name of the caller's choosing.
-    desktop.context.profileSyncRuntime.approvedCopyDestinationFolders.push(
-      path.dirname(syncFilePath())
-    );
+    await chooseFolder(desktop, path.dirname(syncFilePath()));
     for (const cloudFilePath of [
       path.join(outside, 'ha-widget-profile-sync.json'),
       path.join(path.dirname(syncFilePath()), 'notes.json'),
@@ -347,7 +363,8 @@ describe('conflict copies beside the sync file', () => {
     const desktop = createDevice('desktop');
     await desktop.sync();
     names.forEach((name) => fs.writeFileSync(path.join(path.dirname(syncFilePath()), name), '{}'));
-    return desktop.context.findProfileSyncConflictCopies();
+    await desktop.sync();
+    return desktop.status().conflictCopies;
   }
 
   test('recognizes what each sync app names a copy', async () => {

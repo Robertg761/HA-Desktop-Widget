@@ -155,14 +155,13 @@ function loadCreateWindow({
     getPreviewFrostedGlassOverride: jest.fn(),
     invalidateHaConnectionState: jest.fn(),
     requestTrayEntityIconRefresh: jest.fn(),
-    emitProfileSyncStatus: jest.fn(),
+    profileSyncEngine: { emitStatus: jest.fn(), requestSync: jest.fn() },
     refreshLayerPlacement: jest.fn(),
     pushConfigToRenderer: jest.fn(),
     raiseLayerWidgetOnceMapped: jest.fn(),
     watchMainWindowBounds: jest.fn(),
     endDesktopPinEditModeFromMainProcess: jest.fn(),
     notifyDesktopCompanionStateChanged: jest.fn(),
-    requestOpportunisticProfileSync: jest.fn(),
     layerPointerRelease: { start: jest.fn(() => false), stop: jest.fn() },
     isHyprland: () => false,
     layerActualMonitor: null,
@@ -353,35 +352,17 @@ describe('showing the main window once it is ready', () => {
   });
 
   it('is released by the renderer-ready signal', () => {
-    const source = sliceMain("ipcMain.handle('renderer-ready'", "ipcMain.handle('get-config'");
+    const source = sliceMain("ipcRoutes.handle('renderer-ready'", "ipcRoutes.handle('get-config'");
     const mainWindowReveal = { release: jest.fn() };
     const handlers = {};
     vm.runInNewContext(source, {
-      ipcMain: { handle: (name, handler) => (handlers[name] = handler) },
-      authorizeIpcSender: () => ({ type: 'main' }),
-      rejectUnauthorizedIpc: () => ({ success: false }),
+      ipcRoutes: { handle: (name, handler) => (handlers[name] = handler) },
       IS_SMOKE_TEST_MODE: false,
       mainWindowReveal,
     });
 
     expect(handlers['renderer-ready']({})).toEqual({ success: true });
     expect(mainWindowReveal.release).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not release it for a sender that is not the app', () => {
-    const source = sliceMain("ipcMain.handle('renderer-ready'", "ipcMain.handle('get-config'");
-    const mainWindowReveal = { release: jest.fn() };
-    const handlers = {};
-    vm.runInNewContext(source, {
-      ipcMain: { handle: (name, handler) => (handlers[name] = handler) },
-      authorizeIpcSender: () => null,
-      rejectUnauthorizedIpc: () => ({ success: false }),
-      IS_SMOKE_TEST_MODE: false,
-      mainWindowReveal,
-    });
-
-    expect(handlers['renderer-ready']({})).toEqual({ success: false });
-    expect(mainWindowReveal.release).not.toHaveBeenCalled();
   });
 });
 
@@ -404,7 +385,7 @@ describe('hiding the main window before it was ever shown', () => {
   });
 
   it('restarting while the first frame is pending keeps the widget visible afterwards', () => {
-    const source = sliceMain('async function restartApplication()', 'ipcMain.handle(');
+    const source = sliceMain('async function restartApplication()', 'ipcRoutes.handle(');
     const env = {};
     const context = {
       process: { env },
@@ -486,7 +467,7 @@ describe('the title bar minimize button', () => {
       hideMainWindowToTray: jest.fn(),
     };
     vm.runInNewContext(
-      sliceMain('function minimizeMainWindow()', "ipcMain.handle('minimize-window'"),
+      sliceMain('function minimizeMainWindow()', "ipcRoutes.handle('minimize-window'"),
       context
     );
     return context;

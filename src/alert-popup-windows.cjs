@@ -171,10 +171,11 @@ function createAlertPopupManager({
     const index = Number(action);
     const button = Number.isInteger(index) ? popup.request.actions[index] : null;
     if (!button) return { success: false, error: 'Unknown alert pop-up button' };
+    // Run by the main window's Entity Actions, as a click on the entity's tile is.
     return forwardAction(
       button.entityId,
-      'service-call',
-      { domain: button.domain, service: button.service, serviceData: {} },
+      'entity-action',
+      { action: button.action },
       { awaitResponse: true }
     );
   };

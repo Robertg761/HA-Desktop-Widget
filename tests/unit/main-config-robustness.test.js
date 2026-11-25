@@ -279,7 +279,7 @@ describe('config backups', () => {
     vm.runInContext(
       sliceMain(
         'function getSafeConfigBackupLabel(',
-        '\nfunction shouldBlockPotentialConfigClobber('
+        '\n/**\n * Turn the config into the text the config store writes'
       ) + '\nthis.backupConfig = backupConfig;',
       context
     );

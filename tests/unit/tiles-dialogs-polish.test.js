@@ -38,43 +38,18 @@ jest.mock('../../src/camera.js', () => ({
 
 jest.mock('../../src/ui-utils.js', () => {
   return {
-    showToast: jest.fn(),
-    showConfirm: jest.fn().mockResolvedValue(false),
     showLoading: jest.fn(),
     setStatus: jest.fn(),
-    ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     applyTheme: jest.fn(),
     applyUiPreferences: jest.fn(),
-    hexToRgb: jest.fn((hex) => {
-      if (!hex || typeof hex !== 'string') return null;
-      const normalized = hex.replace('#', '').trim();
-      if (![3, 6].includes(normalized.length) || !/^[0-9a-fA-F]+$/.test(normalized)) return null;
-      const value =
-        normalized.length === 3
-          ? normalized
-              .split('')
-              .map((ch) => ch + ch)
-              .join('')
-          : normalized;
-      return {
-        r: Number.parseInt(value.slice(0, 2), 16),
-        g: Number.parseInt(value.slice(2, 4), 16),
-        b: Number.parseInt(value.slice(4, 6), 16),
-      };
-    }),
-    miredsToKelvin: jest.fn((mireds) => {
-      const value = Number(mireds);
-      return Number.isFinite(value) && value > 0 ? Math.round(1000000 / value) : null;
-    }),
-    hasSupportedFeature: jest.fn((supportedFeatures, featureFlag) => {
-      const features = Number(supportedFeatures);
-      const flag = Number(featureFlag);
-      return (
-        Number.isFinite(features) && Number.isFinite(flag) && flag > 0 && (features & flag) === flag
-      );
-    }),
   };
 });
+
+jest.mock('../../src/dialogs.js', () => ({
+  ...jest.requireActual('../../src/dialogs.js'),
+  showToast: jest.fn(),
+  showConfirm: jest.fn().mockResolvedValue(false),
+}));
 
 jest.mock('../../src/icons.js', () => ({
   setIconContent: jest.fn(),
@@ -113,7 +88,7 @@ jest.mock('../../src/websocket.js', () => ({
 // Import modules after mocks
 const ui = require('../../src/ui.js');
 const state = require('../../src/state.js').default;
-const uiUtils = require('../../src/ui-utils.js');
+const dialogs = require('../../src/dialogs.js');
 const { sampleConfig } = require('../fixtures/ha-data.js');
 const i18n = require('../../src/i18n.js');
 const Sortable = require('sortablejs');
@@ -444,7 +419,7 @@ describe('tile and device dialog polish', () => {
       if (document.querySelector('#quick-controls.reorganize-mode')) ui.toggleReorganizeMode();
     });
     const savedToasts = () =>
-      uiUtils.showToast.mock.calls.filter(([message]) => message === 'Quick Access order saved');
+      dialogs.showToast.mock.calls.filter(([message]) => message === 'Quick Access order saved');
 
     it('does not save or announce an unchanged order', () => {
       ui.toggleReorganizeMode();

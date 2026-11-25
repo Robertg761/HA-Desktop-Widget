@@ -212,7 +212,6 @@ describe('Renderer desktop pin waiting escape hatch', () => {
     mockUi = createUiMock();
     mockUiUtils = {
       showLoading: jest.fn(),
-      showToast: jest.fn(),
       setStatus: jest.fn(),
       initializeConnectionStatusTooltip: jest.fn(),
       applyTheme: jest.fn(),
@@ -265,6 +264,7 @@ describe('Renderer desktop pin waiting escape hatch', () => {
       openSettings: jest.fn(),
     }));
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
+    jest.doMock('../../src/dialogs.js', () => ({ __esModule: true, showToast: jest.fn() }));
     jest.doMock('../../src/utils.js', () => ({
       __esModule: true,
       reconcileConfigEntityIds: jest.fn((config) => ({ changed: false, config })),

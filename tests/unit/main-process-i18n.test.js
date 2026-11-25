@@ -2,8 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { formatTemplate } = require('../../src/i18n-main.cjs');
-const profileSyncCore = require('../../profile-sync-core.js');
-const { REWRITE_TRANSACTION_INVALID } = require('../../src/profile-sync-rewrite-transaction.cjs');
+const { describeKnownProfileSyncFailure } = require('../../src/profile-sync-engine.cjs');
+const {
+  createProfileSyncHarness,
+  createSafeStorage,
+} = require('../helpers/profile-sync-devices.js');
 const { liveEntityHotkeys, resolveEntityHotkeyAction } = require('../../src/entity-hotkeys.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
@@ -35,8 +38,7 @@ function sliceMain(startMarker, endMarker) {
 function loadMainRuntime(language, extraContext = {}) {
   const context = {
     config: { ui: { language } },
-    profileSyncCore,
-    REWRITE_TRANSACTION_INVALID,
+    describeKnownProfileSyncFailure,
     localizationService: {
       translate: (languageSetting, key, vars) =>
         formatTemplate((languageSetting === 'de' ? GERMAN[key] : null) || key, vars),
@@ -164,41 +166,36 @@ describe('main-process translations', () => {
     expect(runtime.mainTError('')).toBe('');
   });
 
-  it('shows stored profile sync messages in the current language', () => {
-    const runtime = loadMainRuntime('de', {
-      PROFILE_SYNC_DEFAULT_INTERVAL_MINUTES: 15,
-      profileSyncRuntime: {
-        passphraseWarning:
-          'Passphrase will only be kept for this session because OS encryption is unavailable.',
-        conflictCopies: [],
-      },
-      getProfileSyncConfig: () => ({
+  describe('profile sync', () => {
+    const harness = createProfileSyncHarness();
+    beforeEach(() => harness.setup());
+    afterEach(() => harness.teardown());
+
+    it('shows stored profile sync messages in the current language', async () => {
+      const runtime = loadMainRuntime('de');
+      // A computer without a keyring, whose passphrase is only kept for the session.
+      const device = harness.createDevice('desktop', {
+        syncing: false,
+        safeStorage: createSafeStorage({ keyring: 'none' }),
+        t: runtime.mainT,
+        tError: runtime.mainTError,
+      });
+      await device.invoke('set-profile-sync-passphrase', 'a long enough passphrase', true);
+      // Persisted in config by an earlier sync attempt, still in English.
+      Object.assign(device.config.profileSync, {
         enabled: true,
         lastSyncStatus: 'error',
-        // Persisted in config by an earlier sync attempt, still in English.
         lastSyncError: 'Failed to decrypt synced profile payload',
-      }),
-      getRendererSyncFilePath: (cloudFilePath) => cloudFilePath || '',
-      normalizeProfileSyncProvider: (provider) => provider || 'custom',
-      getNormalizedProfileSyncScopeValue: () => 'all',
-      collectProfileSyncFolderWarnings: () => [],
-      getCloudSyncStatus: () => ({ available: false, signedIn: false }),
-    });
-    vm.runInContext(
-      sliceMain(
-        'function buildProfileSyncStatus(',
-        'function hasProfileSyncCredentialTransitionPending('
-      ),
-      runtime
-    );
+      });
 
-    const status = runtime.buildProfileSyncStatus();
-    expect(status.lastSyncError).toBe(
-      'Das synchronisierte Profil konnte nicht entschlüsselt werden'
-    );
-    expect(status.passphraseWarning).toBe(
-      'Die Passphrase wird nur für diese Sitzung behalten, weil die Systemverschlüsselung fehlt.'
-    );
+      const status = device.status();
+      expect(status.lastSyncError).toBe(
+        'Das synchronisierte Profil konnte nicht entschlüsselt werden'
+      );
+      expect(status.passphraseWarning).toBe(
+        'Die Passphrase wird nur für diese Sitzung behalten, weil die Systemverschlüsselung fehlt.'
+      );
+    });
   });
 
   it('wires the translator into main-process menus and helper modules', () => {

@@ -6,7 +6,11 @@
 // leaves behind, and the weather picker's Clear button.
 
 const EventEmitter = require('events');
-const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  triggerMockEvent,
+} = require('../mocks/electron.js');
 const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer one-off behaviours', () => {
@@ -16,6 +20,7 @@ describe('Renderer one-off behaviours', () => {
   let mockElectronAPI;
   let mockState;
   let mockUiUtils;
+  let mockDialogs;
   let mockUi;
   let companionOptions;
 
@@ -89,7 +94,6 @@ describe('Renderer one-off behaviours', () => {
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: websocket }));
     jest.doMock('../../src/hotkeys.js', () => ({
       __esModule: true,
-      initializeHotkeys: jest.fn(),
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
     }));
@@ -150,7 +154,6 @@ describe('Renderer one-off behaviours', () => {
     mockUiUtils = {
       __esModule: true,
       showLoading: jest.fn(),
-      showToast: jest.fn(),
       setStatus: jest.fn(),
       initializeConnectionStatusTooltip: jest.fn(),
       applyTheme: jest.fn(),
@@ -160,9 +163,14 @@ describe('Renderer one-off behaviours', () => {
       applyUiPreferences: jest.fn(),
       suspendSeasonalColors: jest.fn(),
       applyWindowEffects: jest.fn(),
-      ...require('../helpers/ui-utils-dialogs').realDialogHelpers(),
     };
     jest.doMock('../../src/ui-utils.js', () => mockUiUtils);
+    mockDialogs = {
+      __esModule: true,
+      ...jest.requireActual('../../src/dialogs.js'),
+      showToast: jest.fn(),
+    };
+    jest.doMock('../../src/dialogs.js', () => mockDialogs);
     jest.doMock('../../src/utils.js', () => ({
       getEntityDisplayName: (entity) => entity.attributes?.friendly_name || entity.entity_id,
       __esModule: true,
@@ -287,25 +295,13 @@ describe('Renderer one-off behaviours', () => {
       }
     });
 
-    it('remembers the layout even when the save reports no config back', async () => {
-      const { readDashboardHistory } = require('../../src/dashboard-history.js');
-      await loadRenderer();
-      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
-
-      await companionOptions.executeCommand({
-        action: 'apply_profile',
-        payload: profilePayload([{ id: 'kitchen', name: 'Kitchen', entityIds: [] }]),
-      });
-
-      const history = readDashboardHistory(baseConfig());
-      expect(history).toHaveLength(1);
-      expect(history[0].layout.customTabs[0].id).toBe('home');
-    });
-
     it('adds nothing when the profile changes no page, and nothing when the save fails', async () => {
       const { readDashboardHistory } = require('../../src/dashboard-history.js');
       await loadRenderer();
-      mockElectronAPI.updateConfig.mockResolvedValue({ success: true });
+      mockElectronAPI.updateConfig.mockImplementation(async (patch) => ({
+        ...baseConfig(),
+        ...patch,
+      }));
       await companionOptions.executeCommand({
         action: 'apply_profile',
         payload: profilePayload(baseConfig().customTabs),
@@ -337,7 +333,7 @@ describe('Renderer one-off behaviours', () => {
       await flushAsync();
 
       expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
-      expect(mockUiUtils.showToast).not.toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).not.toHaveBeenCalledWith(
         'Weather entity cleared (using first available)',
         expect.anything(),
         expect.anything()
@@ -357,11 +353,40 @@ describe('Renderer one-off behaviours', () => {
 
       expect(mockElectronAPI.updateConfig).toHaveBeenCalledWith({ selectedWeatherEntity: null });
       expect(mockUi.populateWeatherEntitiesList).toHaveBeenCalled();
-      expect(mockUiUtils.showToast).toHaveBeenCalledWith(
+      expect(mockDialogs.showToast).toHaveBeenCalledWith(
         'Weather entity cleared (using first available)',
         'success',
         2000
       );
+    });
+
+    it('does not apply its answer over a newer config main sent meanwhile', async () => {
+      await loadRenderer({
+        config: baseConfig({ selectedWeatherEntity: 'weather.cabin', configRevision: 3 }),
+        bodyHtml: weatherModal,
+      });
+      // Only the Clear waits for its answer; anything written after it is stored at once.
+      let answer;
+      mockElectronAPI.updateConfig.mockImplementation((patch) =>
+        answer
+          ? Promise.resolve({ ...mockState.CONFIG, ...patch })
+          : new Promise((resolve) => {
+              answer = resolve;
+            })
+      );
+
+      document.getElementById('clear-weather').click();
+      await flushAsync();
+      // A profile sync pull, say, stored after the Clear and broadcast before its answer arrived.
+      triggerMockEvent(
+        'configUpdated',
+        baseConfig({ selectedWeatherEntity: null, opacity: 0.5, configRevision: 5 })
+      );
+      await flushAsync();
+      answer(baseConfig({ selectedWeatherEntity: null, configRevision: 4 }));
+      await flushAsync();
+
+      expect(mockState.CONFIG.opacity).toBe(0.5);
     });
   });
 });

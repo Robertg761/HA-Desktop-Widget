@@ -1,6 +1,6 @@
 const {
   ALERT_POPUP_DURATIONS,
-  ALERT_POPUP_SERVICES,
+  ALERT_POPUP_ACTIONS,
   DEFAULT_ALERT_POPUP_SECONDS,
   MAX_ALERT_POPUP_ACTIONS,
   fitsAlertPopups,
@@ -20,12 +20,11 @@ describe('the button an entity gets on a pop-up card', () => {
   it('unlocks a locked door and locks an unlocked one', () => {
     expect(getAlertPopupAction(entity('lock.front_door', 'locked'))).toEqual({
       entityId: 'lock.front_door',
-      domain: 'lock',
-      service: 'unlock',
+      action: 'unlock',
       label: 'Unlock',
     });
     expect(getAlertPopupAction(entity('lock.front_door', 'unlocked'))).toMatchObject({
-      service: 'lock',
+      action: 'lock',
       label: 'Lock',
     });
   });
@@ -38,22 +37,23 @@ describe('the button an entity gets on a pop-up card', () => {
 
   it('turns off what is on and on what is off', () => {
     expect(getAlertPopupAction(entity('light.porch', 'on'))).toMatchObject({
-      service: 'turn_off',
+      action: 'turn_off',
       label: 'Turn off',
     });
     expect(getAlertPopupAction(entity('switch.kettle', 'off'))).toMatchObject({
-      service: 'turn_on',
+      action: 'turn_on',
       label: 'Turn on',
     });
   });
 
   it('opens and closes a cover, with the action word for Open', () => {
-    expect(getAlertPopupAction(entity('cover.garage', 'open'))).toMatchObject({
-      service: 'close_cover',
+    const garage = { supported_features: 3 };
+    expect(getAlertPopupAction(entity('cover.garage', 'open', garage))).toMatchObject({
+      action: 'close',
       label: 'Close',
     });
-    expect(getAlertPopupAction(entity('cover.garage', 'closed'))).toMatchObject({
-      service: 'open_cover',
+    expect(getAlertPopupAction(entity('cover.garage', 'closed', garage))).toMatchObject({
+      action: 'open',
       label: 'Open',
       context: 'Action: Open',
     });
@@ -62,35 +62,39 @@ describe('the button an entity gets on a pop-up card', () => {
   it('presses buttons, activates scenes and runs scripts', () => {
     expect(getAlertPopupAction(entity('button.chime', 'unknown'))).toBe(null);
     expect(getAlertPopupAction(entity('button.chime', '2026-11-23T10:00:00Z'))).toMatchObject({
-      service: 'press',
+      action: 'press',
     });
     expect(getAlertPopupAction(entity('scene.movie', 'scening'))).toMatchObject({
-      service: 'turn_on',
+      action: 'turn_on',
       label: 'Activate',
     });
     expect(getAlertPopupAction(entity('script.chime', 'off'))).toMatchObject({
-      service: 'turn_on',
+      action: 'turn_on',
       label: 'Run',
     });
   });
 
+  // Pause (1), turn off (256) and play (16384), as Entity Actions reads a player's flags.
+  const player = { supported_features: 1 | 256 | 16384 };
+
   it('pauses a player that plays, and offers nothing for one that is off', () => {
-    expect(getAlertPopupAction(entity('media_player.tv', 'playing'))).toMatchObject({
-      service: 'media_pause',
+    expect(getAlertPopupAction(entity('media_player.tv', 'playing', player))).toMatchObject({
+      action: 'pause',
     });
-    expect(getAlertPopupAction(entity('media_player.tv', 'paused'))).toMatchObject({
-      service: 'media_play',
+    expect(getAlertPopupAction(entity('media_player.tv', 'paused', player))).toMatchObject({
+      action: 'play',
     });
-    expect(getAlertPopupAction(entity('media_player.tv', 'off'))).toBe(null);
+    expect(getAlertPopupAction(entity('media_player.tv', 'off', player))).toBe(null);
+    expect(getAlertPopupAction(entity('media_player.speaker', 'playing'))).toBe(null);
   });
 
   it('shuts a water valve that is open, and opens one that is shut', () => {
     expect(getAlertPopupAction(entity('valve.main_water', 'open'))).toMatchObject({
-      service: 'close_valve',
+      action: 'close',
       label: 'Close',
     });
     expect(getAlertPopupAction(entity('valve.main_water', 'closed'))).toMatchObject({
-      service: 'open_valve',
+      action: 'open',
       context: 'Action: Open',
     });
   });
@@ -102,19 +106,24 @@ describe('the button an entity gets on a pop-up card', () => {
     );
     expect(
       getAlertPopupAction(entity('cover.garage', 'closed', { supported_features: 1 }))
-    ).toMatchObject({ service: 'open_cover' });
+    ).toMatchObject({ action: 'open' });
   });
+
+  // Arm home (1) and arm away (2).
+  const panel = { supported_features: 3 };
 
   it('disarms a triggered or armed alarm, and arms one that is disarmed', () => {
     expect(getAlertPopupAction(entity('alarm_control_panel.home', 'triggered'))).toMatchObject({
-      service: 'alarm_disarm',
+      action: 'alarm_disarm',
       label: 'Disarm',
     });
     expect(getAlertPopupAction(entity('alarm_control_panel.home', 'armed_night'))).toMatchObject({
-      service: 'alarm_disarm',
+      action: 'alarm_disarm',
     });
-    expect(getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed'))).toMatchObject({
-      service: 'alarm_arm_away',
+    expect(
+      getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed', panel))
+    ).toMatchObject({
+      action: 'alarm_arm_away',
       label: 'Arm',
     });
     expect(
@@ -128,73 +137,77 @@ describe('the button an entity gets on a pop-up card', () => {
     expect(getAlertPopupAction(entity('alarm_control_panel.home', 'disarmed', coded))).toBe(null);
     expect(
       getAlertPopupAction(
-        entity('alarm_control_panel.home', 'disarmed', { ...coded, code_arm_required: false })
+        entity('alarm_control_panel.home', 'disarmed', {
+          ...panel,
+          ...coded,
+          code_arm_required: false,
+        })
       )
-    ).toMatchObject({ service: 'alarm_arm_away' });
+    ).toMatchObject({ action: 'alarm_arm_away' });
   });
 
   it('turns heating, humidifiers, water heaters, remotes and automations on and off', () => {
     expect(getAlertPopupAction(entity('climate.living_room', 'heat'))).toMatchObject({
-      service: 'turn_off',
+      action: 'turn_off',
     });
     expect(getAlertPopupAction(entity('climate.living_room', 'off'))).toMatchObject({
-      service: 'turn_on',
+      action: 'turn_on',
     });
     // An older thermostat that cannot be turned off this way (no TURN_OFF, 128).
     expect(
       getAlertPopupAction(entity('climate.living_room', 'heat', { supported_features: 1 }))
     ).toBe(null);
     expect(getAlertPopupAction(entity('water_heater.tank', 'eco'))).toMatchObject({
-      service: 'turn_off',
+      action: 'turn_off',
     });
     expect(getAlertPopupAction(entity('humidifier.bedroom', 'off'))).toMatchObject({
-      service: 'turn_on',
+      action: 'turn_on',
     });
-    expect(getAlertPopupAction(entity('remote.tv', 'on'))).toMatchObject({ service: 'turn_off' });
+    expect(getAlertPopupAction(entity('remote.tv', 'on'))).toMatchObject({ action: 'turn_off' });
     expect(getAlertPopupAction(entity('automation.night', 'on'))).toMatchObject({
-      service: 'turn_off',
+      action: 'turn_off',
     });
   });
 
   it('sends a vacuum or a mower home, or starts it', () => {
     expect(getAlertPopupAction(entity('vacuum.downstairs', 'cleaning'))).toMatchObject({
-      service: 'return_to_base',
+      action: 'return_to_base',
       label: 'Return',
     });
     expect(getAlertPopupAction(entity('vacuum.downstairs', 'docked'))).toMatchObject({
-      service: 'start',
+      action: 'start',
       label: 'Start',
     });
     expect(getAlertPopupAction(entity('lawn_mower.garden', 'mowing'))).toMatchObject({
-      service: 'dock',
+      action: 'dock',
     });
     expect(getAlertPopupAction(entity('lawn_mower.garden', 'docked'))).toMatchObject({
-      service: 'start_mowing',
+      action: 'start_mowing',
     });
   });
 
   it('cancels a running timer, and starts or resumes one that is not', () => {
     expect(getAlertPopupAction(entity('timer.oven', 'active'))).toMatchObject({
-      service: 'cancel',
+      action: 'cancel',
       label: 'Cancel',
     });
     expect(getAlertPopupAction(entity('timer.oven', 'paused'))).toMatchObject({
-      service: 'start',
+      action: 'start',
       label: 'Resume',
     });
     expect(getAlertPopupAction(entity('timer.oven', 'idle'))).toMatchObject({ label: 'Start' });
   });
 
   it('turns off a player that is on but not playing', () => {
-    expect(getAlertPopupAction(entity('media_player.tv', 'idle'))).toMatchObject({
-      service: 'turn_off',
+    expect(getAlertPopupAction(entity('media_player.tv', 'idle', player))).toMatchObject({
+      action: 'turn_off',
     });
   });
 
-  it('offers only services the main process lets a card call', () => {
+  it('offers only actions the main process lets a card run', () => {
     const samples = [
       ['lock.a', 'locked'],
-      ['cover.a', 'open'],
+      ['cover.a', 'open', { supported_features: 3 }],
       ['valve.a', 'closed'],
       ['alarm_control_panel.a', 'triggered'],
       ['vacuum.a', 'cleaning'],
@@ -202,12 +215,12 @@ describe('the button an entity gets on a pop-up card', () => {
       ['timer.a', 'active'],
       ['climate.a', 'cool'],
       ['water_heater.a', 'off'],
-      ['media_player.a', 'on'],
+      ['media_player.a', 'on', { supported_features: 256 }],
       ['siren.a', 'on'],
     ];
-    samples.forEach(([entityId, state]) => {
-      const action = getAlertPopupAction(entity(entityId, state));
-      expect(ALERT_POPUP_SERVICES[action.domain]).toContain(action.service);
+    samples.forEach(([entityId, state, attributes]) => {
+      const button = getAlertPopupAction(entity(entityId, state, attributes));
+      expect(ALERT_POPUP_ACTIONS[entityId.split('.')[0]]).toContain(button.action);
     });
   });
 
@@ -395,8 +408,7 @@ describe('a request to open a pop-up', () => {
     actions: [
       {
         entityId: 'lock.front_door',
-        domain: 'lock',
-        service: 'unlock',
+        action: 'unlock',
         label: 'Unlock',
         name: 'Front Door',
       },
@@ -419,8 +431,7 @@ describe('a request to open a pop-up', () => {
       actions: [
         {
           entityId: 'lock.front_door',
-          domain: 'lock',
-          service: 'unlock',
+          action: 'unlock',
           label: 'Unlock',
           name: 'Front Door',
         },
@@ -430,16 +441,16 @@ describe('a request to open a pop-up', () => {
     });
   });
 
-  it('drops buttons that would call anything but their own entity a card may call', () => {
+  it('drops buttons with an action a card may not run on their entity', () => {
     const { actions } = sanitizeAlertPopupRequest({
       ...request,
       actions: [
-        { entityId: 'lock.front_door', domain: 'lock', service: 'open' },
-        { entityId: 'lock.front_door', domain: 'light', service: 'turn_on' },
-        { entityId: 'sensor.x', domain: 'sensor', service: 'turn_on' },
-        { entityId: 'light.porch', domain: 'light', service: 'turn_off', label: 'Turn off' },
-        { entityId: 'light.hall', domain: 'light', service: 'turn_off' },
-        { entityId: 'light.attic', domain: 'light', service: 'turn_off' },
+        { entityId: 'lock.front_door', action: 'open' },
+        { entityId: 'lock.front_door', action: 'turn_on' },
+        { entityId: 'sensor.x', action: 'turn_on' },
+        { entityId: 'light.porch', action: 'turn_off', label: 'Turn off' },
+        { entityId: 'light.hall', action: 'turn_off' },
+        { entityId: 'light.attic', action: 'turn_off' },
       ],
     });
     expect(actions.map((action) => action.entityId)).toEqual(['light.porch', 'light.hall']);
@@ -452,7 +463,7 @@ describe('a request to open a pop-up', () => {
       color: '#e57373',
       actions: [
         { ...request.actions[0], color: 'red; background: url(x)' },
-        { entityId: 'light.porch', domain: 'light', service: 'turn_off', color: '#81C784' },
+        { entityId: 'light.porch', action: 'turn_off', color: '#81C784' },
       ],
     });
     expect(sanitized.color).toBe('#E57373');

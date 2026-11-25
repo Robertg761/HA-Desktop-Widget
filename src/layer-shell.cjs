@@ -5,7 +5,7 @@ const {
   isDisabledEnvFlag,
   isEnabledEnvFlag,
 } = require('./platform.cjs');
-const { CONFIG_FILE_NAME } = require('./config-write-guard.cjs');
+const { CONFIG_FILE_NAME } = require('./main-config-store.cjs');
 const { getHyprlandSocketCandidates } = require('./linux-desktop.cjs');
 // The "Text and control size" steps live with the pin bounds, which zoom by the same factor.
 const { normalizeDesktopPinScale } = require('./desktop-pin-bounds.js');

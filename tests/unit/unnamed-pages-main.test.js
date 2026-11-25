@@ -6,6 +6,7 @@
  */
 
 const { createProfileSyncHarness } = require('../helpers/profile-sync-devices.js');
+const { useMainUpdateConfig } = require('../helpers/main-update-config.js');
 
 const harness = createProfileSyncHarness();
 const { createDevice } = harness;
@@ -15,7 +16,7 @@ afterEach(() => harness.teardown());
 
 describe('update-config and pages nobody named', () => {
   test('keeps an unnamed page without the name the renderer showed it with, and drops the marker', async () => {
-    const device = createDevice('desktop', { syncing: false });
+    const device = useMainUpdateConfig(createDevice('desktop', { syncing: false }));
 
     await device.saveSettings({
       edit: (config) => {
@@ -35,7 +36,7 @@ describe('update-config and pages nobody named', () => {
   });
 
   test('keeps a name somebody typed, whatever it says', async () => {
-    const device = createDevice('desktop', { syncing: false });
+    const device = useMainUpdateConfig(createDevice('desktop', { syncing: false }));
 
     await device.saveSettings({
       edit: (config) => {

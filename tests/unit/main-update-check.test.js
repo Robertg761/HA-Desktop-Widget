@@ -31,7 +31,7 @@ const CHANNEL_AND_RELEASES = sliceBetween(
   'function getUpdatesConfig()',
   '// Tells the person, once per version'
 );
-const UPDATE_IPC = sliceBetween('// Updates IPC', "ipcMain.handle('quit-and-install'");
+const UPDATE_IPC = sliceBetween('// Updates IPC', "ipcRoutes.handle('quit-and-install'");
 const SCHEDULE = sliceBetween(
   '// Tells the person, once per version',
   'function freezePendingWindowBoundsForShutdown('
@@ -99,7 +99,7 @@ function loadMain({
     // Electron and the process
     app: { isPackaged: packaged, getVersion: () => currentVersion },
     process: { platform: 'darwin', env: {}, arch: 'x64' },
-    ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
+    ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
     powerMonitor: { on: (event, handler) => (powerListeners[event] = handler) },
     net: { fetch: jest.fn() },
     ElectronNotification: FakeNotification,
@@ -164,17 +164,10 @@ function loadMain({
 // A downloaded update is verified asynchronously before the window hears about it.
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-// The IPC handler authorizes its sender with a function defined elsewhere in main.js.
-function withAuthorizedSender(main) {
-  main.context.authorizeIpcSender = jest.fn(() => ({ type: 'main' }));
-  main.context.rejectUnauthorizedIpc = jest.fn(() => ({ success: false }));
-  return main;
-}
-
 describe('the update check in main', () => {
   describe('the IPC answer', () => {
     it('is plain data when a self-updating build finds an update, the way the window needs it', async () => {
-      const main = withAuthorizedSender(loadMain());
+      const main = loadMain();
 
       const answer = await main.ipcCheck();
 
@@ -184,7 +177,7 @@ describe('the update check in main', () => {
     });
 
     it('says an updater that is switched off is an error, not a check that began', async () => {
-      const main = withAuthorizedSender(loadMain({ checkResult: null }));
+      const main = loadMain({ checkResult: null });
 
       const answer = await main.ipcCheck();
 
@@ -195,7 +188,7 @@ describe('the update check in main', () => {
     });
 
     it('turns a failing updater into an error answer', async () => {
-      const main = withAuthorizedSender(loadMain());
+      const main = loadMain();
       main.autoUpdater.checkForUpdates.mockRejectedValue(
         new Error('net::ERR_INTERNET_DISCONNECTED')
       );
@@ -209,25 +202,16 @@ describe('the update check in main', () => {
     });
 
     it('is "dev" for an app that is not packaged', async () => {
-      const main = withAuthorizedSender(loadMain({ packaged: false }));
+      const main = loadMain({ packaged: false });
 
       expect(await main.ipcCheck()).toEqual({ status: 'dev' });
-      expect(main.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
-    });
-
-    it('does not run for a window main does not trust', async () => {
-      const main = loadMain();
-      main.context.authorizeIpcSender = jest.fn(() => null);
-      main.context.rejectUnauthorizedIpc = jest.fn(() => ({ success: false, error: 'no' }));
-
-      expect(await main.ipcCheck()).toEqual({ success: false, error: 'no' });
       expect(main.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
     });
   });
 
   describe('the release channel', () => {
     it('follows the switch as the window shows it, saved or not', async () => {
-      const main = withAuthorizedSender(loadMain({ savedPrerelease: false }));
+      const main = loadMain({ savedPrerelease: false });
 
       await main.ipcCheck({ allowPrerelease: true });
       expect(main.autoUpdater.allowPrerelease).toBe(true);
@@ -237,7 +221,7 @@ describe('the update check in main', () => {
     });
 
     it('falls back to the saved setting when the window says nothing, or says something odd', async () => {
-      const main = withAuthorizedSender(loadMain({ savedPrerelease: true }));
+      const main = loadMain({ savedPrerelease: true });
 
       await main.ipcCheck();
       expect(main.autoUpdater.allowPrerelease).toBe(true);
@@ -249,9 +233,7 @@ describe('the update check in main', () => {
 
     it('asks GitHub for prereleases too when the switch is on, in a build that cannot update itself', async () => {
       const beta = GITHUB_RELEASE('v4.1.0-beta.1');
-      const main = withAuthorizedSender(
-        loadMain({ selfUpdating: false, savedPrerelease: false, releases: [beta] })
-      );
+      const main = loadMain({ selfUpdating: false, savedPrerelease: false, releases: [beta] });
 
       const answer = await main.ipcCheck({ allowPrerelease: true });
 
@@ -262,13 +244,11 @@ describe('the update check in main', () => {
     });
 
     it('does not offer a beta to someone whose switch is off, even if it was saved on', async () => {
-      const main = withAuthorizedSender(
-        loadMain({
-          selfUpdating: false,
-          savedPrerelease: true,
-          releases: [GITHUB_RELEASE('v4.0.0')],
-        })
-      );
+      const main = loadMain({
+        selfUpdating: false,
+        savedPrerelease: true,
+        releases: [GITHUB_RELEASE('v4.0.0')],
+      });
 
       const answer = await main.ipcCheck({ allowPrerelease: false });
 
@@ -277,22 +257,20 @@ describe('the update check in main', () => {
     });
 
     it('does the same for the Portable build', async () => {
-      const main = withAuthorizedSender(
-        loadMain({
-          portable: true,
-          selfUpdating: false,
-          releases: [
-            GITHUB_RELEASE('v4.0.1', {
-              assets: [
-                {
-                  name: 'HA-Desktop-Widget-4.0.1-win-x64-Portable.exe',
-                  browser_download_url: 'https://example.test/portable.exe',
-                },
-              ],
-            }),
-          ],
-        })
-      );
+      const main = loadMain({
+        portable: true,
+        selfUpdating: false,
+        releases: [
+          GITHUB_RELEASE('v4.0.1', {
+            assets: [
+              {
+                name: 'HA-Desktop-Widget-4.0.1-win-x64-Portable.exe',
+                browser_download_url: 'https://example.test/portable.exe',
+              },
+            ],
+          }),
+        ],
+      });
 
       const answer = await main.ipcCheck({ allowPrerelease: false });
 
@@ -514,7 +492,7 @@ describe('the update check in main', () => {
     });
 
     it('does not announce a download that a person asked for', async () => {
-      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      const main = loadMain({ selfUpdating: true });
       main.run('setupAutoUpdates()');
       main.run('updateCheckScheduler.stop()');
 
@@ -594,7 +572,7 @@ describe('the update check in main', () => {
     // The Updates row is a live region: a six-hourly "You are up to date!" there was read out to
     // whoever had Settings open.
     it('marks "nothing new" from its own check as background too, and not from a requested one', async () => {
-      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      const main = loadMain({ selfUpdating: true });
       main.run('setupAutoUpdates()');
       main.autoUpdater.checkForUpdates.mockImplementation(async () => {
         main.listeners['update-not-available']({ version: '4.0.0' });
@@ -614,7 +592,7 @@ describe('the update check in main', () => {
     });
 
     it("does not start its own check while someone's is running, and does not mark theirs", async () => {
-      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      const main = loadMain({ selfUpdating: true });
       main.run('setupAutoUpdates()');
       let release;
       main.autoUpdater.checkForUpdates.mockImplementation(
@@ -636,7 +614,7 @@ describe('the update check in main', () => {
     });
 
     it('lets a manual check take over the events of a scheduled one that is still running', async () => {
-      const main = withAuthorizedSender(loadMain({ selfUpdating: true }));
+      const main = loadMain({ selfUpdating: true });
       main.run('setupAutoUpdates()');
       let finishScheduled;
       main.autoUpdater.checkForUpdates.mockImplementationOnce(
@@ -698,8 +676,8 @@ describe('the app name', () => {
   it('is HA Desktop Widget wherever the app names itself, and never the package name', () => {
     expect(mainSource).toContain("const APP_DISPLAY_NAME = 'HA Desktop Widget';");
     expect(mainSource).not.toMatch(/appName:\s*app\.getName\(\)/);
-    // The four Linux startup helpers, and the download notification.
-    expect(mainSource.match(/appName:\s*APP_DISPLAY_NAME/g)).toHaveLength(5);
+    // Start at login, and the download notification.
+    expect(mainSource.match(/appName:\s*APP_DISPLAY_NAME/g)).toHaveLength(2);
     expect(mainSource).toContain('tray.setToolTip(APP_DISPLAY_NAME)');
   });
 

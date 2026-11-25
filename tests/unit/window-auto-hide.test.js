@@ -530,7 +530,7 @@ describe('optional hide on focus loss', () => {
 
   describe('Home Assistant browser authorization', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
-    const start = source.indexOf("ipcMain.handle('start-home-assistant-oauth'");
+    const start = source.indexOf("ipcRoutes.handle('start-home-assistant-oauth'");
     const handlerSource = source.slice(start, source.indexOf('\n});\n', start) + 5);
     const flush = async () => {
       for (let index = 0; index < 12; index += 1) await Promise.resolve();
@@ -542,9 +542,7 @@ describe('optional hide on focus loss', () => {
       let settle;
       const handlers = {};
       const context = {
-        ipcMain: { handle: (channel, handler) => (handlers[channel] = handler) },
-        authorizeIpcSender: () => ({ type: 'main' }),
-        rejectUnauthorizedIpc: jest.fn(),
+        ipcRoutes: { handle: (channel, handler) => (handlers[channel] = handler) },
         windowAutoHide: r.controller,
         showMainWindowFromTray: jest.fn(() => r.presenter.showAboveFullScreen(r.window)),
         getHomeAssistantOAuthClient: () => ({

@@ -5,16 +5,12 @@ const vm = require('vm');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
-function registerHandler(service, authorized = true) {
+function registerHandler(service) {
   let handler;
-  const start = mainSource.indexOf("ipcMain.handle('get-locale-packs'");
-  const end = mainSource.indexOf("ipcMain.handle('download-locale-pack'", start);
+  const start = mainSource.indexOf("ipcRoutes.handle('get-locale-packs'");
+  const end = mainSource.indexOf("ipcRoutes.handle('download-locale-pack'", start);
   vm.runInNewContext(mainSource.slice(start, end), {
-    ipcMain: { handle: (_channel, callback) => (handler = callback) },
-    authorizeIpcSender: () => authorized,
-    rejectUnauthorizedIpc: () => {
-      throw new Error('Unauthorized');
-    },
+    ipcRoutes: { handle: (_channel, callback) => (handler = callback) },
     localizationService: service,
     log: { warn: jest.fn() },
   });
@@ -56,28 +52,21 @@ describe('locale pack IPC response', () => {
       expect(service.listLocalePacks).toHaveBeenCalledWith(false);
     }
   );
-
-  test('rejects unauthorized requests before fetching the manifest', async () => {
-    const service = { listLocalePacks: jest.fn() };
-    await expect(registerHandler(service, false)({})).rejects.toThrow('Unauthorized');
-    expect(service.listLocalePacks).not.toHaveBeenCalled();
-  });
 });
 
 describe('locale pack mutation responses', () => {
   function registerMutationHandlers(service) {
     const handlers = {};
-    const start = mainSource.indexOf("ipcMain.handle('download-locale-pack'");
-    const end = mainSource.indexOf("ipcMain.handle(\n  'replace-config-entity-id'", start);
+    const start = mainSource.indexOf("ipcRoutes.handle('download-locale-pack'");
+    const end = mainSource.indexOf("ipcRoutes.handle('replace-config-entity-id'", start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     vm.runInNewContext(mainSource.slice(start, end), {
-      ipcMain: {
+      ipcRoutes: {
         handle: (channel, callback) => {
           handlers[channel] = callback;
         },
       },
-      authorizeIpcSender: () => true,
       localizationService: service,
       pushConfigToRenderer: jest.fn(),
       tray: null,
