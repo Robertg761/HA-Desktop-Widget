@@ -266,7 +266,6 @@ function createRendererHarness() {
       jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: websocket }));
       const mockHotkeys = {
         __esModule: true,
-        initializeHotkeys: jest.fn(),
         setupHotkeyEventListeners: jest.fn(),
         renderHotkeysTab: jest.fn(),
         assignHotkeyToEntity: jest.fn(),

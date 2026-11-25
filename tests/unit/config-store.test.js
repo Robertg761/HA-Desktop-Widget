@@ -71,7 +71,6 @@ describe('config store', () => {
     expect(main.host.updateConfig).toHaveBeenCalledWith({ opacity: 0.5 });
     // Not optimistic: nothing changes until main has stored it.
     expect(store.read().opacity).toBe(0.9);
-    expect(store.isWriting()).toBe(true);
 
     main.accept(0, { normalizedByMain: true });
     const config = await pending;
@@ -80,7 +79,6 @@ describe('config store', () => {
     expect(config).toMatchObject({ opacity: 0.5, normalizedByMain: true });
     expect(config).not.toHaveProperty('configRevision');
     expect(config).not.toHaveProperty('runtimeWarnings');
-    expect(store.isWriting()).toBe(false);
   });
 
   test('a change function edits a copy, and main is sent the whole result', async () => {

@@ -145,7 +145,6 @@ describe('Renderer stale favorite state handling', () => {
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: mockWebsocket }));
     jest.doMock('../../src/hotkeys.js', () => ({
       __esModule: true,
-      initializeHotkeys: jest.fn(),
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
       assignHotkeyToEntity: jest.fn(),
@@ -291,6 +290,47 @@ describe('Renderer stale favorite state handling', () => {
       });
       await jest.advanceTimersByTimeAsync(20);
       expect(mockAlerts.checkEntityAlerts).toHaveBeenCalledWith(favoriteEntity.entity_id, 'off');
+    });
+
+    const renameFavorite = () =>
+      mockWebsocket.emit('message', {
+        type: 'event',
+        event: {
+          event_type: 'entity_registry_updated',
+          data: {
+            action: 'update',
+            old_entity_id: favoriteEntity.entity_id,
+            entity_id: 'light.favorite_renamed',
+          },
+        },
+      });
+
+    it('is no longer marked unavailable once its rename is saved', async () => {
+      await loadRenderer();
+      mockElectronAPI.replaceConfigEntityId.mockResolvedValueOnce({
+        success: true,
+        changed: true,
+        config: createConfig({ favoriteEntities: ['light.favorite_renamed'] }),
+      });
+      receiveStates([favoriteEntity, otherEntity]);
+      receiveStates([otherEntity]);
+
+      renameFavorite();
+      await flushPromises();
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(mockState.STATES[favoriteEntity.entity_id].state).toBe('on');
+    });
+
+    it('is still marked unavailable when its rename could not be saved, so it can be repaired', async () => {
+      await loadRenderer();
+      mockElectronAPI.replaceConfigEntityId.mockRejectedValueOnce(new Error('disk full'));
+      receiveStates([favoriteEntity, otherEntity]);
+      receiveStates([otherEntity]);
+
+      renameFavorite();
+      await flushPromises();
+      await jest.advanceTimersByTimeAsync(61 * 1000);
+      expect(mockState.STATES[favoriteEntity.entity_id].state).toBe('unavailable');
     });
   });
 

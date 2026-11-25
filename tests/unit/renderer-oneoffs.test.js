@@ -6,7 +6,11 @@
 // leaves behind, and the weather picker's Clear button.
 
 const EventEmitter = require('events');
-const { createMockElectronAPI, resetMockElectronAPI } = require('../mocks/electron.js');
+const {
+  createMockElectronAPI,
+  resetMockElectronAPI,
+  triggerMockEvent,
+} = require('../mocks/electron.js');
 const { createRendererLifetime, warmUpRenderer } = require('../helpers/renderer-harness');
 
 describe('Renderer one-off behaviours', () => {
@@ -90,7 +94,6 @@ describe('Renderer one-off behaviours', () => {
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: websocket }));
     jest.doMock('../../src/hotkeys.js', () => ({
       __esModule: true,
-      initializeHotkeys: jest.fn(),
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
     }));
@@ -355,6 +358,35 @@ describe('Renderer one-off behaviours', () => {
         'success',
         2000
       );
+    });
+
+    it('does not apply its answer over a newer config main sent meanwhile', async () => {
+      await loadRenderer({
+        config: baseConfig({ selectedWeatherEntity: 'weather.cabin', configRevision: 3 }),
+        bodyHtml: weatherModal,
+      });
+      // Only the Clear waits for its answer; anything written after it is stored at once.
+      let answer;
+      mockElectronAPI.updateConfig.mockImplementation((patch) =>
+        answer
+          ? Promise.resolve({ ...mockState.CONFIG, ...patch })
+          : new Promise((resolve) => {
+              answer = resolve;
+            })
+      );
+
+      document.getElementById('clear-weather').click();
+      await flushAsync();
+      // A profile sync pull, say, stored after the Clear and broadcast before its answer arrived.
+      triggerMockEvent(
+        'configUpdated',
+        baseConfig({ selectedWeatherEntity: null, opacity: 0.5, configRevision: 5 })
+      );
+      await flushAsync();
+      answer(baseConfig({ selectedWeatherEntity: null, configRevision: 4 }));
+      await flushAsync();
+
+      expect(mockState.CONFIG.opacity).toBe(0.5);
     });
   });
 });

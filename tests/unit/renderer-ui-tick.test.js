@@ -122,7 +122,6 @@ describe('Renderer UI tick scheduler', () => {
     jest.doMock('../../src/websocket.js', () => ({ __esModule: true, default: mockWebsocket }));
     jest.doMock('../../src/hotkeys.js', () => ({
       __esModule: true,
-      initializeHotkeys: jest.fn(),
       setupHotkeyEventListeners: jest.fn(),
       renderHotkeysTab: jest.fn(),
     }));

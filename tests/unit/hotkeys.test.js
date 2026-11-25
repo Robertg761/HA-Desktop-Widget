@@ -67,53 +67,6 @@ describe('hotkeys module', () => {
   const hotkeys = require('../../src/hotkeys.js');
   const showToast = require('../../src/dialogs.js').showToast;
 
-  describe('initializeHotkeys', () => {
-    it('should load hotkey configuration from state.CONFIG', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = {
-        enabled: true,
-        hotkeys: {
-          'light.living_room': { hotkey: 'Ctrl+Shift+L', action: 'toggle' },
-        },
-      };
-      state.setConfig(config);
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should handle missing globalHotkeys config gracefully', () => {
-      const config = getMockConfig();
-      config.globalHotkeys = undefined;
-      state.setConfig(config);
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should handle null config gracefully', () => {
-      mockState.CONFIG = null;
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-    });
-
-    it('should catch and log errors during initialization', () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation();
-
-      // Force an error by making CONFIG a getter that throws
-      const configSpy = jest.spyOn(state, 'CONFIG', 'get').mockImplementation(() => {
-        throw new Error('Test error');
-      });
-
-      expect(() => hotkeys.initializeHotkeys()).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith('Error initializing hotkeys:', expect.any(Error));
-
-      consoleError.mockRestore();
-      configSpy.mockRestore();
-
-      // Restore normal state
-      state.setConfig(null);
-    });
-  });
-
   describe('toggleHotkeys', () => {
     beforeEach(() => {
       const config = getMockConfig();
@@ -122,6 +75,21 @@ describe('hotkeys module', () => {
         hotkeys: {},
       };
       state.setConfig(config);
+    });
+
+    it('switches hotkeys on in the config the store holds', async () => {
+      // The store holds a new config for every change, and freezes it under test: anything that
+      // kept the old one and edits it would throw here.
+      const configStore = require('../../src/config-store.js').default;
+      configStore.adopt({
+        ...getMockConfig(),
+        homeAssistant: { url: 'http://ha.local:8123', token: 'token' },
+        globalHotkeys: { enabled: false, hotkeys: {} },
+      });
+
+      await expect(hotkeys.toggleHotkeys(true)).resolves.toBe(true);
+      expect(state.CONFIG.globalHotkeys.enabled).toBe(true);
+      expect(showToast).toHaveBeenLastCalledWith('Entity hotkeys enabled', 'success', 2000);
     });
 
     it('should call IPC to enable hotkeys', async () => {
@@ -1969,7 +1937,6 @@ describe('hotkeys module', () => {
 
   describe('module exports', () => {
     it('should export all required functions', () => {
-      expect(typeof hotkeys.initializeHotkeys).toBe('function');
       expect(typeof hotkeys.renderHotkeysTab).toBe('function');
       expect(typeof hotkeys.toggleHotkeys).toBe('function');
       expect(typeof hotkeys.captureHotkey).toBe('function');

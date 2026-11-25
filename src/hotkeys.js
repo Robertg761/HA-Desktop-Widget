@@ -9,7 +9,6 @@ import accelerators from './accelerators.cjs';
 import entityHotkeys from './entity-hotkeys.cjs';
 import { paginate, renderListPager } from './list-pager.js';
 
-let globalHotkeys = {};
 // The action picked on a row that has no hotkey yet. The list is rebuilt on every search keystroke
 // and tab switch, and recording reads the action from the row, so without this the choice would
 // be forgotten before the hotkey is recorded.
@@ -75,16 +74,6 @@ function flashHotkeyRow(entityId) {
   row.scrollIntoView?.({ block: 'nearest' });
   row.classList.add('settings-search-target');
   setTimeout(() => row.classList.remove('settings-search-target'), 1800);
-}
-
-function initializeHotkeys() {
-  try {
-    if (state.CONFIG && state.CONFIG.globalHotkeys) {
-      globalHotkeys = state.CONFIG.globalHotkeys;
-    }
-  } catch (error) {
-    console.error('Error initializing hotkeys:', error);
-  }
 }
 
 // Labels are translated here because the options are rebuilt on every render.
@@ -461,7 +450,6 @@ async function toggleHotkeys(enabled) {
           { persist: false }
         );
       }
-      globalHotkeys.enabled = enabled;
       // The switch is labelled "Entity hotkeys", and the popup hotkey is not part of it.
       showToast(
         enabled ? t('Entity hotkeys enabled') : t('Entity hotkeys disabled'),
@@ -661,7 +649,6 @@ function setupHotkeyEventListeners() {
 }
 
 export {
-  initializeHotkeys,
   renderHotkeysTab,
   scheduleHotkeysTabRender,
   toggleHotkeys,

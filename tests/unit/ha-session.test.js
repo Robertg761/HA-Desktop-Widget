@@ -594,7 +594,17 @@ describe('Home Assistant session', () => {
       expect(kept()).toBeUndefined();
     });
 
-    it('is not marked unavailable once Home Assistant says it was renamed', () => {
+    it('is not marked unavailable once forgotten', () => {
+      start();
+      transport.connect([favoriteEntity, otherEntity]);
+      transport.connect([otherEntity]);
+      session.forgetKeptFavorite(FAVORITE);
+      jest.advanceTimersByTime(61 * 1000);
+      expect(kept()).toEqual(favoriteEntity);
+      expect(batches).toEqual([]);
+    });
+
+    it('is still marked unavailable after a rename event alone, until the rename is saved', () => {
       start();
       transport.connect([favoriteEntity, otherEntity]);
       transport.connect([otherEntity]);
@@ -603,8 +613,7 @@ describe('Home Assistant session', () => {
         data: { action: 'update', old_entity_id: FAVORITE, entity_id: 'light.renamed' },
       });
       jest.advanceTimersByTime(61 * 1000);
-      expect(kept()).toEqual(favoriteEntity);
-      expect(batches).toEqual([]);
+      expect(kept().state).toBe('unavailable');
     });
   });
 });

@@ -101,6 +101,21 @@ describe('replaceConfigEntityIdReferences', () => {
     });
   });
 
+  it('does not count tidying duplicate entries as a change when the id is not referenced', () => {
+    const config = { favoriteEntities: ['switch.c', 'switch.c'] };
+    const result = replaceConfigEntityIdReferences(config, oldEntityId, newEntityId);
+    expect(result.changed).toBe(false);
+    expect(result.config).toBe(config);
+  });
+
+  it('still keeps one copy of each id when the renamed id is referenced', () => {
+    const config = { favoriteEntities: ['switch.c', oldEntityId, 'switch.c', newEntityId] };
+    expect(replaceConfigEntityIdReferences(config, oldEntityId, newEntityId)).toEqual({
+      config: { favoriteEntities: ['switch.c', newEntityId] },
+      changed: true,
+    });
+  });
+
   it('wires replacement through the main-process serialized config mutation queue', () => {
     const mainSource = fs.readFileSync(path.join(__dirname, '../../main.js'), 'utf8');
     const handlerStart = mainSource.indexOf("'replace-config-entity-id'");

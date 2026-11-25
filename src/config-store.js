@@ -253,12 +253,7 @@ export function createConfigStore({
     return adoptAnswer(config);
   }
 
-  /** Whether a write is waiting for main's answer, or for its side effect. */
-  function isWriting() {
-    return pendingWrites > 0;
-  }
-
-  return { read, update, adopt, isWriting };
+  return { read, update, adopt };
 }
 
 const configStore = createConfigStore();

@@ -135,6 +135,7 @@ async function persistEntityRegistryRename(eventData = {}) {
   try {
     const replacement = await window.electronAPI.replaceConfigEntityId(oldEntityId, newEntityId);
     const authoritativeConfig = replacement?.config;
+    haSession.forgetKeptFavorite(oldEntityId);
     if (authoritativeConfig?.homeAssistant) {
       applyRendererConfig(authoritativeConfig);
     }
@@ -1950,7 +1951,6 @@ function startConfiguredRuntime() {
 
   if (shouldInitializeRuntime) {
     ensureDesktopCompanionClient()?.start();
-    hotkeys.initializeHotkeys();
     hotkeys.setupHotkeyEventListeners();
     alerts.initializeEntityAlerts();
     notifications.initializePersistentNotifications();
@@ -3623,7 +3623,9 @@ function wireUI() {
           // Clear the selected weather entity (revert to default). null, as Settings saves it:
           // an undefined survives the IPC and sits in main's config until the next restart.
           const persistedConfig = await configStore.update({ selectedWeatherEntity: null });
-          applyRendererConfig(persistedConfig);
+          // The store's answer carries no revision for applyRendererConfig to check, so it is
+          // applied only while the store holds it: a config main sent since is newer.
+          if (persistedConfig === state.CONFIG) applyRendererConfig(persistedConfig);
 
           // Refresh weather display
           ui.updateWeatherFromHA();

@@ -300,8 +300,11 @@ function emitUiDebug(event, details = {}) {
   }
 }
 
-// Every service call that acts on an entity goes through this runner (entity-actions.cjs), which
-// knows what each kind of entity takes. What is drawn and said about it stays here.
+// Tile, Quick Access, pin and hotkey actions on an entity go through this runner
+// (entity-actions.cjs), which knows what each kind of entity takes. What is drawn and said about
+// it stays here. Not every call does yet: the light, fan, cover and climate dialogs send theirs
+// through callServiceWithUiRollback, and helper, to-do and other one-off controls call
+// websocket.callService directly.
 const entityActions = entityActionsModule.createEntityActions({
   callService: (domain, service, data) => websocket.callService(domain, service, data),
   getEntity: (entityId) => state.STATES?.[entityId],
@@ -594,6 +597,10 @@ function getStoredQuickAccessLayout(config) {
   return JSON.stringify({ ...patch, customTabs: pageNameRules.toStoredPages(patch.customTabs) });
 }
 
+// Quick Access saves waiting for main. Duplicate page and Undo/Restore dashboard wait for these,
+// which they would build on, but not for other config writes (a collapsed section, a colour).
+let pendingQuickAccessWrites = 0;
+
 // Holds a Quick Access layout at once and saves it. Main is sent only the Quick Access keys, so an
 // older snapshot of the rest of the config cannot undo a change made elsewhere meanwhile.
 function persistQuickAccessConfig(nextConfig, { rollbackOnFailure = true } = {}) {
@@ -602,6 +609,11 @@ function persistQuickAccessConfig(nextConfig, { rollbackOnFailure = true } = {})
     rollbackOnFailure,
     history: true,
   });
+  pendingQuickAccessWrites += 1;
+  const settled = () => {
+    pendingQuickAccessWrites -= 1;
+  };
+  pending.then(settled, settled);
   const rendered = getStoredQuickAccessLayout(state.CONFIG);
   return pending.then(
     (config) => {
@@ -1046,7 +1058,7 @@ function beginInlineTabRename(tabId, buttonEl) {
 }
 
 async function duplicateQuickAccessPage(tabId) {
-  if (configStore.isWriting()) {
+  if (pendingQuickAccessWrites) {
     dialogs.showToast(t('Wait for the current dashboard save to finish.'), 'info', 1600);
     return;
   }
@@ -1599,7 +1611,8 @@ function showAddPageModal({ starter = false } = {}) {
 
 // Puts a saved layout back: one picked in Restore dashboard, or the step Undo goes back to (`undo`).
 async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
-  if (configStore.isWriting()) throw new Error(t('Wait for the current dashboard save to finish.'));
+  if (pendingQuickAccessWrites)
+    throw new Error(t('Wait for the current dashboard save to finish.'));
   const current = normalizeQuickAccessConfig(state.CONFIG);
   const next = normalizeQuickAccessConfig({ ...state.CONFIG, ...dashboardSnapshot(layout) });
   // Return to the page the layout was saved on, else stay put, else land on the page now in the

@@ -383,15 +383,6 @@ export function createHaSession({ transport, debug = () => {} }) {
     }
   }
 
-  function receiveEntityRegistryUpdate(data) {
-    // A renamed entity's omission from a snapshot is explained; it is not a favorite to keep.
-    const oldEntityId = typeof data?.old_entity_id === 'string' ? data.old_entity_id.trim() : '';
-    if (data?.action === 'update' && oldEntityId && oldEntityId !== data.entity_id) {
-      keptFavorites.delete(oldEntityId);
-    }
-    emit('entity-registry-updated', data);
-  }
-
   transport.on('open', () => {
     try {
       log.debug('WebSocket connection opened');
@@ -410,7 +401,7 @@ export function createHaSession({ transport, debug = () => {} }) {
       } else if (msg.type === 'auth_invalid') {
         emit('auth-rejected');
       } else if (msg.type === 'event' && msg.event?.event_type === 'entity_registry_updated') {
-        receiveEntityRegistryUpdate(msg.event.data);
+        emit('entity-registry-updated', msg.event.data);
       } else if (msg.type === 'event' && msg.event?.event_type === 'state_changed') {
         // Older than the snapshot on its way: queued, it would be drawn over the newer state.
         if (awaitingStatesSnapshot) return;
@@ -482,6 +473,18 @@ export function createHaSession({ transport, debug = () => {} }) {
      */
     receiveEntityState(entity) {
       receiveEntityState(entity);
+    },
+
+    /**
+     * Stops keeping a favorite that a reconnect left out, so it is never marked unavailable. For
+     * a favorite whose saved references were moved to its new id after a rename: its omission is
+     * explained. Until that move is saved, the old-id tile still needs repairing, so it is not
+     * forgotten on the rename event alone.
+     *
+     * @param {string} entityId
+     */
+    forgetKeptFavorite(entityId) {
+      keptFavorites.delete(entityId);
     },
   };
 }

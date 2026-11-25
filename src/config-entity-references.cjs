@@ -25,7 +25,15 @@ function replaceConfigEntityIdReferences(config, oldEntityId, newEntityId) {
     return { config, changed: false };
   }
 
-  return mapEntityIds(config, (entityId) => (entityId === oldEntityId ? newEntityId : entityId));
+  // The walk also drops duplicate list entries; that is tidying, not a reference to the old id,
+  // and alone it must not read as a change (main would rewrite the file and report a rename).
+  let referenced = false;
+  const result = mapEntityIds(config, (entityId) => {
+    if (entityId !== oldEntityId) return entityId;
+    referenced = true;
+    return newEntityId;
+  });
+  return referenced ? result : { config, changed: false };
 }
 
 module.exports = {

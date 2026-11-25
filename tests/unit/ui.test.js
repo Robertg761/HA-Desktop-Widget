@@ -1297,6 +1297,39 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       }
     });
 
+    it('waits for a Quick Access save to finish, but not for other config writes', async () => {
+      const configStore = require('../../src/config-store.js').default;
+      const tabs = (...ids) => ids.map((id) => ({ id, name: id, entityIds: [] }));
+      const answers = [];
+      mockElectronAPI.updateConfig.mockImplementation(
+        (patch) =>
+          new Promise((resolve) => {
+            answers.push(() => resolve({ ...state.CONFIG, ...patch }));
+          })
+      );
+      state.setConfig({ ...state.CONFIG, customTabs: tabs('one', 'two'), activeTabId: 'one' });
+
+      // A section collapsed, say: not a dashboard save, so a restore need not wait for it.
+      const otherWrite = configStore.update({ opacity: 0.5 });
+      const restored = ui.restoreDashboard({ customTabs: tabs('three') });
+      answers.splice(0).forEach((answer) => answer());
+      await Promise.all([otherWrite, restored]);
+      expect(state.CONFIG.customTabs.map((tab) => tab.id)).toEqual(['three']);
+
+      // A Quick Access save is one: the restore would be built on a layout not yet stored.
+      state.setConfig({ ...state.CONFIG, customTabs: tabs('three', 'four'), activeTabId: 'three' });
+      const switched = ui.switchQuickAccessPage('four');
+      await expect(ui.restoreDashboard({ customTabs: tabs('one') })).rejects.toThrow(
+        'Wait for the current dashboard save to finish.'
+      );
+      answers.splice(0).forEach((answer) => answer());
+      await switched;
+      const restoredAfter = ui.restoreDashboard({ customTabs: tabs('one') });
+      answers.splice(0).forEach((answer) => answer());
+      await restoredAfter;
+      expect(state.CONFIG.customTabs.map((tab) => tab.id)).toEqual(['one']);
+    });
+
     it('restores dashboard fields while preserving local authorization and hotkeys', async () => {
       const current = {
         ...state.CONFIG,
