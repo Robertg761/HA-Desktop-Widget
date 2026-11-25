@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { clampLayerPosition } = require('../../src/layer-placement.cjs');
+const settingsFields = require('../../packages/widget-renderer/src/settings-fields.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -108,6 +109,7 @@ describe('dropping a pin on a Hyprland layer surface', () => {
       desktopPinWindows: new Map(Object.entries(pins)),
       clampLayerPosition,
       snapDesktopPinPosition,
+      settingsFields,
       config: { ui: {} },
     };
     const start = mainSource.indexOf('function snapLayerPinPosition');

@@ -530,6 +530,7 @@ const {
 } = require('./src/serialized-task-runner.cjs');
 const { CONFIG_FILE_NAME, shouldBlockConfigWrite } = require('./src/config-write-guard.cjs');
 const { replaceConfigEntityIdReferences } = require('./src/config-entity-references.cjs');
+const settingsFields = require('./packages/widget-renderer/src/settings-fields.cjs');
 const { requireExistingSyncParentDirectory } = require('./src/cloud-sync-path.cjs');
 const {
   createProfileSyncRewriteTransaction,
@@ -3699,7 +3700,7 @@ function createDesktopPinWindow(entityId, options = {}) {
 
 // Snapping is on until it is turned off in Settings > Appearance.
 function desktopPinSnapEnabled() {
-  return config?.ui?.desktopPinSnap !== false;
+  return settingsFields.settingValue(config, 'ui.desktopPinSnap');
 }
 
 /**
@@ -5906,10 +5907,9 @@ function loadConfig(options = {}) {
     windowPosition: { x: 100, y: 100 },
     windowDisplay: null,
     windowSize: { ...DEFAULT_WINDOW_SIZE },
-    alwaysOnTop: true,
-    hideOnBlur: false,
-    opacity: 0.95,
-    frostedGlass: true,
+    // Every setting the settings field registry gives a default to: the look, the layout, alerts
+    // and hotkeys.
+    ...settingsFields.defaultSettings(),
     homeAssistant: {
       // Home Assistant OS 2026.8+ fresh installs use the standard HTTP port by default.
       // Existing saved URLs, including legacy :8123 installs, are merged over this value.
@@ -5925,43 +5925,6 @@ function loadConfig(options = {}) {
       revision: 0,
       appliedAt: '',
     },
-    globalHotkeys: {
-      enabled: false,
-      hotkeys: {}, // entityId -> hotkey combination
-    },
-    entityAlerts: {
-      enabled: false,
-      // persistentNotifications (desktop notifications for Home Assistant's own) is absent until
-      // someone turns it off; absent means on.
-      alerts: {}, // entityId -> alert configuration
-    },
-    ui: {
-      theme: 'auto',
-      accent: 'original',
-      background: 'original',
-      language: 'auto',
-      customColors: [],
-      density: 'comfortable',
-      activeTileGlow: true,
-      personalizationSectionsCollapsed: {},
-      use24HourClock: false,
-      timeFormat: 'system',
-      dateFormat: 'weekday-short',
-      weatherEffectsEnabled: false,
-      weatherOverride: 'auto',
-      enableInteractionDebugLogs: false,
-      // Only takes effect where an Omarchy palette exists.
-      followOmarchy: true,
-    },
-    primaryCards: ['weather', 'time'],
-    favoriteEntities: [],
-    customTabs: [],
-    activeTabId: '',
-    comparisonGraphs: [],
-    desktopPins: {},
-    trayEntities: {},
-    customEntityIcons: {},
-    quickAccessTileOptions: {},
     updates: {
       allowPrerelease: false,
       anonymousUsagePing: false,

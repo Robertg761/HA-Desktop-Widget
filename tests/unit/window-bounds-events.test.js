@@ -12,6 +12,7 @@ const {
   getDesktopPinWindowBounds,
 } = require('../../src/desktop-pin-bounds.js');
 const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
+const settingsFields = require('../../packages/widget-renderer/src/settings-fields.cjs');
 const { getMainWindowMinimumSize } = require('../../src/layer-shell.cjs');
 const { boundsVisibleOnAnyWorkArea } = require('../../src/window-placement.cjs');
 
@@ -282,6 +283,7 @@ describe('desktop pin bounds on Linux', () => {
       getDesktopPinBaseBounds,
       getDesktopPinWindowBoundsInWorkArea: getDesktopPinWindowBounds,
       snapDesktopPinPosition,
+      settingsFields,
       isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
       normalizeEntityId: (id) => String(id || '').trim(),
       BrowserWindow: function (options) {

@@ -10,6 +10,7 @@ import { paginate, renderListPager } from './list-pager.js';
 import { linkSettingsHelpText, setDescribedByLine } from './settings-help-links.js';
 import state from './state.js';
 import log from './logger.js';
+import settingsFields from '@hadw/renderer/settings-fields.cjs';
 import websocket from './websocket.js';
 import {
   applyTheme,
@@ -5592,8 +5593,37 @@ async function persistLanguageSelection(nextLanguage) {
   return updatedConfig;
 }
 
+// The plain switches and lists the settings field registry binds to a setting: each shows what
+// the setting reads as, and saving stores it back by the registry's rules (a value it does not
+// offer saves the default; one a new config leaves unset stays unset until it is changed).
+function fillSettingControls(config) {
+  settingsFields.SETTING_CONTROLS.forEach(({ path, id, preview }) => {
+    const control = document.getElementById(id);
+    if (!control) return;
+    const value = settingsFields.settingValue(config, path);
+    if (control.type === 'checkbox') control.checked = !!value;
+    else control.value = value === undefined ? '' : String(value);
+    if (preview) control.onchange = previewAppearance;
+  });
+}
+
+/** Reads every bound control that is there and enabled into `config`, and returns it. */
+function readSettingControls(config) {
+  settingsFields.SETTING_CONTROLS.forEach(({ path, id }) => {
+    const control = document.getElementById(id);
+    if (!control || control.disabled) return;
+    settingsFields.storeSetting(
+      config,
+      path,
+      control.type === 'checkbox' ? !!control.checked : control.value
+    );
+  });
+  return config;
+}
+
 /**
- * Read the text size, contrast, density and tile glow controls on top of `ui`.
+ * Read the text size, contrast, density and tile glow controls, and every other plain ui control
+ * the settings field registry binds, on top of `ui`.
  *
  * These preview live like the window effects and persist only on Save. The readable preset
  * stands for both contrast flags, so they are left alone unless the preset was toggled.
@@ -5601,23 +5631,14 @@ async function persistLanguageSelection(nextLanguage) {
 function getAppearanceFromInputs(ui = state.CONFIG?.ui || {}) {
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const density = document.getElementById('density-select');
-  const activeTileGlow = document.getElementById('active-tile-glow');
-  const pinSnap = document.getElementById('desktop-pin-snap');
-  const next = { ...ui };
+  const next = readSettingControls({ ui: { ...ui } }).ui;
   if (scale) next.scale = Number(scale.value) || 1;
   if (preset && preset.checked !== (!!ui.highContrast && !!ui.opaquePanels)) {
     next.highContrast = preset.checked;
     next.opaquePanels = preset.checked;
   }
-  if (density) next.density = density.value === 'compact' ? 'compact' : 'comfortable';
   const pinNameAlign = readPinNameAlignInput(ui);
   if (pinNameAlign) next.desktopPinNameAlign = pinNameAlign;
-  if (activeTileGlow) next.activeTileGlow = !!activeTileGlow.checked;
-  // Stored once turned off, so an untouched switch keeps following the default (on).
-  if (pinSnap && (!pinSnap.checked || Object.hasOwn(ui, 'desktopPinSnap'))) {
-    next.desktopPinSnap = !!pinSnap.checked;
-  }
   const seasonal = readSeasonalInputs(ui.seasonal);
   if (seasonal) next.seasonal = seasonal;
   return next;
@@ -5846,15 +5867,9 @@ function bindAppearanceSettingsUi() {
   labelUiScaleOptions();
   const scale = document.getElementById('ui-scale-select');
   const preset = document.getElementById('readable-preset');
-  const activeTileGlow = document.getElementById('active-tile-glow');
-  const densitySelect = document.getElementById('density-select');
   if (scale) scale.value = String(ui.scale || 1);
   if (preset) preset.checked = !!ui.highContrast && !!ui.opaquePanels;
-  if (activeTileGlow) activeTileGlow.checked = ui.activeTileGlow !== false;
-  const pinSnap = document.getElementById('desktop-pin-snap');
-  // Opt-out, like the glow: pins snap until someone turns it off.
-  if (pinSnap) pinSnap.checked = ui.desktopPinSnap !== false;
-  if (densitySelect) densitySelect.value = ui.density === 'compact' ? 'compact' : 'comfortable';
+  fillSettingControls(state.CONFIG || {});
   const pinNameAlign = document.getElementById('pin-name-align-select');
   pinNameAlignTouched = false;
   if (pinNameAlign) {
@@ -5862,7 +5877,7 @@ function bindAppearanceSettingsUi() {
     pinNameAlign.value = ui.desktopPinNameAlign || '';
     if (!pinNameAlign.value) pinNameAlign.value = getDefaultPinNameAlign();
   }
-  for (const control of [scale, preset, activeTileGlow, densitySelect].filter(Boolean)) {
+  for (const control of [scale, preset].filter(Boolean)) {
     control.onchange = previewAppearance;
   }
   if (pinNameAlign) {
@@ -6111,24 +6126,9 @@ function observeSettingsLocale() {
  * @param {Function} [uiHooks.renderPrimaryCards] - Fallback hook called after save to refresh primary cards.
  */
 // Settings profile sync can change on another computer while this form is open.
-const PROFILE_SYNCED_SETTINGS = [
-  'alwaysOnTop',
-  'hideOnBlur',
-  'opacity',
-  'frostedGlass',
-  'favoriteEntities',
-  'trayEntities',
-  'customEntityNames',
-  'customEntityIcons',
-  'tileSpans',
-  'quickAccessTileOptions',
-  'primaryCards',
-  'customTabs',
-  'comparisonGraphs',
-  'entityAlerts',
-  'selectedWeatherEntity',
-  'primaryMediaPlayer',
-];
+const PROFILE_SYNCED_SETTINGS = Object.values(settingsFields.SYNC_SECTION_FIELDS)
+  .flat()
+  .filter((key) => key !== 'ui');
 // The config the open form was filled from.
 let settingsFormBaseConfig = null;
 let windowDisplaySettings = null;
@@ -6142,6 +6142,7 @@ export function refreshWindowDisplaySettings() {
 // they change their pending value, so merely opening a picker counts as nothing.
 let settingsTouchedKeys = new Set();
 const SETTINGS_CONTROL_KEYS = [
+  ...settingsFields.SETTING_CONTROLS.map(({ id, path }) => [`#${id}`, [path]]),
   ['#always-on-top', ['alwaysOnTop']],
   ['#hide-on-blur', ['hideOnBlur']],
   ['#opacity-slider', ['opacity']],
@@ -6152,10 +6153,7 @@ const SETTINGS_CONTROL_KEYS = [
   ['#weather-override-select', ['ui.weatherOverride']],
   ['#language-select', ['ui.language']],
   ['#readable-preset', ['ui.highContrast', 'ui.opaquePanels']],
-  ['#density-select', ['ui.density']],
   ['#pin-name-align-select', ['ui.desktopPinNameAlign']],
-  ['#desktop-pin-snap', ['ui.desktopPinSnap']],
-  ['#active-tile-glow', ['ui.activeTileGlow']],
   ['#seasonal-settings', ['ui.seasonal']],
   ['#ui-scale-select', ['ui.scale']],
   ['#follow-omarchy', ['ui.followOmarchy']],
@@ -6246,7 +6244,6 @@ async function openSettings(uiHooks) {
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
-    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     if (haUrl) haUrl.value = state.CONFIG.homeAssistant.url || '';
@@ -6363,9 +6360,6 @@ async function openSettings(uiHooks) {
     hasDraftColorPreview = false;
 
     state.CONFIG.ui = state.CONFIG.ui || {};
-    if (enableInteractionDebugLogs) {
-      enableInteractionDebugLogs.checked = !!state.CONFIG.ui.enableInteractionDebugLogs;
-    }
     setPendingCustomColorList(state.CONFIG.ui.customColors || []);
     // Settings opens on the saved name, whatever the rename field held before.
     activeCustomManagementThemeId = null;
@@ -7029,7 +7023,6 @@ async function persistSettings() {
     const hideOnBlur = document.getElementById('hide-on-blur');
     const opacitySlider = document.getElementById('opacity-slider');
     const frostedGlass = document.getElementById('frosted-glass');
-    const enableInteractionDebugLogs = document.getElementById('enable-interaction-debug-logs');
     const allowPrereleaseUpdates = document.getElementById('allow-prerelease-updates');
     const anonymousUsagePing = document.getElementById('anonymous-usage-ping');
     const languageSelect = document.getElementById('language-select');
@@ -7140,10 +7133,9 @@ async function persistSettings() {
     }
     nextConfig.ui.weatherOverride = weatherOverrideSelect ? weatherOverrideSelect.value : 'auto';
     nextConfig.ui.language = languageSelect?.value || nextConfig.ui.language || 'auto';
+    // Bound controls outside ui are read here; the ui ones are read with the rest of the look.
+    readSettingControls(nextConfig);
     nextConfig.ui = getAppearanceFromInputs(nextConfig.ui);
-    if (enableInteractionDebugLogs) {
-      nextConfig.ui.enableInteractionDebugLogs = !!enableInteractionDebugLogs.checked;
-    }
     nextConfig.updates = nextConfig.updates || {};
     if (allowPrereleaseUpdates) {
       nextConfig.updates.allowPrerelease = !!allowPrereleaseUpdates.checked;

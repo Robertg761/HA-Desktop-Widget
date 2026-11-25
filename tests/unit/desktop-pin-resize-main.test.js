@@ -10,6 +10,7 @@ const {
 const { clampLayerPosition } = require('../../src/layer-placement.cjs');
 const { DESKTOP_PIN_NUDGE_LIMIT } = require('../../src/desktop-pin-resize.cjs');
 const { snapDesktopPinPosition } = require('../../src/desktop-pin-snap.cjs');
+const settingsFields = require('../../packages/widget-renderer/src/settings-fields.cjs');
 
 const mainSource = fs.readFileSync(path.resolve(__dirname, '../../main.js'), 'utf8');
 
@@ -55,6 +56,7 @@ function loadResizeRuntime({ scale = 1, bounds, layer = null, compositorPlacemen
     layerDrag: null,
     DESKTOP_PIN_NUDGE_LIMIT,
     snapDesktopPinPosition,
+    settingsFields,
     clampLayerPosition,
     desktopPinEditMode: true,
     desktopPinContentMinBounds: new Map(),
