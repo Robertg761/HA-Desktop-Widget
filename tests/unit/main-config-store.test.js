@@ -160,6 +160,24 @@ describe('config store', () => {
     expect(readFile()).toMatchObject({ theme: 'light', editedAt: 'now' });
   });
 
+  it('restores a touched section in place, so a caller holding it can undo its own edit', async () => {
+    const io = controllableFs();
+    const store = createConfigStore({ filePath, fs: io.fs });
+    store.load({ profileSync: { remoteRewritePending: false, profileUpdatedAt: 'a' }, ui: {} });
+    // Like sync tracking, which stamps an edit time on the section the caller is holding.
+    store.beforeWrite((config) => {
+      config.profileSync.profileUpdatedAt = 'b';
+    });
+    const held = store.get().profileSync;
+    held.remoteRewritePending = true;
+    io.nextWrite({ fail: 'disk full' });
+    const result = await store.apply(null, { origin: 'profile-sync' });
+    expect(result.success).toBe(false);
+    expect(store.get().profileSync).toBe(held);
+    held.remoteRewritePending = false;
+    expect(store.get().profileSync).toEqual({ remoteRewritePending: false, profileUpdatedAt: 'a' });
+  });
+
   it('rolls back and rejects when the change itself throws', async () => {
     const store = createStore();
 

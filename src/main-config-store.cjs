@@ -55,12 +55,22 @@ function changedKeys(before, after) {
   );
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 // Puts back only the keys a change touched, so an edit made to another key while the write was
-// running (window bounds land outside the queue) survives the rollback.
+// running (window bounds land outside the queue) survives the rollback. A touched section that is
+// still an object is restored in place: callers hold it (getProfileSyncConfig() and the like) and
+// undo their own edits on it after a failed write, which must land on the live config.
 function restoreKeys(target, before, keys) {
   keys.forEach((key) => {
     if (hasOwn(before, key)) {
-      target[key] = before[key];
+      if (isPlainObject(target[key]) && isPlainObject(before[key])) {
+        replaceConfigContents(target[key], before[key]);
+      } else {
+        target[key] = before[key];
+      }
     } else {
       delete target[key];
     }
