@@ -13,6 +13,9 @@ the deep-module vocabulary: a **deep** module hides a lot of behaviour behind a 
 - **Primary card**: the weather, time or media card above the pages.
 - **Desktop pin**: one entity in its own small window on the desktop.
 - **Alert rule**: a condition on an entity that raises an alert (`entityAlerts.alerts[id]`).
+- **Pop-up card** (pop-up alert card): a small window an alert rule can open instead of a system
+  notification, with a camera and up to two buttons (`popup` on the rule; `src/alert-popup*.cjs`,
+  `src/alert-popup-view.js`). Its buttons are run by Entity Actions in the app window.
 - **Profile** has three meanings; name which one:
   - **synced profile**: the document profile sync reads and writes, made of **sync sections**;
   - **HA profile**: the part of the config Home Assistant can push with `apply_profile`;
@@ -40,7 +43,8 @@ the deep-module vocabulary: a **deep** module hides a lot of behaviour behind a 
   for profile sync. Its **sync target** is the seam with two adapters: a **folder** file and
   **Cloud Sync**.
 - **IPC route table** (`src/ipc-routes.cjs`): every IPC channel declared once with the **sender
-  roles** allowed to call it (`main`, `desktop-pin`). A new kind of window is a new role.
+  roles** allowed to call it (`main`, `desktop-pin`, `alert-popup`). A new kind of window is a new
+  role.
 - **Login item** (`src/login-item.cjs`): start at login, with one adapter per platform.
 - **Dialogs** (`src/dialogs.js`): opening and closing dialogs, focus trapping and toasts.
 - **Colour maths** (`src/color-math.js`): pure colour and contrast helpers; never mocked in tests.

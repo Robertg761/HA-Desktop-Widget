@@ -32,8 +32,10 @@
  */
 
 const {
+  ALERT_POPUP_ALERTS,
   PAGE_SETS,
   WINDOW_SIZE,
+  buildAlertPopupDevices,
   buildLandingLights,
   buildUnavailableDevices,
 } = require('./fixture.cjs');
@@ -928,6 +930,54 @@ const TILE_NAMES_ALIGNED = `(() => {
   return rows.size > 0 && [...rows.values()].every((tops) => Math.max(...tops) - Math.min(...tops) <= 0.5);
 })()`;
 const NO_SIDEWAYS_SCROLL = `document.documentElement.scrollWidth <= innerWidth + 1`;
+// A pop-up alert card, opened the way a user's is: the alert rule's entity changes in Home
+// Assistant, the widget's alert rule asks for a card, and the card window appears in the corner of
+// the screen. The layout checks hold on any font: the buttons and the text stay inside the card.
+const ALERT_POPUP_LAYOUT = `(() => {
+  const card = document.querySelector('.alert-popup')?.getBoundingClientRect();
+  if (!card || card.width < 200) return 'no card';
+  const inside = (box) =>
+    box.left >= card.left - 0.5 && box.right <= card.right + 0.5 &&
+    box.top >= card.top - 0.5 && box.bottom <= card.bottom + 0.5;
+  const parts = [...document.querySelectorAll(
+    '.alert-popup-action, .alert-popup-title, .alert-popup-message, .alert-popup-close'
+  )].filter((node) => !node.closest('[hidden]'));
+  const out = parts.find((node) => !inside(node.getBoundingClientRect()));
+  if (out) return 'outside the card: ' + out.className;
+  const clipped = [...document.querySelectorAll('.alert-popup-action-label')]
+    .find((node) => node.scrollWidth > node.clientWidth + 1);
+  if (clipped) return 'cut off: ' + clipped.textContent;
+  return '';
+})()`;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const alertPopupScene = (name, trigger, { ui, config, camera = false } = {}) => ({
+  name,
+  ui,
+  config: { entityAlerts: ALERT_POPUP_ALERTS, ...config },
+  extraStates: (now) => buildAlertPopupDevices(now),
+  setup: async (ctx) => {
+    // The alert rules see the new entities' first states before the change that fires one.
+    await pause(800);
+    ctx.changeStates({
+      add: buildAlertPopupDevices(new Date(), { ding: 'on', leak: 'on' }).filter(
+        (entity) => entity.entity_id === trigger
+      ),
+    });
+    const card = await ctx.waitForAlertPopup(trigger);
+    if (camera) {
+      const start = Date.now();
+      const hasPicture = `document.querySelector('.alert-popup-camera-frame')?.dataset.hasFrame === 'true'`;
+      while (!(await card.evaluate(hasPicture))) {
+        if (Date.now() - start > 10000) throw new Error('The alert card camera showed no picture');
+        await pause(250);
+      }
+    }
+    const problem = await card.evaluate(ALERT_POPUP_LAYOUT);
+    if (problem) throw new Error(`Layout check failed: alert card ${problem}`);
+    return { capture: card };
+  },
+});
+
 // The camera viewer's toolbar with its sound toggle: the status text and the buttons lie inside the
 // dialog, do not overlap (side by side, or the buttons wrapped under the text), and the status
 // text is not cut off.
@@ -1852,6 +1902,45 @@ const scenes = [
     },
   },
 
+  // Pop-up alert cards: a doorbell with its gate camera, Unlock and Turn off, in both themes and
+  // in German (longer button words), and a leak sensor's short card with the water valve's Close.
+  alertPopupScene('alert-popup-doorbell', 'binary_sensor.front_gate_ding', { camera: true }),
+  alertPopupScene('alert-popup-doorbell-light', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    ui: { theme: 'light' },
+  }),
+  alertPopupScene('de-alert-popup-doorbell', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    ui: { language: 'de' },
+  }),
+  alertPopupScene('alert-popup-leak', 'binary_sensor.utility_room_leak'),
+  // The card follows the window's look as a desktop pin does: solid with frosted glass and full
+  // opacity off, and see-through at the lowest window opacity (the scenes above have the fixture's
+  // frosted glass at 95%). The tile colours scene gives the doorbell, the lock and the light colours
+  // of their own: the card's icon and glow wear the doorbell's, each button its own entity's.
+  alertPopupScene('alert-popup-doorbell-solid', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: { frostedGlass: false, opacity: 1 },
+  }),
+  alertPopupScene('alert-popup-doorbell-see-through', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: { opacity: 0.5 },
+  }),
+  alertPopupScene('alert-popup-doorbell-see-through-light', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    ui: { theme: 'light' },
+    config: { opacity: 0.5 },
+  }),
+  alertPopupScene('alert-popup-tile-colours', 'binary_sensor.front_gate_ding', {
+    camera: true,
+    config: {
+      quickAccessTileOptions: {
+        'binary_sensor.front_gate_ding': { color: '#E57373' },
+        'lock.front_gate': { color: '#81C784' },
+        'light.front_gate': { color: '#FFB74D' },
+      },
+    },
+  }),
   // The camera viewer's toolbar: Snapshot and Live are a pair, and the one on screen is filled.
   {
     name: 'popup-camera-viewer',

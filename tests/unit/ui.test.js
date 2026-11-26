@@ -8910,6 +8910,71 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
       );
     });
 
+    it("runs a pop-up card's button through Entity Actions and answers once it is done", async () => {
+      state.setStates({
+        'lock.front_door': {
+          entity_id: 'lock.front_door',
+          state: 'locked',
+          attributes: { friendly_name: 'Front Door' },
+        },
+      });
+      mockCallService.mockResolvedValueOnce({ success: true });
+
+      ui.handleDesktopPinActionRequest({
+        entityId: 'lock.front_door',
+        action: 'entity-action',
+        requestId: 'alert-popup-1',
+        payload: { action: 'unlock' },
+      });
+      await flushMicrotasks();
+      await flushMicrotasks();
+
+      expect(mockCallService).toHaveBeenCalledWith('lock', 'unlock', {
+        entity_id: 'lock.front_door',
+      });
+      expect(mockElectronAPI.respondDesktopPinActionRequest).toHaveBeenCalledWith('alert-popup-1', {
+        success: true,
+      });
+    });
+
+    it("answers a pop-up card's button that ran nothing, or failed", async () => {
+      state.setStates({
+        'lock.front_door': {
+          entity_id: 'lock.front_door',
+          state: 'locked',
+          attributes: { friendly_name: 'Front Door' },
+        },
+      });
+
+      // A lock cannot be opened like a cover, so nothing is called.
+      ui.handleDesktopPinActionRequest({
+        entityId: 'lock.front_door',
+        action: 'entity-action',
+        requestId: 'alert-popup-2',
+        payload: { action: 'open' },
+      });
+      await flushMicrotasks();
+      expect(mockCallService).not.toHaveBeenCalled();
+      expect(mockElectronAPI.respondDesktopPinActionRequest).toHaveBeenCalledWith('alert-popup-2', {
+        success: false,
+        error: { message: 'Entity is not available' },
+      });
+
+      mockCallService.mockRejectedValueOnce(new Error('Lock jammed'));
+      ui.handleDesktopPinActionRequest({
+        entityId: 'lock.front_door',
+        action: 'entity-action',
+        requestId: 'alert-popup-3',
+        payload: { action: 'unlock' },
+      });
+      await flushMicrotasks();
+      await flushMicrotasks();
+      expect(mockElectronAPI.respondDesktopPinActionRequest).toHaveBeenCalledWith('alert-popup-3', {
+        success: false,
+        error: { message: 'Lock jammed' },
+      });
+    });
+
     it('routes action trigger requests to input_button.press', () => {
       state.setStates({
         'input_button.tv_rewind': sampleStates['input_button.tv_rewind'],

@@ -45,6 +45,7 @@ const {
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
+  buildCameraPictures,
   buildConfig,
   buildHistories,
   buildServiceResponses,
@@ -306,11 +307,35 @@ function pageContext(cdp) {
   };
 }
 
+// A page capture waits for the window to draw a frame, which a window the system hides or counts
+// as covered never does. Past this the scene fails with the screen capture alone, which shows what
+// was on screen there, instead of holding the job until the step times out.
+const PAGE_CAPTURE_TIMEOUT_MS = 20000;
+
+function withTimeout(promise, ms, message) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function capture(name, source, { keepToasts = false } = {}) {
   if (!keepToasts) await source.evaluate(REMOVE_TOASTS);
-  const { data } = await source.send('Page.captureScreenshot', { format: 'png' });
   const base = path.join(OUT_DIR, `${PLATFORM_TAG}-${name}`);
-  fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
+  let pageError = null;
+  try {
+    const { data } = await withTimeout(
+      source.send('Page.captureScreenshot', { format: 'png' }),
+      PAGE_CAPTURE_TIMEOUT_MS,
+      `the page capture of ${name} got no frame in ${PAGE_CAPTURE_TIMEOUT_MS / 1000} s`
+    );
+    fs.writeFileSync(`${base}-page.png`, Buffer.from(data, 'base64'));
+  } catch (error) {
+    pageError = error;
+  }
   // The page target has no Browser domain; the window's own screen geometry is enough.
   const bounds = await source.evaluate(
     '({ left: window.screenX, top: window.screenY, width: window.outerWidth, height: window.outerHeight })'
@@ -324,6 +349,7 @@ async function capture(name, source, { keepToasts = false } = {}) {
     }
   }
   captureScreen(`${base}-screen.png`, bounds);
+  if (pageError) throw pageError;
 }
 
 function reportDesktopKeeper() {
@@ -435,6 +461,7 @@ async function main() {
     serviceResponses: buildServiceResponses(),
     histories: buildHistories(),
     failingEntities: FAILING_ENTITIES,
+    cameraPictures: buildCameraPictures(),
   });
   const haUrl = `http://127.0.0.1:${server.address().port}`;
   const baseConfig = buildConfig(haUrl);
@@ -492,6 +519,10 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
 
     const openPins = [];
     const extraTargets = [];
+    // Alert cards a scene opened (their CDP clients), and every card window seen so far, so a
+    // scene waits for its own card rather than one that is closing.
+    const alertPopups = [];
+    const alertPopupTargets = [];
     let offline = false;
     let notificationsPushed = false;
     const NOTIFICATIONS = 'persistent_notification/subscribe';
@@ -527,6 +558,61 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
         if (!desktopKeeper) return;
         const said = await desktopKeeper.sweep(runningAppPid);
         if (said.length) console.log(`Clearing the desktop before ${reason}: ${said.join('; ')}`);
+      },
+      /**
+       * Change what the home holds, as Home Assistant's own changes reach the app. Entities a
+       * scene's extraStates brought are taken away after the scene as usual.
+       */
+      changeStates(changes) {
+        server.changeStates(changes);
+      },
+      /**
+       * Wait for the pop-up alert card of an entity (an alert rule opens it) and return the CDP
+       * client of its window. The runner closes it after the scene.
+       */
+      async waitForAlertPopup(entityId) {
+        const known = new Set(alertPopupTargets);
+        const target = await waitFor(
+          async () =>
+            (await listTargets()).find(
+              (entry) =>
+                entry.type === 'page' &&
+                entry.url.includes('mode=alert-popup') &&
+                !known.has(entry.id)
+            ),
+          { label: `the ${entityId} alert card`, timeoutMs: 15000 }
+        );
+        alertPopupTargets.push(target.id);
+        const client = await connectCdp(target.webSocketDebuggerUrl);
+        extraTargets.push(client);
+        // A card that stops answering fails its scene rather than holding the job.
+        const card = {
+          ...client,
+          evaluate: (expression) =>
+            withTimeout(
+              client.evaluate(expression),
+              10000,
+              `the ${entityId} alert card did not answer`
+            ),
+        };
+        alertPopups.push(card);
+        const features = JSON.parse(applied.media);
+        if (features.length) await card.send('Emulation.setEmulatedMedia', { features });
+        await waitFor(
+          () =>
+            card
+              .evaluate(`!!document.querySelector('.alert-popup-title')?.textContent`)
+              .catch(() => false),
+          { label: `the ${entityId} alert card content` }
+        );
+        // The card slides in, and its camera loads a snapshot.
+        await sleep(1500);
+        // Where the card is and whether the system shows it, for a run where the capture fails.
+        const where = await card.evaluate(
+          `JSON.stringify({ visibility: document.visibilityState, x: screenX, y: screenY, width: outerWidth, height: outerHeight })`
+        );
+        console.log(`Alert card for ${entityId}: ${where}`);
+        return card;
       },
       /** Pin an entity to the desktop and return the CDP client of its window. */
       async openPin(entityId) {
@@ -596,6 +682,9 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
           timeoutMs: 20000,
         });
         await sleep(600);
+      }
+      for (const card of alertPopups.splice(0)) {
+        await card.evaluate(`window.electronAPI.alertPopupAction('dismiss')`).catch(() => {});
       }
       for (const pin of extraTargets.splice(0)) pin.close();
       for (const entityId of openPins.splice(0)) {

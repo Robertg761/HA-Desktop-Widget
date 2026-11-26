@@ -24,6 +24,15 @@ const PIN_CHANNELS = [
   'debug-log',
 ];
 
+// What a pop-up alert card may call. The card's own two are its alone, not the main window's.
+const POPUP_CHANNELS = [
+  'get-locale-bootstrap',
+  'debug-log',
+  'get-alert-popup-bootstrap',
+  'alert-popup-action',
+];
+const POPUP_ONLY_CHANNELS = ['get-alert-popup-bootstrap', 'alert-popup-action'];
+
 // The handlers that ran, sender check included, in the config mutation queue.
 const CONFIG_QUEUE_CHANNELS = [
   'replace-config-entity-id',
@@ -80,8 +89,8 @@ function destroy(window) {
 }
 
 /**
- * The route table over a fake Electron: a main window, a desktop pin for light.office, and a
- * window with no role. Every channel's handler answers with what it was called with. The config
+ * The route table over a fake Electron: a main window, a desktop pin for light.office, a pop-up
+ * alert card, and a window with no role. Every channel's handler answers with what it was called with. The config
  * queue holds calls until `runQueued()`.
  */
 function createRoutes({ roles: extraRoles = {} } = {}) {
@@ -90,12 +99,14 @@ function createRoutes({ roles: extraRoles = {} } = {}) {
   const mainWindow = createWindow(1);
   const pinWindow = createWindow(2);
   const strayWindow = createWindow(3);
-  const allWindows = [mainWindow, pinWindow, strayWindow];
+  const popupWindow = createWindow(5);
+  const allWindows = [mainWindow, pinWindow, strayWindow, popupWindow];
   const BrowserWindow = {
     fromWebContents: (webContents) =>
       allWindows.find((window) => window.webContents === webContents) || null,
   };
   const desktopPinWindows = new Map([['light.office', pinWindow]]);
+  const popup = { id: 'alert-1' };
   const queued = [];
   const log = { warn: jest.fn() };
   const routes = createIpcRoutes({
@@ -106,6 +117,7 @@ function createRoutes({ roles: extraRoles = {} } = {}) {
       main: () => [{ window: mainWindow }],
       'desktop-pin': () =>
         [...desktopPinWindows].map(([entityId, window]) => ({ window, entityId })),
+      'alert-popup': () => [{ window: popupWindow, popup }],
       ...extraRoles,
     },
     queues: {
@@ -144,6 +156,8 @@ function createRoutes({ roles: extraRoles = {} } = {}) {
     mainWindow,
     pinWindow,
     strayWindow,
+    popupWindow,
+    popup,
     desktopPinWindows,
   };
 }
@@ -167,11 +181,19 @@ describe('IPC route table', () => {
     const world = createRoutes();
 
     const fromMain = await world.invoke(channel, world.eventFrom(world.mainWindow), 'arg');
-    expect(fromMain).toEqual({
-      handledBy: channel,
-      sender: { role: 'main', window: world.mainWindow, webContents: world.mainWindow.webContents },
-      args: ['arg'],
-    });
+    if (POPUP_ONLY_CHANNELS.includes(channel)) {
+      expectRejected(world, channel, fromMain);
+    } else {
+      expect(fromMain).toEqual({
+        handledBy: channel,
+        sender: {
+          role: 'main',
+          window: world.mainWindow,
+          webContents: world.mainWindow.webContents,
+        },
+        args: ['arg'],
+      });
+    }
 
     world.handlers[channel].mockClear();
     const fromPin = await world.invoke(channel, world.eventFrom(world.pinWindow), 'arg');
@@ -188,6 +210,24 @@ describe('IPC route table', () => {
       });
     } else {
       expectRejected(world, channel, fromPin);
+    }
+
+    world.log.warn.mockClear();
+    world.handlers[channel].mockClear();
+    const fromPopup = await world.invoke(channel, world.eventFrom(world.popupWindow), 'arg');
+    if (POPUP_CHANNELS.includes(channel)) {
+      expect(fromPopup).toEqual({
+        handledBy: channel,
+        sender: {
+          role: 'alert-popup',
+          popup: world.popup,
+          window: world.popupWindow,
+          webContents: world.popupWindow.webContents,
+        },
+        args: ['arg'],
+      });
+    } else {
+      expectRejected(world, channel, fromPopup);
     }
 
     world.log.warn.mockClear();
@@ -287,15 +327,15 @@ describe('IPC route table', () => {
     });
 
     test('a window whose role no channel lets in', async () => {
-      let popupWindow;
+      let otherWindow;
       const world = createRoutes({
-        roles: { 'alert-popup': () => (popupWindow ? [{ window: popupWindow }] : []) },
+        roles: { 'some-other-window': () => (otherWindow ? [{ window: otherWindow }] : []) },
       });
-      popupWindow = createWindow(4);
-      world.allWindows.push(popupWindow);
+      otherWindow = createWindow(4);
+      world.allWindows.push(otherWindow);
       for (const channel of CHANNELS) {
         world.log.warn.mockClear();
-        expectRejected(world, channel, await world.invoke(channel, world.eventFrom(popupWindow)));
+        expectRejected(world, channel, await world.invoke(channel, world.eventFrom(otherWindow)));
       }
     });
   });
@@ -337,7 +377,17 @@ describe('IPC route table', () => {
       createIpcRoutes({ ...base, roles: { main: () => [] }, queues: { config: (run) => run } })
     ).toThrow('No windows are given for role desktop-pin');
     expect(() =>
-      createIpcRoutes({ ...base, roles: { main: () => [], 'desktop-pin': () => [] } })
+      createIpcRoutes({
+        ...base,
+        roles: { main: () => [], 'desktop-pin': () => [] },
+        queues: { config: (run) => run },
+      })
+    ).toThrow('No windows are given for role alert-popup');
+    expect(() =>
+      createIpcRoutes({
+        ...base,
+        roles: { main: () => [], 'desktop-pin': () => [], 'alert-popup': () => [] },
+      })
     ).toThrow('No queue is given for config');
   });
 });
@@ -355,7 +405,9 @@ describe("main.js's route wiring", () => {
     const mainWindow = createWindow(1);
     const pinWindow = createWindow(2);
     const strayWindow = createWindow(3);
-    const allWindows = [mainWindow, pinWindow, strayWindow];
+    const popupWindow = createWindow(5);
+    const popup = { id: 'alert-1', window: popupWindow };
+    const allWindows = [mainWindow, pinWindow, strayWindow, popupWindow];
     const log = { warn: jest.fn() };
     const context = {
       createIpcRoutes,
@@ -367,6 +419,7 @@ describe("main.js's route wiring", () => {
       log,
       mainWindow,
       desktopPinWindows: new Map([['light.office', pinWindow]]),
+      alertPopupManager: { list: () => [popup] },
       serializeConfigMutationHandler: (run) => run,
     };
     const routes = require('vm').runInNewContext(
@@ -374,12 +427,13 @@ describe("main.js's route wiring", () => {
       context
     );
     routes.handle('get-desktop-pin-bootstrap', (sender) => sender);
-    const invoke = (window) =>
-      registered.get('get-desktop-pin-bootstrap')({
+    routes.handle('debug-log', (sender) => sender);
+    const invoke = (window, channel = 'get-desktop-pin-bootstrap') =>
+      registered.get(channel)({
         sender: window.webContents,
         senderFrame: topFrame(),
       });
-    return { invoke, log, mainWindow, pinWindow, strayWindow };
+    return { invoke, log, mainWindow, pinWindow, strayWindow, popupWindow, popup };
   }
 
   test('gives the main window, a desktop pin and its entity, and turns away other windows', () => {
@@ -400,5 +454,16 @@ describe("main.js's route wiring", () => {
     expect(world.log.warn).toHaveBeenCalledWith(
       'Unauthorized IPC sender rejected for get-desktop-pin-bootstrap'
     );
+  });
+
+  test('gives a pop-up alert card its card', () => {
+    const world = loadMainWiring();
+    expect(world.invoke(world.popupWindow, 'debug-log')).toEqual({
+      role: 'alert-popup',
+      popup: world.popup,
+      window: world.popupWindow,
+      webContents: world.popupWindow.webContents,
+    });
+    expect(world.invoke(world.popupWindow)).toEqual({ success: false, error: 'Unauthorized' });
   });
 });

@@ -10320,6 +10320,24 @@ function handleDesktopPinActionRequest({ entityId, action, payload = {}, request
           });
         return;
       }
+      case 'entity-action': {
+        // A pop-up alert card's button (src/alert-popup-windows.cjs). Only the main process asks
+        // this, with an action the card was given when it opened; a pin's own requests cannot.
+        const entityAction = typeof payload?.action === 'string' ? payload.action : '';
+        runEntityAction(entity, entityAction).then((outcome) => {
+          if (outcome.ok) {
+            sendResponse({ success: true });
+            return;
+          }
+          sendResponse({
+            success: false,
+            error: outcome.sent
+              ? serializeDesktopPinActionError(outcome.error, `${entityAction} failed`)
+              : { message: t('Entity is not available') },
+          });
+        });
+        return;
+      }
       case 'toggle':
         toggleEntity(entity);
         break;

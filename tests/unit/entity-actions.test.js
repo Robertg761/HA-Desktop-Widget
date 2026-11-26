@@ -281,6 +281,15 @@ describe('what an entity can do, from its feature flags', () => {
       },
     ],
     ['media_player.none', {}, { canPlay: false, canPause: false, canSetVolume: false }],
+    ['media_player.power', { supported_features: 256 }, { canTurnOn: false, canTurnOff: true }],
+    // A thermostat, water heater or mower older than its on/off flags is tried anyway.
+    ['climate.legacy', {}, { canTurnOn: true, canTurnOff: true }],
+    ['climate.off_only', { supported_features: 128 }, { canTurnOn: false, canTurnOff: true }],
+    ['water_heater.legacy', {}, { canTurnOn: true, canTurnOff: true }],
+    ['water_heater.fixed', { supported_features: 1 }, { canTurnOn: false, canTurnOff: false }],
+    ['water_heater.switched', { supported_features: 8 }, { canTurnOn: true, canTurnOff: true }],
+    ['lawn_mower.legacy', {}, { canStartMowing: true, canDock: true }],
+    ['lawn_mower.dock_only', { supported_features: 4 }, { canStartMowing: false, canDock: true }],
     ['todo.list', { supported_features: 5 }, { canAdd: true, canUpdate: true }],
     ['todo.read_only', { supported_features: 0 }, { canAdd: false, canUpdate: false }],
     [
@@ -581,6 +590,16 @@ describe('running an action', () => {
       ],
       [entity('vacuum.robot', 'cleaning'), 'stop', undefined, 'vacuum', 'stop', {}],
       [entity('vacuum.robot', 'docked'), 'turn_on', undefined, 'vacuum', 'turn_on', {}],
+      [entity('timer.tea', 'active'), 'cancel', undefined, 'timer', 'cancel', {}],
+      [
+        entity('lawn_mower.lawn', 'docked'),
+        'start_mowing',
+        undefined,
+        'lawn_mower',
+        'start_mowing',
+        {},
+      ],
+      [entity('lawn_mower.lawn', 'mowing'), 'dock', undefined, 'lawn_mower', 'dock', {}],
       [
         entity('alarm_control_panel.home', 'armed_away'),
         'alarm_disarm',
@@ -622,6 +641,8 @@ describe('running an action', () => {
     [entity('number.level', '3'), 'set_value', 'many'],
     [entity('select.mode', 'a'), 'next_option', ''],
     [entity('switch.plug', 'on'), 'dance', undefined],
+    [entity('vacuum.robot', 'cleaning'), 'cancel', undefined],
+    [entity('vacuum.robot', 'cleaning'), 'dock', undefined],
     [{ state: 'on' }, 'toggle', undefined],
   ])('sends nothing for %j %s %j', async (subject, action, value) => {
     if (subject.entity_id) put(subject);

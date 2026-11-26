@@ -9,9 +9,9 @@
  * through: `{ role, window, webContents }` plus whatever its role adds (a desktop pin's `entityId`).
  * Every channel is answered (ipcMain.handle); the app has no one-way (ipcMain.on) channels.
  *
- * A sender role is a kind of window the app opens. main.js says which windows have each role, one
- * adapter per role. A call from a window that has no role, from a destroyed window or from a
- * subframe is turned away by every channel.
+ * A sender role is a kind of window the app opens: the main window, desktop pins and pop-up alert
+ * cards. main.js says which windows have each role, one adapter per role. A call from a window that
+ * has no role, from a destroyed window or from a subframe is turned away by every channel.
  *
  * A route says:
  * - roles: the roles that may call it.
@@ -25,13 +25,16 @@ const MAIN = Object.freeze(['main']);
 // Desktop pins share only what a pin's own page needs; a pin handler that acts on an entity checks
 // that it is the pin's own entity.
 const MAIN_AND_PINS = Object.freeze(['main', 'desktop-pin']);
+// A pop-up alert card asks only for what it shows and tells what was pressed, by button number.
+const ALERT_POPUP = Object.freeze(['alert-popup']);
+const ALL_WINDOWS = Object.freeze(['main', 'desktop-pin', 'alert-popup']);
 const CONFIG_QUEUE = 'config';
 
 const IPC_ROUTES = deepFreeze({
   'renderer-ready': { roles: MAIN },
   'get-config': { roles: MAIN },
   'get-window-displays': { roles: MAIN },
-  'get-locale-bootstrap': { roles: MAIN_AND_PINS },
+  'get-locale-bootstrap': { roles: ALL_WINDOWS },
   'replace-config-entity-id': { roles: MAIN, queue: CONFIG_QUEUE },
   'update-config': { roles: MAIN, queue: CONFIG_QUEUE },
   'clear-token-reset-reason': { roles: MAIN, queue: CONFIG_QUEUE },
@@ -127,9 +130,9 @@ const IPC_ROUTES = deepFreeze({
   // The donation dialog reads a status, not success.
   'start-card-donation': { roles: MAIN, rejection: { status: 'failed' } },
   'write-clipboard-text': { roles: MAIN },
-  'debug-log': { roles: MAIN_AND_PINS },
+  'debug-log': { roles: ALL_WINDOWS },
 
-  // Language packs (get-locale-bootstrap, above, is the pins' too)
+  // Language packs (get-locale-bootstrap, above, is the pins' and cards' too)
   'get-locale-packs': { roles: MAIN },
   'download-locale-pack': { roles: MAIN },
   'remove-locale-pack': { roles: MAIN },
@@ -148,6 +151,11 @@ const IPC_ROUTES = deepFreeze({
   'remove-entity-alert': { roles: MAIN, queue: CONFIG_QUEUE },
   'toggle-alerts': { roles: MAIN, queue: CONFIG_QUEUE },
   'set-persistent-notification-toasts': { roles: MAIN, queue: CONFIG_QUEUE },
+
+  // Pop-up alert cards: the main window opens one when an alert rule asks for it.
+  'show-alert-popup': { roles: MAIN },
+  'get-alert-popup-bootstrap': { roles: ALERT_POPUP },
+  'alert-popup-action': { roles: ALERT_POPUP },
 });
 
 const UNAUTHORIZED = Object.freeze({ success: false, error: 'Unauthorized' });

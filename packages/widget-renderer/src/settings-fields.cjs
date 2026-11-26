@@ -106,6 +106,13 @@ const ALERT_RULE = {
   // Left out of a rule saved before it existed, which then reads as on.
   notifyOnUnavailable: 'boolean',
   quietHours: { enabled: 'boolean', start: 'string', end: 'string' },
+  // The pop-up card (src/alert-popup.cjs). A rule without one sends a system notification.
+  popup: {
+    enabled: 'boolean',
+    camera: 'entityId',
+    actions: listOf('entityId'),
+    seconds: 'seconds',
+  },
 };
 const SEASONAL = {
   enabled: 'boolean?',

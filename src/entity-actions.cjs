@@ -25,6 +25,9 @@ const FEATURES = Object.freeze({
   fan: { setSpeed: 1, presetMode: 8 },
   cover: { open: 1, close: 2, setPosition: 4, stop: 8 },
   valve: { open: 1, close: 2, stop: 8 },
+  climate: { turnOff: 128, turnOn: 256 },
+  water_heater: { onOff: 8 },
+  lawn_mower: { startMowing: 1, dock: 4 },
   media_player: {
     pause: 1,
     seek: 2,
@@ -32,6 +35,8 @@ const FEATURES = Object.freeze({
     volumeMute: 8,
     previousTrack: 16,
     nextTrack: 32,
+    turnOn: 128,
+    turnOff: 256,
     play: 16384,
   },
   vacuum: { turnOn: 1, turnOff: 2, pause: 4, stop: 8, returnHome: 16, start: 8192 },
@@ -191,6 +196,9 @@ function getCapabilities(domain, entity) {
     case 'climate': {
       const climate = getClimateControlCapabilities(entity);
       return {
+        // A thermostat older than these flags is tried anyway; one that says it cannot is not.
+        canTurnOn: !declaresFeatures(attributes) || has(FEATURES.climate.turnOn),
+        canTurnOff: !declaresFeatures(attributes) || has(FEATURES.climate.turnOff),
         canSetTemperature: climate.canSetTemperature,
         canSetRange: climate.canSetRange,
         hvacModes: Array.isArray(attributes.hvac_modes)
@@ -236,6 +244,17 @@ function getCapabilities(domain, entity) {
         canSeek: has(FEATURES.media_player.seek),
         canSetVolume: has(FEATURES.media_player.volumeSet),
         canMute: has(FEATURES.media_player.volumeMute),
+        canTurnOn: has(FEATURES.media_player.turnOn),
+        canTurnOff: has(FEATURES.media_player.turnOff),
+      };
+    case 'water_heater': {
+      const canSwitch = !declaresFeatures(attributes) || has(FEATURES.water_heater.onOff);
+      return { canTurnOn: canSwitch, canTurnOff: canSwitch };
+    }
+    case 'lawn_mower':
+      return {
+        canStartMowing: !declaresFeatures(attributes) || has(FEATURES.lawn_mower.startMowing),
+        canDock: !declaresFeatures(attributes) || has(FEATURES.lawn_mower.dock),
       };
     case 'vacuum': {
       // A pin window never asks Home Assistant for its service list, so these are what tell it
@@ -805,6 +824,11 @@ function createEntityActions({
         return domain === 'vacuum' || (domain === 'timer' && action === 'start')
           ? call(action)
           : null;
+      case 'cancel':
+        return domain === 'timer' ? call('cancel') : null;
+      case 'start_mowing':
+      case 'dock':
+        return domain === 'lawn_mower' ? call(action) : null;
       case 'alarm_disarm':
       case 'alarm_arm_home':
       case 'alarm_arm_away':
@@ -832,7 +856,8 @@ function createEntityActions({
    *   mute (value: boolean): a media player.
    * - set_value (value): a number. previous_option, next_option (value: the option to choose
    *   when the server cannot step itself): a select.
-   * - start, pause, stop, return_to_base, turn_on, turn_off: a vacuum. start, pause: a timer.
+   * - start, pause, stop, return_to_base, turn_on, turn_off: a vacuum. start, pause, cancel: a
+   *   timer. start_mowing, dock: a lawn mower.
    * - alarm_disarm, alarm_arm_* (value: the code, if one was asked for): an alarm panel.
    * Slider values (brightness, color_temp, percentage, position, temperature, volume, set_value
    * and the option steps) wait a moment for the next value and only the last is sent.

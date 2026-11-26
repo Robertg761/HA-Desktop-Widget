@@ -12,6 +12,7 @@
  * also change what the home holds while the app runs (`server.changeStates`), which reaches the
  * app the way Home Assistant's own changes do, as state_changed events to the subscriptions that
  * asked for them.
+ * Cameras listed in `cameraPictures` answer /api/camera_proxy with their picture.
  * The WebSocket framing is done by hand (text frames, ping, close) so the snapshot job needs no
  * dependency beyond Node itself. Test-only; never shipped.
  */
@@ -179,8 +180,24 @@ function startMockHomeAssistant({
   histories = null,
   subscriptionEvents = null,
   failingEntities = [],
+  cameraPictures = {},
 }) {
   const server = http.createServer((request, response) => {
+    // A camera's still picture, for the cameras that have one; the rest answer 404 as a camera
+    // with no picture does.
+    const picture = /^\/api\/camera_proxy\/([a-z0-9_]+\.[a-z0-9_]+)(?:\?|$)/.exec(
+      request.url || ''
+    );
+    if (picture && cameraPictures[picture[1]]) {
+      if (request.headers.authorization !== `Bearer ${token}`) {
+        response.writeHead(401, { 'content-type': 'application/json' });
+        response.end('{"message":"Unauthorized"}');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+      response.end(cameraPictures[picture[1]]);
+      return;
+    }
     // The widget asks for this before it opens a browser to sign in. Left unanswered, a first-run
     // authorization waits, as it does while the browser is open, until it is cancelled or the
     // widget stops waiting for an answer; closeAllConnections ends it with the server.

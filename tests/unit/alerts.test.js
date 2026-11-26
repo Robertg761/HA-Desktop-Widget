@@ -1017,6 +1017,179 @@ describe('alerts module', () => {
     });
   });
 
+  describe('a rule that shows a pop-up card', () => {
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    beforeEach(() => {
+      // An earlier test leaves a Notification behind that throws.
+      global.Notification = class MockNotification {
+        constructor(title, options) {
+          MockNotification.lastNotification = { title, options, instance: this };
+        }
+      };
+      global.Notification.permission = 'granted';
+      global.Notification.lastNotification = null;
+      mockState.CONFIG = getMockConfig();
+      mockState.STATES = {
+        ...sampleStates,
+        'binary_sensor.front_door_ding': {
+          entity_id: 'binary_sensor.front_door_ding',
+          state: 'off',
+          attributes: { friendly_name: 'Front Doorbell', icon: 'mdi:doorbell' },
+        },
+        'lock.front_door': {
+          entity_id: 'lock.front_door',
+          state: 'locked',
+          attributes: { friendly_name: 'Front Door' },
+        },
+        'light.porch': {
+          entity_id: 'light.porch',
+          state: 'unavailable',
+          attributes: { friendly_name: 'Porch' },
+        },
+        'camera.front_door': {
+          entity_id: 'camera.front_door',
+          state: 'idle',
+          attributes: { friendly_name: 'Front Door Camera' },
+        },
+      };
+      mockState.CONFIG.entityAlerts = {
+        enabled: true,
+        alerts: {
+          'binary_sensor.front_door_ding': {
+            onSpecificState: true,
+            targetState: 'on',
+            popup: {
+              enabled: true,
+              camera: 'camera.front_door',
+              actions: ['lock.front_door', 'light.porch'],
+              seconds: 60,
+            },
+          },
+        },
+      };
+      alerts.initializeEntityAlerts();
+    });
+
+    it('opens the card instead of a system notification', async () => {
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+
+      expect(mockElectronAPI.showAlertPopup).toHaveBeenCalledTimes(1);
+      expect(mockElectronAPI.showAlertPopup).toHaveBeenCalledWith({
+        entityId: 'binary_sensor.front_door_ding',
+        title: 'Front Doorbell',
+        message: 'Now Detected',
+        icon: { state: 'off', attributes: { icon: 'mdi:doorbell', device_class: undefined } },
+        camera: 'camera.front_door',
+        color: '',
+        // The porch light is offline, so it has no button to offer.
+        actions: [
+          {
+            entityId: 'lock.front_door',
+            action: 'unlock',
+            label: 'Unlock',
+            name: 'Front Door',
+            color: '',
+          },
+        ],
+        seconds: 60,
+        at: expect.any(Number),
+      });
+      expect(global.Notification.lastNotification).toBe(null);
+      // The widget's own toast still says what happened.
+      expect(showToast).toHaveBeenCalledWith('Front Doorbell is now Detected', 'info', 4000);
+    });
+
+    it('says what changed on a State Change card, without repeating the name', async () => {
+      mockState.CONFIG.entityAlerts.alerts['binary_sensor.front_door_ding'] = {
+        onStateChange: true,
+        popup: { enabled: true },
+      };
+      alerts.initializeEntityAlerts();
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+
+      expect(mockElectronAPI.showAlertPopup.mock.calls[0][0]).toMatchObject({
+        message: 'Changed from Clear to Detected',
+        camera: '',
+        actions: [],
+        seconds: 30,
+      });
+    });
+
+    it('leaves out a camera that is offline or gone, rather than show a broken picture', async () => {
+      mockState.STATES['camera.front_door'].state = 'unavailable';
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls[0][0].camera).toBe('');
+
+      delete mockState.STATES['camera.front_door'];
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'off');
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls.at(-1)[0].camera).toBe('');
+    });
+
+    it("wears the tile colours of the alerting entity and of each button's entity", async () => {
+      mockState.CONFIG.quickAccessTileOptions = {
+        'binary_sensor.front_door_ding': { color: '#E57373' },
+        'lock.front_door': { color: '#81C784' },
+      };
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      const request = mockElectronAPI.showAlertPopup.mock.calls[0][0];
+      expect(request.color).toBe('#E57373');
+      expect(request.actions[0].color).toBe('#81C784');
+    });
+
+    it('still opens, with no buttons, when every button entity is offline', async () => {
+      mockState.STATES['lock.front_door'].state = 'unavailable';
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+      expect(mockElectronAPI.showAlertPopup.mock.calls[0][0]).toMatchObject({
+        camera: 'camera.front_door',
+        actions: [],
+      });
+    });
+
+    it('sends the system notification when the card cannot open', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      mockElectronAPI.showAlertPopup.mockResolvedValueOnce({ success: false, error: 'nope' });
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+
+      expect(global.Notification.lastNotification.options.body).toBe(
+        'Front Doorbell is now Detected'
+      );
+      consoleError.mockRestore();
+    });
+
+    it('sends the system notification when the main process has no cards', async () => {
+      const showAlertPopup = mockElectronAPI.showAlertPopup;
+      delete mockElectronAPI.showAlertPopup;
+      try {
+        alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+        await flush();
+        expect(global.Notification.lastNotification.options.body).toBe(
+          'Front Doorbell is now Detected'
+        );
+      } finally {
+        mockElectronAPI.showAlertPopup = showAlertPopup;
+      }
+    });
+
+    it('keeps the system notification for a rule whose card is turned off', async () => {
+      mockState.CONFIG.entityAlerts.alerts['binary_sensor.front_door_ding'].popup.enabled = false;
+      alerts.initializeEntityAlerts();
+      alerts.checkEntityAlerts('binary_sensor.front_door_ding', 'on');
+      await flush();
+
+      expect(mockElectronAPI.showAlertPopup).not.toHaveBeenCalled();
+      expect(global.Notification.lastNotification).toBeTruthy();
+    });
+  });
+
   describe('toggleAlerts', () => {
     beforeEach(() => {
       mockState.CONFIG = getMockConfig();

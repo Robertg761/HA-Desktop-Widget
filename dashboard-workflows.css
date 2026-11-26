@@ -408,6 +408,22 @@
   line-height: 1.4;
 }
 
+/* The pop-up card's camera, buttons and time, under its switch: two to a row like the fields above. */
+.alert-advanced-options .alert-popup-options {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  gap: 16px;
+}
+
+.alert-advanced-options .alert-popup-options[hidden] {
+  display: none;
+}
+
+.alert-advanced-options .alert-popup-options > label {
+  grid-template-rows: 1fr auto;
+}
+
 /* The target state field comes from the older alert markup; match the fields around it. */
 .alert-advanced-options > .form-group {
   margin: 0;

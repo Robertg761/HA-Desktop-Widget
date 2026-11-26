@@ -810,7 +810,8 @@ textarea {
 .desktop-pin-light-glyph,
 .desktop-pin-fan-glyph,
 .desktop-pin-panel-glyph,
-.desktop-pin-scene-emoji {
+.desktop-pin-scene-emoji,
+.alert-popup-icon {
   font-family:
     'Material Design Icons', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 }
@@ -894,6 +895,422 @@ body:not(.desktop-pin-mode):not(.frosted-glass) :is(.widget-header, .widget-cont
   background:
     radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.18), transparent 52%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+/* Pop-up alert cards (src/alert-popup-view.js): a window of their own, filled by one card. */
+body.alert-popup-mode {
+  background: transparent;
+  overflow: hidden;
+  margin: 0;
+}
+
+/* Frosted glass where the app draws it itself (Linux), as on a desktop pin: a light sheen over the
+   tinted panel. Windows and macOS draw no glass behind a card, as behind a pin, since their glass
+   is square and would show at the rounded corners; the card keeps the window opacity there. */
+body.alert-popup-mode.software-glass .alert-popup {
+  background:
+    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 55%),
+    linear-gradient(
+      160deg,
+      rgba(255, 255, 255, var(--software-acrylic-highlight-alpha, 0.08)),
+      rgba(255, 255, 255, 0) 38%
+    ),
+    rgba(
+      var(--window-bg-rgb),
+      max(var(--software-acrylic-bg-alpha, 0.55), var(--alert-popup-min-alpha))
+    );
+}
+
+body.alert-popup-mode > :not(.alert-popup-shell) {
+  display: none !important;
+}
+
+.alert-popup-shell {
+  width: 100vw;
+  height: 100vh;
+}
+
+.alert-popup {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 12px 12px 14px;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  font-family: var(--desktop-pin-ui-font, inherit);
+  color: var(--text-primary);
+  /* Window opacity shows through the card as it does through a desktop pin, down to a floor: the
+     card's text sits on its background, not on tiles, and over whatever window is under it, so
+     it never gets clearer than --alert-popup-min-alpha. */
+  --alert-popup-min-alpha: 0.72;
+  background:
+    radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.16), transparent 55%),
+    rgba(
+      var(--window-bg-rgb),
+      max(var(--desktop-pin-window-opacity, 1), var(--alert-popup-min-alpha))
+    );
+  box-shadow:
+    inset 0 1px 0 var(--window-highlight),
+    inset 0 0 0 1px var(--tile-border-hover);
+  opacity: 0;
+  transform: translateX(24px);
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-emphasized);
+}
+
+.alert-popup.is-shown {
+  opacity: 1;
+  transform: none;
+}
+
+.alert-popup.is-shown.is-leaving {
+  opacity: 0;
+  transform: translateX(12px);
+  transition-duration: var(--duration-slow);
+}
+
+.alert-popup-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 0;
+}
+
+.alert-popup button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.alert-popup button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.alert-popup-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: none;
+  text-align: start;
+}
+
+/* A card or button for an entity with a colour of its own (Tile settings > Tile color) wears it as
+   the entity's tile does: the --tile-* values the view puts on it (getTileColorStyle) become its
+   accent. The card's colour is the alerting entity's, for its icon and glow; each button wears its
+   own entity's. The Readable preset keeps its own palette. */
+body:not(.high-contrast) .alert-popup[data-tile-color],
+body:not(.high-contrast) .alert-popup-action[data-tile-color] {
+  --accent: var(--tile-accent);
+  --accent-rgb: var(--tile-accent-rgb);
+  --accent-hover: var(--tile-accent-hover-dark);
+  --on-accent: var(--tile-on-accent);
+  --accent-text: var(--tile-accent-text-dark);
+  --accent-bg: rgba(var(--tile-accent-rgb), 0.18);
+}
+
+body.theme-light:not(.high-contrast) .alert-popup[data-tile-color],
+body.theme-light:not(.high-contrast) .alert-popup-action[data-tile-color] {
+  --accent-hover: var(--tile-accent-hover-light);
+  --accent-text: var(--tile-accent-text-light);
+  --accent-bg: rgba(var(--tile-accent-rgb), 0.12);
+}
+
+.alert-popup-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-icon);
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+.alert-popup-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.alert-popup-title {
+  overflow: hidden;
+  font-size: var(--font-size-base);
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-popup-message {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+  color: var(--text-secondary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.alert-popup-time {
+  flex: none;
+  padding-top: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-popup-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.alert-popup-close:hover,
+.alert-popup-open:hover {
+  background: var(--tile-bg-hover);
+}
+
+.alert-popup-camera {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: #000;
+}
+
+.alert-popup-camera[hidden],
+.alert-popup-actions[hidden],
+.alert-popup-progress[hidden] {
+  display: none;
+}
+
+.alert-popup-camera-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-4xl);
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.alert-popup-camera-snapshot,
+.alert-popup-camera-stream {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.alert-popup-camera-frame[data-tall='true'] img {
+  object-position: center 30%;
+}
+
+.alert-popup-camera-frame[data-has-frame='true'][data-source='snapshot']
+  .alert-popup-camera-snapshot,
+.alert-popup-camera-frame[data-source='stream'] .alert-popup-camera-stream {
+  opacity: 1;
+}
+
+.alert-popup-camera-status {
+  position: absolute;
+  inset: auto 10px 10px;
+  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+.alert-popup-camera-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs-plus);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.alert-popup-camera-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.alert-popup-camera-badge[data-live='true'] .alert-popup-camera-dot {
+  background: #ff4d4f;
+  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.25);
+}
+
+.alert-popup-camera-expand {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  padding: 5px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.alert-popup-camera:hover .alert-popup-camera-expand,
+.alert-popup-camera:focus-visible .alert-popup-camera-expand {
+  opacity: 1;
+}
+
+.alert-popup-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.alert-popup-action {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  color: var(--on-accent) !important;
+  background: var(--accent);
+  transition:
+    background-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.alert-popup-action:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.alert-popup-action:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.alert-popup-action[data-state='busy'] {
+  opacity: 0.7;
+}
+
+.alert-popup-action[data-state='done'] {
+  color: var(--on-accent) !important;
+  background: var(--success);
+}
+
+.alert-popup-action[data-state='error'] {
+  color: var(--text-primary) !important;
+  background: color-mix(in srgb, var(--error) 35%, transparent);
+}
+
+.alert-popup-action-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-base);
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.alert-popup-action-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--font-size-xs-plus);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+/* The countdown: a hairline along the bottom that empties, held while the card is in use. */
+.alert-popup-progress {
+  position: absolute;
+  right: 18px;
+  bottom: 6px;
+  left: 18px;
+  height: 3px;
+  border-radius: var(--radius-xs);
+  background: rgba(var(--accent-rgb), 0.55);
+  transform-origin: left center;
+}
+
+[dir='rtl'] .alert-popup-progress {
+  transform-origin: right center;
+}
+
+.alert-popup-progress.is-running {
+  animation-name: alert-popup-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.alert-popup:hover .alert-popup-progress,
+.alert-popup:focus-within .alert-popup-progress {
+  animation-play-state: paused;
+}
+
+@keyframes alert-popup-countdown {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-popup,
+  .alert-popup.is-shown.is-leaving {
+    transform: none;
+    transition: none;
+  }
+
+  /* The countdown bar stands full rather than snapping empty: the card still keeps its whole time,
+     on a timer of its own. Its class decides over the * of the reduced-motion block. */
+  .alert-popup-progress.is-running {
+    animation: none !important;
+  }
 }
 
 body.desktop-pin-mode {

@@ -15,6 +15,7 @@ const TOKEN = 'visual-snapshot-token';
 // changes any other setting leaves it changed for every scene after it.
 const RESETTABLE_SETTINGS = [
   'frostedGlass',
+  'opacity',
   'customTabs',
   'activeTabId',
   'entityAlerts',
@@ -828,6 +829,157 @@ function buildUnavailableDevices(now = new Date()) {
   ];
 }
 
+// A doorbell at the front gate with what a pop-up alert card shows beside it: the gate's camera,
+// its lock and its light. A leak sensor and the water valve make a card without a camera. Only the
+// pop-up card scenes bring them; `ding` is the doorbell's state.
+function buildAlertPopupDevices(now = new Date(), { ding = 'off', leak = 'off' } = {}) {
+  const entity = stateBuilder(now);
+  return [
+    entity('binary_sensor.front_gate_ding', ding, {
+      friendly_name: 'Front gate doorbell',
+      icon: 'mdi:doorbell-video',
+    }),
+    entity('camera.front_gate', 'idle', { friendly_name: 'Front gate' }),
+    entity('lock.front_gate', 'locked', { friendly_name: 'Front gate' }),
+    entity('light.front_gate', 'on', {
+      friendly_name: 'Front gate light',
+      supported_color_modes: ['onoff'],
+      color_mode: 'onoff',
+    }),
+    entity('binary_sensor.utility_room_leak', leak, {
+      friendly_name: 'Utility room leak',
+      device_class: 'moisture',
+    }),
+    entity('valve.main_water', 'open', {
+      friendly_name: 'Main water',
+      device_class: 'water',
+      supported_features: 3,
+    }),
+  ];
+}
+
+// The pop-up card's alert rules: the doorbell shows the gate camera with Unlock and Turn off, the
+// leak sensor offers Close for the water valve. Cards stay two minutes, so a slow runner still
+// captures one with its countdown running.
+const alertPopupRule = (popup) => ({
+  onStateChange: false,
+  onSpecificState: true,
+  onNumericThreshold: false,
+  targetState: 'on',
+  comparison: 'above',
+  threshold: null,
+  durationSeconds: 0,
+  cooldownSeconds: 0,
+  quietHours: { enabled: false, start: '22:00', end: '07:00' },
+  popup: { enabled: true, seconds: 120, ...popup },
+});
+const ALERT_POPUP_ALERTS = {
+  enabled: true,
+  alerts: {
+    'binary_sensor.front_gate_ding': alertPopupRule({
+      camera: 'camera.front_gate',
+      actions: ['lock.front_gate', 'light.front_gate'],
+    }),
+    'binary_sensor.utility_room_leak': alertPopupRule({
+      camera: '',
+      actions: ['valve.main_water'],
+    }),
+  },
+};
+
+// CRC-32 as PNG chunks use it.
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function encodePng(width, height, pixel) {
+  const zlib = require('zlib');
+  const rows = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (width * 3 + 1);
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = pixel(x, y);
+      rows[row + 1 + x * 3] = r;
+      rows[row + 2 + x * 3] = g;
+      rows[row + 3 + x * 3] = b;
+    }
+  }
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', zlib.deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * The front gate camera's picture, drawn here so the snapshot job needs no image file: an evening
+ * view of a gate in a hedge, a lamp, and a path, as a doorbell camera sees it.
+ */
+function drawFrontGatePicture(width = 640, height = 360) {
+  const mix = (a, b, t) => a.map((value, index) => Math.round(value + (b[index] - value) * t));
+  const horizon = height * 0.58;
+  const gate = { left: width * 0.38, right: width * 0.62, top: height * 0.3, bottom: horizon + 6 };
+  const lamp = { x: width * 0.7, y: height * 0.26 };
+  return encodePng(width, height, (x, y) => {
+    let colour;
+    if (y < height * 0.3) {
+      colour = mix([38, 52, 88], [196, 120, 92], y / (height * 0.3));
+    } else if (y < horizon) {
+      // The hedge, a little uneven at the top.
+      const ragged = Math.sin(x / 9) * 4 + Math.sin(x / 23) * 6;
+      colour =
+        y < height * 0.3 + 10 + ragged
+          ? [196, 120, 92]
+          : mix([40, 74, 46], [26, 52, 32], (y - height * 0.3) / (horizon - height * 0.3));
+    } else {
+      // The path narrows towards the gate.
+      const depth = (y - horizon) / (height - horizon);
+      const half = width * (0.09 + depth * 0.32);
+      colour =
+        Math.abs(x - width / 2) < half
+          ? mix([120, 112, 104], [168, 158, 146], depth)
+          : mix([46, 70, 40], [62, 92, 52], depth);
+    }
+    if (x > gate.left && x < gate.right && y > gate.top && y < gate.bottom) {
+      const bar = Math.floor((x - gate.left) / 14) % 2 === 0;
+      const rail = Math.abs(y - (gate.top + 24)) < 4 || Math.abs(y - (gate.bottom - 22)) < 4;
+      colour = bar || rail ? [58, 46, 40] : mix(colour, [20, 20, 24], 0.4);
+    }
+    if (Math.abs(x - lamp.x) < 3 && y > lamp.y && y < horizon) colour = [44, 44, 48];
+    const glow = Math.hypot(x - lamp.x, y - lamp.y);
+    if (glow < 70) colour = mix(colour, [255, 214, 150], Math.max(0, 1 - glow / 70) ** 2);
+    // A doorbell camera's wide lens darkens the corners.
+    const edge = Math.hypot((x - width / 2) / width, (y - height / 2) / height);
+    return mix(colour, [0, 0, 0], Math.max(0, edge - 0.35) * 0.9);
+  });
+}
+
+/** Pictures the mock Home Assistant serves at /api/camera_proxy/<entity>. */
+function buildCameraPictures() {
+  return { 'camera.front_gate': drawFrontGatePicture() };
+}
+
 /** The services the fixture's domains offer, as get_services reports them. */
 function buildServices() {
   const domain = (...names) =>
@@ -974,6 +1126,7 @@ function buildConfig(haUrl) {
 const FAILING_ENTITIES = ['light.unreachable'];
 
 module.exports = {
+  ALERT_POPUP_ALERTS,
   DROP_FOCUS,
   FAILING_ENTITIES,
   PAGE_SETS,
@@ -982,6 +1135,8 @@ module.exports = {
   TOKEN,
   WINDOW_POSITION,
   WINDOW_SIZE,
+  buildAlertPopupDevices,
+  buildCameraPictures,
   buildConfig,
   buildHistories,
   buildLandingLights,
