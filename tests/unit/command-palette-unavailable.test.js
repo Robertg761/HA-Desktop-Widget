@@ -1,6 +1,7 @@
 jest.mock('../../src/ui.js', () => ({
   openEntityDetailModal: jest.fn(),
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
+  isRightNowPageShowing: jest.fn(() => false),
   requestAlarmCode: jest.fn(async () => null),
 }));
 jest.mock('../../src/websocket.js', () => ({

@@ -766,6 +766,13 @@ function hasVisibleTimersToTick() {
 haSession.subscribe(publishChangedOmarchyBarTiles);
 haSession.subscribe(publishChangedDesktopPins);
 haSession.subscribe(drawStateChanges);
+// The Right now page is made of whatever is on or needs attention, so any change can add a tile to
+// it or take one away.
+if (!IS_SPECIAL_PIN_MODE) {
+  haSession.subscribe((changes) =>
+    ui.refreshRightNowPage?.(changes.map((change) => change.entityId))
+  );
+}
 haSession.subscribe(checkAlertsForStateChanges);
 if (!IS_DESKTOP_PIN_MODE) {
   haSession.subscribe(updateTrayForStateChanges);
@@ -813,6 +820,8 @@ async function openTokenSettings() {
 }
 
 function openQuickAccessModal() {
+  // Tiles are added to the person's own page, so that is the page to look at.
+  ui.leaveRightNowPage?.();
   ui.populateQuickControlsList();
   const modal = document.getElementById('quick-controls-modal');
   if (!modal) return;
@@ -1269,7 +1278,12 @@ function renderMainWidgetState() {
     return;
   }
 
-  if (mainConnectionState === 'connected' && getActiveQuickAccessCount() === 0) {
+  // The Right now page fills itself, and says so itself when there is nothing on it.
+  if (
+    mainConnectionState === 'connected' &&
+    getActiveQuickAccessCount() === 0 &&
+    !ui.isRightNowPageShowing?.()
+  ) {
     // Beside other pages it is this page that is empty, not Quick Access as a whole.
     const { page, pageCount } = getActiveQuickAccessPage();
     const onePageOfMany = pageCount > 1;
@@ -2673,6 +2687,7 @@ haSession.on('auth-rejected', () => {
 });
 
 haSession.on('entity-registry-updated', queueEntityRegistryRename);
+haSession.on('entity-registry-updated', () => ui.invalidateRightNowRegistry?.());
 
 haSession.on('snapshot', ({ entityIds }) => {
   // Home Assistant replaces the full state map after authentication. Restore
@@ -3068,6 +3083,12 @@ window.electronAPI.onDesktopCompanionStateChanged?.((nextState) => {
 
 window.addEventListener('desktop-companion-page-changed', () => {
   void desktopCompanionClient?.reportState();
+});
+
+// Going to or from the Right now page saves nothing, so no config update follows to redraw the
+// empty-page panel: an empty page of the person's own shows it, the Right now page does not.
+window.addEventListener('quick-access-right-now-changed', () => {
+  renderMainWidgetState();
 });
 
 window.electronAPI.onDesktopPinUpdate((payload) => {

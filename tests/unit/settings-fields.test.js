@@ -68,6 +68,7 @@ const SAMPLES = {
   'ui.density': 'compact',
   'ui.desktopPinNameAlign': 'center',
   'ui.desktopPinSnap': false,
+  'ui.rightNowPage': false,
   'ui.activeTileGlow': false,
   'ui.highContrast': true,
   'ui.opaquePanels': true,

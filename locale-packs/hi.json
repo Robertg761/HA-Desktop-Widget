@@ -2,7 +2,7 @@
   "locale": "hi",
   "displayName": "हिन्दी",
   "englishName": "Hindi",
-  "version": "1.2.86",
+  "version": "1.2.87",
   "minAppVersion": "3.4.1",
   "notes": "Hindi language pack for HA Desktop Widget.",
   "messages": {
@@ -2265,6 +2265,15 @@
     "2 minutes": "2 मिनट",
     "Until closed": "बंद करने तक",
     "No camera": "कोई कैमरा नहीं",
-    "No button": "कोई बटन नहीं"
+    "No button": "कोई बटन नहीं",
+    "Right now": "अभी",
+    "What is on, open or needs attention right now": "अभी क्या चालू है, खुला है या ध्यान माँगता है",
+    "Timers": "टाइमर",
+    "Low battery": "बैटरी कम",
+    "Turn all off": "सब बंद करें",
+    "Nothing needs you right now": "अभी किसी चीज़ को आपकी ज़रूरत नहीं है",
+    "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "जली छूटी लाइटें, खुले दरवाज़े और खिड़कियाँ, चलते टाइमर, कम बैटरी और ऑफ़लाइन डिवाइस यहाँ दिखते हैं।",
+    "Show the Right now page": "“अभी” पेज दिखाएँ",
+    "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "एक पेज जो अपने आप जली छूटी लाइटों, खुले दरवाज़ों और खिड़कियों, चलते टाइमरों, कम बैटरी और ऑफ़लाइन डिवाइसों से भर जाता है।"
   }
 }

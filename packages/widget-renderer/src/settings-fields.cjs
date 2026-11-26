@@ -107,7 +107,12 @@ const ALERT_RULE = {
   notifyOnUnavailable: 'boolean',
   quietHours: { enabled: 'boolean', start: 'string', end: 'string' },
   // The pop-up card (src/alert-popup.cjs). A rule without one sends a system notification.
-  popup: { enabled: 'boolean', camera: 'entityId', actions: listOf('entityId'), seconds: 'seconds' },
+  popup: {
+    enabled: 'boolean',
+    camera: 'entityId',
+    actions: listOf('entityId'),
+    seconds: 'seconds',
+  },
 };
 const SEASONAL = {
   enabled: 'boolean?',
@@ -278,6 +283,14 @@ const FIELDS = [
     default: true,
     seeded: false,
     control: 'desktop-pin-snap',
+  },
+  // Opt-out: the Right now page is offered until someone turns it off.
+  {
+    key: 'ui.rightNowPage',
+    shape: 'boolean',
+    default: true,
+    seeded: false,
+    control: 'right-now-page',
   },
   // Opt-out rather than opt-in: the glow is how a tile shows it is on.
   {

@@ -1767,5 +1767,14 @@
   "2 minutes": "2 minutes",
   "Until closed": "Until closed",
   "No camera": "No camera",
-  "No button": "No button"
+  "No button": "No button",
+  "Right now": "Right now",
+  "What is on, open or needs attention right now": "What is on, open or needs attention right now",
+  "Timers": "Timers",
+  "Low battery": "Low battery",
+  "Turn all off": "Turn all off",
+  "Nothing needs you right now": "Nothing needs you right now",
+  "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.",
+  "Show the Right now page": "Show the Right now page",
+  "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices."
 }

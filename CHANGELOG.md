@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- See what needs you at a glance on the new **Right now** page. It sits after your pages and fills itself with lights and fans that are on, players that are playing, running timers, open doors, windows and garage doors, unlocked locks, low batteries and offline devices. Click a tile to switch it off, or use **Turn all off** for every light and fan on the page. A tile you just switched off stays a few seconds before it leaves. Hidden entities and a device's own settings are left out, and an offline device shows once. Turn the page off in **Settings > Dashboard > Right now**.
 - Let an alert open a pop-up card instead of a system notification. Turn on **Show a pop-up card** in an alert's settings, then pick a camera to show live and up to two buttons, such as **Unlock** for the front door or **Turn off** for a light. The card appears in the corner of the screen you are using, above other windows, and fades away after the time you choose, or stays until you close it. Pointing at it holds it on screen. Click the camera for the full viewer, or the title to open the widget. Buttons cover locks, alarm panels, lights and switches, covers and garage doors, water valves, thermostats, water heaters, vacuums, lawn mowers, timers, media players, buttons, scenes and scripts, and the dialog suggests a camera and buttons that fit the alert, such as the front door's lock for its doorbell or the water valve for a leak sensor.
 
 ### Changed

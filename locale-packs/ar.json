@@ -2,7 +2,7 @@
   "locale": "ar",
   "displayName": "العربية",
   "englishName": "Arabic",
-  "version": "1.2.86",
+  "version": "1.2.87",
   "minAppVersion": "3.4.1",
   "notes": "Arabic language pack for HA Desktop Widget.",
   "messages": {
@@ -2265,6 +2265,15 @@
     "2 minutes": "دقيقتان",
     "Until closed": "حتى يُغلق",
     "No camera": "بلا كاميرا",
-    "No button": "بلا زر"
+    "No button": "بلا زر",
+    "Right now": "الآن",
+    "What is on, open or needs attention right now": "ما هو قيد التشغيل أو مفتوح أو يحتاج إلى انتباه الآن",
+    "Timers": "مؤقتات",
+    "Low battery": "بطارية منخفضة",
+    "Turn all off": "إيقاف الكل",
+    "Nothing needs you right now": "لا شيء يحتاج إليك الآن",
+    "Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.": "تظهر هنا الأضواء المتروكة مضاءة والأبواب والنوافذ المفتوحة والمؤقتات العاملة والبطاريات المنخفضة والأجهزة غير المتصلة.",
+    "Show the Right now page": "إظهار صفحة «الآن»",
+    "A page that fills itself with lights left on, open doors and windows, running timers, low batteries and offline devices.": "صفحة تملأ نفسها بالأضواء المتروكة مضاءة والأبواب والنوافذ المفتوحة والمؤقتات العاملة والبطاريات المنخفضة والأجهزة غير المتصلة."
   }
 }

@@ -1116,6 +1116,8 @@ function buildConfig(haUrl) {
       followOmarchy: false,
       // Seasonal themes follow the calendar; off so the screenshots do not change with the date.
       seasonal: { enabled: false },
+      // Off but for the scenes that show it, whose extra tab would change every other page strip.
+      rightNowPage: false,
     },
   };
 }

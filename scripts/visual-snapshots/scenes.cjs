@@ -111,6 +111,12 @@ const openArrivedDetails = (entityId) => async (ctx) => {
   await ctx.click(tileDetails(entityId));
 };
 const openClimate = (ctx) => ctx.click(tileDetails('climate.living_room'));
+// Which page is chosen is not a setting, so the runner cannot put it back: the teardown does.
+const showRightNow = async (ctx) => {
+  await ctx.click('.quick-access-tab-link[data-tab="right-now"]');
+  await ctx.waitForSelector('#right-now-summary');
+};
+const leaveRightNow = (ctx) => ctx.click('.quick-access-tab-link[data-tab="default"]');
 const openColourLight = (ctx) => ctx.click(tileDetails('light.colour_strip'));
 // The page being edited carries its rename, duplicate and delete buttons in the tab strip. However
 // long its name and however wordy Add page is in the interface's language, they have to lie inside
@@ -1788,6 +1794,14 @@ async function openRestoreDashboard(ctx) {
 const scenes = [
   // The main view and the dialogs opened from it, dark and in English.
   { name: 'main-dark', setup: expectTilesLaidOut },
+  // The Right now page, worked out from the fixture home's states: what is on, open, low or offline.
+  { name: 'right-now', ui: { rightNowPage: true }, setup: showRightNow, teardown: leaveRightNow },
+  {
+    name: 'right-now-light',
+    ui: { theme: 'light', rightNowPage: true },
+    setup: showRightNow,
+    teardown: leaveRightNow,
+  },
   {
     name: 'popup-brightness',
     setup: async (ctx) => {
