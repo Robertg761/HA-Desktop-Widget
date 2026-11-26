@@ -634,9 +634,9 @@ async function captureSharedScenes(selected, { server, baseConfig, failures }) {
           const cfg = await window.electronAPI.getConfig();
           await window.electronAPI.updateConfig({ ...patch, ui: { ...cfg.ui, ...patch.ui } });
         })()`);
-        // The tab bar stays hidden while there is a single page.
+        // The tab bar stays hidden while there is a single page and no Right now page.
         const tabsShown =
-          settings.customTabs.length > 1
+          settings.customTabs.length > 1 || settings.ui.rightNowPage !== false
             ? `document.querySelector('#quick-access-tabs .quick-access-tab-link.active')?.dataset.tab === ${JSON.stringify(settings.activeTabId)}`
             : `document.getElementById('quick-access-tabs')?.classList.contains('hidden')`;
         await waitFor(() => cdp.evaluate(tabsShown), { label: 'the page tabs', timeoutMs: 10000 });

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- See what needs you at a glance on the new **Right now** page. It sits after your pages and fills itself with lights and fans that are on, players that are playing, running timers, open doors, windows and garage doors, unlocked locks, low batteries and offline devices. Click a tile to switch it off, or use **Turn all off** for every light and fan on the page. A tile you just switched off stays a few seconds before it leaves. Hidden entities and a device's own settings are left out, and an offline device shows once. Turn the page off in **Settings > Dashboard > Right now**.
+
 ### Changed
 
 - Turn humidifiers and sirens on and off from the command palette, as their tiles already could. Palette on/off commands now update the tile at once, like a tile click.

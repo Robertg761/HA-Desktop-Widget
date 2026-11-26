@@ -70,7 +70,15 @@ import {
   renderEntityIcon,
   setLineIconContent,
 } from './entity-icons.js';
-import { animateEnter, prefersReducedMotion, pulse, syncSlidingIndicator } from './motion.js';
+import {
+  animateEnter,
+  animateLayoutChange,
+  captureLayout,
+  isLeaving,
+  prefersReducedMotion,
+  pulse,
+  syncSlidingIndicator,
+} from './motion.js';
 import { normalizePrimaryCards, PRIMARY_CARD_NONE } from './primary-cards.js';
 import { appendHistoryPoint, buildSparklinePoints, compactHistorySeries } from './sparklines.js';
 import {
@@ -88,6 +96,12 @@ import entityActionsModule from './entity-actions.cjs';
 import accelerators from './accelerators.cjs';
 import climateControls from './climate-controls.cjs';
 import pageNameRules from './page-names.cjs';
+import {
+  RIGHT_NOW_PAGE_ID,
+  buildRightNowPage,
+  isRightNowPageEnabled,
+  mergeLingeringIds,
+} from './right-now.js';
 import entityHotkeys from './entity-hotkeys.cjs';
 import { DEV_CLIMATE_DEMO_ENTITY_ID, isClimateDemoOverlayConfig } from '@dev-climate-demo';
 import {
@@ -650,6 +664,8 @@ function ensureQuickAccessConfig() {
 
 function setQuickAccessConfig(nextConfig, options = {}) {
   const normalized = normalizeQuickAccessConfig(nextConfig || {});
+  // A change that picks another page (adding one, deleting the one chosen) shows that page.
+  if (normalized.activeTabId !== state.CONFIG?.activeTabId) rightNowSelected = false;
   const persistence = persistQuickAccessConfig(normalized);
   if (options.render !== false) {
     renderQuickAccessConfigState();
@@ -657,8 +673,249 @@ function setQuickAccessConfig(nextConfig, options = {}) {
   return persistence;
 }
 
+// --- Right now page ---
+// A page nobody builds: what is on, open, running, low on battery or offline, worked out from the
+// live states each time it is drawn (see right-now.js). It is not stored with the pages, and being
+// on it is not saved either: the widget opens on the person's own page.
+let rightNowSelected = false;
+// Home Assistant's entity registry, read the first time the page is shown, for hidden entities,
+// a device's own settings and one entry per offline device. The page works from states alone
+// until it arrives, or if it cannot be read.
+let rightNowRegistry = null;
+let rightNowRegistryRequest = null;
+// What the page last drew, and when each tile that has since left it goes.
+let rightNowShownIds = [];
+let rightNowPage = null;
+const rightNowLingerUntil = new Map();
+let rightNowLingerTimer = null;
+let rightNowRefreshTimer = null;
+// Long enough to see the switch-off land and to switch it back on.
+const RIGHT_NOW_LINGER_MS = 5000;
+const RIGHT_NOW_REFRESH_DELAY_MS = 150;
+
+function isRightNowPageShowing(config = state.CONFIG) {
+  return rightNowSelected && isRightNowPageEnabled(config) && !isReorganizeMode;
+}
+
+function loadRightNowRegistry() {
+  if (rightNowRegistry || rightNowRegistryRequest || !websocket.isConnected?.()) return;
+  rightNowRegistryRequest = loadRoomRegistry(websocket)
+    .then((registry) => {
+      rightNowRegistry = registry;
+      if (isRightNowPageShowing()) renderQuickControls();
+    })
+    .catch((error) => {
+      console.warn('[UI] Right now page is using states only:', error?.message || error);
+    })
+    .finally(() => {
+      rightNowRegistryRequest = null;
+    });
+}
+
+/** A renamed, hidden or re-assigned entity: the registry is read again when next needed. */
+function invalidateRightNowRegistry() {
+  rightNowRegistry = null;
+  if (isRightNowPageShowing()) loadRightNowRegistry();
+}
+
+function computeRightNowPage() {
+  return buildRightNowPage(state.STATES, rightNowRegistry, {
+    getName: (entity) => utils.getEntityDisplayName(entity),
+  });
+}
+
+function scheduleRightNowLingerExpiry(expiry, now) {
+  if (rightNowLingerTimer) clearTimeout(rightNowLingerTimer);
+  rightNowLingerTimer = null;
+  if (expiry === null) return;
+  rightNowLingerTimer = setTimeout(
+    () => {
+      rightNowLingerTimer = null;
+      if (isRightNowPageShowing()) renderQuickControls();
+    },
+    Math.max(0, expiry - now) + 20
+  );
+}
+
+function getRightNowEntityIds() {
+  const page = computeRightNowPage();
+  const now = Date.now();
+  const current = new Set(page.entityIds);
+  rightNowShownIds.forEach((id) => {
+    if (!current.has(id) && !rightNowLingerUntil.has(id)) {
+      rightNowLingerUntil.set(id, now + RIGHT_NOW_LINGER_MS);
+    }
+  });
+  rightNowLingerUntil.forEach((until, id) => {
+    if (current.has(id) || until <= now) rightNowLingerUntil.delete(id);
+  });
+  const merged = mergeLingeringIds(rightNowShownIds, page.entityIds, rightNowLingerUntil, now);
+  scheduleRightNowLingerExpiry(merged.nextExpiry, now);
+  rightNowPage = page;
+  rightNowShownIds = merged.entityIds;
+  return merged.entityIds;
+}
+
+/**
+ * Live state changes, from the renderer. The page is drawn again only when what belongs on it
+ * changed: a tile that stays is kept up to date like any other.
+ */
+function refreshRightNowPage(changedEntityIds = []) {
+  if (!isRightNowPageShowing() || !changedEntityIds.length || rightNowRefreshTimer) return;
+  rightNowRefreshTimer = setTimeout(() => {
+    rightNowRefreshTimer = null;
+    if (!isRightNowPageShowing()) return;
+    const next = computeRightNowPage();
+    const drawn = rightNowShownIds.filter((id) => !rightNowLingerUntil.has(id));
+    const same =
+      next.entityIds.length === drawn.length &&
+      next.entityIds.every((id, index) => id === drawn[index]);
+    if (!same) renderQuickControls();
+  }, RIGHT_NOW_REFRESH_DELAY_MS);
+}
+
+function notifyRightNowPageChanged() {
+  window.dispatchEvent(new CustomEvent('quick-access-right-now-changed'));
+}
+
+function showRightNowPage() {
+  if (!isRightNowPageEnabled(state.CONFIG) || isReorganizeMode) return { success: false };
+  if (rightNowSelected) return { success: true, unchanged: true };
+  rightNowSelected = true;
+  rightNowPage = null;
+  rightNowShownIds = [];
+  rightNowLingerUntil.clear();
+  loadRightNowRegistry();
+  renderQuickAccessConfigState();
+  notifyRightNowPageChanged();
+  return { success: true };
+}
+
+/** Back to the person's own page, for whatever edits it: reorganizing, adding tiles. */
+function leaveRightNowPage({ render = true } = {}) {
+  if (!rightNowSelected) return false;
+  rightNowSelected = false;
+  rightNowPage = null;
+  rightNowShownIds = [];
+  rightNowLingerUntil.clear();
+  scheduleRightNowLingerExpiry(null, 0);
+  if (render) {
+    renderQuickAccessConfigState();
+    notifyRightNowPageChanged();
+  }
+  return true;
+}
+
+// Lights and fans that are on, by domain, for the one button that switches them all off.
+async function turnOffRightNowDevices(button) {
+  const entities = (rightNowPage?.groups?.on || [])
+    .map((id) => state.STATES?.[id])
+    .filter((entity) => entity?.state === 'on');
+  if (!entities.length) return;
+  if (button) button.disabled = true;
+  try {
+    // Each through the action runner, as a tile click is: the tiles show off at once, and a
+    // failure is reported there.
+    await Promise.all(entities.map((entity) => runEntityAction(entity, 'turn_off')));
+  } finally {
+    if (button?.isConnected) button.disabled = false;
+  }
+}
+
+const RIGHT_NOW_SUMMARY_GROUPS = [
+  { group: 'on', label: 'On', icon: 'lightbulb' },
+  { group: 'media', label: 'Playing', icon: 'music' },
+  { group: 'timers', label: 'Timers', icon: 'timer' },
+  { group: 'open', label: 'Open', icon: 'door-open' },
+  { group: 'unlocked', label: 'Unlocked', icon: 'lock-open' },
+  { group: 'battery', label: 'Low battery', icon: 'battery' },
+  { group: 'offline', label: 'Offline', icon: 'triangle-alert' },
+];
+
+// The line above the tiles: how many of each kind, and a way to switch everything off. With
+// nothing on the page it says so, in place of the tiles.
+function syncRightNowSummary(container, showing) {
+  let summary = document.getElementById('right-now-summary');
+  if (!showing) {
+    summary?.remove();
+    container.classList.remove('right-now-page');
+    return;
+  }
+  container.classList.add('right-now-page');
+  if (!summary) {
+    summary = document.createElement('div');
+    summary.id = 'right-now-summary';
+    summary.className = 'right-now-summary';
+    container.before(summary);
+  }
+  const groups = rightNowPage?.groups || {};
+  const total = rightNowPage?.entityIds?.length || 0;
+  const onCount = groups.on?.length || 0;
+  const signature = JSON.stringify([
+    getLocaleState?.().locale || '',
+    RIGHT_NOW_SUMMARY_GROUPS.map(({ group }) => groups[group]?.length || 0),
+  ]);
+  if (summary.dataset.signature === signature) return;
+  summary.dataset.signature = signature;
+  summary.classList.toggle('is-empty', total === 0);
+
+  if (total === 0) {
+    const icon = document.createElement('span');
+    icon.className = 'right-now-empty-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    setLineIconContent(icon, 'circle-check');
+    const title = document.createElement('p');
+    title.className = 'right-now-empty-title';
+    title.textContent = t('Nothing needs you right now');
+    const message = document.createElement('p');
+    message.className = 'right-now-empty-message';
+    message.textContent = t(
+      'Lights left on, open doors and windows, running timers, low batteries and offline devices show up here.'
+    );
+    summary.replaceChildren(icon, title, message);
+    return;
+  }
+
+  const chips = document.createElement('ul');
+  chips.className = 'right-now-chips';
+  chips.setAttribute('aria-label', t('Right now'));
+  RIGHT_NOW_SUMMARY_GROUPS.forEach(({ group, label, icon }) => {
+    const count = groups[group]?.length || 0;
+    if (!count) return;
+    const chip = document.createElement('li');
+    chip.className = 'right-now-chip';
+    chip.dataset.group = group;
+    const glyph = document.createElement('span');
+    glyph.className = 'right-now-chip-icon';
+    glyph.setAttribute('aria-hidden', 'true');
+    setLineIconContent(glyph, icon);
+    const value = document.createElement('span');
+    value.className = 'right-now-chip-count';
+    value.textContent = formatNumber(count);
+    const text = document.createElement('span');
+    text.className = 'right-now-chip-label';
+    text.textContent = t(label);
+    chip.append(glyph, value, text);
+    chips.appendChild(chip);
+  });
+  const children = [chips];
+  // One light is its own tile's click; the button is for switching off several at once.
+  if (onCount > 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-sm right-now-all-off';
+    button.textContent = t('Turn all off');
+    button.addEventListener('click', () => void turnOffRightNowDevices(button));
+    children.push(button);
+  }
+  summary.replaceChildren(...children);
+}
+
 function getActiveQuickAccessEntityIds() {
   const config = ensureQuickAccessConfig();
+  // What the page drew; only a render works it out again (see getRightNowEntityIds).
+  if (isRightNowPageShowing(config))
+    return rightNowPage ? rightNowShownIds : getRightNowEntityIds();
   const entityIds = getActiveQuickAccessTab(config)?.entityIds || [];
   if (isClimateDemoOverlayConfig(config) && !entityIds.includes(DEV_CLIMATE_DEMO_ENTITY_ID)) {
     return [DEV_CLIMATE_DEMO_ENTITY_ID, ...entityIds];
@@ -681,8 +938,13 @@ const QUICK_ACCESS_PAGE_PRESETS = [
 ];
 
 async function switchQuickAccessPage(tabId) {
-  // Choosing the page already shown changes nothing to save and nobody to tell.
-  if (tabId === state.CONFIG?.activeTabId) return { success: true, unchanged: true };
+  if (tabId === RIGHT_NOW_PAGE_ID) return showRightNowPage();
+  // Choosing the page already shown changes nothing to save and nobody to tell. From the Right now
+  // page, the page that was last chosen is shown again, also without a save.
+  if (tabId === state.CONFIG?.activeTabId) {
+    return leaveRightNowPage() ? { success: true } : { success: true, unchanged: true };
+  }
+  leaveRightNowPage({ render: false });
   const nextConfig = setActiveQuickAccessView(state.CONFIG, tabId);
   const result = await setQuickAccessConfig(nextConfig);
   if (result?.success !== false) {
@@ -860,9 +1122,12 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   });
   tabBar.classList.toggle('reorganize', reorganizing);
 
-  // In normal mode, only surface tabs once there is more than one page.
-  // In reorganize mode, always show the bar so pages can be created/renamed.
-  const shouldShow = reorganizing || tabs.length > 1;
+  // In normal mode, only surface tabs once there is more than one page, or the Right now page
+  // beside the one. In reorganize mode, always show the bar so pages can be created/renamed; the
+  // Right now page is not among them, as it has nothing to arrange.
+  const withRightNow = !reorganizing && isRightNowPageEnabled(config);
+  const rightNowShowing = isRightNowPageShowing(config);
+  const shouldShow = reorganizing || tabs.length > 1 || withRightNow;
   tabBar.classList.toggle('hidden', !shouldShow);
   syncQuickAccessAddPageButton(tabBar, reorganizing);
 
@@ -889,12 +1154,14 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   // A tab list has one tab stop and the arrow keys reach the rest: the active page, or the first.
   // While reorganizing the pages are plain buttons beside their own edit buttons, and every one
   // of them can be tabbed to.
-  const stopId = tabs.some((tab) => tab.id === config.activeTabId)
-    ? config.activeTabId
-    : tabs[0]?.id;
+  const stopId = rightNowShowing
+    ? RIGHT_NOW_PAGE_ID
+    : tabs.some((tab) => tab.id === config.activeTabId)
+      ? config.activeTabId
+      : tabs[0]?.id;
 
   tabs.forEach((tab, index) => {
-    const isActive = tab.id === config.activeTabId;
+    const isActive = tab.id === config.activeTabId && !rightNowShowing;
 
     const tabEl = document.createElement('div');
     tabEl.className = 'quick-access-tab';
@@ -983,6 +1250,10 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
     scroller.appendChild(tabEl);
   });
 
+  if (withRightNow) {
+    scroller.appendChild(createRightNowTab({ active: rightNowShowing, stopId, panel }));
+  }
+
   // A rebuild must not move a strip the person has scrolled; only the active page's visibility
   // may (below).
   scroller.scrollLeft = scrollLeft;
@@ -995,6 +1266,39 @@ function renderQuickAccessTabs(config = ensureQuickAccessConfig()) {
   restoreQuickAccessTabFocus(scroller, focusedControl);
   revealActiveQuickAccessTab(scroller);
   updateQuickAccessTabOverflow(scroller);
+}
+
+// The Right now page's tab, after the person's own pages. It is marked with an icon, as it is not
+// a page they made and cannot be renamed, duplicated or deleted.
+function createRightNowTab({ active, stopId, panel }) {
+  const tabEl = document.createElement('div');
+  tabEl.className = 'quick-access-tab right-now-tab';
+  tabEl.classList.toggle('active', active);
+  tabEl.dataset.tab = RIGHT_NOW_PAGE_ID;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tab-link quick-access-tab-link right-now-tab-link';
+  button.classList.toggle('active', active);
+  button.id = 'quick-access-tab-right-now';
+  button.dataset.tab = RIGHT_NOW_PAGE_ID;
+  button.tabIndex = stopId === RIGHT_NOW_PAGE_ID ? 0 : -1;
+  const icon = document.createElement('span');
+  icon.className = 'right-now-tab-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  setLineIconContent(icon, 'activity');
+  const label = document.createElement('span');
+  label.className = 'quick-access-tab-label';
+  label.textContent = t('Right now');
+  button.append(icon, label);
+  button.title = t('What is on, open or needs attention right now');
+  button.setAttribute('role', 'tab');
+  button.setAttribute('aria-selected', active ? 'true' : 'false');
+  button.setAttribute('aria-controls', 'quick-controls');
+  if (active) panel?.setAttribute('aria-labelledby', button.id);
+  button.addEventListener('click', () => switchQuickAccessPage(RIGHT_NOW_PAGE_ID));
+  tabEl.appendChild(button);
+  return tabEl;
 }
 
 function beginInlineTabRename(tabId, buttonEl) {
@@ -1633,7 +1937,9 @@ async function restoreDashboard(layout, { activeTabId, undo = false } = {}) {
 function getQuickAccessTiles() {
   const container = document.getElementById('quick-controls');
   if (!container) return [];
-  return Array.from(container.querySelectorAll('.control-item[data-entity-id]'));
+  return Array.from(container.querySelectorAll('.control-item[data-entity-id]')).filter(
+    (tile) => !isLeaving(tile)
+  );
 }
 
 function getQuickAccessGridColumnCount(container) {
@@ -2100,6 +2406,10 @@ function toggleReorganizeMode() {
   try {
     // Clear any active long-press timers to prevent state inconsistency
     clearAllPressTimers();
+
+    // The Right now page has nothing to arrange: reorganizing works on the person's own page, which
+    // is drawn first so the drag and the saved order are about its tiles.
+    if (!isReorganizeMode) leaveRightNowPage();
 
     isReorganizeMode = !isReorganizeMode;
     const container = document.getElementById('quick-controls');
@@ -9443,12 +9753,15 @@ let quickAccessEntrancePlayed = false;
 
 function playQuickAccessPageMotion(container, config) {
   const tabs = config.customTabs || [];
-  const index = tabs.findIndex((tab) => tab.id === config.activeTabId);
+  // The Right now page sits after the person's pages.
+  const pageId = isRightNowPageShowing(config) ? RIGHT_NOW_PAGE_ID : config.activeTabId;
+  const index =
+    pageId === RIGHT_NOW_PAGE_ID ? tabs.length : tabs.findIndex((tab) => tab.id === pageId);
   const previous = lastRenderedQuickAccessPage;
-  lastRenderedQuickAccessPage = { id: config.activeTabId, index };
+  lastRenderedQuickAccessPage = { id: pageId, index };
   if (isReorganizeMode || !container.children.length) return;
 
-  if (previous && previous.id !== config.activeTabId) {
+  if (previous && previous.id !== pageId) {
     animateEnter(container.children, { direction: index >= previous.index ? 1 : -1 });
     return;
   }
@@ -9471,14 +9784,22 @@ function renderQuickControls() {
     const config = ensureQuickAccessConfig();
     renderQuickAccessTabs(config);
 
-    const favorites = getActiveQuickAccessEntityIds();
+    const showingRightNow = isRightNowPageShowing(config);
+    // The Right now page changes under the person as things switch on and off, so its tiles come
+    // and go gently: measured before anything moves (the summary above can change height too).
+    const layoutBefore =
+      showingRightNow && lastRenderedQuickAccessPage?.id === RIGHT_NOW_PAGE_ID
+        ? captureLayout(container)
+        : null;
+    const favorites = showingRightNow ? getRightNowEntityIds() : getActiveQuickAccessEntityIds();
+    syncRightNowSummary(container, showingRightNow);
     // One recorder request for every chart on the page. The per-tile fetches issued while the
     // tiles mount then join this in-flight request instead of each sending their own.
     prefetchQuickAccessSensorHistory(favorites);
     const desiredNodes = [];
     const existingNodesById = new Map();
     container.querySelectorAll('.control-item[data-entity-id]').forEach((node) => {
-      if (!node || !node.dataset?.entityId) return;
+      if (!node || !node.dataset?.entityId || isLeaving(node)) return;
       if (!existingNodesById.has(node.dataset.entityId)) {
         existingNodesById.set(node.dataset.entityId, node);
       }
@@ -9555,14 +9876,17 @@ function renderQuickControls() {
       }
     });
 
-    while (container.children.length > desiredNodes.length) {
-      const removed = container.lastElementChild;
+    const kept = new Set(desiredNodes);
+    Array.from(container.children).forEach((removed) => {
+      // A tile still fading out of the Right now page takes itself away when it is done, unless
+      // the page is left before then.
+      if (kept.has(removed) || (isLeaving(removed) && showingRightNow)) return;
       // Released while it is still on the page: Chromium keeps a loaded <img> that had its source
       // cleared after it was detached, and with it the whole tile (about a hundred nodes) for every
       // page switch.
       camera.disposeCameraPreview(removed);
       container.removeChild(removed);
-    }
+    });
     camera.pruneCameraPreviews();
 
     if (isReorganizeMode) {
@@ -9571,6 +9895,7 @@ function renderQuickControls() {
     }
     // After insertion, so the grid's real column count is known.
     applyComparisonGraphSpans(container);
+    animateLayoutChange(container, layoutBefore);
     playQuickAccessPageMotion(container, config);
     setupQuickAccessGridKeyboardNavigation();
     syncQuickAccessRovingTabIndex();
@@ -16135,4 +16460,8 @@ export {
   getMediaSeekTarget,
   getTodoActiveCount,
   switchQuickAccessPage,
+  isRightNowPageShowing,
+  refreshRightNowPage,
+  invalidateRightNowRegistry,
+  leaveRightNowPage,
 };

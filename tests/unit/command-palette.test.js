@@ -1,6 +1,7 @@
 jest.mock('../../src/ui.js', () => ({
   openEntityDetailModal: jest.fn(),
   switchQuickAccessPage: jest.fn(async () => ({ success: true })),
+  isRightNowPageShowing: jest.fn(() => false),
   requestAlarmCode: jest.fn(async () => null),
   // ui.js's runner is Entity Actions over the websocket; a fresh one per command keeps no on/off
   // change pending from one test to the next.
@@ -70,6 +71,8 @@ describe('command palette fuzzy scoring', () => {
       ['scene.bedtime', 'turn_on'],
       ['humidifier.bedroom', 'turn_off'],
       ['page:office', null],
+      // The Right now page is a page to go to as well.
+      ['page:right-now', null],
     ]);
     expect(commands[0].displayName).toBe('Turn off Office lights');
     expect(commands[1].displayName).toBe('Turn on Hall lights');
@@ -83,7 +86,7 @@ describe('command palette fuzzy scoring', () => {
         { entity_id: 'lock.back', state: 'unlocked', attributes: { friendly_name: 'Back door' } },
         { entity_id: 'lock.shed', state: 'jammed', attributes: { friendly_name: 'Shed' } },
       ],
-      { customTabs: [] },
+      { customTabs: [], ui: { rightNowPage: false } },
       { lock: { lock: {}, unlock: {} } }
     );
     expect(commands.map((command) => [command.key, command.service, command.displayName])).toEqual([
@@ -158,6 +161,9 @@ describe('command palette fuzzy scoring', () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     global.requestAnimationFrame = (callback) => callback();
     HTMLElement.prototype.scrollIntoView = jest.fn();
+    const originalConfig = state.CONFIG;
+    // The first row is an entity's: no Right now page command ahead of it.
+    state.setConfig({ ...originalConfig, ui: { rightNowPage: false } });
 
     try {
       document.body.innerHTML = '<button id="palette-launcher">Open entities</button>';
@@ -206,6 +212,7 @@ describe('command palette fuzzy scoring', () => {
     } finally {
       global.requestAnimationFrame = originalRequestAnimationFrame;
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      state.setConfig(originalConfig);
     }
   });
 });
@@ -1172,12 +1179,12 @@ describe('command palette recents', () => {
       ).toEqual([
         'Switch to Kitchen',
         'Switch to Garage',
+        'Switch to Right now',
         'Zulu',
         'Mike',
         'Alpha',
         'Bravo',
         'Turn on Alpha',
-        'Turn on Bravo',
       ]);
     });
 
@@ -1243,9 +1250,9 @@ describe('command palette recents', () => {
       const footer = document.querySelector('.command-palette-footer');
       expect(rows()).toHaveLength(20);
       expect(footer.hidden).toBe(false);
-      expect(footer.textContent).toBe('Showing 20 of 32 results');
+      expect(footer.textContent).toBe('Showing 20 of 33 results');
       expect(document.querySelector('[role="status"]').textContent).toBe(
-        'Showing 20 of 32 results'
+        'Showing 20 of 33 results'
       );
     });
 

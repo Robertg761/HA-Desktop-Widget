@@ -277,6 +277,14 @@ const FIELDS = [
     seeded: false,
     control: 'desktop-pin-snap',
   },
+  // Opt-out: the Right now page is offered until someone turns it off.
+  {
+    key: 'ui.rightNowPage',
+    shape: 'boolean',
+    default: true,
+    seeded: false,
+    control: 'right-now-page',
+  },
   // Opt-out rather than opt-in: the glow is how a tile shows it is on.
   {
     key: 'ui.activeTileGlow',

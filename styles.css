@@ -9992,6 +9992,108 @@ body.theme-light:not(.high-contrast)
   text-wrap: balance;
 }
 
+/* The Right now page: its tab carries an icon, as it is not a page the person made. Above its
+   tiles a line counts what is on it; with nothing on it, that line says so in their place. */
+.quick-access-tabs .right-now-tab-link {
+  gap: var(--space-1);
+}
+
+.right-now-tab-icon {
+  display: inline-flex;
+  flex: none;
+  font-size: 1.15em;
+}
+
+/* The page is in an order of its own making, so a wide player's tile need not leave a hole. */
+#quick-controls.right-now-page {
+  /* Holds the tiles that fade out where they stood while the others slide into their places. */
+  position: relative;
+  grid-auto-flow: row dense;
+}
+
+.right-now-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.right-now-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.right-now-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--tile-border);
+  border-radius: var(--radius-full);
+  background: var(--tile-bg);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs-plus);
+  white-space: nowrap;
+}
+
+.right-now-chip-icon {
+  display: inline-flex;
+  color: var(--accent-text);
+}
+
+.right-now-chip-count {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What needs a hand rather than a switch-off reads in the warning colour. */
+.right-now-chip:is([data-group='battery'], [data-group='offline'], [data-group='unlocked'])
+  .right-now-chip-icon {
+  color: var(--warning-text);
+}
+
+.right-now-all-off {
+  margin-inline-start: auto;
+}
+
+.right-now-summary.is-empty {
+  display: block;
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed rgba(var(--accent-rgb), 0.35);
+  border-radius: var(--radius-tile);
+  text-align: center;
+}
+
+.right-now-empty-icon {
+  display: inline-flex;
+  margin-bottom: var(--space-2);
+  color: var(--accent-text);
+  font-size: var(--font-size-icon);
+}
+
+.right-now-empty-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.right-now-empty-message {
+  margin: 0 auto;
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
 /* The server being reached, how the last Retry went, and the waiting bar sit under the copy. */
 .widget-state-host,
 .widget-state-note {

@@ -9132,10 +9132,226 @@ describe('UI Rendering - Selective Business Logic Tests (ui.js)', () => {
   // Quick Access page management (reorganize mode)
   // ==============================================================================
 
+  describe('Right now page', () => {
+    let tabBar;
+    const flush = async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    };
+    const homeStates = () => ({
+      'light.desk': {
+        entity_id: 'light.desk',
+        state: 'on',
+        attributes: { friendly_name: 'Desk lamp' },
+      },
+      'light.hall': {
+        entity_id: 'light.hall',
+        state: 'on',
+        attributes: { friendly_name: 'Hall light' },
+      },
+      'light.porch': {
+        entity_id: 'light.porch',
+        state: 'off',
+        attributes: { friendly_name: 'Porch light' },
+      },
+      'binary_sensor.back_door': {
+        entity_id: 'binary_sensor.back_door',
+        state: 'on',
+        attributes: { friendly_name: 'Back door', device_class: 'door' },
+      },
+      'sensor.remote_battery': {
+        entity_id: 'sensor.remote_battery',
+        state: '8',
+        attributes: { friendly_name: 'Remote battery', device_class: 'battery' },
+      },
+    });
+    const tileIds = () =>
+      [...document.querySelectorAll('#quick-controls .control-item')].map(
+        (tile) => tile.dataset.entityId
+      );
+    const rightNowTab = () => tabBar.querySelector('.quick-access-tab-link[data-tab="right-now"]');
+
+    beforeEach(() => {
+      const header = document.createElement('div');
+      header.className = 'section-header quick-access-header';
+      tabBar = document.createElement('div');
+      tabBar.id = 'quick-access-tabs';
+      tabBar.className = 'quick-access-tabs hidden';
+      header.appendChild(tabBar);
+      document.body.prepend(header);
+      state.setConfig({
+        ...state.CONFIG,
+        ui: { ...state.CONFIG.ui, rightNowPage: true },
+        customTabs: [{ id: 'default', name: 'All', entityIds: ['light.porch'] }],
+        activeTabId: 'default',
+        favoriteEntities: ['light.porch'],
+      });
+      state.setStates(homeStates());
+      // The registry is read when the page is first shown; an empty one leaves the states to say.
+      mockRequest.mockImplementation(async ({ type }) =>
+        type.startsWith('config/') ? { success: true, result: [] } : {}
+      );
+    });
+
+    afterEach(() => {
+      ui.leaveRightNowPage();
+    });
+
+    it('adds a Right now tab after the pages, beside a single page too', () => {
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(false);
+      const tabs = [...tabBar.querySelectorAll('.quick-access-tab-link')];
+      expect(tabs.map((tab) => tab.dataset.tab)).toEqual(['default', 'right-now']);
+      expect(rightNowTab().textContent).toBe('Right now');
+      expect(rightNowTab().getAttribute('aria-selected')).toBe('false');
+      expect(tileIds()).toEqual(['light.porch']);
+      expect(document.getElementById('right-now-summary')).toBeNull();
+    });
+
+    it('is left out when turned off in Settings', () => {
+      state.setConfig({ ...state.CONFIG, ui: { ...state.CONFIG.ui, rightNowPage: false } });
+      ui.renderActiveTab();
+      expect(tabBar.classList.contains('hidden')).toBe(true);
+      expect(rightNowTab()).toBeNull();
+    });
+
+    it('shows what is on or needs attention, without saving anything', async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(ui.isRightNowPageShowing()).toBe(true);
+      expect(rightNowTab().getAttribute('aria-selected')).toBe('true');
+      expect(
+        tabBar
+          .querySelector('.quick-access-tab-link[data-tab="default"]')
+          .classList.contains('active')
+      ).toBe(false);
+      expect(tileIds()).toEqual([
+        'light.desk',
+        'light.hall',
+        'binary_sensor.back_door',
+        'sensor.remote_battery',
+      ]);
+      const chips = [...document.querySelectorAll('#right-now-summary .right-now-chip')].map(
+        (chip) => [chip.dataset.group, chip.querySelector('.right-now-chip-count').textContent]
+      );
+      expect(chips).toEqual([
+        ['on', '2'],
+        ['open', '1'],
+        ['battery', '1'],
+      ]);
+      expect(mockRequest).toHaveBeenCalledWith({ type: 'config/entity_registry/list' });
+    });
+
+    it('goes back to the page that was chosen, still without saving', async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+      tabBar.querySelector('.quick-access-tab-link[data-tab="default"]').click();
+      await flush();
+
+      expect(mockElectronAPI.updateConfig).not.toHaveBeenCalled();
+      expect(ui.isRightNowPageShowing()).toBe(false);
+      expect(tileIds()).toEqual(['light.porch']);
+      expect(document.getElementById('right-now-summary')).toBeNull();
+    });
+
+    it('switches every light that is on off with one button', async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+      document.querySelector('#right-now-summary .right-now-all-off').click();
+      await flush();
+
+      // Each through the action runner, as a tile click is.
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.desk',
+      });
+      expect(mockCallService).toHaveBeenCalledWith('light', 'turn_off', {
+        entity_id: 'light.hall',
+      });
+    });
+
+    it('says so when nothing needs attention', async () => {
+      state.setStates({
+        'light.porch': homeStates()['light.porch'],
+      });
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+
+      const summary = document.getElementById('right-now-summary');
+      expect(summary.classList.contains('is-empty')).toBe(true);
+      expect(summary.textContent).toContain('Nothing needs you right now');
+      expect(tileIds()).toEqual([]);
+    });
+
+    it('keeps a light just switched off for a moment, then lets it go', async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+
+      jest.useFakeTimers();
+      try {
+        state.setEntityState({ ...homeStates()['light.desk'], state: 'off' });
+        ui.refreshRightNowPage(['light.desk']);
+        jest.advanceTimersByTime(200);
+        // Still drawn, in its place, now off.
+        expect(tileIds()).toContain('light.desk');
+        expect(
+          document.querySelector('#right-now-summary .right-now-chip[data-group="on"]')
+        ).not.toBeNull();
+        expect(
+          document.querySelector(
+            '#right-now-summary .right-now-chip[data-group="on"] .right-now-chip-count'
+          ).textContent
+        ).toBe('1');
+
+        jest.advanceTimersByTime(5100);
+        expect(tileIds()).not.toContain('light.desk');
+        expect(tileIds()).toContain('light.hall');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('adds what newly turns on', async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+
+      jest.useFakeTimers();
+      try {
+        state.setEntityState({ ...homeStates()['light.porch'], state: 'on' });
+        ui.refreshRightNowPage(['light.porch']);
+        jest.advanceTimersByTime(200);
+        expect(tileIds()).toContain('light.porch');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("hands reorganizing to the person's own page", async () => {
+      ui.renderActiveTab();
+      rightNowTab().click();
+      await flush();
+      ui.toggleReorganizeMode();
+
+      expect(ui.isRightNowPageShowing()).toBe(false);
+      expect(rightNowTab()).toBeNull();
+      expect(tileIds()).toEqual(['light.porch']);
+    });
+  });
+
   describe('Quick Access page management', () => {
     let tabBar;
 
     beforeEach(() => {
+      // These are about the person's own pages; the Right now page has tests of its own.
+      state.setConfig({ ...state.CONFIG, ui: { ...state.CONFIG.ui, rightNowPage: false } });
+      // Saves answer with the main process's config, which has the page off too.
+      defaultUpdateConfigImplementation(state.CONFIG);
       // As in the page: the bar sits in the section header, where Add page is placed beside it.
       const header = document.createElement('div');
       header.className = 'section-header quick-access-header';

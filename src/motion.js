@@ -180,4 +180,121 @@ function pulse(element) {
   );
 }
 
-export { animateEnter, canAnimate, prefersReducedMotion, pulse, syncSlidingIndicator };
+// How a tile that is going away fades, and the class it carries while it does. It is drawn where
+// it last stood, out of the grid's flow, so the others can already slide into its place.
+const LEAVING_CLASS = 'layout-leaving';
+const MOVE_ANIMATION_ID = 'layout-move';
+
+/**
+ * Where each item of a list is drawn now, to animate from once the list has changed (see
+ * animateLayoutChange). Null when nothing would animate (reduced motion, jsdom).
+ * @param {HTMLElement} container - The list; its direct children are the items.
+ * @returns {{ items: Map<HTMLElement, DOMRect> }|null}
+ */
+function captureLayout(container) {
+  if (!canAnimate(container)) return null;
+  const items = new Map();
+  for (const element of container.children) {
+    if (element.classList.contains(LEAVING_CLASS)) continue;
+    items.set(element, element.getBoundingClientRect());
+  }
+  return { items };
+}
+
+function leave(container, element, rect, box) {
+  if (!rect.width || !rect.height) return;
+  Object.assign(element.style, {
+    position: 'absolute',
+    left: `${rect.left - box.left - container.clientLeft + container.scrollLeft}px`,
+    top: `${rect.top - box.top - container.clientTop + container.scrollTop}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    margin: '0',
+    pointerEvents: 'none',
+  });
+  element.classList.add(LEAVING_CLASS);
+  element.setAttribute('aria-hidden', 'true');
+  element.inert = true;
+  container.append(element);
+  const animation = element.animate(
+    [
+      { opacity: 1, transform: 'none' },
+      { opacity: 0, transform: 'scale(0.92)' },
+    ],
+    { duration: 240, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }
+  );
+  const done = () => element.remove();
+  animation.onfinish = done;
+  animation.oncancel = done;
+}
+
+/**
+ * Animate a list from the layout captureLayout saw to the one it has now: items that went away
+ * fade and shrink where they stood, the ones that stayed glide to their new places, and new ones
+ * fade and grow in once there is room for them. Call it after the list's children are updated.
+ * Items that went away must be detached by then; they are put back only for as long as they fade.
+ * @param {HTMLElement} container - The list, which must be positioned (it holds the fading items).
+ * @param {{ items: Map<HTMLElement, DOMRect> }|null} before - From captureLayout.
+ */
+function animateLayoutChange(container, before) {
+  if (!before || !canAnimate(container)) return;
+  const box = container.getBoundingClientRect();
+  let left = 0;
+  before.items.forEach((rect, element) => {
+    if (element.parentNode === container) return;
+    leave(container, element, rect, box);
+    left += 1;
+  });
+
+  let entering = 0;
+  for (const element of container.children) {
+    if (element.classList.contains(LEAVING_CLASS)) continue;
+    const from = before.items.get(element);
+    if (!from) {
+      element.animate(
+        [
+          { opacity: 0, transform: 'scale(0.92)' },
+          { opacity: 1, transform: 'none' },
+        ],
+        {
+          duration: 360,
+          // After what left has made way, and one after another when several arrive together.
+          delay: (left ? 140 : 0) + Math.min(entering, 6) * 40,
+          easing: EASE_EMPHASIZED,
+          fill: 'backwards',
+        }
+      );
+      entering += 1;
+      continue;
+    }
+    // A slide that is still running is replaced by one from where the item is drawn now.
+    (element.getAnimations?.() ?? [])
+      .filter((animation) => animation.id === MOVE_ANIMATION_ID)
+      .forEach((animation) => animation.cancel());
+    const to = element.getBoundingClientRect();
+    const dx = from.left - to.left;
+    const dy = from.top - to.top;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+    const animation = element.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+      { duration: 420, easing: EASE_EMPHASIZED }
+    );
+    animation.id = MOVE_ANIMATION_ID;
+  }
+}
+
+/** Whether an item is only on the page while it fades out. */
+function isLeaving(element) {
+  return !!element?.classList?.contains(LEAVING_CLASS);
+}
+
+export {
+  animateEnter,
+  animateLayoutChange,
+  canAnimate,
+  captureLayout,
+  isLeaving,
+  prefersReducedMotion,
+  pulse,
+  syncSlidingIndicator,
+};

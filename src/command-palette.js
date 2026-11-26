@@ -3,6 +3,7 @@ import * as utils from './utils.js';
 import {
   openEntityDetailModal,
   switchQuickAccessPage,
+  isRightNowPageShowing,
   requestAlarmCode,
   runEntityAction,
   describeServiceErrorMessage,
@@ -10,6 +11,7 @@ import {
 } from './ui.js';
 import websocket from './websocket.js';
 import entityActions from './entity-actions.cjs';
+import { RIGHT_NOW_PAGE_ID, isRightNowPageEnabled } from './right-now.js';
 import { closeDialog, openDialog, showToast } from './dialogs.js';
 import { formatNumber, t } from './i18n.js';
 import { compareNames, getCloseMatchScore, normalizeSearchText } from './format.js';
@@ -334,7 +336,10 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
       }));
   });
   const customTabs = config?.customTabs || [];
-  const activeTabId = customTabs.length ? getActiveQuickAccessTab(config)?.id : null;
+  // On the Right now page, every page of the person's own is somewhere else to go.
+  const rightNowShowing = isRightNowPageShowing(config);
+  const activeTabId =
+    customTabs.length && !rightNowShowing ? getActiveQuickAccessTab(config)?.id : null;
   customTabs
     .filter((tab) => tab.id !== activeTabId)
     .forEach((tab) =>
@@ -344,6 +349,14 @@ function buildPaletteCommands(entities, config = state.CONFIG, services = state.
         key: `page:${tab.id}`,
       })
     );
+  // With nothing from Home Assistant yet there is nothing for the page to show.
+  if (isRightNowPageEnabled(config) && !rightNowShowing && entities.length > 0) {
+    commands.push({
+      tabId: RIGHT_NOW_PAGE_ID,
+      displayName: t('Switch to {{name}}', { name: t('Right now') }),
+      key: `page:${RIGHT_NOW_PAGE_ID}`,
+    });
+  }
   return commands;
 }
 
